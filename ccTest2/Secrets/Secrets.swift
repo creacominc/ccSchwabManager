@@ -27,7 +27,20 @@ class Secrets: Codable
         //acountNumberHash    = []
     }
 
-    
+    public func encodeToString() -> String? 
+    {
+        do 
+        {
+            let jsonData = try JSONEncoder().encode(self)
+            return String(data: jsonData, encoding: .utf8)
+        }
+        catch 
+        {
+            print("Error encoding Secrets object to JSON string: \(error)")
+            return nil
+        }
+    }
+
     public func dump() -> String
     {
         var retStr : String =
