@@ -15,35 +15,56 @@ import Security
 
 struct KeychainView: View
 {
-    @State var token: String = "Default ccSchwaabManager Token"
+    @State var secretsStr: String = Secrets().encodeToString() ?? "Failed to Encode Secrets"
     @State var pressed: Bool = false
     @State var firstPass: Bool = true
     let keychainManager = KeychainManager()
-    var secret: Secrets = Secrets()
+    //var secrets: Secrets = Secrets()
 
 
     var body: some View
     {
         VStack
         {
-            TextField( "Token:", text: $token )
+            TextField( "Secrets:", text: $secretsStr )
                 .padding()
                 .onAppear()
             {
-                self.token = keychainManager.readToken( prefix: "init/firstPass" ) ?? "unset"
-                print( "display token \(self.token)" )
+                var secrets: Secrets =  self.keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
+                self.secretsStr = secrets.encodeToString() ?? "Failed to Encode Secrets for Display"
+                print( "display secrets \(self.secretsStr)" )
             }
             Button( "Read" )
             {
-                self.token = keychainManager.readToken( prefix: "init/firstPass" ) ?? "still naught"
-                print( "read token \(self.token)" )
+                var secrets: Secrets = keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
+                self.secretsStr = secrets.encodeToString() ?? "Failed to Encode Secrets for Read"
+                print( "read secrets: \(self.secretsStr)" )
             }
             Button( "Test" )
             {
-                print( "\(keychainManager.saveSecrets(token: "\(token)") ? "Saved" : "Not saved")" )
-                print( "\(keychainManager.readToken( prefix: "onButtonPress" ) ?? "Not found")" )
-                pressed = true
-                self.secret.setAppId(<#T##appId: String##String#>)
+                var secrets: Secrets?
+                do
+                {
+                    var secrets: Secrets?
+                    do
+                    {
+                        secrets = try JSONDecoder().decode( Secrets.self, from: self.secretsStr.data( using: .utf8 )!)
+                    }
+                    catch
+                    {
+                        print( "Error decoding JSON: \(error)" )
+                        return
+                    }
+                    print( "\(keychainManager.saveSecrets( secrets: secrets ) ? "Saved" : "Not saved")" )
+                    print( "\( (keychainManager.readSecrets( prefix: "onButtonPress" ) ?? Secrets()).dump() )" )
+                    pressed = true
+                }
+                catch
+                {
+                    print( "Error decoding JSON: \(error)" )
+                    pressed = false
+                    return
+                }
             }
             .buttonStyle( .borderedProminent )
         }
