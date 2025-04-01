@@ -2,10 +2,8 @@ import SwiftUI
 
 #if canImport(UIKit)
 import UIKit
-//typealias PlatformPasteboard = UIPasteboard
 #elseif canImport(AppKit)
 import AppKit
-//typealias PlatformPasteboard = NSPasteboard
 #endif
 
 

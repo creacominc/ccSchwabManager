@@ -3,9 +3,13 @@
 //
 
 import SwiftUI
+
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
+
 import Security
 
 
@@ -15,16 +19,8 @@ struct KeychainView: View
     @State var pressed: Bool = false
     @State var firstPass: Bool = true
     let keychainManager = KeychainManager()
+    var secret: Secrets = Secrets()
 
-
-    init()
-    {
-        if( firstPass )
-        {
-            self.token = keychainManager.readToken( prefix: "init/firstPass" ) ?? "unset"
-            firstPass = false
-        }
-    }
 
     var body: some View
     {
@@ -32,15 +28,22 @@ struct KeychainView: View
         {
             TextField( "Token:", text: $token )
                 .padding()
+                .onAppear()
+            {
+                self.token = keychainManager.readToken( prefix: "init/firstPass" ) ?? "unset"
+                print( "display token \(self.token)" )
+            }
             Button( "Read" )
             {
                 self.token = keychainManager.readToken( prefix: "init/firstPass" ) ?? "still naught"
+                print( "read token \(self.token)" )
             }
             Button( "Test" )
             {
-                print( "\(keychainManager.saveToken(token: "\(token)") ? "Saved" : "Not saved")" )
+                print( "\(keychainManager.saveSecrets(token: "\(token)") ? "Saved" : "Not saved")" )
                 print( "\(keychainManager.readToken( prefix: "onButtonPress" ) ?? "Not found")" )
                 pressed = true
+                self.secret.setAppId(<#T##appId: String##String#>)
             }
             .buttonStyle( .borderedProminent )
         }
@@ -63,90 +66,6 @@ enum KeychainError: Error {
 }
 
 
-
-class KeychainManager
-{
-    var credential: Credentials = Credentials(username: "", password: "")
-    
-    func saveToken(token: String) -> Bool
-    {
-        print( "Saving token: \(token)" )
-        credential.username = "ccSchwabManager"
-        credential.password = token
-
-        let tokenData = token.data(using: .utf8)
-        if( nil == tokenData )
-        {
-            print( "Error converting token to data." )
-            return false
-        }
-        else
-        {
-            print( "Token data length: \(tokenData!.count)" )
-        }
-        let keychainItem = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: credential.username,
-            kSecAttrService as String: "ccSchwabManager",
-            kSecAttrSynchronizable as String:  kCFBooleanTrue!,
-            kSecValueData as String: tokenData!
-        ] as CFDictionary
-        let status = SecItemAdd(keychainItem, nil)
-        let errorString : String = SecCopyErrorMessageString( status, nil )! as String
-        print( "Initial status: \(status),  \(errorString)" )
-        // update if it exists
-        if( errSecDuplicateItem == status )
-        {
-            let attributes: [String: Any] = [ kSecValueData as String: tokenData! ]
-            let status = SecItemUpdate( keychainItem as CFDictionary, attributes as CFDictionary)
-            let errorString : String = SecCopyErrorMessageString( status, nil )! as String
-            print( "update status: \(status),  \(errorString)" )
-        }
-        return status == errSecSuccess
-    }
-
-    func readToken(  prefix: String ) -> String?
-    {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: credential.username,
-            kSecAttrService as String: "ccSchwabManager",
-            kSecAttrSynchronizable as String: kCFBooleanTrue!,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecReturnData as String: true
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as
-            CFDictionary, &result)
-        let errorString : String = SecCopyErrorMessageString( status, nil )! as String
-        print( "\(prefix) - readToken status: \(status),  \(errorString)" )
-
-        if( status == errSecSuccess )
-        {
-            let tokenData = result as? Data
-            if( nil == tokenData )
-            {
-                print( "\(prefix) - No token data found" )
-            }
-            else
-            {
-                let token = String(data:  tokenData!, encoding: .utf8)
-                print( "\(prefix) - token: \(token ?? "Not found")" )
-
-                let keyValue = NSString(data: tokenData!,
-                                        encoding: String.Encoding.utf8.rawValue) as? String
-                print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
-
-                return token
-            }
-        }
-
-        return nil
-
-    }
-    
-    
-}
 
 
 
