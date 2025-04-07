@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		363426792DA3843100DDF847 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 363426782DA3843100DDF847 /* LICENSE */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		367617CD2D94C9700030D285 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		363426782DA3843100DDF847 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		366088D82D9DEC6200BAD6DF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		367617B92D94C96E0030D285 /* ccSchwabManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ccSchwabManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		367617CC2D94C9700030D285 /* ccSchwabManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ccSchwabManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -82,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				366088D82D9DEC6200BAD6DF /* README.md */,
+				363426782DA3843100DDF847 /* LICENSE */,
 				36BBCB3D2D94D15200D1B58D /* Resources */,
 				367617BB2D94C96E0030D285 /* ccSchwabManager */,
 				367617CF2D94C9700030D285 /* ccSchwabManagerTests */,
@@ -221,6 +227,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				363426792DA3843100DDF847 /* LICENSE in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
