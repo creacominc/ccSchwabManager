@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "367617B82D94C96E0030D285"
-               BuildableName = "ccTest2.app"
-               BlueprintName = "ccTest2"
-               ReferencedContainer = "container:ccTest2.xcodeproj">
+               BuildableName = "ccSchwabManager.app"
+               BlueprintName = "ccSchwabManager"
+               ReferencedContainer = "container:ccSchwabManager.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -36,9 +36,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "367617CB2D94C9700030D285"
-               BuildableName = "ccTest2Tests.xctest"
-               BlueprintName = "ccTest2Tests"
-               ReferencedContainer = "container:ccTest2.xcodeproj">
+               BuildableName = "ccSchwabManagerTests.xctest"
+               BlueprintName = "ccSchwabManagerTests"
+               ReferencedContainer = "container:ccSchwabManager.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -47,9 +47,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "367617D52D94C9700030D285"
-               BuildableName = "ccTest2UITests.xctest"
-               BlueprintName = "ccTest2UITests"
-               ReferencedContainer = "container:ccTest2.xcodeproj">
+               BuildableName = "ccSchwabManagerUITests.xctest"
+               BlueprintName = "ccSchwabManagerUITests"
+               ReferencedContainer = "container:ccSchwabManager.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -69,9 +69,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "367617B82D94C96E0030D285"
-            BuildableName = "ccTest2.app"
-            BlueprintName = "ccTest2"
-            ReferencedContainer = "container:ccTest2.xcodeproj">
+            BuildableName = "ccSchwabManager.app"
+            BlueprintName = "ccSchwabManager"
+            ReferencedContainer = "container:ccSchwabManager.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -86,9 +86,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "367617B82D94C96E0030D285"
-            BuildableName = "ccTest2.app"
-            BlueprintName = "ccTest2"
-            ReferencedContainer = "container:ccTest2.xcodeproj">
+            BuildableName = "ccSchwabManager.app"
+            BlueprintName = "ccSchwabManager"
+            ReferencedContainer = "container:ccSchwabManager.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

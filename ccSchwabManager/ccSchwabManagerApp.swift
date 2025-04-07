@@ -1,6 +1,6 @@
 //
-//  ccTest2App.swift
-//  ccTest2
+//  ccSchwabManagerApp.swift
+//  ccSchwabManager
 //
 //  Created by Harold Tomlinson on 2025-03-26.
 //
@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct ccTest2App: App
+struct ccSchwabManagerApp: App
 {
     var body: some Scene
     {

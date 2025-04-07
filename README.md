@@ -1,4 +1,4 @@
-# ccTest2
+# ccSchwabManager
 
 This project is a Swift-based application. It is designed to demonstrate the capabilities of Swift programming language in building efficient and robust applications.
 
@@ -16,13 +16,13 @@ This project is a Swift-based application. It is designed to demonstrate the cap
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/creacominc/ccTest2.git
-    cd ccTest2
+    git clone https://github.com/creacominc/ccSchwabManager.git
+    cd ccSchwabManager
     ```
 
 2. Open the project in Xcode (if using Xcode):
     ```sh
-    open ccTest2.xcodeproj
+    open ccSchwabManager.xcodeproj
     ```
 
 3. Build the project:
@@ -36,7 +36,7 @@ This project is a Swift-based application. It is designed to demonstrate the cap
 
 1. Open the project in Xcode (if using Xcode):
     ```sh
-    open ccTest2.xcodeproj
+    open ccSchwabManager.xcodeproj
     ```
 
 2. Run the tests:

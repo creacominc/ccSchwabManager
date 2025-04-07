@@ -1,13 +1,13 @@
 //
-//  ccTest2UITestsLaunchTests.swift
-//  ccTest2UITests
+//  ccSchwabManagerUITestsLaunchTests.swift
+//  ccSchwabManagerUITests
 //
 //  Created by Harold Tomlinson on 2025-03-26.
 //
 
 import XCTest
 
-final class ccTest2UITestsLaunchTests: XCTestCase {
+final class ccSchwabManagerUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

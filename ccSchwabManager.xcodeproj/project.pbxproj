@@ -12,38 +12,38 @@
 			containerPortal = 367617B12D94C96E0030D285 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 367617B82D94C96E0030D285;
-			remoteInfo = ccTest2;
+			remoteInfo = ccSchwabManager;
 		};
 		367617D72D94C9700030D285 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 367617B12D94C96E0030D285 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 367617B82D94C96E0030D285;
-			remoteInfo = ccTest2;
+			remoteInfo = ccSchwabManager;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		366088D82D9DEC6200BAD6DF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		367617B92D94C96E0030D285 /* ccTest2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ccTest2.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		367617CC2D94C9700030D285 /* ccTest2Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ccTest2Tests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		367617D62D94C9700030D285 /* ccTest2UITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ccTest2UITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		367617B92D94C96E0030D285 /* ccSchwabManager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ccSchwabManager.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		367617CC2D94C9700030D285 /* ccSchwabManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ccSchwabManagerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		367617D62D94C9700030D285 /* ccSchwabManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ccSchwabManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		367617BB2D94C96E0030D285 /* ccTest2 */ = {
+		367617BB2D94C96E0030D285 /* ccSchwabManager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ccTest2;
+			path = ccSchwabManager;
 			sourceTree = "<group>";
 		};
-		367617CF2D94C9700030D285 /* ccTest2Tests */ = {
+		367617CF2D94C9700030D285 /* ccSchwabManagerTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ccTest2Tests;
+			path = ccSchwabManagerTests;
 			sourceTree = "<group>";
 		};
-		367617D92D94C9700030D285 /* ccTest2UITests */ = {
+		367617D92D94C9700030D285 /* ccSchwabManagerUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ccTest2UITests;
+			path = ccSchwabManagerUITests;
 			sourceTree = "<group>";
 		};
 		36BBCB3D2D94D15200D1B58D /* Resources */ = {
@@ -83,9 +83,9 @@
 			children = (
 				366088D82D9DEC6200BAD6DF /* README.md */,
 				36BBCB3D2D94D15200D1B58D /* Resources */,
-				367617BB2D94C96E0030D285 /* ccTest2 */,
-				367617CF2D94C9700030D285 /* ccTest2Tests */,
-				367617D92D94C9700030D285 /* ccTest2UITests */,
+				367617BB2D94C96E0030D285 /* ccSchwabManager */,
+				367617CF2D94C9700030D285 /* ccSchwabManagerTests */,
+				367617D92D94C9700030D285 /* ccSchwabManagerUITests */,
 				367617BA2D94C96E0030D285 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -93,9 +93,9 @@
 		367617BA2D94C96E0030D285 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				367617B92D94C96E0030D285 /* ccTest2.app */,
-				367617CC2D94C9700030D285 /* ccTest2Tests.xctest */,
-				367617D62D94C9700030D285 /* ccTest2UITests.xctest */,
+				367617B92D94C96E0030D285 /* ccSchwabManager.app */,
+				367617CC2D94C9700030D285 /* ccSchwabManagerTests.xctest */,
+				367617D62D94C9700030D285 /* ccSchwabManagerUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -103,9 +103,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		367617B82D94C96E0030D285 /* ccTest2 */ = {
+		367617B82D94C96E0030D285 /* ccSchwabManager */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 367617E02D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccTest2" */;
+			buildConfigurationList = 367617E02D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccSchwabManager" */;
 			buildPhases = (
 				367617B52D94C96E0030D285 /* Sources */,
 				367617B62D94C96E0030D285 /* Frameworks */,
@@ -116,19 +116,19 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				367617BB2D94C96E0030D285 /* ccTest2 */,
+				367617BB2D94C96E0030D285 /* ccSchwabManager */,
 				36BBCB3D2D94D15200D1B58D /* Resources */,
 			);
-			name = ccTest2;
+			name = ccSchwabManager;
 			packageProductDependencies = (
 			);
-			productName = ccTest2;
-			productReference = 367617B92D94C96E0030D285 /* ccTest2.app */;
+			productName = ccSchwabManager;
+			productReference = 367617B92D94C96E0030D285 /* ccSchwabManager.app */;
 			productType = "com.apple.product-type.application";
 		};
-		367617CB2D94C9700030D285 /* ccTest2Tests */ = {
+		367617CB2D94C9700030D285 /* ccSchwabManagerTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 367617E32D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccTest2Tests" */;
+			buildConfigurationList = 367617E32D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccSchwabManagerTests" */;
 			buildPhases = (
 				367617C82D94C9700030D285 /* Sources */,
 				367617C92D94C9700030D285 /* Frameworks */,
@@ -140,18 +140,18 @@
 				367617CE2D94C9700030D285 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				367617CF2D94C9700030D285 /* ccTest2Tests */,
+				367617CF2D94C9700030D285 /* ccSchwabManagerTests */,
 			);
-			name = ccTest2Tests;
+			name = ccSchwabManagerTests;
 			packageProductDependencies = (
 			);
-			productName = ccTest2Tests;
-			productReference = 367617CC2D94C9700030D285 /* ccTest2Tests.xctest */;
+			productName = ccSchwabManagerTests;
+			productReference = 367617CC2D94C9700030D285 /* ccSchwabManagerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		367617D52D94C9700030D285 /* ccTest2UITests */ = {
+		367617D52D94C9700030D285 /* ccSchwabManagerUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 367617E62D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccTest2UITests" */;
+			buildConfigurationList = 367617E62D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccSchwabManagerUITests" */;
 			buildPhases = (
 				367617D22D94C9700030D285 /* Sources */,
 				367617D32D94C9700030D285 /* Frameworks */,
@@ -163,13 +163,13 @@
 				367617D82D94C9700030D285 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				367617D92D94C9700030D285 /* ccTest2UITests */,
+				367617D92D94C9700030D285 /* ccSchwabManagerUITests */,
 			);
-			name = ccTest2UITests;
+			name = ccSchwabManagerUITests;
 			packageProductDependencies = (
 			);
-			productName = ccTest2UITests;
-			productReference = 367617D62D94C9700030D285 /* ccTest2UITests.xctest */;
+			productName = ccSchwabManagerUITests;
+			productReference = 367617D62D94C9700030D285 /* ccSchwabManagerUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -195,7 +195,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 367617B42D94C96E0030D285 /* Build configuration list for PBXProject "ccTest2" */;
+			buildConfigurationList = 367617B42D94C96E0030D285 /* Build configuration list for PBXProject "ccSchwabManager" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -209,9 +209,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				367617B82D94C96E0030D285 /* ccTest2 */,
-				367617CB2D94C9700030D285 /* ccTest2Tests */,
-				367617D52D94C9700030D285 /* ccTest2UITests */,
+				367617B82D94C96E0030D285 /* ccSchwabManager */,
+				367617CB2D94C9700030D285 /* ccSchwabManagerTests */,
+				367617D52D94C9700030D285 /* ccSchwabManagerUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -267,12 +267,12 @@
 /* Begin PBXTargetDependency section */
 		367617CE2D94C9700030D285 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 367617B82D94C96E0030D285 /* ccTest2 */;
+			target = 367617B82D94C96E0030D285 /* ccSchwabManager */;
 			targetProxy = 367617CD2D94C9700030D285 /* PBXContainerItemProxy */;
 		};
 		367617D82D94C9700030D285 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 367617B82D94C96E0030D285 /* ccTest2 */;
+			target = 367617B82D94C96E0030D285 /* ccSchwabManager */;
 			targetProxy = 367617D72D94C9700030D285 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -397,10 +397,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = ccTest2/ccTest2.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ccSchwabManager/ccSchwabManager.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"ccTest2/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"ccSchwabManager/Preview Content\"";
 				DEVELOPMENT_TEAM = QGK825656P;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -437,10 +437,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = ccTest2/ccTest2.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ccSchwabManager/ccSchwabManager.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"ccTest2/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"ccSchwabManager/Preview Content\"";
 				DEVELOPMENT_TEAM = QGK825656P;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -483,14 +483,14 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccTest2Tests;
+				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccSchwabManagerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ccTest2.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ccTest2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ccSchwabManager.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ccSchwabManager";
 				XROS_DEPLOYMENT_TARGET = 2.2;
 			};
 			name = Debug;
@@ -506,14 +506,14 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccTest2Tests;
+				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccSchwabManagerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ccTest2.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ccTest2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ccSchwabManager.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ccSchwabManager";
 				XROS_DEPLOYMENT_TARGET = 2.2;
 			};
 			name = Release;
@@ -528,14 +528,14 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccTest2UITests;
+				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccSchwabManagerUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_TARGET_NAME = ccTest2;
+				TEST_TARGET_NAME = ccSchwabManager;
 				XROS_DEPLOYMENT_TARGET = 2.2;
 			};
 			name = Debug;
@@ -550,14 +550,14 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccTest2UITests;
+				PRODUCT_BUNDLE_IDENTIFIER = creacominc.ccSchwabManagerUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
-				TEST_TARGET_NAME = ccTest2;
+				TEST_TARGET_NAME = ccSchwabManager;
 				XROS_DEPLOYMENT_TARGET = 2.2;
 			};
 			name = Release;
@@ -565,7 +565,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		367617B42D94C96E0030D285 /* Build configuration list for PBXProject "ccTest2" */ = {
+		367617B42D94C96E0030D285 /* Build configuration list for PBXProject "ccSchwabManager" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				367617DE2D94C9700030D285 /* Debug */,
@@ -574,7 +574,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		367617E02D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccTest2" */ = {
+		367617E02D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccSchwabManager" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				367617E12D94C9700030D285 /* Debug */,
@@ -583,7 +583,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		367617E32D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccTest2Tests" */ = {
+		367617E32D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccSchwabManagerTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				367617E42D94C9700030D285 /* Debug */,
@@ -592,7 +592,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		367617E62D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccTest2UITests" */ = {
+		367617E62D94C9700030D285 /* Build configuration list for PBXNativeTarget "ccSchwabManagerUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				367617E72D94C9700030D285 /* Debug */,
