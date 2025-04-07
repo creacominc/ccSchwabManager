@@ -21,7 +21,7 @@ class KeychainManager
             return false
         }
 
-        print( "Saving secrets: \(secrets!.dump())" )
+        // print( "Saving secrets: \(secrets!.dump())" )
         credential.password = secrets!.encodeToString() ?? "Error encoding Secrete"
 
         let secretsData = credential.password.data(using: .utf8)
@@ -57,7 +57,7 @@ class KeychainManager
 
     func readSecrets(  prefix: String ) -> Secrets?
     {
-        print( "username: \(credential.username)" )
+        // print( "username: \(credential.username)" )
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -91,11 +91,11 @@ class KeychainManager
                     return nil
                 }
                 // String(data:  secretsData!, encoding: .utf8)
-                print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
+                // print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
 
                 let keyValue = NSString(data: secretsData!,
                                         encoding: String.Encoding.utf8.rawValue) as? String
-                print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
+                // print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
 
                 return secrets
             }

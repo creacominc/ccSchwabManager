@@ -30,41 +30,33 @@ struct KeychainView: View
                 .padding()
                 .onAppear()
             {
-                var secrets: Secrets =  self.keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
+                let secrets: Secrets =  self.keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
                 self.secretsStr = secrets.encodeToString() ?? "Failed to Encode Secrets for Display"
-                print( "display secrets \(self.secretsStr)" )
+                // print( "display secrets \(self.secretsStr)" )
             }
             Button( "Read" )
             {
-                var secrets: Secrets = keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
+                let secrets: Secrets = keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
                 self.secretsStr = secrets.encodeToString() ?? "Failed to Encode Secrets for Read"
-                print( "read secrets: \(self.secretsStr)" )
+                // print( "read secrets: \(self.secretsStr)" )
             }
             Button( "Test" )
             {
+
                 var secrets: Secrets?
                 do
                 {
-                    var secrets: Secrets?
-                    do
-                    {
-                        secrets = try JSONDecoder().decode( Secrets.self, from: self.secretsStr.data( using: .utf8 )!)
-                    }
-                    catch
-                    {
-                        print( "Error decoding JSON: \(error)" )
-                        return
-                    }
-                    print( "\(keychainManager.saveSecrets( secrets: secrets ) ? "Saved" : "Not saved")" )
-                    print( "\( (keychainManager.readSecrets( prefix: "onButtonPress" ) ?? Secrets()).dump() )" )
-                    pressed = true
+                    secrets = try JSONDecoder().decode( Secrets.self, from: self.secretsStr.data( using: .utf8 )!)
                 }
                 catch
                 {
                     print( "Error decoding JSON: \(error)" )
-                    pressed = false
                     return
                 }
+                print( "\(keychainManager.saveSecrets( secrets: secrets ) ? "Saved" : "Not saved")" )
+                print( "\( (keychainManager.readSecrets( prefix: "onButtonPress" ) ?? Secrets()).dump() )" )
+                pressed = true
+
             }
             .buttonStyle( .borderedProminent )
         }

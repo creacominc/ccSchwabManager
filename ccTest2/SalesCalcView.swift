@@ -153,10 +153,15 @@ struct SalesCalcView: View
                 if( nil != buyOrder )
                 {
                     Text( "Buy \( buyOrder!.percent * 100.0, specifier: "%.2f") %" )
+                        .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.percent * 100.0, format: "%.2f" ) }
                     Text( "(\( buyOrder!.equivalentShares, specifier: "%d"))" )
+                        .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.equivalentShares, format: "%d" ) }
                     Text( "TS: \( buyOrder!.trailingStop * 100.0, specifier: "%.0f") %" )
+                        .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.trailingStop * 100.0, format: "%.0f" ) }
                     Text( "After: \(buyOrder!.submitDate.dateOnly())" )
+                        .onTapGesture(count: 1) { copyToClipboard( text: buyOrder!.submitDate.dateOnly() ) }
                     Text( "Bid >: \(buyOrder!.bidPriceOver, specifier: "%.2f")" )
+                        .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.bidPriceOver, format: "%.2f" ) }
                 }
             }
 
@@ -310,27 +315,44 @@ struct SalesCalcView: View
         
         return components.day
     }
-    
+
     private func copyToClipboard( text: String )
     {
 #if canImport(UIKit)
         UIPasteboard.general.string = text
         copiedValue = UIPasteboard.general.string ?? "no string"
 #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
         NSPasteboard.general.setString( text, forType: .string )
         copiedValue = NSPasteboard.general.string(forType: .string) ?? "no string"
 #endif
+        // print( "Copied string to clipboard: \(text)" )
     }
-    
+
     private func copyToClipboard( value: Double, format: String )
     {
 #if canImport(UIKit)
         UIPasteboard.general.string = String( format: format, value )
         copiedValue = UIPasteboard.general.string ?? "no double"
 #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
         NSPasteboard.general.setString( String( format: format, value ), forType: .string )
         copiedValue = NSPasteboard.general.string(forType: .string) ?? "no double"
 #endif
+        // print( "Copied double to clipboard: \(String( format: format, value ) )" )
+    }
+
+    private func copyToClipboard( value: Int, format: String )
+    {
+#if canImport(UIKit)
+        UIPasteboard.general.string = String( format: format, value )
+        copiedValue = UIPasteboard.general.string ?? "no Int"
+#elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString( String( format: format, value ), forType: .string )
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no Int"
+#endif
+        // print( "Copied Int to clipboard: \(String( format: format, value ) )" )
     }
 
     private func getResults( context: [SalesCalcRecord] ) -> [ResultsRecord]
@@ -419,8 +441,8 @@ struct SalesCalcView: View
         // Sort the array by costPerShare in descending order
         return allResults.sorted { $0.costPerShare > $1.costPerShare }
     } // getRecordsFromClipboard
-    
-    
+
+
     // get buy and sell order details
     private func getOrders()
     {
@@ -431,7 +453,7 @@ struct SalesCalcView: View
         var gainPct    : Double = 0.0
         var equivalentShares : Int = 0
         var bidPriceOver : Double = 0.0
-        
+
         // Populate ATR field
         // get the 1.5*ATR value from the data record with the symbol
         var indx : Int = 0
@@ -455,14 +477,14 @@ struct SalesCalcView: View
             indx += 1
         }
 
-        print( "atrPercent = \(atrPercent),   quantity = \(quantity),   netLiquid = \(netLiquid),   lastPrice = \(lastPrice),   gainPct = \(gainPct)" )
+        // print( "atrPercent = \(atrPercent),   quantity = \(quantity),   netLiquid = \(netLiquid),   lastPrice = \(lastPrice),   gainPct = \(gainPct)" )
 
         // Populate sell order
         // Iterate over resultsData to find the result record with a Trailing Stop > atrPercent
         for( result ) in self.resultsData
         {
-            // print( "result.trailingStop = \(result.trailingStop),  atrPercent = \(atrPercent)" )
-            if( result.trailingStop > atrPercent )
+            //print( "result.trailingStop = \(result.trailingStop),  atrPercent = \(atrPercent),  sharesToSell = \(result.sharesToSell),  gain = \(result.gain) " )
+            if( ( result.trailingStop > 100.0 * atrPercent ) && ( 2.0 < result.gain ) )
             {
                 self.sellOrder = result
                 break
@@ -474,16 +496,16 @@ struct SalesCalcView: View
         if( ( 0.0 != netLiquid ) && ( 2000.0 < buyPercent * netLiquid ) )
         { // if buying that percent results in more than $2000, lower the percent to a $2000 buy.
             buyPercent = 2000.0 / netLiquid - 0.005
-            print( "buyPercent adjusted to 2000 limit = \(buyPercent*100.0),  netLiquid = \(netLiquid),  gainPct = \(gainPct*100.0)" )
+            // print( "buyPercent adjusted to 2000 limit = \(buyPercent*100.0),  netLiquid = \(netLiquid),  gainPct = \(gainPct*100.0)" )
         }
         // Minimum buy would be 1 share
         if( ( 0.0 != quantity ) && ( 1.0 > buyPercent * quantity ) )
         {
             buyPercent = 1.0 / quantity + 0.01
-            print( "setting for minimum buy of 1 share - buyPercent = \(buyPercent),  quantity = \(quantity)" )
+            // print( "setting for minimum buy of 1 share - buyPercent = \(buyPercent),  quantity = \(quantity)" )
         }
         equivalentShares = Int( buyPercent * quantity )
-        print( "buyPercent = \(buyPercent),  quantity = \(quantity),   equivalentShares = \(equivalentShares)" )
+        // print( "buyPercent = \(buyPercent),  quantity = \(quantity),   equivalentShares = \(equivalentShares)" )
 
         // Submittion date
         let nextTradeDate = getNextTradeDate()
