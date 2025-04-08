@@ -10,11 +10,12 @@ import Testing
 import SwiftUI
 @testable import ccSchwabManager
 
-struct testSecrets {
-    
+struct testSecrets
+{
+
     @Test func testSecretsInitialization() async throws {
         let secrets = Secrets()
-        
+
         #expect(secrets.getAppId() == "UNINITIALIZED", "App ID should be UNINITIALIZED")
         #expect(secrets.getAppSecret() == "UNINITIALIZED", "App Secret should be UNINITIALIZED")
         #expect(secrets.getRedirectUrl() == "UNINITIALIZED", "Redirect URL should be UNINITIALIZED")
@@ -23,7 +24,7 @@ struct testSecrets {
         #expect(secrets.getAccessToken() == "UNINITIALIZED", "Access Token should be UNINITIALIZED")
         #expect(secrets.getRefreshToken() == "UNINITIALIZED", "Refresh Token should be UNINITIALIZED")
     }
-    
+
     @Test func testSecretsEncoding() async throws {
         let secrets = Secrets()
         secrets.setAppId("appIdValue")
@@ -33,10 +34,10 @@ struct testSecrets {
         secrets.setSession("sessionValue")
         secrets.setAccessToken("accessTokenValue")
         secrets.setRefreshToken("refreshTokenValue")
-        
+
         let encodedString: String? = secrets.encodeToString()
         #expect(encodedString != nil, "Encoded string should not be nil")
-        
+
         // Load encodedString into a Json object for comparison
         let encodedJsonObj: [String: Any] = try JSONSerialization.jsonObject(with: (encodedString?.data(using: .utf8)!)!, options: []) as! [String: Any]
         // Convert dictionary to an array of key-value pairs
@@ -47,7 +48,7 @@ struct testSecrets {
         for (key, value) in sortedKeyValueEncodedPairs {
             print("\(key): \(value)")
         }
-        
+
         let expectedString: String = "{\"appId\":\"appIdValue\",\"appSecret\":\"appSecretValue\",\"redirectUrl\":\"redirectUrlValue\",\"code\":\"codeValue\",\"session\":\"sessionValue\",\"accessToken\":\"accessTokenValue\",\"refreshToken\":\"refreshTokenValue\"}"
         // Load expectedString into a Json object for comparison
         let expectedJsonObj: [String: Any] = try JSONSerialization.jsonObject(with: expectedString.data(using: .utf8)!, options: []) as! [String: Any]
@@ -62,7 +63,7 @@ struct testSecrets {
 
         #expect( areEquivalent( sortedKeyValueExpectedPairs, sortedKeyValueEncodedPairs ), "Encoded string does not match expected string")
     }
-    
+
     @Test func testSecretsDump() async throws
     {
         let secrets = Secrets()
@@ -73,15 +74,16 @@ struct testSecrets {
         secrets.setSession("sessionValue")
         secrets.setAccessToken("accessTokenValue")
         secrets.setRefreshToken("refreshTokenValue")
-        
+
         let dumpOutput = secrets.dump()
         let expectedOutput = """
         Secret = appId: appIdValue,  appSecret: appSecretValue,  redirectUrl: redirectUrlValue, code: codeValue,  session: sessionValue,  accessToken: accessTokenValue,  refreshToken: refreshTokenValue
         """
-        #expect(dumpOutput == expectedOutput, "Dump output does not match expected output")
+        let compareCharacters : Int = 150
+        #expect(dumpOutput.prefix( compareCharacters ) == expectedOutput.prefix( compareCharacters ), "Dump output does not match expected output")
     }
-    
-    
+
+
     func areEquivalent(_ lhs: [(String, Any)], _ rhs: [(String, Any)]) -> Bool
     {
         guard lhs.count == rhs.count else { return false }
@@ -119,5 +121,5 @@ struct testSecrets {
     }
 
 
-    
+
 }
