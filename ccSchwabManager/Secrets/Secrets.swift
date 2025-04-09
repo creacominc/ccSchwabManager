@@ -13,7 +13,7 @@ class Secrets: Codable
     private var session             : String
     private var accessToken         : String
     private var refreshToken        : String
-    //private var acountNumberHash    : [SapiAccountNumberHash]
+    private var acountNumberHash    : [SapiAccountNumberHash]
 
     init()
     {
@@ -24,7 +24,7 @@ class Secrets: Codable
         session             = "UNINITIALIZED"
         accessToken         = "UNINITIALIZED"
         refreshToken        = "UNINITIALIZED"
-        //acountNumberHash    = []
+        acountNumberHash    = []
     }
 
     required init(from decoder: any Decoder) throws
@@ -37,9 +37,8 @@ class Secrets: Codable
         self.session = try container.decode(String.self, forKey: .session)
         self.accessToken = try container.decode(String.self, forKey: .accessToken)
         self.refreshToken = try container.decode(String.self, forKey: .refreshToken)
+        self.acountNumberHash = try container.decode([SapiAccountNumberHash].self, forKey: .acountNumberHash)
     }
-    
-    
 
 
     public func encodeToString() -> String?
@@ -60,10 +59,10 @@ class Secrets: Codable
     {
         var retStr : String =
             "Secret = appId: \(self.appId),  appSecret: \(self.appSecret),  redirectUrl: \(self.redirectUrl), code: \(self.code),  session: \(self.session),  accessToken: \(self.accessToken),  refreshToken: \(self.refreshToken),  acountNumberHash: ["
-//        self.acountNumberHash.forEach
-//        { hash in
-//            retStr += "\n\t\t\t\t\t\t\t\(hash.dump())"
-//        }
+        self.acountNumberHash.forEach
+        { hash in
+            retStr += "\n\t\t\t\t\t\t\t\(hash.dump())"
+        }
         retStr += "\n\t\t\t\t\t\t]"
         return retStr
     }
@@ -103,10 +102,10 @@ class Secrets: Codable
         refreshToken
     }
 
-//    public func getAccountNumberHash() -> [SapiAccountNumberHash]
-//    {
-//        acountNumberHash
-//    }
+    public func getAccountNumberHash() -> [SapiAccountNumberHash]
+    {
+        acountNumberHash
+    }
 
 
     public func setAppId(_ appId: String)
@@ -144,21 +143,21 @@ class Secrets: Codable
         self.refreshToken = refreshToken
     }
 
-//    public func clearAccountNumberHashes()
-//    {
-//        acountNumberHash.removeAll()
-//    }
-//
-//    public func setAccountNumberHash(_ acountNumberHash: [SapiAccountNumberHash] )
-//    {
-//        self.acountNumberHash = acountNumberHash
-//    }
-//
-//    public func getAccountNumbers() -> [String]
-//    {
-//        return acountNumberHash.map( { $0.getAccountNumber() } )
-//    }
-//    
+    public func clearAccountNumberHashes()
+    {
+        acountNumberHash.removeAll()
+    }
+
+    public func setAccountNumberHash(_ acountNumberHash: [SapiAccountNumberHash] )
+    {
+        self.acountNumberHash = acountNumberHash
+    }
+
+    public func getAccountNumbers() -> [String]
+    {
+        return acountNumberHash.map( { $0.getAccountNumber() } )
+    }
+    
     
 //    func fromSecrets( from secrets: Secrets )
 //    {
@@ -171,7 +170,7 @@ class Secrets: Codable
 //        self.refreshToken        = secrets.refreshToken
 //        //self.acountNumberHash    = secrets.acountNumberHash
 //    }
-//
+
 //    func loadSecrets()
 //    {
 //        do
@@ -192,8 +191,8 @@ class Secrets: Codable
 //            print("loadSecrets: Error decoding JSON: \(error)")
 //        }
 //    }
-//
-//
+
+
 //    func storeSecrets()
 //    {
 //        print( "storeSecrets: \(dump())" )
@@ -219,7 +218,7 @@ class Secrets: Codable
 //            print("Error saving JSON: \(error)")
 //        }
 //    }
-//
+
 
 }
 
