@@ -29,15 +29,57 @@ class Secrets: Codable
 
     required init(from decoder: any Decoder) throws
     {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.appId = try container.decode(String.self, forKey: .appId)
-        self.appSecret = try container.decode(String.self, forKey: .appSecret)
-        self.redirectUrl = try container.decode(String.self, forKey: .redirectUrl)
-        self.code = try container.decode(String.self, forKey: .code)
-        self.session = try container.decode(String.self, forKey: .session)
-        self.accessToken = try container.decode(String.self, forKey: .accessToken)
-        self.refreshToken = try container.decode(String.self, forKey: .refreshToken)
-        self.acountNumberHash = try container.decode([SapiAccountNumberHash].self, forKey: .acountNumberHash)
+        let container       = try decoder.container(keyedBy: CodingKeys.self)
+
+        self.appId          = try container.decode(String.self, forKey: .appId)
+        self.appSecret      = try container.decode(String.self, forKey: .appSecret)
+        self.redirectUrl    = try container.decode(String.self, forKey: .redirectUrl)
+
+        do
+        {
+            self.code           = try container.decode(String.self, forKey: .code)
+        }
+        catch
+        {
+            print("Secrets - Error decoding code: \(error)")
+            self.code           = "UNINITIALIZED"
+        }
+        do
+        {
+            self.session        = try container.decode(String.self, forKey: .session)
+        }
+        catch
+        {
+            print("Secrets - Error decoding session: \(error)")
+            self.session        = "UNINITIALIZED"
+        }
+        do
+        {
+            self.accessToken    = try container.decode(String.self, forKey: .accessToken)
+        }
+        catch
+        {
+            print("Secrets - Error decoding accessToken: \(error)")
+            self.accessToken    = "UNINITIALIZED"
+        }
+        do
+        {
+            self.refreshToken   = try container.decode(String.self, forKey: .refreshToken)
+        }
+        catch
+        {
+            print("Secrets - Error decoding refreshToken: \(error)")
+            self.refreshToken   = "UNINITIALIZED"
+        }
+        do
+        {
+            self.acountNumberHash = try container.decode([SapiAccountNumberHash].self, forKey: .acountNumberHash)
+        }
+        catch
+        {
+            print("Secrets - Error decoding acountNumberHash: \(error)")
+            self.acountNumberHash = []
+        }
     }
 
 
@@ -50,7 +92,7 @@ class Secrets: Codable
         }
         catch 
         {
-            print("Error encoding Secrets object to JSON string: \(error)")
+            print("encodeToString - Error encoding Secrets object to JSON string: \(error)")
             return nil
         }
     }
@@ -157,68 +199,6 @@ class Secrets: Codable
     {
         return acountNumberHash.map( { $0.getAccountNumber() } )
     }
-    
-    
-//    func fromSecrets( from secrets: Secrets )
-//    {
-//        self.appId               = secrets.appId
-//        self.appSecret           = secrets.appSecret
-//        self.redirectUrl         = secrets.redirectUrl
-//        self.code                = secrets.code
-//        self.session             = secrets.session
-//        self.accessToken         = secrets.accessToken
-//        self.refreshToken        = secrets.refreshToken
-//        //self.acountNumberHash    = secrets.acountNumberHash
-//    }
-
-//    func loadSecrets()
-//    {
-//        do
-//        {
-//            let data = KeyChain.load()
-//            if( data == nil )
-//            {
-//                print( "No secret loaded from keychain." )
-//            }
-//            else
-//            {
-//                fromSecrets( from: try JSONDecoder().decode( Secrets.self, from: data ?? Data() ) )
-//                print( "loaded from keychain: \(dump())" )
-//            }
-//        }
-//        catch
-//        {
-//            print("loadSecrets: Error decoding JSON: \(error)")
-//        }
-//    }
-
-
-//    func storeSecrets()
-//    {
-//        print( "storeSecrets: \(dump())" )
-//        do
-//        {
-//            var status : OSStatus = noErr
-//            // delete the current data
-//            var data = KeyChain.load()
-//            if( data != nil )
-//            {
-//                status = KeyChain.delete( data: data! )
-//                print( "storeSecrets deleted the prior secret: \(String(describing: data.debugDescription) )" )
-//            }
-//            data  = try JSONEncoder().encode( self )
-//            if( data != nil )
-//            {
-//                status  =  KeyChain.save(  data: data! )
-//                print( "save returned status of \(status)" )
-//            }
-//        }
-//        catch
-//        {
-//            print("Error saving JSON: \(error)")
-//        }
-//    }
-
 
 }
 

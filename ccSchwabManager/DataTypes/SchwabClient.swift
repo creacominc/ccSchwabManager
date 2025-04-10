@@ -38,12 +38,10 @@ class SchwabClient
         return retVal
     }
 
-    init(  )
+    init( secrets: Secrets )
     {
-        self.m_secrets = Secrets()
-        print( "SchwabClient init" )
-//        self.m_secrets.loadSecrets()
-//        print( "SchwabClient init loaded secrets: \(dump())" )
+        self.m_secrets = secrets
+        // print( "SchwabClient init" )
     }
 
     public func getSecrets() -> Secrets
@@ -179,7 +177,7 @@ class SchwabClient
                             }
                         }
                     } catch {
-                        print("Error parsing JSON: \(error)")
+                        print("fetchAccountNumbers - Error parsing JSON: \(error)")
                     }
                 }
             }
@@ -237,7 +235,7 @@ class SchwabClient
                 }
                 catch
                 {
-                    print( "Error parsing JSON: \(error)")
+                    print( "fetchAccounts - Error parsing JSON: \(error)")
                 }
             }
             else

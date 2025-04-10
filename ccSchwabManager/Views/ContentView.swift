@@ -10,12 +10,21 @@ import SwiftData
 
 struct ContentView: View
 {
+    @State var m_secrets : Secrets
     @State var positionStatementData: [PositionStatementData] = []
+
+
+    init()
+    {
+        m_secrets           = KeychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
+        //print( "ContentView - init(): m_secrets=\(m_secrets.dump())" )
+    }
+
     var body: some View
     {
         TabView
         {
-            KeychainView( )
+            KeychainView(  secrets: m_secrets )
                 .tabItem {
                     Label("Keychain", systemImage: "lock.circle")
                 }

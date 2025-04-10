@@ -9,11 +9,13 @@ import UIKit
 import AppKit
 #endif
 
-class KeychainManager
-{
-    var credential: Credentials = Credentials(username: "ccSchwabManager", password: "")
 
-    func saveSecrets( secrets: Secrets? ) -> Bool
+struct KeychainManager
+{
+
+    static let userName : String =  "ccSchwabManager"
+
+    static func saveSecrets( secrets: Secrets? ) -> Bool
     {
         if( nil == secrets )
         {
@@ -22,9 +24,9 @@ class KeychainManager
         }
 
         // print( "Saving secrets: \(secrets!.dump())" )
-        credential.password = secrets!.encodeToString() ?? "Error encoding Secrete"
+        let password : String = secrets!.encodeToString() ?? "Error encoding Secrete"
 
-        let secretsData = credential.password.data(using: .utf8)
+        let secretsData = password.data(using: .utf8)
         if( nil == secretsData )
         {
             print( "Error converting secrets to data." )
@@ -36,8 +38,8 @@ class KeychainManager
         }
         let keychainItem = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: credential.username,
-            kSecAttrService as String: "ccSchwabManager",
+            kSecAttrAccount as String: userName,
+            kSecAttrService as String: userName,
             kSecAttrSynchronizable as String:  kCFBooleanTrue!,
             kSecValueData as String: secretsData!
         ] as CFDictionary
@@ -55,14 +57,12 @@ class KeychainManager
         return status == errSecSuccess
     }
 
-    func readSecrets(  prefix: String ) -> Secrets?
+    static func readSecrets(  prefix: String ) -> Secrets?
     {
-        // print( "username: \(credential.username)" )
-
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: credential.username,
-            kSecAttrService as String: "ccSchwabManager",
+            kSecAttrAccount as String: userName,
+            kSecAttrService as String: userName,
             kSecAttrSynchronizable as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true
@@ -87,15 +87,15 @@ class KeychainManager
                 }
                 catch
                 {
-                    print("Error parsing JSON: \(error)")
+                    print("readSecrets - \(prefix) - Error parsing JSON: \(error)")
                     return nil
                 }
                 // String(data:  secretsData!, encoding: .utf8)
-                // print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
+                print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
 
                 let keyValue = NSString(data: secretsData!,
                                         encoding: String.Encoding.utf8.rawValue) as? String
-                // print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
+                //print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
 
                 return secrets
             }
