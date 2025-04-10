@@ -11,6 +11,8 @@ This project is a Swift-based application. It is designed to demonstrate the cap
 
 - [Swift](https://swift.org/getting-started/) (Ensure you have the latest version installed)
 - [Xcode](https://developer.apple.com/xcode/) (Recommended for Mac users)
+- [Schwab Developer Account](https://developer.schwab.com) (Needed for the AppId and AppKey for your account)
+- An investment account at [Schwab](https://www.schwab.com/client-home).
 
 ## Building the Project
 
