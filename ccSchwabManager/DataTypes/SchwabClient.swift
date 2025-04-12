@@ -12,7 +12,7 @@ let accessTokenWeb      : String = "\(schwabWeb)/v1/oauth/token"
     Members:
         - secrets : a Secrets object with the configuration for this connection.
     Methods:
-        - getAuthenticationUrl : Executes the completion with the URL for logging into and authenticating the connection.
+        - getAuthorizationUrl : Executes the completion with the URL for logging into and authenticating the connection.
         - getAccessToken : given the URL returned by the authentication process, extract the code and get the access token.
  */
 class SchwabClient
@@ -51,7 +51,7 @@ class SchwabClient
 
     public func setSecrets( secrets: Secrets )
     {
-        print( "client setting secrets to: \(secrets.dump())")
+        //print( "client setting secrets to: \(secrets.dump())")
         m_secrets = secrets
     }
 
@@ -67,9 +67,10 @@ class SchwabClient
     }
 
     /**
-     * getAuthenticationUrl : Executes the completion with the URL for logging into and authenticating the connection.
+     * getAuthorizationUrl : Executes the completion with the URL for logging into and authenticating the connection.
+     *
      */
-    func getAuthenticationUrl(completion: @escaping (Result<URL, ErrorCodes>) -> Void)
+    func getAuthorizationUrl(completion: @escaping (Result<URL, ErrorCodes>) -> Void)
     {
         // provide the URL for authentication.
         let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.getAppId() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )"
@@ -80,37 +81,53 @@ class SchwabClient
         completion( .success( url ) )
         return
     }
-    
-    /**
-     * getAccessToken : given the URL returned by the authentication process, extract the code and get the access token.
-     */
-    func getAccessToken( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
+
+    public func extractCodeFromURL( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
-        print( "getAccessToken from \(url)")
+        print( "extractCodeFromURL from \(url)")
         // extract the code and session from the URL
         let urlComponents = URLComponents(string: url )!
         let queryItems = urlComponents.queryItems
-        
         self.m_secrets.setCode( queryItems?.first(where: { $0.name == "code" })?.value ?? "" )
         self.m_secrets.setSession( queryItems?.first(where: { $0.name == "session" })?.value ?? "" )
+        //print( "secrets with session: \(self.m_secrets.dump())" )
+        if( KeychainManager.saveSecrets(secrets: self.m_secrets) )
+        {
+            print( "extractCodeFromURL upated secrets with code and session. " )
+            completion( .success( Void() ) )
+        }
+        else
+        {
+            print( "Failed to save secrets." )
+            completion(.failure(ErrorCodes.failedToSaveSecrets))
+        }
+    }
 
-        print( "getAccessToken upated secrets to \(self.m_secrets.dump())" )
-
+    /**
+     * getAccessToken : given the URL returned by the authentication process, extract the code and get the access token.
+     *
+     */
+    func getAccessToken( completion: @escaping (Result<Void, ErrorCodes>) -> Void )
+    {
         // Access Token Request
         let url = URL( string: "\(accessTokenWeb)" )!
-                print( "accessTokenUrl: \(url)" )
+        print( "accessTokenUrl: \(url)" )
         var accessTokenRequest = URLRequest( url: url )
         accessTokenRequest.httpMethod = "POST"
         // headers
         let authStringUnencoded = String("\( self.m_secrets.getAppId() ):\( self.m_secrets.getAppSecret() )")
-        print( "authString: \(authStringUnencoded)" )
+        //print( "authString: \(authStringUnencoded)" )
         let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
+        
         accessTokenRequest.setValue( "Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization" )
         accessTokenRequest.setValue( "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type" )
         // body
         accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.getCode() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )").data(using: .utf8)!
         print( "Posting access token request:  \(accessTokenRequest)" )
-        
+
+
+
+
         URLSession.shared.dataTask(with: accessTokenRequest)
         { data, response, error in
             guard let data = data, error == nil else {
@@ -124,6 +141,12 @@ class SchwabClient
                 {
                     self.m_secrets.setAccessToken( tokenDict["access_token"] as? String ?? "" )
                     self.m_secrets.setRefreshToken( tokenDict["refresh_token"] as? String ?? "" )
+                    if( !KeychainManager.saveSecrets(secrets: self.m_secrets) )
+                    {
+                        print( "Failed to save secrets with access and refresh tokens." )
+                        completion(.failure(ErrorCodes.failedToSaveSecrets))
+                        return
+                    }
                     completion( .success( Void() ) )
                 }
                 else
@@ -148,10 +171,12 @@ class SchwabClient
     func fetchAccountNumbers()
     {
         guard !self.m_secrets.getAccessToken().isEmpty else { return }
-        print( "In fetchAccountNumbers.  client = \(dump())" )
+        print( "In fetchAccountNumbers. " )
         var request = URLRequest(url: URL(string: "\(schwabWeb)/trader/v1/accounts/accountNumbers")!)
+        request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
-        print( "AccessToken: \(self.m_secrets.getAccessToken())" )
+        request.setValue( "application/json", forHTTPHeaderField: "Accept" )
+        // print( "AccessToken: \(self.m_secrets.getAccessToken())" )
         URLSession.shared.dataTask(with: request)
         { data, response, error in
             guard let data = data, error == nil else
@@ -168,13 +193,25 @@ class SchwabClient
                     do
                     {
                         let accountNumberHashes = try decoder.decode([SapiAccountNumberHash].self, from: data)
+                        print( "accountNumberHashes: \(accountNumberHashes.count)" )
                         if( !accountNumberHashes.isEmpty )
                         {
                             DispatchQueue.main.async
                             {
                                 self.m_secrets.setAccountNumberHash( accountNumberHashes )
-//                                self.m_secrets.storeSecrets()
+                                if( KeychainManager.saveSecrets( secrets: self.m_secrets ) )
+                                {
+                                    print( "Save account numbers" )
+                                }
+                                else
+                                {
+                                    print( "Error saving account numbers" )
+                                }
                             }
+                        }
+                        else
+                        {
+                            print( "No account numbers returned" )
                         }
                     } catch {
                         print("fetchAccountNumbers - Error parsing JSON: \(error)")
@@ -248,38 +285,3 @@ class SchwabClient
     }
 
 }
-
-//import SwiftUI
-//
-//#Preview
-//{
-//    struct myView: View
-//    {
-//        @Binding var schwabClient : SchwabClient
-//
-//        init( schwabClient: Binding<SchwabClient> )
-//        {
-//            self._schwabClient = schwabClient
-//        }
-//
-//        var body: some View
-//        {
-//            Text("SchwabClient Preview")
-//                .onAppear()
-//            {
-//                print( "onAppear" )
-//            }
-//        }
-//
-//
-//    }
-//
-//
-//    @Previewable @State  var schwabClient : SchwabClient = SchwabClient()
-//    var accountNumberHash : [SapiAccountNumberHash] = [
-//                SapiAccountNumberHash( accountNumber: "1234567890", hasValue: "1234567890" ),
-//                SapiAccountNumberHash(accountNumber: "1234567890", hasValue: "12345612345" )
-//    ]
-//    schwabClient.getSecrets().setAccountNumberHash( accountNumberHash )
-//    return myView( schwabClient: $schwabClient )
-//}

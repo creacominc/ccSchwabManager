@@ -9,5 +9,5 @@ public enum ErrorCodes: Error
     case networkError(Error)
     case notAuthenticated
     case rateLimitExceeded
-
+    case failedToSaveSecrets
 }

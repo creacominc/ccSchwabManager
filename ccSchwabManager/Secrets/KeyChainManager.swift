@@ -43,14 +43,14 @@ struct KeychainManager
             kSecAttrSynchronizable as String:  kCFBooleanTrue!,
             kSecValueData as String: secretsData!
         ] as CFDictionary
-        let status = SecItemAdd(keychainItem, nil)
+        var status = SecItemAdd(keychainItem, nil)
         let errorString : String = SecCopyErrorMessageString( status, nil )! as String
         print( "Initial status: \(status),  \(errorString)" )
         // update if it exists
         if( errSecDuplicateItem == status )
         {
             let attributes: [String: Any] = [ kSecValueData as String: secretsData! ]
-            let status = SecItemUpdate( keychainItem as CFDictionary, attributes as CFDictionary)
+            status = SecItemUpdate( keychainItem as CFDictionary, attributes as CFDictionary)
             let errorString : String = SecCopyErrorMessageString( status, nil )! as String
             print( "update status: \(status),  \(errorString)" )
         }
@@ -91,7 +91,7 @@ struct KeychainManager
                     return nil
                 }
                 // String(data:  secretsData!, encoding: .utf8)
-                print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
+                //print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
 
                 let keyValue = NSString(data: secretsData!,
                                         encoding: String.Encoding.utf8.rawValue) as? String
@@ -114,68 +114,3 @@ struct KeychainManager
 }
 
 
-
-
-//class KeyChain
-//{
-//
-//    private static let serviceName: String = "com.creacominc.ccSchwabManager"
-//    private static let appSecretKey: String = "ccSchwabManager"
-//
-//
-//    class func save( data: Data) -> OSStatus
-//    {
-//        let query = [
-//            kSecClass as String       : kSecClassGenericPassword as String,
-//            kSecAttrAccount as String : appSecretKey,
-//            kSecValueData as String   : data ] as [String : Any]
-//        return SecItemAdd(query as CFDictionary, nil)
-//    }
-//
-//    class func load() -> Data?
-//    {
-//        let query = [
-//            kSecClass as String       : kSecClassGenericPassword as String,
-//            kSecAttrAccount as String : appSecretKey,
-//            kSecReturnData as String  : kCFBooleanTrue!,
-//            kSecMatchLimit as String  : kSecMatchLimitOne ] as [String : Any]
-//        var dataTypeRef: AnyObject? = nil
-//        let status: OSStatus = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
-//        if status == noErr {
-//            // print( "keyChain got data: \(dataTypeRef.debugDescription)")
-//            return dataTypeRef as! Data?
-//        } else {
-//            return nil
-//        }
-//    }
-//
-//    class func delete(data: Data) -> OSStatus
-//    {
-//        let query = [
-//            kSecClass as String       : kSecClassGenericPassword as String,
-//            kSecAttrAccount as String : appSecretKey,
-//            kSecValueData as String   : data ] as [String : Any]
-//        let status: OSStatus = SecItemDelete(query as CFDictionary)
-//        if status == noErr
-//        {
-//            print( "keyChain deleted ok" )
-//        }
-//        return status
-//    }
-//
-//    
-//}
-//
-//extension Data
-//{
-//    init<T>(from value: T)
-//    {
-//        var value = value
-//        self.init( buffer: UnsafeBufferPointer(start: &value, count: 1) )
-//    }
-//
-//    func to<T>(type: T.Type) -> T
-//    {
-//        return self.withUnsafeBytes { $0.load(as: T.self) }
-//    }
-//}
