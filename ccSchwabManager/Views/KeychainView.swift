@@ -20,7 +20,7 @@ struct KeychainView: View
     @State var firstPass: Bool = true
     let m_schwabClient : SchwabClient // = SchwabClient()
 
-    private var m_secrets: Secrets = Secrets()
+    private var m_secrets: Secrets // = Secrets()
 
     @State private var authorizationButtonUrl: URL = URL( string: "https://localhost" )!
     @State private var authenticateButtonEnabled: Bool = false
@@ -28,15 +28,12 @@ struct KeychainView: View
 
     @State private var resultantUrl : String = ""
     @State private var extractCodeEnabled : Bool = false
-//    @State private var getTokenButtonEnabled : Bool = false
 
-    init( secrets: Secrets )
+    init( secrets: inout Secrets )
     {
         m_secrets = secrets
-        m_schwabClient = SchwabClient( secrets: m_secrets )
-        // m_secrets =  self.keychainManager.readSecrets( prefix: "init/firstPass" ) ?? Secrets()
+        m_schwabClient = SchwabClient( secrets: &m_secrets )
         self.secretsStr = m_secrets.encodeToString() ?? "init Failed to Encode Secrets to secretsStr"
-        // print( "Initializing KeychainView \(m_secrets.getAppId())" )
     }
 
     var body: some View
@@ -62,8 +59,7 @@ struct KeychainView: View
             }
             Button( "Save" )
             {
-                
-                var secrets: Secrets?
+                var secrets: Secrets
                 do
                 {
                     //print( "Decoding string to JSON... \(self.secretsStr)" )
@@ -76,10 +72,9 @@ struct KeychainView: View
                     //print( "Secret String = \(self.secretsStr)" )
                     return
                 }
-                print( "\(KeychainManager.saveSecrets( secrets: secrets ) ? "Saved" : "Not saved")" )
+                print( "\(KeychainManager.saveSecrets( secrets: &secrets ) ? "Saved" : "Not saved")" )
                 //print( "\( (KeychainManager.readSecrets( prefix: "onButtonPress" ) ?? Secrets()).dump() )" )
                 pressed = true
-                
             }
             .buttonStyle( .borderedProminent )
             
@@ -95,7 +90,6 @@ struct KeychainView: View
                     switch result
                     {
                     case .success( let url ):
-                        //print( "Authorization URL: \(url.absoluteString)" )
                         authenticateButtonEnabled = true
                         authorizationButtonUrl = url
                     case .failure(let error):
@@ -104,7 +98,6 @@ struct KeychainView: View
                     
                 }
             } // Link
-
 
             TextField( "After authorization, paste URL here.", text: $resultantUrl )
                 .autocorrectionDisabled()
@@ -126,8 +119,7 @@ struct KeychainView: View
                     {
                     case .success():
                         print( "Got code." )
-                        //getTokenButtonEnabled = true
-                        //dismiss()
+                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Code"
                     case .failure(let error):
                         print("extractCodeFromURL  failed - error: \(error)")
                         print("extractCodeFromURL  failed - localized error: \(error.localizedDescription)")
@@ -145,11 +137,8 @@ struct KeychainView: View
                     switch result
                     {
                     case .success():
-                        //print( "Got tokens: \(String(describing: self.m_schwabClient.dump()))" )
                         self.m_schwabClient.fetchAccountNumbers()
-                        //appState = AppState.Working
-                        //print( "!!! stored tokens, set appstate to .Working.  client: \(self.m_schwabClient.dump())" )
-                        //dismiss()
+                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Access Token"
                     case .failure(let error):
                         print("getAccessToken authorization failed - error: \(error)")
                         print("getAccessToken localized error: \(error.localizedDescription)")
@@ -158,11 +147,11 @@ struct KeychainView: View
             } // Get Access Token Button
             .disabled( self.m_secrets.getCode( ).isEmpty || self.m_secrets.getSession().isEmpty )
             .buttonStyle( .bordered )
-            
 
             Button( "Fetch Account Numbers" )
             {
                 self.m_schwabClient.fetchAccountNumbers()
+                self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
             }
 
 

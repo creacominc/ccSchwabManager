@@ -15,16 +15,10 @@ struct KeychainManager
 
     static let userName : String =  "ccSchwabManager"
 
-    static func saveSecrets( secrets: Secrets? ) -> Bool
+    static func saveSecrets( secrets: inout Secrets ) -> Bool
     {
-        if( nil == secrets )
-        {
-            print( "No secrets to save." )
-            return false
-        }
-
         // print( "Saving secrets: \(secrets!.dump())" )
-        let password : String = secrets!.encodeToString() ?? "Error encoding Secrete"
+        let password : String = secrets.encodeToString() ?? "Error encoding Secrete"
 
         let secretsData = password.data(using: .utf8)
         if( nil == secretsData )

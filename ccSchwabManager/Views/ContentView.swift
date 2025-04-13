@@ -24,7 +24,7 @@ struct ContentView: View
     {
         TabView
         {
-            KeychainView(  secrets: m_secrets )
+            KeychainView(  secrets: &m_secrets )
                 .tabItem {
                     Label("Keychain", systemImage: "lock.circle")
                 }
@@ -46,7 +46,3 @@ struct ContentView: View
 } // ContentView
 
 
-
-#Preview {
-    ContentView()
-}

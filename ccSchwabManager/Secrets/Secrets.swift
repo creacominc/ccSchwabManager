@@ -27,7 +27,7 @@ class Secrets: Codable
         acountNumberHash    = []
     }
     
-    init( copyFrom source: Secrets )
+    init( copyFrom source: inout Secrets )
     {
         self.appId          = source.appId
         self.appSecret      = source.appSecret

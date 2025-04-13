@@ -38,7 +38,7 @@ class SchwabClient
         return retVal
     }
 
-    init( secrets: Secrets )
+    init( secrets: inout Secrets )
     {
         self.m_secrets = secrets
         // print( "SchwabClient init" )
@@ -49,7 +49,7 @@ class SchwabClient
         return self.m_secrets
     }
 
-    public func setSecrets( secrets: Secrets )
+    public func setSecrets( secrets: inout Secrets )
     {
         //print( "client setting secrets to: \(secrets.dump())")
         m_secrets = secrets
@@ -91,7 +91,7 @@ class SchwabClient
         self.m_secrets.setCode( queryItems?.first(where: { $0.name == "code" })?.value ?? "" )
         self.m_secrets.setSession( queryItems?.first(where: { $0.name == "session" })?.value ?? "" )
         //print( "secrets with session: \(self.m_secrets.dump())" )
-        if( KeychainManager.saveSecrets(secrets: self.m_secrets) )
+        if( KeychainManager.saveSecrets(secrets: &self.m_secrets) )
         {
             print( "extractCodeFromURL upated secrets with code and session. " )
             completion( .success( Void() ) )
@@ -116,7 +116,6 @@ class SchwabClient
         accessTokenRequest.httpMethod = "POST"
         // headers
         let authStringUnencoded = String("\( self.m_secrets.getAppId() ):\( self.m_secrets.getAppSecret() )")
-        //print( "authString: \(authStringUnencoded)" )
         let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
         
         accessTokenRequest.setValue( "Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization" )
@@ -126,7 +125,13 @@ class SchwabClient
         print( "Posting access token request:  \(accessTokenRequest)" )
 
 
-
+        let cmdline : String = """
+            curl -X POST https://api.schwabapi.com/v1/oauth/token \ 
+            -H 'Authorization: Basic \(authStringEncoded)' \ 
+            -H 'Content-Type: application/x-www-form-urlencoded' \ 
+            -d 'grant_type=authorization_code&code=\( self.m_secrets.getCode() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )' 
+            """
+        print( "cmdline: \(cmdline)" )
 
         URLSession.shared.dataTask(with: accessTokenRequest)
         { data, response, error in
@@ -141,7 +146,7 @@ class SchwabClient
                 {
                     self.m_secrets.setAccessToken( tokenDict["access_token"] as? String ?? "" )
                     self.m_secrets.setRefreshToken( tokenDict["refresh_token"] as? String ?? "" )
-                    if( !KeychainManager.saveSecrets(secrets: self.m_secrets) )
+                    if( !KeychainManager.saveSecrets(secrets: &self.m_secrets) )
                     {
                         print( "Failed to save secrets with access and refresh tokens." )
                         completion(.failure(ErrorCodes.failedToSaveSecrets))
@@ -161,8 +166,6 @@ class SchwabClient
                 completion(.failure(ErrorCodes.notAuthenticated))
             }
         }.resume()
-        
-        
     }
     
     /**
@@ -199,7 +202,7 @@ class SchwabClient
                             DispatchQueue.main.async
                             {
                                 self.m_secrets.setAccountNumberHash( accountNumberHashes )
-                                if( KeychainManager.saveSecrets( secrets: self.m_secrets ) )
+                                if( KeychainManager.saveSecrets( secrets: &self.m_secrets ) )
                                 {
                                     print( "Save account numbers" )
                                 }
