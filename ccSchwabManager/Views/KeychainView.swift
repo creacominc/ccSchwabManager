@@ -33,6 +33,7 @@ struct KeychainView: View
     @State private var m_selectedSymbol : String = ""
     @State private var m_enableSymbolList : Bool = false
 
+    @State private var m_atr : Double = 0.0
 
     init( secrets: inout Secrets )
     {
@@ -142,8 +143,11 @@ struct KeychainView: View
                     switch result
                     {
                     case .success():
-                        self.m_schwabClient.fetchAccountNumbers()
-                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Access Token"
+                        Task
+                        {
+                            await self.m_schwabClient.fetchAccountNumbers()
+                            self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Access Token"
+                        }
                     case .failure(let error):
                         print("getAccessToken authorization failed - error: \(error)")
                         print("getAccessToken localized error: \(error.localizedDescription)")
@@ -153,45 +157,79 @@ struct KeychainView: View
             .disabled( self.m_secrets.getCode( ).isEmpty || self.m_secrets.getSession().isEmpty )
             .buttonStyle( .bordered )
 
-            Button( "Fetch Account Numbers" )
-            {
-                self.m_schwabClient.fetchAccountNumbers()
-                self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
+
+            Button("Fetch Account Numbers") {
+                Task {
+                    await self.m_schwabClient.fetchAccountNumbers()
+                    self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
+                }
             }
 
-            Button( "Fetch Accounts" )
+//            Button( "Fetch Account Numbers" )
+//            {
+//                self.m_schwabClient.fetchAccountNumbers()
+//                self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
+//            }
+
+
+
+            Button("Fetch Accounts") {
+                Task {
+                    self.m_allSymbols = await self.m_schwabClient.fetchAccounts()
+                    print("fetch Account pressed \(m_allSymbols.count)")
+//                    for symbol in m_allSymbols {
+//                        print("Symbol: \(symbol)")
+//                    }
+                    m_enableSymbolList = !m_allSymbols.isEmpty
+                }
+            }
+
+//            Button( "Fetch Accounts" )
+//            {
+//                m_allSymbols = self.m_schwabClient.fetchAccounts()
+//                print( "fetch Account pressed  \(m_allSymbols.count)" )
+//                for symbol in m_allSymbols
+//                {
+//                    print( "Symbol: \(symbol)" )
+//                }
+//                m_enableSymbolList = true
+//            }
+
+
+            HStack
             {
-                m_allSymbols = self.m_schwabClient.fetchAccounts()
-                print( "fetch Account pressed  \(m_allSymbols.count)" )
-                for symbol in m_allSymbols
+                // picker for allSymbols
+                Picker( "All Symbols", selection: $m_selectedSymbol )
                 {
-                    print( "Symbol: \(symbol)" )
+                    Text( "Populating with \(m_allSymbols.count) symbols..." )
+                    ForEach( m_allSymbols.sorted(), id: \.self )
+                    { symbol in
+                        Text( symbol )
+                    }
                 }
-                m_enableSymbolList = true
-            }
-
-            // picker for allSymbols
-            Picker( "All Symbols", selection: $m_selectedSymbol )
-            {
-                Text( "Populating with \(m_allSymbols.count) symbols..." )
-                ForEach( m_allSymbols, id: \.self )
-                { symbol in
-                    Text( symbol )
-                }
-            }
-            .pickerStyle( .menu )
-            .padding()
-            .disabled( !m_enableSymbolList )
-
-            Text(m_selectedSymbol)
+                .pickerStyle( .menu )
                 .padding()
-
+                .disabled( !m_enableSymbolList )
+                
+                Text( "ATR for \(m_selectedSymbol)" )
+                    .padding()
+            }
+            .padding()
 
 
 
         }
         
     }
+
+
+    private func getATR( forSymbol: String ) -> Double
+    {
+        var retVal: Double = 0.0
+        
+        return retVal
+    }
+
 
 }
 
