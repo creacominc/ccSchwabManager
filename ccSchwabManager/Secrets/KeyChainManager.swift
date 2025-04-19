@@ -86,9 +86,9 @@ struct KeychainManager
                 }
                 // String(data:  secretsData!, encoding: .utf8)
                 //print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
-
-                let keyValue = NSString(data: secretsData!,
-                                        encoding: String.Encoding.utf8.rawValue) as? String
+//
+//                let keyValue = NSString(data: secretsData!,
+//                                        encoding: String.Encoding.utf8.rawValue) as? String
                 //print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
 
                 return secrets

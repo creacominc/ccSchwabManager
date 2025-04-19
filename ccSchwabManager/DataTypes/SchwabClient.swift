@@ -18,9 +18,8 @@ let accessTokenWeb      : String = "\(schwabWeb)/v1/oauth/token"
 class SchwabClient
 {
     private var m_secrets : Secrets
-    //private var m_accounts : [SapiAccountNumberHash] = []
     private var m_selectedAccountName : String = "All"
-    private var m_accounts : [SapiAccountContent] = [] // !!!!!
+    private var m_accounts : [SapiAccountContent] = []
     
     /**
      * dump the contents of this object for debugging.
@@ -43,7 +42,27 @@ class SchwabClient
         self.m_secrets = secrets
         // print( "SchwabClient init" )
     }
-    
+
+    public func hasAccounts() -> Bool
+    {
+        return self.m_accounts.count > 0
+    }
+
+    public func getAccounts() -> [SapiAccountContent]
+    {
+        return self.m_accounts
+    }
+
+    public func hasSymbols() -> Bool
+    {
+        var symbolCount : Int = 0
+        for account in self.m_accounts
+        {
+            symbolCount += account.securitiesAccount.positions.count
+        }
+        return (symbolCount > 0)
+    }
+
     public func getSecrets() -> Secrets
     {
         return self.m_secrets
@@ -219,7 +238,7 @@ class SchwabClient
     /**
      * fetchAccounts - get the account numbers and balances.
      */
-    func fetchAccounts() async -> [String]
+    func fetchAccounts() async // -> [String]
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         var accountUrl = "\(schwabWeb)/trader/v1/accounts"
@@ -230,7 +249,7 @@ class SchwabClient
 
         guard let url = URL(string: accountUrl) else {
             print("Invalid URL")
-            return []
+            return // []
         }
 
         var request = URLRequest(url: url)
@@ -241,16 +260,16 @@ class SchwabClient
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("Failed to fetch accounts.")
-                return []
+                return // []
             }
 
             let decoder = JSONDecoder()
-            let accounts : [SapiAccountContent] = try decoder.decode([SapiAccountContent].self, from: data)
-            let symbols : [String] = accounts.flatMap { $0.securitiesAccount.positions.map { $0?.instrument?.symbol ?? "" } }
-            return symbols
+            m_accounts  = try decoder.decode([SapiAccountContent].self, from: data)
+            // let symbols : [String] = accounts.flatMap { $0.securitiesAccount.positions.map { $0?.instrument?.symbol ?? "" } }
+            return // symbols
         } catch {
             print("Error: \(error.localizedDescription)")
-            return []
+            return // []
         }
     }
 

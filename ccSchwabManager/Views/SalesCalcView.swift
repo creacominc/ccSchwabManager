@@ -449,7 +449,7 @@ struct SalesCalcView: View
         var atrPercent : Double = 0.0
         var quantity   : Double = 0.0
         var netLiquid  : Double = 0.0
-        var lastPrice  : Double = 0.0
+        // var lastPrice  : Double = 0.0
         var gainPct    : Double = 0.0
         var equivalentShares : Int = 0
         var bidPriceOver : Double = 0.0
@@ -466,7 +466,7 @@ struct SalesCalcView: View
                 atrPercent = positionStatementData[indx].atr / positionStatementData[indx].last
                 quantity   = positionStatementData[indx].quantity
                 netLiquid  = positionStatementData[indx].netLiquid
-                lastPrice  = positionStatementData[indx].last
+                // lastPrice  = positionStatementData[indx].last
                 gainPct    = positionStatementData[indx].plPercent / 100.0
 
                 bidPriceOver = positionStatementData[indx].last + ( 2.0 * positionStatementData[indx].atr )
