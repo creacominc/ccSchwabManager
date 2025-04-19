@@ -7,12 +7,40 @@
 
 import SwiftUI
 
-struct AuthorizationView: View {
-    var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
-    }
-}
 
-#Preview {
-    AuthorizationView()
+struct AuthorizationView: View {
+    @Binding var authorizationButtonUrl: URL
+    @Binding var authenticateButtonEnabled: Bool
+    @Binding var resultantUrl: String
+    @State var extractCodeEnabled: Bool = false
+    var onExtractCode: (String) -> Void
+
+    @State private var authorizationButtonTitle: String = "Click to Authorize"
+
+    var body: some View {
+        VStack {
+            // Authorization Link
+            Link( authorizationButtonTitle, destination: authorizationButtonUrl)
+                .disabled(!authenticateButtonEnabled)
+                .opacity(authenticateButtonEnabled ? 1 : 0)
+            
+            // Authorization TextField
+            TextField("After authorization, paste URL here.", text: $resultantUrl)
+                .autocorrectionDisabled()
+                .selectionDisabled( false )
+                .padding(10)
+                .onChange( of: resultantUrl )
+                {
+                    print( "OnChange URL: \( resultantUrl )" )
+                    extractCodeEnabled = true
+                }
+
+            // Extract Code Button
+            Button("Extract Code From URL") {
+                onExtractCode(resultantUrl)
+            }
+            .disabled(!extractCodeEnabled)
+            .buttonStyle(.bordered)
+        }
+    }
 }

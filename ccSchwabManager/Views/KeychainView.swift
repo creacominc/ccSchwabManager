@@ -24,16 +24,18 @@ struct KeychainView: View
 
     @State private var authorizationButtonUrl: URL = URL( string: "https://localhost" )!
     @State private var authenticateButtonEnabled: Bool = false
-    @State private var authorizationButtonTitle: String = "Click to Authorize"
+//    @State private var authorizationButtonTitle: String = "Click to Authorize"
 
     @State private var resultantUrl : String = ""
-    @State private var extractCodeEnabled : Bool = false
+//    @State private var extractCodeEnabled : Bool = false
 
     @State private var m_allSymbols : [String] = []
     @State private var m_selectedSymbol : String = ""
     @State private var m_enableSymbolList : Bool = false
 
     @State private var m_atr : Double = 0.0
+
+    @State private var m_gotCode : Bool = false
 
     init( secrets: inout Secrets )
     {
@@ -75,57 +77,95 @@ struct KeychainView: View
                 // print( "display secrets \(self.m_secrets.dump())" )
             }
             
-            // authorization link
-            Link( authorizationButtonTitle
-                  , destination: authorizationButtonUrl )
-            .disabled( !authenticateButtonEnabled )
-            .opacity( !authenticateButtonEnabled ? 0 : 1 )
-            .onAppear
-            {
-                m_schwabClient.getAuthorizationUrl
-                { (result : Result< URL, ErrorCodes>) in
-                    switch result
-                    {
-                    case .success( let url ):
+
+
+            // Authorization View Integration
+            AuthorizationView(
+                authorizationButtonUrl: $authorizationButtonUrl,
+                authenticateButtonEnabled: $authenticateButtonEnabled,
+                resultantUrl: $resultantUrl
+            ) { url in
+                self.m_schwabClient.extractCodeFromURL(from: url) { (result: Result<Void, ErrorCodes>) in
+                    switch result {
+                    case .success():
+                        print("Got code.")
+                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Code"
+                        m_gotCode = (!self.m_secrets.getCode( ).isEmpty && !self.m_secrets.getSession().isEmpty)
+                    case .failure(let error):
+                        print("extractCodeFromURL failed - error: \(error)")
+                    }
+                }
+            }
+            .onAppear {
+                m_schwabClient.getAuthorizationUrl { (result: Result<URL, ErrorCodes>) in
+                    switch result {
+                    case .success(let url):
                         authenticateButtonEnabled = true
                         authorizationButtonUrl = url
                     case .failure(let error):
                         print("Authentication failed: \(error)")
                     }
-                    
-                }
-            } // Link
-
-            // Authorization TextField
-            TextField( "After authorization, paste URL here.", text: $resultantUrl )
-                .autocorrectionDisabled()
-                .selectionDisabled( false )
-                .onChange( of: resultantUrl )
-            {
-                print( "OnChange URL: \( resultantUrl )" )
-                extractCodeEnabled = true
-            }
-            .padding( 10 )
-
-            // Authorization Button
-            Button( "Extract Code From URL" )
-            {
-                self.m_schwabClient.extractCodeFromURL( from: resultantUrl )
-                { ( result : Result< Void, ErrorCodes > ) in
-                    switch result
-                    {
-                    case .success():
-                        print( "Got code." )
-                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Code"
-                    case .failure(let error):
-                        print("extractCodeFromURL  failed - error: \(error)")
-                        print("extractCodeFromURL  failed - localized error: \(error.localizedDescription)")
-                        extractCodeEnabled = false
-                    }
                 }
             }
-            .disabled( !extractCodeEnabled )
-            .buttonStyle( .bordered )
+//            .onExtractCode
+//            {
+//                print("Extract Code Called")
+//            }
+
+
+//            // authorization link
+//            Link( authorizationButtonTitle
+//                  , destination: authorizationButtonUrl )
+//            .disabled( !authenticateButtonEnabled )
+//            .opacity( !authenticateButtonEnabled ? 0 : 1 )
+//            .onAppear
+//            {
+//                m_schwabClient.getAuthorizationUrl
+//                { (result : Result< URL, ErrorCodes>) in
+//                    switch result
+//                    {
+//                    case .success( let url ):
+//                        authenticateButtonEnabled = true
+//                        authorizationButtonUrl = url
+//                    case .failure(let error):
+//                        print("Authentication failed: \(error)")
+//                    }
+//                    
+//                }
+//            } // Link
+
+
+
+//            // Authorization TextField
+//            TextField( "After authorization, paste URL here.", text: $resultantUrl )
+//                .autocorrectionDisabled()
+//                .selectionDisabled( false )
+//                .onChange( of: resultantUrl )
+//            {
+//                print( "OnChange URL: \( resultantUrl )" )
+//                extractCodeEnabled = true
+//            }
+//            .padding( 10 )
+//
+//            // Authorization Button
+//            Button( "Extract Code From URL" )
+//            {
+//                self.m_schwabClient.extractCodeFromURL( from: resultantUrl )
+//                { ( result : Result< Void, ErrorCodes > ) in
+//                    switch result
+//                    {
+//                    case .success():
+//                        print( "Got code." )
+//                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Code"
+//                    case .failure(let error):
+//                        print("extractCodeFromURL  failed - error: \(error)")
+//                        print("extractCodeFromURL  failed - localized error: \(error.localizedDescription)")
+//                        extractCodeEnabled = false
+//                    }
+//                }
+//            }
+//            .disabled( !extractCodeEnabled )
+//            .buttonStyle( .bordered )
 
             Button( "Get Access Token" )
             {
@@ -145,7 +185,7 @@ struct KeychainView: View
                     }
                 }
             } // Get Access Token Button
-            .disabled( self.m_secrets.getCode( ).isEmpty || self.m_secrets.getSession().isEmpty )
+            .disabled( m_gotCode == false )
             .buttonStyle( .bordered )
 
 
@@ -155,14 +195,6 @@ struct KeychainView: View
                     self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
                 }
             }
-
-//            Button( "Fetch Account Numbers" )
-//            {
-//                self.m_schwabClient.fetchAccountNumbers()
-//                self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
-//            }
-
-
 
             Button("Fetch Accounts") {
                 Task {
@@ -175,16 +207,6 @@ struct KeychainView: View
                 }
             }
 
-//            Button( "Fetch Accounts" )
-//            {
-//                m_allSymbols = self.m_schwabClient.fetchAccounts()
-//                print( "fetch Account pressed  \(m_allSymbols.count)" )
-//                for symbol in m_allSymbols
-//                {
-//                    print( "Symbol: \(symbol)" )
-//                }
-//                m_enableSymbolList = true
-//            }
 
 
             HStack
