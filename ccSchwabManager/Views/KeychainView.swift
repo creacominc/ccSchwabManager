@@ -75,7 +75,7 @@ struct KeychainView: View
                 // print( "display secrets \(self.m_secrets.dump())" )
             }
             
-            // authorize
+            // authorization link
             Link( authorizationButtonTitle
                   , destination: authorizationButtonUrl )
             .disabled( !authenticateButtonEnabled )
@@ -96,10 +96,9 @@ struct KeychainView: View
                 }
             } // Link
 
+            // Authorization TextField
             TextField( "After authorization, paste URL here.", text: $resultantUrl )
                 .autocorrectionDisabled()
-//                    .autocapitalization(.none)
-//                    .textFieldStyle(.roundedBorder)
                 .selectionDisabled( false )
                 .onChange( of: resultantUrl )
             {
@@ -108,6 +107,7 @@ struct KeychainView: View
             }
             .padding( 10 )
 
+            // Authorization Button
             Button( "Extract Code From URL" )
             {
                 self.m_schwabClient.extractCodeFromURL( from: resultantUrl )
