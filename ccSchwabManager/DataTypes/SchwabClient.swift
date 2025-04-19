@@ -135,12 +135,16 @@ class SchwabClient
 
         URLSession.shared.dataTask(with: accessTokenRequest)
         { data, response, error in
-            guard let data = data, error == nil else {
+            guard let data = data, ( (error == nil) && ( response != nil ) )
+            else
+            {
                 print( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
                 completion(.failure(ErrorCodes.notAuthenticated))
                 return
             }
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200
+
+            let httpResponse : HTTPURLResponse = response as! HTTPURLResponse
+            if( httpResponse.statusCode == 200 )
             {
                 if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
                 {
@@ -162,7 +166,7 @@ class SchwabClient
             }
             else
             {
-                print( "Failed to get token.  HTTPS response: \(String(describing: response))" )
+                print( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
                 completion(.failure(ErrorCodes.notAuthenticated))
             }
         }.resume()
@@ -182,13 +186,15 @@ class SchwabClient
         // print( "AccessToken: \(self.m_secrets.getAccessToken())" )
         URLSession.shared.dataTask(with: request)
         { data, response, error in
-            guard let data = data, error == nil else
+            guard let data = data, ( (error == nil) && ( response != nil ) )
+            else
             {
-                print( "error: \(String(describing: error))" )
+                print( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
                 return
             }
 
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200
+            let httpResponse : HTTPURLResponse = response as! HTTPURLResponse
+            if( httpResponse.statusCode == 200 )
             {
                 do
                 {
@@ -223,7 +229,7 @@ class SchwabClient
             }
             else
             {
-                print( "Failed to fetch account numbers" )
+                print( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
             }
         }.resume()
     }
@@ -231,10 +237,11 @@ class SchwabClient
     /** 
      * fetchAccounts - get the account numbers and balances.
      */
-    func fetchAccounts() -> Void // !!!!! [SapiAccountContent]
+    func fetchAccounts( ) -> [String]
     {
         print( "=== fetchAccounts:  selected: \(self.m_selectedAccountName) ===" )
         var accountUrl : String = "\(schwabWeb)/trader/v1/accounts"
+        var symbols : [String] = []
         // !!!!! var accounts : [SapiAccountContent] = []
 
         // add account number to URL if selected
@@ -243,7 +250,7 @@ class SchwabClient
             accountUrl += "/\(self.m_selectedAccountName)"
         }
         accountUrl += "?fields=positions"
-        print( "fetchAccounts - url = \(accountUrl)" )
+        // print( "fetchAccounts - url = \(accountUrl)" )
         var request = URLRequest(url: URL(string: accountUrl )!)
 
         request.httpMethod = "GET"
@@ -253,25 +260,41 @@ class SchwabClient
         //print( "AccessToken: \(self.m_secrets.getAccessToken())" )
         URLSession.shared.dataTask(with: request)
         { data, response, error in
-            guard let data = data, error == nil else
+            guard let data = data, ( (error == nil) && ( response != nil ) )
+            else
             {
                 print( "\n\nERROR fetchAccounts:" )
-                print( "error: \(String(describing: error))" )
-                print( "data: \(String(describing: data) ?? "no data")" )
+                print( "error: \( error?.localizedDescription ?? "Unknown error" )" )
+                print( "data: \(String(describing: data) )" )
                 print( "response: \(String(describing: response))" )
                 print( "\n" )
                 return
             }
             // successful data fetch
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200
+            let httpResponse : HTTPURLResponse = response as! HTTPURLResponse
+            if( httpResponse.statusCode == 200 )
             {
-                print( "accounts positions http response:  \(httpResponse.statusCode) " )
-                print( String(data: data, encoding: .utf8) ?? "no data" )
+                // print( "accounts positions http response:  \(httpResponse.statusCode) " )
+                // print( String(data: data, encoding: .utf8) ?? "no data" )
                 let decoder = JSONDecoder()
                 do
                 {
-                    self.m_accounts = try decoder.decode([SapiAccountContent].self, from: data)
+                    self.m_accounts = try decoder.decode( [SapiAccountContent].self, from: data )
                     print( "\n\n\nfetchAccounts parsed \(self.m_accounts.count) accounts\n\n\n" )
+//                    // print all account content
+//                    for account in self.m_accounts
+//                    {
+//                        print( "Account dump: \(account.dump())" )
+//                    }
+                    // copy all symbols from instruments in m_accounts to symbols
+                    for account in self.m_accounts
+                    {
+                        for position in account.securitiesAccount.positions
+                        {
+                            symbols.append( position?.instrument?.symbol ?? "N/A" )
+                            print( "Adding symbol: \(position?.instrument?.symbol ?? "N/A" )" )
+                        }
+                    }
                 }
                 catch
                 {
@@ -280,11 +303,15 @@ class SchwabClient
             }
             else
             {
-                print( "Failed to get accounts positions.  HTTPS response: \(String(describing: response))" )
+                print( "Failed to fetch account positions.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
             }
         }
         .resume()
-        return  // accounts
+        for position in symbols
+        {
+            print( "Checking symbol: \(position )" )
+        }
+        return  symbols // accounts
     }
 
 }

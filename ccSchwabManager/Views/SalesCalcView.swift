@@ -532,9 +532,3 @@ struct SalesCalcView: View
 
 } // TableView
 
-
-#Preview
-{ 
-    @Previewable @State var positionStatementData: [PositionStatementData] = []
-    SalesCalcView( positionStatementData: $positionStatementData )
-}

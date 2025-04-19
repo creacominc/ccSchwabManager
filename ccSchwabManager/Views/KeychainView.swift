@@ -18,9 +18,9 @@ struct KeychainView: View
     @State var secretsStr: String = Secrets().encodeToString() ?? "Failed to Encode Secrets"
     @State var pressed: Bool = false
     @State var firstPass: Bool = true
-    let m_schwabClient : SchwabClient // = SchwabClient()
+    let m_schwabClient : SchwabClient
 
-    private var m_secrets: Secrets // = Secrets()
+    private var m_secrets: Secrets
 
     @State private var authorizationButtonUrl: URL = URL( string: "https://localhost" )!
     @State private var authenticateButtonEnabled: Bool = false
@@ -28,6 +28,11 @@ struct KeychainView: View
 
     @State private var resultantUrl : String = ""
     @State private var extractCodeEnabled : Bool = false
+
+    @State private var m_allSymbols : [String] = []
+    @State private var m_selectedSymbol : String = ""
+    @State private var m_enableSymbolList : Bool = false
+
 
     init( secrets: inout Secrets )
     {
@@ -153,6 +158,34 @@ struct KeychainView: View
                 self.m_schwabClient.fetchAccountNumbers()
                 self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
             }
+
+            Button( "Fetch Accounts" )
+            {
+                m_allSymbols = self.m_schwabClient.fetchAccounts()
+                print( "fetch Account pressed  \(m_allSymbols.count)" )
+                for symbol in m_allSymbols
+                {
+                    print( "Symbol: \(symbol)" )
+                }
+                m_enableSymbolList = true
+            }
+
+            // picker for allSymbols
+            Picker( "All Symbols", selection: $m_selectedSymbol )
+            {
+                Text( "Populating with \(m_allSymbols.count) symbols..." )
+                ForEach( m_allSymbols, id: \.self )
+                { symbol in
+                    Text( symbol )
+                }
+            }
+            .pickerStyle( .menu )
+            .padding()
+            .disabled( !m_enableSymbolList )
+
+            Text(m_selectedSymbol)
+                .padding()
+
 
 
 

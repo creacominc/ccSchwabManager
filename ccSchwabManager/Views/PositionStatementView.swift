@@ -83,9 +83,3 @@ struct PositionStatementView: View
     } // body
 
 }
-
-#Preview
-{ 
-    @Previewable @State var positionStatementData: [PositionStatementData] = []
-    PositionStatementView( positionStatementData: $positionStatementData )
-}
