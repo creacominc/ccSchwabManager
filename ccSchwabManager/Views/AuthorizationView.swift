@@ -13,7 +13,7 @@ struct AuthorizationView: View {
     @Binding var authenticateButtonEnabled: Bool
     @Binding var resultantUrl: String
     @State var extractCodeEnabled: Bool = false
-    var onExtractCode: (String) -> Void
+    var onAuthorize: (String) -> Void
 
     @State private var authorizationButtonTitle: String = "Click to Authorize"
 
@@ -37,7 +37,7 @@ struct AuthorizationView: View {
 
             // Extract Code Button
             Button("Extract Code From URL") {
-                onExtractCode(resultantUrl)
+                onAuthorize( resultantUrl )
             }
             .disabled(!extractCodeEnabled)
             .buttonStyle(.bordered)

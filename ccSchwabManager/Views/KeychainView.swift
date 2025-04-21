@@ -27,7 +27,6 @@ struct KeychainView: View
 
     @State private var resultantUrl : String = ""
 
-    //@State private var m_allSymbols : [String] = []
     @State private var m_selectedSymbol : String = ""
     @State private var m_enableSymbolList : Bool = false
 
@@ -39,7 +38,7 @@ struct KeychainView: View
     {
         m_secrets = secrets
         m_schwabClient = SchwabClient( secrets: &m_secrets )
-        self.secretsStr = m_secrets.encodeToString() ?? "init Failed to Encode Secrets to secretsStr"
+        updateSecretsString( errorMsg: "init Failed to Encode Secrets to secretsStr" )
     }
 
     var body: some View
@@ -49,8 +48,7 @@ struct KeychainView: View
             SecretsEditorView(
                 secretsStr: $secretsStr,
                 onRead: {
-                    let secrets: Secrets = KeychainManager.readSecrets(prefix: "init/firstPass") ?? Secrets()
-                    self.secretsStr = secrets.encodeToString() ?? "Failed to Encode Secrets for Read"
+                    updateSecretsString( errorMsg: "Failed to Encode Secrets for Read" )
                 },
                 onSave: {
                     var secrets: Secrets
@@ -71,7 +69,7 @@ struct KeychainView: View
             .onAppear()
             {
                 // the assignment of secretsStr in init does not appear to populate the textfield...
-                self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets for Display"
+                updateSecretsString( errorMsg: "Failed to Encode Secrets for Display" )
                 // print( "display secrets \(self.m_secrets.dump())" )
             }
             
@@ -81,19 +79,9 @@ struct KeychainView: View
             AuthorizationView(
                 authorizationButtonUrl: $authorizationButtonUrl,
                 authenticateButtonEnabled: $authenticateButtonEnabled,
-                resultantUrl: $resultantUrl
-            ) { url in
-                self.m_schwabClient.extractCodeFromURL(from: url) { (result: Result<Void, ErrorCodes>) in
-                    switch result {
-                    case .success():
-                        print("Got code.")
-                        self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Code"
-                        m_gotCode = (!self.m_secrets.getCode( ).isEmpty && !self.m_secrets.getSession().isEmpty)
-                    case .failure(let error):
-                        print("extractCodeFromURL failed - error: \(error)")
-                    }
-                }
-            }
+                resultantUrl: $resultantUrl,
+                onAuthorize: handleAuthorization
+            )
             .onAppear {
                 m_schwabClient.getAuthorizationUrl { (result: Result<URL, ErrorCodes>) in
                     switch result {
@@ -116,7 +104,7 @@ struct KeychainView: View
                         Task
                         {
                             await self.m_schwabClient.fetchAccountNumbers()
-                            self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Access Token"
+                            updateSecretsString( errorMsg: "Failed to Encode Secrets with Access Token" )
                         }
                     case .failure(let error):
                         print("getAccessToken authorization failed - error: \(error)")
@@ -131,7 +119,7 @@ struct KeychainView: View
             Button("Fetch Account Numbers") {
                 Task {
                     await self.m_schwabClient.fetchAccountNumbers()
-                    self.secretsStr = self.m_secrets.encodeToString() ?? "Failed to Encode Secrets with Account Numbers"
+                    updateSecretsString( errorMsg: "Failed to Encode Secrets with Account Numbers" )
                 }
             }
 
@@ -148,40 +136,63 @@ struct KeychainView: View
                 }
             }
 
-
-
             HStack
             {
                 // picker for allSymbols
-                Picker( "All Symbols", selection: $m_selectedSymbol )
-                {
-                    Text( "Populating with symbols..." )
-                    // for every account
-                    let accounts : [SapiAccountContent] = self.m_schwabClient.getAccounts()
-                    print("Accounts count: \(accounts.count)")
-                    ForEach( accounts, id: \.self )
-                    { account in
-                        // for every symbol in the account
-                        ForEach( account.securitiesAccount.positions, id: \.self )
-                        { position in
-                            Text( "\(account.accountNumber) \(position.instrument.symbol)" )
-                        }
+                Picker("All Symbols", selection: $m_selectedSymbol) {
+                    ForEach(getSymbols(from: self.m_schwabClient.getAccounts()), id: \.self) { symbol in
+                        Text(symbol)
                     }
                 }
                 .pickerStyle( .menu )
                 .padding()
                 .disabled( !m_enableSymbolList )
-                
-                Text( "ATR for \(m_selectedSymbol)" )
+                .onChange(of: m_selectedSymbol)
+                { newValue in
+                    Task
+                    {
+                        m_atr = await self.m_schwabClient.computeATR(symbol: newValue)
+                    }
+                }
+
+                Text( "Symbol \(m_selectedSymbol)" )
                     .padding()
+                Text( "ATR: \(m_atr)" )
             }
             .padding()
 
-
-
         }
-        
     }
+
+    func getSymbols(from accounts: [SapiAccountContent]) -> [String] {
+        var symbols: [String] = []
+        for account in accounts {
+            for position in account.securitiesAccount.positions {
+//                symbols.append("\(account.securitiesAccount.accountNumber ?? "No Account") \(position?.instrument?.symbol ?? "No Position")  \(position?.longQuantity ?? 0)  \(position?.averageLongPrice ?? 0.00)")
+                symbols.append( position?.instrument?.symbol ?? "No Position" )
+            }
+        }
+        return symbols
+    }
+
+    func handleAuthorization(url: String) {
+        self.m_schwabClient.extractCodeFromURL(from: url) { (result: Result<Void, ErrorCodes>) in
+            switch result {
+            case .success():
+                print("Got code.")
+                updateSecretsString( errorMsg: "Failed to Encode Secrets with Code" )
+                m_gotCode = (!self.m_secrets.getCode().isEmpty && !self.m_secrets.getSession().isEmpty)
+            case .failure(let error):
+                print("extractCodeFromURL failed - error: \(error)")
+            }
+        }
+    }
+
+    func updateSecretsString( errorMsg : String ) {
+        self.secretsStr = self.m_secrets.encodeToString() ?? errorMsg
+    }
+
+
 
 
 //    private func getATR( forSymbol: String ) -> Double

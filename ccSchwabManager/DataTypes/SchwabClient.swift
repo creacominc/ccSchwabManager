@@ -238,7 +238,7 @@ class SchwabClient
     /**
      * fetchAccounts - get the account numbers and balances.
      */
-    func fetchAccounts() async // -> [String]
+    func fetchAccounts() async
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         var accountUrl = "\(schwabWeb)/trader/v1/accounts"
@@ -274,7 +274,85 @@ class SchwabClient
     }
 
 
-    
-    
-    
+    /**
+     * fettchPriceHistory  get the history of prices for all securities
+     */
+    func fetchPriceHistory( symbol : String ) async -> SapiCandleList?
+    {
+        print("=== fetchPriceHistory  ===")
+
+        var priceHistoryUrl = "\(schwabWeb)/marketdata/v1/pricehistory"
+        priceHistoryUrl += "?symbol=\(symbol)"
+//        priceHistoryUrl += "&periodType=month"
+//        priceHistoryUrl += "&period=1"
+//        priceHistoryUrl += "&frequencyType=daily"
+//        priceHistoryUrl += "&frequency=1"
+//        priceHistoryUrl += "&needPreviousClose=true"
+
+        print( "fetchPriceHistory. priceHistoryUrl: \(priceHistoryUrl)" )
+        // priceHistoryUrl = "https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=AAPL&periodType=month&needPreviousClose=true"
+
+        guard let url = URL( string: priceHistoryUrl ) else {
+            print("fetchPriceHistory. Invalid URL")
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
+        //request.setValue("Bearer I0.b2F1dGgyLmJkYy5zY2h3YWIuY29t.kknFQhhCoaAb654hiMJk1FEJLl8wl3GNCioVPqK1cVw@", forHTTPHeaderField: "Authorization")
+
+        request.setValue("application/json", forHTTPHeaderField: "accept")
+
+        print( "fetchPriceHistory. request: \(request)" )
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("fetchPriceHistory. Failed to fetch price history.  code != 200.  \(response)")
+                return nil
+            }
+            print( "response = \(response)" )
+            print( "data = \(data)" )
+            let decoder = JSONDecoder()
+            // data is gzip encoded, uncompress before passing to decode.
+            
+            let candleList : SapiCandleList  = try decoder.decode(SapiCandleList.self, from: data)
+            return candleList
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /**
+     * compute ATR for given symbol
+     */
+    public func computeATR( symbol : String ) async -> Double
+    {
+        var atr : Double  = 0.0
+        print("=== computeATR  ===")
+        guard let priceHistory : SapiCandleList  =  await self.fetchPriceHistory( symbol: symbol ) else {
+            print("computeATR Failed to fetch price history.")
+            return 0.0
+        }
+        /*
+         * Compute the ATR as the average of the True Range.
+         * The True Range is the maximum of absolute values of the High - Low, High - previous Close, and Low - previous Close
+         */
+        if priceHistory.candles.count > 1
+        {
+            let length : Int  =  min( priceHistory.candles.count - 1, 14 )
+            for i in 1..<length
+            {
+                let candle : SapiCandle  = priceHistory.candles[i]
+                let prevClose : Double  = priceHistory.candles[i+1].close
+                let tr : Double = max( abs( candle.high - candle.low ), abs( candle.high - prevClose ), abs( candle.low - prevClose ) )
+                atr = ( (atr * Double(i-1)) + tr ) / Double(i)
+                print( "date: \(candle.datetimeISO8601), atr: \(atr)")
+            }
+        }
+        return atr
+    }
+
 }
