@@ -1,6 +1,7 @@
 
 import Foundation
 import AuthenticationServices
+import Compression
 
 let schwabWeb           : String = "https://api.schwabapi.com"
 let authorizationWeb    : String = "\(schwabWeb)/v1/oauth/authorize"
@@ -190,7 +191,49 @@ class SchwabClient
             }
         }.resume()
     }
-    
+
+
+    /**
+     *  getRefreshToken - create a stream to get the refresh token every 10 minutes.
+     *
+     *  A Trader API access token is valid for 30 minutes. A Trader API refresh token is valid for 7 days.
+     *
+     *  Step 2 was:
+     *     curl -X POST https://api.schwabapi.com/v1/oauth/token \
+     *     -H 'Authorization: Basic {BASE64_ENCODED_Client_ID:Client_Secret} \
+     *     -H 'Content-Type: application/x-www-form-urlencoded' \
+     *     -d 'grant_type=authorization_code&code={AUTHORIZATION_CODE_VALUE}&redirect_uri=https://example_url.com/callback_example'
+     *
+     *   Step 3:
+     *       curl -X POST https://api.schwabapi.com/v1/oauth/token \
+     *     -H 'Authorization: Basic {BASE64_ENCODED_Client_ID:Client_Secret} \
+     *     -H 'Content-Type: application/x-www-form-urlencoded' \
+     *     -d 'grant_type=refresh_token&refresh_token={REFRESH_TOKEN_GENERATED_FROM_PRIOR_STEP}
+     *
+     *  Example - Refresh Token Response
+     *   {
+     *      "expires_in": 1800, //Number of seconds access_token is valid for
+     *      "token_type": "Bearer",
+     *      "scope": "api",
+     *      "refresh_token": "{REFRESH_TOKEN_HERE}", //Valid for 7 days
+     *      "access_token": "{NEW_ACCESS_TOKEN_HERE}",//Valid for 30 minutes
+     *      "id_token": "{JWT_HERE}"
+     *    }
+     *
+     *
+     */
+    public func getRefreshToken()
+    {
+        // 10 minute interval
+        let interval : Int = 10 * 60 * 60
+
+        // create thread which gets refresh token every 10 minutes.
+
+
+    }
+
+
+
     /**
      * fetch account numbers and hashes from schwab
      */
@@ -206,18 +249,18 @@ class SchwabClient
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
+
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("Failed to fetch account numbers.")
                 return
             }
-            
+
             let decoder = JSONDecoder()
             let accountNumberHashes = try decoder.decode([SapiAccountNumberHash].self, from: data)
             print("accountNumberHashes: \(accountNumberHashes.count)")
-            
+
             if !accountNumberHashes.isEmpty {
                 await MainActor.run {
                     self.m_secrets.setAccountNumberHash(accountNumberHashes)
@@ -300,7 +343,6 @@ class SchwabClient
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
-        //request.setValue("Bearer I0.b2F1dGgyLmJkYy5zY2h3YWIuY29t.kknFQhhCoaAb654hiMJk1FEJLl8wl3GNCioVPqK1cVw@", forHTTPHeaderField: "Authorization")
 
         request.setValue("application/json", forHTTPHeaderField: "accept")
 
@@ -312,17 +354,54 @@ class SchwabClient
                 print("fetchPriceHistory. Failed to fetch price history.  code != 200.  \(response)")
                 return nil
             }
+            
+            // Check if the data is GZIP-compressed
+            let isGzipEncoded = httpResponse.value(forHTTPHeaderField: "Content-Encoding")?.lowercased() == "gzip"
+            //let decompressedData = isGzipEncoded ? decompressGzipData(data: data) : data
+            //let decompressedData = isGzipEncoded ? data.decompressGzipData(data: <#T##Data#>)
+
+            // decompress the data from the data variable to decompressedData
+            //let decompressedData = isGzipEncoded ? data.base64EncodedData(options: .lineLength64Characters) : data
+//            let decompressedData : Data? = isGzipEncoded ? try? (data as NSData).decompressed(using: .zlib) as Data : data
+
+            // if the data is compressed, call gunzip
+            print( "isGzipEncoded: \(isGzipEncoded)" )
+            let decompressedData : Data? = isGzipEncoded ? gunzip( data: data ) : data
+
+//
+//            guard let validData = decompressedData else {
+//                print("Failed to decompress data.")
+//                return nil
+//            }
+            
             print( "response = \(response)" )
-            print( "data = \(data)" )
+//            print( "data = \(decompressedData)" )
+////            print( "validData = \(validData)" )
+//            // print the first 128 characters of the decompressedData
+//            print( "decompressedData = \(decompressedData?.base64EncodedString() ?? "<empty>")" )
+
+            // Convert the decompressed Data to a String
+            if( nil == decompressedData )
+            {
+                print( "Failed to decmopress data" )
+                return nil
+            }
+
+            let decompressedString : String = String(data: decompressedData!, encoding: .utf8)!
+            print( "data: \(decompressedString)" )
+
+
             let decoder = JSONDecoder()
             // data is gzip encoded, uncompress before passing to decode.
             
-            let candleList : SapiCandleList  = try decoder.decode(SapiCandleList.self, from: data)
+            let candleList : SapiCandleList  = try decoder.decode(SapiCandleList.self, from: decompressedData!)
             return candleList
         } catch {
             print("Error: \(error.localizedDescription)")
             return nil
         }
+
+
     }
 
     /**
