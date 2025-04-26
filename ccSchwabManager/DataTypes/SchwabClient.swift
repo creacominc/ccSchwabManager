@@ -194,7 +194,7 @@ class SchwabClient
 
 
     /**
-     *  getRefreshToken - create a stream to get the refresh token every 10 minutes.
+     *  refreshAccessToken - create a thread to get the refresh token every 10 minutes.
      *
      *  A Trader API access token is valid for 30 minutes. A Trader API refresh token is valid for 7 days.
      *
@@ -222,7 +222,7 @@ class SchwabClient
      *
      *
      */
-    public func getRefreshToken()
+    public func refreshAccessToken()
     {
         // 10 minute interval
         let interval : Int = 10 * 60 * 60
