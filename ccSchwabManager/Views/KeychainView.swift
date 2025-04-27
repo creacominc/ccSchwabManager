@@ -193,11 +193,10 @@ struct KeychainView: View
         var symbols: [String] = []
         for account in accounts {
             for position in account.securitiesAccount.positions {
-//                symbols.append("\(account.securitiesAccount.accountNumber ?? "No Account") \(position?.instrument?.symbol ?? "No Position")  \(position?.longQuantity ?? 0)  \(position?.averageLongPrice ?? 0.00)")
                 symbols.append( position?.instrument?.symbol ?? "No Position" )
             }
         }
-        return symbols
+        return symbols.sorted(by: <)
     }
 
     func handleAuthorization(url: String) {

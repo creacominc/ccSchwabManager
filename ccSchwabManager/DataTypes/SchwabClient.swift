@@ -508,27 +508,30 @@ class SchwabClient
      */
     public func computeATR( symbol : String ) async -> Double
     {
-        var atr : Double  = 0.0
         print("=== computeATR  ===")
         guard let priceHistory : SapiCandleList  =  await self.fetchPriceHistory( symbol: symbol ) else {
             print("computeATR Failed to fetch price history.")
             return 0.0
         }
+        var close : Double  = priceHistory.previousClose
+        var atr : Double  = 0.0
         /*
          * Compute the ATR as the average of the True Range.
          * The True Range is the maximum of absolute values of the High - Low, High - previous Close, and Low - previous Close
          */
         if priceHistory.candles.count > 1
         {
-            let length : Int  =  min( priceHistory.candles.count - 1, 21 )
+            let length : Int  =  min( priceHistory.candles.count, 21 )
             let startIndex : Int = priceHistory.candles.count - length
-            print( "length \(length)" )
-            for indx in startIndex..<priceHistory.candles.count-1
+//            print( "length \(length),  startIndex \(startIndex),  previousClose \(priceHistory.previousClose),  date \(priceHistory.previousCloseDate)" )
+            for indx in 0..<length
             {
-                let candle : SapiCandle  = priceHistory.candles[indx]
-                let prevClose : Double  = priceHistory.candles[indx+1].close
+                let position = startIndex + indx
+                let candle : SapiCandle  = priceHistory.candles[position]
+                let prevClose : Double  = if (0 == position) {priceHistory.previousClose} else {priceHistory.candles[position-1].close}
                 let tr : Double = max( abs( candle.high - candle.low ), abs( candle.high - prevClose ), abs( candle.low - prevClose ) )
-                atr = ( (atr * Double(indx-1)) + tr ) / Double(indx)
+                close = priceHistory.candles[position].close
+                atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
 
 //                // Example EPOCH time in milliseconds
 //                let epochMilliseconds: Int64 = candle.datetime
@@ -540,11 +543,13 @@ class SchwabClient
 //                let dateFormatter = ISO8601DateFormatter()
 //                dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 //                let iso8601String = dateFormatter.string(from: date)
-//
-//                print( "date: \(candle.datetime), atr: \(atr),  ISO 8601 Format: \(iso8601String)")
+//                print( "indx: \(indx), date: \(candle.datetime),  candle.high: \(candle.high), candle.low: \(candle.low), prevClose: \(prevClose), tr: \(tr)" )
+//                print( "( (atr: \(atr) * Double(indx-1): \(indx-1) + tr: \(tr) ) / Double(indx: \(indx))     date: \(candle.datetime), atr: \(atr),  ISO 8601 Format: \(iso8601String)" )
             }
         }
-        return atr
+        // return the ATR as a percent.
+        // return (atr * 0.78  / close * 100.0)
+        return (atr * 0.89  / close * 100.0)
     }
 
 }
