@@ -33,64 +33,52 @@ struct PositionStatementData : Identifiable
 }
 
 
-func parseCSV(url: URL?) -> [PositionStatementData] 
-{
-    do {
-        // print( "Loading \(url!.path())" )
-        let content = try String( contentsOf: url!, encoding: String.Encoding.utf8 )
-        let rows = content.components(separatedBy: "\n")
-        var positionStatementData : [PositionStatementData] = []
-        // print( "row count: \(rows.count)" )
-        for row in rows
-        {
-            /**
-             * The row may contain quoted curency values with commas which we cannot split on.  remove them first.
-             *  If we first split the row on double-quotes, numbering from 0, every odd-numbered row was a quoted string.
-             *  Remove the commas from the odd-numbered rows.
-             */
-            let splitForQuotes = row.components(separatedBy: "\"")
-            var reconstitutedRow : String = ""
-            var indx : Int = 0
-            for element in splitForQuotes
-            {
-                if( indx % 2 != 0 )
-                {
-                    reconstitutedRow += element.replacingOccurrences(of: ",", with: "")
-                }
-                else
-                {
-                    reconstitutedRow += element
-                }
-                indx += 1
-            }
-//            print( "!!! reconstitutedRow: \(reconstitutedRow)" )
-
-            let values : [String] = reconstitutedRow.components(separatedBy: ",")
-            if( ( PositionStatementColumns.allCases.count == values.count ) && ( PositionStatementColumns.Instrument.rawValue != values[0] ) )
-            {
-                // print( "creating row \(values)" )
-                let dataRow : PositionStatementData = PositionStatementData( csv: values )
-                positionStatementData.append( dataRow )
-                //print( "Appended row \(dataRow)" )
-            }
-//            else
+//func parseCSV(url: URL?) -> [PositionStatementData] 
+//{
+//    do {
+//        // print( "Loading \(url!.path())" )
+//        let content = try String( contentsOf: url!, encoding: String.Encoding.utf8 )
+//        let rows = content.components(separatedBy: "\n")
+//        var positionStatementData : [PositionStatementData] = []
+//        // print( "row count: \(rows.count)" )
+//        for row in rows
+//        {
+//            /**
+//             * The row may contain quoted curency values with commas which we cannot split on.  remove them first.
+//             *  If we first split the row on double-quotes, numbering from 0, every odd-numbered row was a quoted string.
+//             *  Remove the commas from the odd-numbered rows.
+//             */
+//            let splitForQuotes = row.components(separatedBy: "\"")
+//            var reconstitutedRow : String = ""
+//            var indx : Int = 0
+//            for element in splitForQuotes
 //            {
-//                print( "Skipping \(values.count) (vs \(PositionStatementColumns.allCases.count) ) element row: \(row)" )
-//                print( "Elements: " )
-//                var n : Int = 0
-//                row.split(separator: ",").forEach { print( "\(n): \($0)" ); n += 1 }
-//                if( "ABT" == row.split(separator: ",").first )
+//                if( indx % 2 != 0 )
 //                {
-//                    break
+//                    reconstitutedRow += element.replacingOccurrences(of: ",", with: "")
 //                }
+//                else
+//                {
+//                    reconstitutedRow += element
+//                }
+//                indx += 1
 //            }
-        }
-        return positionStatementData
-    } catch {
-        print("Error reading CSV file: \(error)")
-        return []
-    }
-}
+//
+//            let values : [String] = reconstitutedRow.components(separatedBy: ",")
+//            if( ( PositionStatementColumns.allCases.count == values.count ) && ( PositionStatementColumns.Instrument.rawValue != values[0] ) )
+//            {
+//                // print( "creating row \(values)" )
+//                let dataRow : PositionStatementData = PositionStatementData( csv: values )
+//                positionStatementData.append( dataRow )
+//                //print( "Appended row \(dataRow)" )
+//            }
+//        }
+//        return positionStatementData
+//    } catch {
+//        print("Error reading CSV file: \(error)")
+//        return []
+//    }
+//}
 
 func stringToDouble( content: String ) -> Double
 {

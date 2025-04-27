@@ -41,7 +41,8 @@ class SchwabClient
     init( secrets: inout Secrets )
     {
         self.m_secrets = secrets
-        // print( "SchwabClient init" )
+        // start thread to refresh the access token
+        self.refreshAccessToken()
     }
 
     public func hasAccounts() -> Bool
@@ -222,16 +223,67 @@ class SchwabClient
      *
      *
      */
-    public func refreshAccessToken()
-    {
-        // 10 minute interval
-        let interval : Int = 10 * 60 * 60
+    func refreshAccessToken() {
+        // 15 minute interval (in seconds)
+        let interval: TimeInterval = 15 * 60
 
-        // create thread which gets refresh token every 10 minutes.
+        // Create a background thread
+        DispatchQueue.global(qos: .background).async {
+            while true {
+                print("Refreshing access token...")
 
+                // Access Token Refresh Request
+                guard let url = URL(string: "\(accessTokenWeb)") else {
+                    print("Invalid URL for refreshing access token")
+                    return
+                }
 
+                var refreshTokenRequest = URLRequest(url: url)
+                refreshTokenRequest.httpMethod = "POST"
+
+                // Headers
+                let authStringUnencoded = "\(self.m_secrets.getAppId()):\(self.m_secrets.getAppSecret())"
+                let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
+                refreshTokenRequest.setValue("Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization")
+                refreshTokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+
+                // Body
+                refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.getRefreshToken())".data(using: .utf8)!
+
+                let semaphore = DispatchSemaphore(value: 0)
+
+                URLSession.shared.dataTask(with: refreshTokenRequest) { data, response, error in
+                    defer { semaphore.signal() }
+
+                    guard let data = data, error == nil, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                        print("Failed to refresh access token. Error: \(error?.localizedDescription ?? "Unknown error")")
+                        return
+                    }
+
+                    // Parse the response
+                    if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                        self.m_secrets.setAccessToken(tokenDict["access_token"] as? String ?? "")
+                        self.m_secrets.setRefreshToken(tokenDict["refresh_token"] as? String ?? "")
+
+                        if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
+                            print("Successfully refreshed and saved access token.")
+                        } else {
+                            print("Failed to save refreshed tokens.")
+                        }
+                    } else {
+                        print("Failed to parse token response.")
+                    }
+                }.resume()
+
+                // Wait for the request to finish before sleeping
+                semaphore.wait()
+
+                // Sleep for the specified interval
+                Thread.sleep(forTimeInterval: interval)
+            }
+            print( "Done with dispatch queue." )
+        }
     }
-
 
 
     /**
@@ -292,7 +344,7 @@ class SchwabClient
 
         guard let url = URL(string: accountUrl) else {
             print("Invalid URL")
-            return // []
+            return
         }
 
         var request = URLRequest(url: url)
@@ -303,16 +355,15 @@ class SchwabClient
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("Failed to fetch accounts.")
-                return // []
+                return
             }
 
             let decoder = JSONDecoder()
             m_accounts  = try decoder.decode([SapiAccountContent].self, from: data)
-            // let symbols : [String] = accounts.flatMap { $0.securitiesAccount.positions.map { $0?.instrument?.symbol ?? "" } }
-            return // symbols
+            return
         } catch {
             print("Error: \(error.localizedDescription)")
-            return // []
+            return
         }
     }
 
@@ -326,14 +377,69 @@ class SchwabClient
 
         var priceHistoryUrl = "\(schwabWeb)/marketdata/v1/pricehistory"
         priceHistoryUrl += "?symbol=\(symbol)"
-//        priceHistoryUrl += "&periodType=month"
-//        priceHistoryUrl += "&period=1"
-//        priceHistoryUrl += "&frequencyType=daily"
-//        priceHistoryUrl += "&frequency=1"
-//        priceHistoryUrl += "&needPreviousClose=true"
+
+        /**
+         * The chart period being requested.
+         * Available values : day, month, year, ytd
+         */
+        priceHistoryUrl += "&periodType=month"
+
+        /**
+         *  The number of chart period types.
+         *
+         *  If the periodType is
+         *  • day - valid values are 1, 2, 3, 4, 5, 10
+         *  • month - valid values are 1, 2, 3, 6
+         *  • year - valid values are 1, 2, 3, 5, 10, 15, 20
+         *  • ytd - valid values are 1
+         *
+         *  If the period is not specified and the periodType is
+         *  • day - default period is 10.
+         *  • month - default period is 1.
+         *  • year - default period is 1.
+         *  • ytd - default period is 1.
+         */
+        priceHistoryUrl += "&period=1"
+
+
+        /**
+         *  The time frequencyType
+         *
+         *  If the periodType is
+         *  • day - valid value is minute
+         *  • month - valid values are daily, weekly
+         *  • year - valid values are daily, weekly, monthly
+         *  • ytd - valid values are daily, weekly
+         *
+         *  If frequencyType is not specified, default value depends on the periodType
+         *  • day - defaulted to minute.
+         *  • month - defaulted to weekly.
+         *  • year - defaulted to monthly.
+         *  • ytd - defaulted to weekly.
+         *
+         *  Available values : minute, daily, weekly, monthly
+         */
+        priceHistoryUrl += "&frequencyType=daily"
+
+        /**
+         *  The time frequency duration
+         *
+         *  If the frequencyType is
+         *  • minute - valid values are 1, 5, 10, 15, 30
+         *  • daily - valid value is 1
+         *  • weekly - valid value is 1
+         *  • monthly - valid value is 1
+         *
+         *  If frequency is not specified, default value is 1
+         */
+        priceHistoryUrl += "&frequency=1"
+
+        /**
+         *  Need previous close price/date
+         */
+        priceHistoryUrl += "&needPreviousClose=true"
 
         print( "fetchPriceHistory. priceHistoryUrl: \(priceHistoryUrl)" )
-        // priceHistoryUrl = "https://api.schwabapi.com/marketdata/v1/pricehistory?symbol=AAPL&periodType=month&needPreviousClose=true"
 
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
@@ -349,52 +455,45 @@ class SchwabClient
         print( "fetchPriceHistory. request: \(request)" )
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let ( data, response ) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("fetchPriceHistory. Failed to fetch price history.  code != 200.  \(response)")
                 return nil
             }
-            
+            //let encodingOptions : Data.Base64EncodingOptions = []
+            //let data : Data = rdata // .base64EncodedData(options: encodingOptions)
+            try data.write(to: URL(fileURLWithPath: "priceHistory.gzip"))
+
             // Check if the data is GZIP-compressed
-            let isGzipEncoded = httpResponse.value(forHTTPHeaderField: "Content-Encoding")?.lowercased() == "gzip"
-            //let decompressedData = isGzipEncoded ? decompressGzipData(data: data) : data
-            //let decompressedData = isGzipEncoded ? data.decompressGzipData(data: <#T##Data#>)
-
-            // decompress the data from the data variable to decompressedData
-            //let decompressedData = isGzipEncoded ? data.base64EncodedData(options: .lineLength64Characters) : data
-//            let decompressedData : Data? = isGzipEncoded ? try? (data as NSData).decompressed(using: .zlib) as Data : data
-
+            // do not trust the header.
+            // let isGzipEncoded = httpResponse.value(forHTTPHeaderField: "Content-Encoding")?.lowercased() == "gzip"
+            let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
             // if the data is compressed, call gunzip
             print( "isGzipEncoded: \(isGzipEncoded)" )
-            let decompressedData : Data? = isGzipEncoded ? gunzip( data: data ) : data
 
-//
-//            guard let validData = decompressedData else {
-//                print("Failed to decompress data.")
-//                return nil
+            // check for the gzip magic number:  1f 8b
+            // String( data[0], radix: 16, uppercase: false)
+            print( " Magic:  \(String( data[0], radix: 16, uppercase: false)) \(String( data[1], radix: 16, uppercase: false))" )
+
+            let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
+
+//            // verify that data is utf8 encoded.
+//            if let decompressedString : String = String(data: decompressedData, encoding: .utf8)
+//            {
+//                // print the first and last 100 characters
+//                print( "data: ( \(decompressedString.count) ) " )
+//                print( "start:   \(decompressedString[decompressedString.index(decompressedString.startIndex, offsetBy: 0)..<decompressedString.index(decompressedString.startIndex, offsetBy: 100)])" )
+//                print( "end:     \(decompressedString[decompressedString.index(decompressedString.endIndex, offsetBy: -100)..<decompressedString.index(decompressedString.endIndex, offsetBy: 0)])" )
 //            }
-            
-            print( "response = \(response)" )
-//            print( "data = \(decompressedData)" )
-////            print( "validData = \(validData)" )
-//            // print the first 128 characters of the decompressedData
-//            print( "decompressedData = \(decompressedData?.base64EncodedString() ?? "<empty>")" )
-
-            // Convert the decompressed Data to a String
-            if( nil == decompressedData )
-            {
-                print( "Failed to decmopress data" )
-                return nil
-            }
-
-            let decompressedString : String = String(data: decompressedData!, encoding: .utf8)!
-            print( "data: \(decompressedString)" )
-
+//            else
+//            {
+//                print("Data is not valid UTF-8.")
+//            }
 
             let decoder = JSONDecoder()
             // data is gzip encoded, uncompress before passing to decode.
-            
-            let candleList : SapiCandleList  = try decoder.decode(SapiCandleList.self, from: decompressedData!)
+            let candleList : SapiCandleList  = try decoder.decode( SapiCandleList.self, from: decompressedData )
+            print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
             return candleList
         } catch {
             print("Error: \(error.localizedDescription)")
@@ -421,14 +520,28 @@ class SchwabClient
          */
         if priceHistory.candles.count > 1
         {
-            let length : Int  =  min( priceHistory.candles.count - 1, 14 )
-            for i in 1..<length
+            let length : Int  =  min( priceHistory.candles.count - 1, 21 )
+            let startIndex : Int = priceHistory.candles.count - length
+            print( "length \(length)" )
+            for indx in startIndex..<priceHistory.candles.count-1
             {
-                let candle : SapiCandle  = priceHistory.candles[i]
-                let prevClose : Double  = priceHistory.candles[i+1].close
+                let candle : SapiCandle  = priceHistory.candles[indx]
+                let prevClose : Double  = priceHistory.candles[indx+1].close
                 let tr : Double = max( abs( candle.high - candle.low ), abs( candle.high - prevClose ), abs( candle.low - prevClose ) )
-                atr = ( (atr * Double(i-1)) + tr ) / Double(i)
-                print( "date: \(candle.datetimeISO8601), atr: \(atr)")
+                atr = ( (atr * Double(indx-1)) + tr ) / Double(indx)
+
+//                // Example EPOCH time in milliseconds
+//                let epochMilliseconds: Int64 = candle.datetime
+//                // Convert milliseconds to seconds
+//                let epochSeconds = TimeInterval(epochMilliseconds) / 1000
+//                // Create a Date object
+//                let date = Date(timeIntervalSince1970: epochSeconds)
+//                // Format the Date to ISO 8601
+//                let dateFormatter = ISO8601DateFormatter()
+//                dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+//                let iso8601String = dateFormatter.string(from: date)
+//
+//                print( "date: \(candle.datetime), atr: \(atr),  ISO 8601 Format: \(iso8601String)")
             }
         }
         return atr

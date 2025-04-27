@@ -37,10 +37,6 @@ struct ContentView: View
                     Label("Position Statement", systemImage: "doc.text")
                 }
         }
-        .onAppear {
-            let url = Bundle.main.url(forResource: "PositionStatement", withExtension: "csv")
-            positionStatementData = parseCSV(url: url)
-        }
     }
 
 } // ContentView

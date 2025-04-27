@@ -32,8 +32,9 @@ struct PositionStatementView: View
             Text( "PositionStatement" )
                 .onAppear()
             {
-                let url = Bundle.main.url(forResource: "PositionStatement", withExtension: "csv")
-                positionStatementData = parseCSV(url: url )
+                print( "   TBD  --- this had the loading of the test position statement file.  ---     " )
+//                let url = Bundle.main.url(forResource: "PositionStatement", withExtension: "csv")
+//                positionStatementData = parseCSV(url: url )
             }
             if positionStatementData.isEmpty
             {

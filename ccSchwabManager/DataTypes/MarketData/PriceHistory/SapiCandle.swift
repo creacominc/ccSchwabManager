@@ -37,7 +37,7 @@ import Foundation
 public struct SapiCandle: Decodable {
     public let close: Double
     public let datetime: Int64
-    public let datetimeISO8601: String
+    // public let datetimeISO8601: String?
     public let high: Double
     public let low: Double
     public let open: Double
@@ -50,7 +50,7 @@ public struct SapiCandleList: Decodable {
     public let empty: Bool
     public let previousClose: Double
     public let previousCloseDate: Int64
-    public let previousCloseDateISO8601: String
+    // public let previousCloseDateISO8601: String?
     public let symbol: String
 }
 

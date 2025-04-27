@@ -125,13 +125,7 @@ struct KeychainView: View
 
             Button("Fetch Accounts") {
                 Task {
-                    //self.m_allSymbols =
                     await self.m_schwabClient.fetchAccounts()
-                    //print("fetch Account pressed \(m_allSymbols.count)")
-//                    for symbol in m_allSymbols {
-//                        print("Symbol: \(symbol)")
-//                    }
-                    //m_enableSymbolList = !m_allSymbols.isEmpty
                     m_enableSymbolList = self.m_schwabClient.hasSymbols()
                 }
             }
@@ -173,7 +167,8 @@ struct KeychainView: View
 //                    let data = try Data(contentsOf: URL(fileURLWithPath: resourcesPath + "/response_1745203291125.json.gz"))
 //                    // print size of data
 //                    print( "Data Size: \(data.count)" )
-//                    let uncompressedString : String? =  gunzip(data: data)
+//                    let decompressedData : Data? = decompressGzip(data: data)
+//                    let uncompressedString : String? = String(data: decompressedData ?? Data(), encoding: .utf8)
 //                    // print the uncompressed data as a string
 //                    if( nil == uncompressedString )
 //                    {
