@@ -12,11 +12,14 @@ import AppKit
 
 struct KeychainManager
 {
-
+    private static let lock = NSLock()
     static let userName : String =  "ccSchwabManager"
 
     static func saveSecrets( secrets: inout Secrets ) -> Bool
     {
+        lock.lock()
+        defer { lock.unlock() }
+
         // print( "Saving secrets: \(secrets!.dump())" )
         let password : String = secrets.encodeToString() ?? "Error encoding Secrete"
 
@@ -53,6 +56,9 @@ struct KeychainManager
 
     static func readSecrets(  prefix: String ) -> Secrets?
     {
+        lock.lock()
+        defer { lock.unlock() }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: userName,
