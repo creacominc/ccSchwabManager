@@ -18,7 +18,7 @@ import Foundation
  }
  */
 
-public struct SapiCurrency: Decodable
+public struct SapiCurrency: Codable
 {
     public var assetType: AssetType
     public var cusip: String

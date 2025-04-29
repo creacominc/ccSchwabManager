@@ -12,7 +12,7 @@ import Foundation
  */
 
 
-public struct SapiTransferItem: Decodable
+public struct SapiTransferItem: Codable
 {
     public let instrument: SapiTransactionInstrument
     public let amount: Double

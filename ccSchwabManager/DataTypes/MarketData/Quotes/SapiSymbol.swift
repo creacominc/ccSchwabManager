@@ -11,7 +11,7 @@ import SwiftData
 
 // @Model
 //public class SapiSymbol
-public struct SapiSymbol : Decodable
+public struct SapiSymbol : Codable
 {
 
 //    init(m_assetMainType: AssetMainType, m_assetSubType: EquityAssetSubType, m_quoteType: QuoteType, m_realtime: Bool, m_ssid: Int, m_symbol: String, m_extended: SapiExtendedMarket)

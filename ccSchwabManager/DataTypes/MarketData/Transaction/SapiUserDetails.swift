@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 
-public struct SapiUserDetails : Decodable
+public struct SapiUserDetails : Codable
 {
     /**
      cdDomainId    string

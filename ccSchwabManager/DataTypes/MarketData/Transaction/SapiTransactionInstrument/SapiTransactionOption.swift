@@ -27,7 +27,7 @@ import Foundation
  }
  */
 
-public struct SapiTransactionOption: Decodable
+public struct SapiTransactionOption: Codable
 {
     public let assetType: AssetType
     public let cusip: String

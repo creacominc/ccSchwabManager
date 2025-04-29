@@ -10,7 +10,7 @@ import Foundation
 
 //@Model
 //public class SapiReference
-public struct SapiReference : Decodable
+public struct SapiReference : Codable
 {
 
 //    init(m_cusip: String, m_description: String, m_exchange: String, m_exchangeName: String, m_fsiDesc: String, m_htbQuantity: Int, m_htbRate: Double, m_isHardToBorrow: Bool, m_isShortable: Bool, m_otcMarketTier: String)

@@ -23,7 +23,7 @@ import Foundation
  }
  */
 
-public struct SapiTransactionFixedIncome: Decodable
+public struct SapiTransactionFixedIncome: Codable
 {
     public let assetType: AssetType
     public let cusip: String

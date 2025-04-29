@@ -11,7 +11,7 @@ import Foundation
 
 //@Model
 //public class SapiFundamental
-public struct SapiFundamental : Decodable
+public struct SapiFundamental : Codable
 {
 
 //    init(m_avg10DaysVolume: Double, m_avg1YearVolume: Double, m_declarationDate: Date, m_divAmount: Double, m_divExDate: Date, m_divFreq: Int, m_divPayAmount: Double, m_divPayDate: Date, m_divYield: Double, m_eps: Double, m_fundLeverageFactor: Double, m_lastEarningsDate: Date, m_nextDivExDate: Date, m_nextDivPayDate: Date, m_peRatio: Double)

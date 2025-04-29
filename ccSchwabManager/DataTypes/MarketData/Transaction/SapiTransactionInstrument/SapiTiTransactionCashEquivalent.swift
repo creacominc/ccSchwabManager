@@ -21,7 +21,7 @@ import Foundation
  
  */
 
-public struct SapiTiTransactionCashEquivalent: Decodable
+public struct SapiTiTransactionCashEquivalent: Codable
 {
     public let assetType: AssetType
     public let cusip: String

@@ -34,7 +34,7 @@ import Foundation
  */
 
 
-public struct SapiCandle: Decodable {
+public struct SapiCandle: Codable {
     public let close: Double
     public let datetime: Int64
     // public let datetimeISO8601: String?
@@ -45,7 +45,7 @@ public struct SapiCandle: Decodable {
 }
 
 
-public struct SapiCandleList: Decodable {
+public struct SapiCandleList: Codable {
     public let candles: [SapiCandle]
     public let empty: Bool
     public let previousClose: Double

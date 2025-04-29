@@ -18,7 +18,7 @@ import Foundation
  }
  */
 
-public struct SapiTransactionAPIOptionDeliverable: Decodable
+public struct SapiTransactionAPIOptionDeliverable: Codable
 {
     var rootSymbol: String
     var strikePercent: Int64

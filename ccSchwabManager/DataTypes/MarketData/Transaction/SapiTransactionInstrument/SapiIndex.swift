@@ -14,7 +14,7 @@ import Foundation
  }
  */
 
-public struct SapiIndex: Decodable
+public struct SapiIndex: Codable
 {
     var activeContract: Bool = false
     var type: SapiIndexType

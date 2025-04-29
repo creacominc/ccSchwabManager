@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 //@Model
-public struct QuotesResponse : Decodable
+public struct QuotesResponse : Codable
 {
 
 //    init(m_symbol: SapiSymbol, m_fundamental: SapiFundamental, m_quote: SapiQuote, m_reference: SapiReference, m_regular: SapiRegularMarket)

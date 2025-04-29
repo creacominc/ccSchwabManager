@@ -10,7 +10,7 @@ import SwiftData
 
 //@Model
 //public class SapiRegularMarket
-public struct SapiRegularMarket : Decodable
+public struct SapiRegularMarket : Codable
 {
 
 //    init(m_regularMarketLastPrice: Double, m_regularMarketLastSize: Int, m_regularMarketNetChange: Double, m_regularMarketPercentChange: Double, m_regularMarketTradeTime: Int)

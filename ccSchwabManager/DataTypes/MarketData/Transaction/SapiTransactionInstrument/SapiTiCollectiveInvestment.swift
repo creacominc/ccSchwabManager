@@ -20,7 +20,7 @@ import Foundation
  }
  */
 
-public struct SapiTiCollectiveInvestment: Decodable
+public struct SapiTiCollectiveInvestment: Codable
 {
     public var assetType: AssetType
     public var cusip: String

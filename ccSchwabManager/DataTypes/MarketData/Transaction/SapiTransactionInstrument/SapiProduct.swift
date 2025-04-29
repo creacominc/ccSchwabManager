@@ -20,7 +20,7 @@ import Foundation
  
  */
 
-public struct SapiProduct: Decodable
+public struct SapiProduct: Codable
 {
     var assetType: AssetType
     var cusip: String

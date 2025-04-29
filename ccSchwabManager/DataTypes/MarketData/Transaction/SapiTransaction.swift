@@ -14,7 +14,7 @@ import Foundation
 import SwiftData
 
 
-public struct SapiTransaction : Decodable
+public struct SapiTransaction: Codable
 {
     var activityId: Int64
     var time: String

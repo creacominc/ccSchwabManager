@@ -10,7 +10,7 @@ import Foundation
 
 //@Model
 //public class SapiQuote
-public struct SapiQuote : Decodable
+public struct SapiQuote : Codable
 {
 
 //    init(m_52WeekHigh: Double, m_52WeekLow: Double, m_askMICId: String, m_askPrice: Double, m_askSize: Int, m_askTime: Int, m_bidMICId: String, m_bidPrice: Double, m_bidSize: Int, m_bidTime: Int, m_closePrice: Double, m_highPrice: Double, m_lastMICId: String, m_lastPrice: Double, m_lastSize: Int, m_lowPrice: Double, m_mark: Double, m_markChange: Double, m_markPercentChange: Double, m_netChange: Double, m_netPercentChange: Double, m_openPrice: Double, m_postMarketChange: Double, m_postMarketPercentChange: Double, m_quoteTime: Int, m_securityStatus: String, m_totalVolume: Int, m_tradeTime: Int, m_volatility: Double)

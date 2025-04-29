@@ -18,7 +18,7 @@ import Foundation
  }
  */
 
-public struct SapiFuture: Decodable
+public struct SapiFuture: Codable
 {
     public var activeContract: Bool
     public var type: SapiFutureType

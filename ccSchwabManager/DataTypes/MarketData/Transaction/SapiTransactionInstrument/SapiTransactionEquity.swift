@@ -19,7 +19,7 @@ import Foundation
   }
  */
 
-public struct SapiTransactionEquity: Decodable
+public struct SapiTransactionEquity: Codable
 {
     var assetType: AssetType
     var cusip: String

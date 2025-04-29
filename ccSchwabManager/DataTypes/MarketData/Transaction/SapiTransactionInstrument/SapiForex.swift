@@ -22,7 +22,7 @@ import Foundation
  }
  */
 
-public struct SapiForex: Decodable
+public struct SapiForex: Codable
 {
     var assetType: AssetType
     var cusip: String
