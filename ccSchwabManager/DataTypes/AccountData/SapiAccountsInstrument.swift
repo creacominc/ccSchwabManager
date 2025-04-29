@@ -4,7 +4,7 @@ import SwiftUI
 class SapiAccountsInstrument : Codable
 {
     // Instrument
-    var assetType : SapiAccountInstrumentAssetType?
+    var assetType : AssetType?
     var cusip: String?
     var symbol: String?
     var description: String?
