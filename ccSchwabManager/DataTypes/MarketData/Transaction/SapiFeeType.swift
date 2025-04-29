@@ -14,3 +14,14 @@
  
  
  */
+
+import Foundation
+
+public enum SapiFeeType: String, Codable, CaseIterable
+{
+    case COMMISSION = "COMMISSION"
+    case SEC_FEE = "SEC_FEE"
+    case STR_FEE = "STR_FEE"
+    case R_FEE = "R_FEE"
+    case CDSC_FEE = "CDSC_FEE"
+}
