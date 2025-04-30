@@ -145,6 +145,9 @@ struct KeychainView: View
                 { newValue in
                     Task
                     {
+                        let transactionHistory: [SapiTransaction] = await self.m_schwabClient.fetchTransactionHistory(symbol: newValue)
+                        // print the number of transactions and the first transaction.
+                        print( "transaction count: \(transactionHistory.count)" )
                         m_atr = await self.m_schwabClient.computeATR(symbol: newValue)
                     }
                 }
@@ -156,34 +159,6 @@ struct KeychainView: View
             .padding()
 
 
-//            // add button to test decompressGzipData using response_1745203291125.json.gz from the Resourses folder
-//            Button(  "Test Gunzip" )
-//            {
-//                print("Test Gunzip pressed")
-//                let fileManager = FileManager.default
-//                let bundlePath = Bundle.main.bundlePath
-//                let resourcesPath = (bundlePath as NSString).appendingPathComponent("Contents/Resources")
-//                do {
-//                    let data = try Data(contentsOf: URL(fileURLWithPath: resourcesPath + "/response_1745203291125.json.gz"))
-//                    // print size of data
-//                    print( "Data Size: \(data.count)" )
-//                    let decompressedData : Data? = decompressGzip(data: data)
-//                    let uncompressedString : String? = String(data: decompressedData ?? Data(), encoding: .utf8)
-//                    // print the uncompressed data as a string
-//                    if( nil == uncompressedString )
-//                    {
-//                        print( "No Uncompressed Data" )
-//                    }
-//                    else
-//                    {
-//                        print( "Uncompressed Data: \(uncompressedString ?? "No Data" )" )
-//                    }
-//                }
-//                catch
-//                {
-//                    print("Error: Failed to decompress. \(error)")
-//                }
-//            }
 
 
         }

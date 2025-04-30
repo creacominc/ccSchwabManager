@@ -9,8 +9,8 @@ import Foundation
 
 public enum SapiTransactionStatus: String, Codable, CaseIterable
 {
-    case VALID
-    case INVALID
-    case PENDING
-    case UNKNOWN
+    case VALID    = "VALID"
+    case INVALID  = "INVALID"
+    case PENDING  = "PENDING"
+    case UNKNOWN  = "UNKNOWN"
 }

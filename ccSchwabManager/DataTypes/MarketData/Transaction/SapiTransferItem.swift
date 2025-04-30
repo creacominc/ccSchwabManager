@@ -18,6 +18,6 @@ public struct SapiTransferItem: Codable
     public let amount: Double
     public let cost: Double
     public let price: Double
-    public let feeType: SapiFeeType
+    //public let feeType: SapiFeeType
     public let positionEffect: SapiPositionEffectType
 }

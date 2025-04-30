@@ -44,17 +44,17 @@ class SchwabClient
         // start thread to refresh the access token
         self.refreshAccessToken()
     }
-
+    
     public func hasAccounts() -> Bool
     {
         return self.m_accounts.count > 0
     }
-
+    
     public func getAccounts() -> [SapiAccountContent]
     {
         return self.m_accounts
     }
-
+    
     public func hasSymbols() -> Bool
     {
         var symbolCount : Int = 0
@@ -64,7 +64,7 @@ class SchwabClient
         }
         return (symbolCount > 0)
     }
-
+    
     public func getSecrets() -> Secrets
     {
         return self.m_secrets
@@ -192,8 +192,8 @@ class SchwabClient
             }
         }.resume()
     }
-
-
+    
+    
     /**
      *  refreshAccessToken - create a thread to get the refresh token every 10 minutes.
      *
@@ -226,45 +226,45 @@ class SchwabClient
     func refreshAccessToken() {
         // 15 minute interval (in seconds)
         let interval: TimeInterval = 15 * 60
-
+        
         // Create a background thread
         DispatchQueue.global(qos: .background).async {
             while true {
                 print("Refreshing access token...")
-
+                
                 // Access Token Refresh Request
                 guard let url = URL(string: "\(accessTokenWeb)") else {
                     print("Invalid URL for refreshing access token")
                     return
                 }
-
+                
                 var refreshTokenRequest = URLRequest(url: url)
                 refreshTokenRequest.httpMethod = "POST"
-
+                
                 // Headers
                 let authStringUnencoded = "\(self.m_secrets.getAppId()):\(self.m_secrets.getAppSecret())"
                 let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
                 refreshTokenRequest.setValue("Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization")
                 refreshTokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
+                
                 // Body
                 refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.getRefreshToken())".data(using: .utf8)!
-
+                
                 let semaphore = DispatchSemaphore(value: 0)
-
+                
                 URLSession.shared.dataTask(with: refreshTokenRequest) { data, response, error in
                     defer { semaphore.signal() }
-
+                    
                     guard let data = data, error == nil, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                         print("Failed to refresh access token. Error: \(error?.localizedDescription ?? "Unknown error")")
                         return
                     }
-
+                    
                     // Parse the response
                     if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
                         self.m_secrets.setAccessToken(tokenDict["access_token"] as? String ?? "")
                         self.m_secrets.setRefreshToken(tokenDict["refresh_token"] as? String ?? "")
-
+                        
                         if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
                             print("Successfully refreshed and saved access token.")
                         } else {
@@ -274,20 +274,34 @@ class SchwabClient
                         print("Failed to parse token response.")
                     }
                 }.resume()
-
+                
                 // Wait for the request to finish before sleeping
                 semaphore.wait()
-
+                
                 // Sleep for the specified interval
                 Thread.sleep(forTimeInterval: interval)
             }
             print( "Done with dispatch queue." )
         }
     }
-
-
+    
+    
     /**
      * fetch account numbers and hashes from schwab
+     *
+     *curl -X 'GET' \
+     'https://api.schwabapi.com/trader/v1/accounts/accountNumbers' \
+     -H 'accept: application/json' \
+     -H 'Authorization: Bearer I0.b2F1dGgyLmJkYy5zY2h3YWIuY29t.pTioMWsX9nMaSM6MyniOI4uLFGEzpGcoL2mHfqQFeek@'
+     *
+     *
+     *[
+     {
+       "accountNumber": "88516767",
+       "hashValue": "980170564C529B2EF04942AA98580A590F2C7E52EEBFA38269D281F79CEDED51"
+     }
+   ]
+     *
      */
     func fetchAccountNumbers() async
     {
@@ -301,18 +315,18 @@ class SchwabClient
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-
+        
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("Failed to fetch account numbers.")
                 return
             }
-
+            
             let decoder = JSONDecoder()
             let accountNumberHashes = try decoder.decode([SapiAccountNumberHash].self, from: data)
             print("accountNumberHashes: \(accountNumberHashes.count)")
-
+            
             if !accountNumberHashes.isEmpty {
                 await MainActor.run {
                     self.m_secrets.setAccountNumberHash(accountNumberHashes)
@@ -329,7 +343,7 @@ class SchwabClient
             print("Error: \(error.localizedDescription)")
         }
     }
-
+    
     /**
      * fetchAccounts - get the account numbers and balances.
      */
@@ -341,23 +355,23 @@ class SchwabClient
             accountUrl += "/\(self.m_selectedAccountName)"
         }
         accountUrl += "?fields=positions"
-
+        
         guard let url = URL(string: accountUrl) else {
             print("Invalid URL")
             return
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
-
+        
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("Failed to fetch accounts.")
                 return
             }
-
+            
             let decoder = JSONDecoder()
             m_accounts  = try decoder.decode([SapiAccountContent].self, from: data)
             return
@@ -366,24 +380,24 @@ class SchwabClient
             return
         }
     }
-
-
+    
+    
     /**
      * fettchPriceHistory  get the history of prices for all securities
      */
     func fetchPriceHistory( symbol : String ) async -> SapiCandleList?
     {
         print("=== fetchPriceHistory  ===")
-
+        
         var priceHistoryUrl = "\(schwabWeb)/marketdata/v1/pricehistory"
         priceHistoryUrl += "?symbol=\(symbol)"
-
+        
         /**
          * The chart period being requested.
          * Available values : day, month, year, ytd
          */
         priceHistoryUrl += "&periodType=month"
-
+        
         /**
          *  The number of chart period types.
          *
@@ -400,8 +414,8 @@ class SchwabClient
          *  • ytd - default period is 1.
          */
         priceHistoryUrl += "&period=1"
-
-
+        
+        
         /**
          *  The time frequencyType
          *
@@ -420,7 +434,7 @@ class SchwabClient
          *  Available values : minute, daily, weekly, monthly
          */
         priceHistoryUrl += "&frequencyType=daily"
-
+        
         /**
          *  The time frequency duration
          *
@@ -433,65 +447,47 @@ class SchwabClient
          *  If frequency is not specified, default value is 1
          */
         priceHistoryUrl += "&frequency=1"
-
+        
         /**
          *  Need previous close price/date
          */
         priceHistoryUrl += "&needPreviousClose=true"
-
+        
         print( "fetchPriceHistory. priceHistoryUrl: \(priceHistoryUrl)" )
-
+        
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
             return nil
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
-
+        
         request.setValue("application/json", forHTTPHeaderField: "accept")
-
+        
         print( "fetchPriceHistory. request: \(request)" )
-
+        
         do {
             let ( data, response ) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("fetchPriceHistory. Failed to fetch price history.  code != 200.  \(response)")
+            let httpResponse = response as? HTTPURLResponse
+            if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
+            {
+                print("fetchPriceHistory. Failed to fetch price history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
                 return nil
             }
-            //let encodingOptions : Data.Base64EncodingOptions = []
-            //let data : Data = rdata // .base64EncodedData(options: encodingOptions)
-            try data.write(to: URL(fileURLWithPath: "priceHistory.gzip"))
 
             // Check if the data is GZIP-compressed
             // do not trust the header.
-            // let isGzipEncoded = httpResponse.value(forHTTPHeaderField: "Content-Encoding")?.lowercased() == "gzip"
+            // check for the gzip magic number:  1f 8b
             let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
             // if the data is compressed, call gunzip
             print( "isGzipEncoded: \(isGzipEncoded)" )
-
-            // check for the gzip magic number:  1f 8b
-            // String( data[0], radix: 16, uppercase: false)
-            print( " Magic:  \(String( data[0], radix: 16, uppercase: false)) \(String( data[1], radix: 16, uppercase: false))" )
+            // print( " Magic:  \(String( data[0], radix: 16, uppercase: false)) \(String( data[1], radix: 16, uppercase: false))" )
 
             let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
 
-//            // verify that data is utf8 encoded.
-//            if let decompressedString : String = String(data: decompressedData, encoding: .utf8)
-//            {
-//                // print the first and last 100 characters
-//                print( "data: ( \(decompressedString.count) ) " )
-//                print( "start:   \(decompressedString[decompressedString.index(decompressedString.startIndex, offsetBy: 0)..<decompressedString.index(decompressedString.startIndex, offsetBy: 100)])" )
-//                print( "end:     \(decompressedString[decompressedString.index(decompressedString.endIndex, offsetBy: -100)..<decompressedString.index(decompressedString.endIndex, offsetBy: 0)])" )
-//            }
-//            else
-//            {
-//                print("Data is not valid UTF-8.")
-//            }
-
             let decoder = JSONDecoder()
-            // data is gzip encoded, uncompress before passing to decode.
             let candleList : SapiCandleList  = try decoder.decode( SapiCandleList.self, from: decompressedData )
             print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
             return candleList
@@ -502,7 +498,7 @@ class SchwabClient
 
 
     }
-
+    
     /**
      * compute ATR for given symbol
      */
@@ -523,7 +519,7 @@ class SchwabClient
         {
             let length : Int  =  min( priceHistory.candles.count, 21 )
             let startIndex : Int = priceHistory.candles.count - length
-//            print( "length \(length),  startIndex \(startIndex),  previousClose \(priceHistory.previousClose),  date \(priceHistory.previousCloseDate)" )
+            //            print( "length \(length),  startIndex \(startIndex),  previousClose \(priceHistory.previousClose),  date \(priceHistory.previousCloseDate)" )
             for indx in 0..<length
             {
                 let position = startIndex + indx
@@ -532,24 +528,164 @@ class SchwabClient
                 let tr : Double = max( abs( candle.high - candle.low ), abs( candle.high - prevClose ), abs( candle.low - prevClose ) )
                 close = priceHistory.candles[position].close
                 atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
-
-//                // Example EPOCH time in milliseconds
-//                let epochMilliseconds: Int64 = candle.datetime
-//                // Convert milliseconds to seconds
-//                let epochSeconds = TimeInterval(epochMilliseconds) / 1000
-//                // Create a Date object
-//                let date = Date(timeIntervalSince1970: epochSeconds)
-//                // Format the Date to ISO 8601
-//                let dateFormatter = ISO8601DateFormatter()
-//                dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-//                let iso8601String = dateFormatter.string(from: date)
-//                print( "indx: \(indx), date: \(candle.datetime),  candle.high: \(candle.high), candle.low: \(candle.low), prevClose: \(prevClose), tr: \(tr)" )
-//                print( "( (atr: \(atr) * Double(indx-1): \(indx-1) + tr: \(tr) ) / Double(indx: \(indx))     date: \(candle.datetime), atr: \(atr),  ISO 8601 Format: \(iso8601String)" )
+                
+                //                // Example EPOCH time in milliseconds
+                //                let epochMilliseconds: Int64 = candle.datetime
+                //                // Convert milliseconds to seconds
+                //                let epochSeconds = TimeInterval(epochMilliseconds) / 1000
+                //                // Create a Date object
+                //                let date = Date(timeIntervalSince1970: epochSeconds)
+                //                // Format the Date to ISO 8601
+                //                let dateFormatter = ISO8601DateFormatter()
+                //                dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                //                let iso8601String = dateFormatter.string(from: date)
+                //                print( "indx: \(indx), date: \(candle.datetime),  candle.high: \(candle.high), candle.low: \(candle.low), prevClose: \(prevClose), tr: \(tr)" )
+                //                print( "( (atr: \(atr) * Double(indx-1): \(indx-1) + tr: \(tr) ) / Double(indx: \(indx))     date: \(candle.datetime), atr: \(atr),  ISO 8601 Format: \(iso8601String)" )
             }
         }
         // return the ATR as a percent.
         // return (atr * 0.78  / close * 100.0)
         return (atr * 0.89  / close * 100.0)
     }
+    
+    
+    /**
+     * fetchTransactionHistory - get the transactions for the last year for this holding.
+     *
+     * GET /accounts/{accountNumber}/transactions
+     * Get all transactions information for a specific account.
+     *      All transactions for a specific account. Maximum number of transactions in response is 3000. Maximum date range is 1 year.
+     *
+     * Parameters     Name    Description
+     * accountNumber *     string     The encrypted ID of the account
+     * startDate *     string     Specifies that no transactions entered before this time should be returned. Valid ISO-8601 formats are :
+     *                    yyyy-MM-dd'T'HH:mm:ss.SSSZ . Example start date is '2024-03-28T21:10:42.000Z'. The 'endDate' must also be set.
+     * endDate *     string     Specifies that no transactions entered after this time should be returned.Valid ISO-8601 formats are :
+     *                    yyyy-MM-dd'T'HH:mm:ss.SSSZ. Example start date is '2024-05-10T21:10:42.000Z'. The 'startDate' must also be set.
+     * symbol     string     It filters all the transaction activities based on the symbol specified. NOTE: If there is any special character in the symbol, please send th encoded value.
+     * types *     string     Specifies that only transactions of this status should be returned.
+     *
+     *
+     * curl -X 'GET' \
+     'https://api.schwabapi.com/trader/v1/accounts/980170564C529B2EF04942AA98580A590F2C7E52EEBFA38269D281F79CEDED51/transactions?startDate=2025-04-02T01%3A00%3A00.000Z&endDate=2025-04-29T17%3A00%3A00.000Z&symbol=SFM&types=TRADE' \
+     -H 'accept: application/json' \
+     -H 'Authorization: Bearer I0.b2F1dGgyLmJkYy5zY2h3YWIuY29t.pTioMWsX9nMaSM6MyniOI4uLFGEzpGcoL2mHfqQFeek@'
+     *
+     *
+     *
+     *[
+     {
+       "activityId": 95512265692,
+       "time": "2025-04-23T19:59:12+0000",
+       "accountNumber": "88516767",
+       "type": "TRADE",
+       "status": "VALID",
+       "subAccount": "CASH",
+       "tradeDate": "2025-04-23T19:59:12+0000",
+       "positionId": 2788793997,
+       "orderId": 1003188442747,
+       "netAmount": -164.85,
+       "transferItems": [
+         {
+           "instrument": {
+             "assetType": "EQUITY",
+             "status": "ACTIVE",
+             "symbol": "SFM",
+             "instrumentId": 1806651,
+             "closingPrice": 169.76,
+             "type": "COMMON_STOCK"
+           },
+           "amount": 1,
+           "cost": -164.85,
+           "price": 164.85,
+           "positionEffect": "OPENING"
+         }
+       ]
+     }
+   ]
+     *
+     *
+     */
+    public func fetchTransactionHistory( symbol : String ) async  -> [SapiTransaction]
+    {
 
+        print("=== fetchTransactionHistory  ===")
+
+        // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
+        let todayStr : String = Date().formatted(.iso8601
+            .year()
+            .month()
+            .day()
+            .timeZone(separator: .omitted)
+            .time(includingFractionalSeconds: true)
+            .timeSeparator(.colon)
+        ) // "2022-06-10T12:34:56.789Z"
+
+        // get date one year ago
+        var components = DateComponents()
+        components.year = -1
+        // format a string with the date one year ago.
+        let dateOneYearAgoStr : String = Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+            .year()
+            .month()
+            .day()
+            .timeZone(separator: .omitted)
+            .time(includingFractionalSeconds: true)
+            .timeSeparator(.colon)
+        ) 
+
+        let accountNumberHash : String = self.m_secrets.getAccountNumberHash()[0].getHashValue()
+        var transactionHistoryUrl = "\(schwabWeb)/trader/v1/accounts/\(accountNumberHash)/transactions"
+        transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
+        transactionHistoryUrl += "&endDate=\(todayStr)"
+        transactionHistoryUrl += "&symbol=\(symbol)"
+        transactionHistoryUrl += "&types=TRADE"
+
+        print( "fetchTransactionHistory. transactionHistoryUrl: \(transactionHistoryUrl)" )
+
+        guard let url = URL( string: transactionHistoryUrl ) else {
+            print("fetchTransactionHistory. Invalid URL")
+            return []
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "accept")
+
+        // print( "fetchTransactionHistory. request: \(request)" )
+
+        do {
+            let ( data, response ) = try await URLSession.shared.data(for: request)
+            let httpResponse = response as? HTTPURLResponse
+            if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
+            {
+                print("fetchTransactionHistory. Failed to fetch transaction history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
+                return []
+            }
+
+            // Check if the data is GZIP-compressed
+            // do not trust the header.
+            // check for the gzip magic number:  1f 8b
+            let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
+            // if the data is compressed, call gunzip
+            print( "isGzipEncoded: \(isGzipEncoded)" )
+
+            let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
+            // print first and last 512 characters from the decompressedData
+            let printLength : Int = 1024
+            print( "first \(printLength) bytes: \(String(decoding: Data(decompressedData[0..<printLength]), as: Unicode.UTF8.self))" )
+            //print( "last  \(printLength) bytes: \(String(decoding: Data(decompressedData[decompressedData.count-printLength..<decompressedData.count]), as: Unicode.UTF8.self))" )
+
+            let decoder = JSONDecoder()
+            let transactionList : [SapiTransaction]  = try decoder.decode( [SapiTransaction].self, from: decompressedData )
+            print( "Fetched \(transactionList.count) transactions for \(symbol)" )
+            // return the list sorted by tradeDate
+            return transactionList.sorted { $0.tradeDate < $1.tradeDate }
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            return []
+        }
+
+    }
 }

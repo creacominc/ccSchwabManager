@@ -13,19 +13,19 @@ import Foundation
 
 public enum SapiTransactionType: String, Codable, CaseIterable
 {
-    case TRADE
-    case RECEIVE_AND_DELIVER
-    case DIVIDEND_OR_INTEREST
-    case ACH_RECEIPT
-    case ACH_DISBURSEMENT
-    case CASH_RECEIPT
-    case CASH_DISBURSEMENT
-    case ELECTRONIC_FUND
-    case WIRE_OUT
-    case WIRE_IN
-    case JOURNAL
-    case MEMORANDUM
-    case MARGIN_CALL
-    case MONEY_MARKET
-    case SMA_ADJUSTMENT
+    case trade                  = "TRADE"
+    case receiveAndDeliver    = "RECEIVE_AND_DELIVER"
+    case dividendOrInterest   = "DIVIDEND_OR_INTEREST"
+    case achReceipt            = "ACH_RECEIPT"
+    case achDisbursement       = "ACH_DISBURSEMENT"
+    case cashReceipt           = "CASH_RECEIPT"
+    case cashDisbursement      = "CASH_DISBURSEMENT"
+    case electronicFund       = "ELECTRONIC_FUND"
+    case wireOut               = "WIRE_OUT"
+    case wireIn                = "WIRE_IN"
+    case journal               = "JOURNAL"
+    case memorandum            = "MEMORANDUM"
+    case marginCall           = "MARGIN_CALL"
+    case moneyMarket           = "MONEY_MARKET"
+    case smaAdjustment         = "SMA_ADJUSTMENT"
 }
