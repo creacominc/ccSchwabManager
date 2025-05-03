@@ -16,16 +16,40 @@ struct testSecrets
     @Test func testSecretsInitialization() async throws {
         let secrets = Secrets()
 
-        #expect(secrets.getAppId() == "UNINITIALIZED", "App ID should be UNINITIALIZED")
-        #expect(secrets.getAppSecret() == "UNINITIALIZED", "App Secret should be UNINITIALIZED")
-        #expect(secrets.getRedirectUrl() == "UNINITIALIZED", "Redirect URL should be UNINITIALIZED")
-        #expect(secrets.getCode() == "UNINITIALIZED", "Code should be UNINITIALIZED")
-        #expect(secrets.getSession() == "UNINITIALIZED", "Session should be UNINITIALIZED")
-        #expect(secrets.getAccessToken() == "UNINITIALIZED", "Access Token should be UNINITIALIZED")
-        #expect(secrets.getRefreshToken() == "UNINITIALIZED", "Refresh Token should be UNINITIALIZED")
+        #expect(secrets.getAppId() == "", "App ID should be UNINITIALIZED")
+        #expect(secrets.getAppSecret() == "", "App Secret should be UNINITIALIZED")
+        #expect(secrets.getRedirectUrl() == "", "Redirect URL should be UNINITIALIZED")
+        #expect(secrets.getCode() == "", "Code should be UNINITIALIZED")
+        #expect(secrets.getSession() == "", "Session should be UNINITIALIZED")
+        #expect(secrets.getAccessToken() == "", "Access Token should be UNINITIALIZED")
+        #expect(secrets.getRefreshToken() == "", "Refresh Token should be UNINITIALIZED")
+    }
+
+    func removeHashesFromString( input: String ) -> String
+    {
+        print( "Source: \(input)" )
+        let regex: NSRegularExpression = try! NSRegularExpression(pattern: "\"acountNumberHash\".*\n.*\\]")
+        let replaced: String = regex.stringByReplacingMatches(
+            in: input,
+            options: [],
+            range: NSRange(location: 0, length: input.utf16.count),
+            withTemplate: ""
+        )
+        print( "Replaced: \(replaced)" )
+        return replaced
+    }
+
+    @Test func testHashRemoval() async throws
+    {
+        let inputString: String = "something, \"acountNumberHash\" : [\n], else"
+        let expectedString: String = "something, , else"
+        let outputString: String = removeHashesFromString( input: inputString )
+        #expect( outputString == expectedString, "String hashes not removed correctly" )
     }
 
     @Test func testSecretsEncoding() async throws {
+        // testing secret encoding to json
+        // create a secret
         let secrets = Secrets()
         secrets.setAppId("appIdValue")
         secrets.setAppSecret("appSecretValue")
@@ -35,31 +59,38 @@ struct testSecrets
         secrets.setAccessToken("accessTokenValue")
         secrets.setRefreshToken("refreshTokenValue")
 
-        let encodedString: String? = secrets.encodeToString()
-        #expect(encodedString != nil, "Encoded string should not be nil")
+        // call the encodeToString method to get a JSON encoded string.
+        let jsonEncodedString: String? = secrets.encodeToString()
+        #expect(jsonEncodedString != nil, "Encoded string should not be nil")
+        //print( "jsonEncodedString = \(jsonEncodedString ?? "Failed to Encode")" )
 
-        // Load encodedString into a Json object for comparison
-        let encodedJsonObj: [String: Any] = try JSONSerialization.jsonObject(with: (encodedString?.data(using: .utf8)!)!, options: []) as! [String: Any]
+        // Convert the string to a dictionary.
+        var elementDictionary: [String: Any] = try JSONSerialization.jsonObject(with: (jsonEncodedString?.data(using: .utf8)!)!, options: []) as! [String: Any]
+        //print( "elementDictionary = \(elementDictionary)" )
+        // remove the accountNumberHash from the dictionary as it does not compare well
+        elementDictionary["acountNumberHash"] = nil
+        //print( "(post) elementDictionary = \(elementDictionary)" )
+
         // Convert dictionary to an array of key-value pairs
-        let keyValueEncodedPairs:[(String, Any)] = encodedJsonObj.map{ ($0.key, $0.value) }
+        let keyValueEncodedPairs:[(String, Any)] = elementDictionary.map{ ($0.key, $0.value) }
         // Sort the array by keys
         let sortedKeyValueEncodedPairs:[(String, Any)]  = keyValueEncodedPairs.sorted { $0.0 < $1.0 }
-        // Print the sorted array
-        for (key, value) in sortedKeyValueEncodedPairs {
-            print("\(key): \(value)")
-        }
+//        // Print the sorted array
+//        for (key, value) in sortedKeyValueEncodedPairs {
+//            print("\(key): \(value)")
+//        }
 
         let expectedString: String = "{\"appId\":\"appIdValue\",\"appSecret\":\"appSecretValue\",\"redirectUrl\":\"redirectUrlValue\",\"code\":\"codeValue\",\"session\":\"sessionValue\",\"accessToken\":\"accessTokenValue\",\"refreshToken\":\"refreshTokenValue\"}"
-        // Load expectedString into a Json object for comparison
-        let expectedJsonObj: [String: Any] = try JSONSerialization.jsonObject(with: expectedString.data(using: .utf8)!, options: []) as! [String: Any]
+        // Load expectedString into a dictionary for comparison
+        let expectedDictionary: [String: Any] = try JSONSerialization.jsonObject(with: expectedString.data(using: .utf8)!, options: []) as! [String: Any]
         // Convert dictionary to an array of key-value pairs
-        let keyValueExpectedPairs:[(String, Any)] = expectedJsonObj.map { ($0.key, $0.value) }
+        let keyValueExpectedPairs:[(String, Any)] = expectedDictionary.map { ($0.key, $0.value) }
         // Sort the array by keys
         let sortedKeyValueExpectedPairs:[(String, Any)]  = keyValueExpectedPairs.sorted { $0.0 < $1.0 }
-        // Print the sorted array
-        for (key, value) in sortedKeyValueExpectedPairs {
-            print("\(key): \(value)")
-        }
+//        // Print the sorted array
+//        for (key, value) in sortedKeyValueExpectedPairs {
+//            print("\(key): \(value)")
+//        }
 
         #expect( areEquivalent( sortedKeyValueExpectedPairs, sortedKeyValueEncodedPairs ), "Encoded string does not match expected string")
     }

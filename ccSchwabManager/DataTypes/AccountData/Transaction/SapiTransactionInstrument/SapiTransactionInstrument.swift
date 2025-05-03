@@ -31,19 +31,19 @@ import Foundation
 
 public class SapiTransactionInstrument: Codable
 {
-    public enum InstrumentType: String, Codable
+    public enum InstrumentType: String, Codable, CaseIterable
     {
-        case cashEquivalent
-        case collectiveInvestment
-        case currency
-        case equity
-        case fixedIncome
-        case forex
-        case future
-        case index
-        case mutualFund
-        case option
-        case product
+        case cashEquivalent = "CASH_EQUIVALENT"
+        case collectiveInvestment = "COLLECTIVE_INVESTMENT"
+        case currency = "CURRENCY"
+        case equity = "EQUITY"
+        case fixedIncome = "FIXED_INCOME"
+        case forex =    "FOREX"
+        case future =   "FUTURE"
+        case index =    "INDEX"
+        case mutualFund = "MUTUAL_FUND"
+        case option =    "OPTION"
+        case product =    "PRODUCT"
     }
 
     public var instrumentType: InstrumentType
@@ -54,6 +54,7 @@ public class SapiTransactionInstrument: Codable
         case instrumentType
         case details
     }
+
 
     required public init(from decoder: Decoder) throws
     {
