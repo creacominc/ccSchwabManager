@@ -19,8 +19,10 @@ import Foundation
   }
  */
 
-public struct SapiTransactionEquity: Codable {
-    enum EquityStatus: String, Codable {
+public struct SapiTransactionEquity: Codable
+{
+    enum EquityStatus: String, Codable
+    {
         case ACTIVE = "ACTIVE"
         case INACTIVE = "INACTIVE"
     }

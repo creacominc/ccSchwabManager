@@ -55,6 +55,12 @@ public class SapiTransactionInstrument: Codable
         case details
     }
 
+    // construct from a Codable instrumentType
+    public init( instrumentType: InstrumentType, details: Codable? = nil )
+    {
+        self.instrumentType = instrumentType
+        self.details = details
+    }
 
     required public init(from decoder: Decoder) throws
     {
