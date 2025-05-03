@@ -19,22 +19,49 @@ import Foundation
   }
  */
 
-public struct SapiTransactionEquity: Codable
+
+public class SapiTransactionEquity: Codable
 {
-    enum EquityStatus: String, Codable
+    public enum EquityStatus: String, Codable
     {
         case ACTIVE = "ACTIVE"
         case INACTIVE = "INACTIVE"
     }
-
-    var assetType: AssetType
-    //var cusip: String
-    var symbol: String
-    // var description: String
-    var instrumentId: Int64
-    // var netChange: Double
-    var type: SapiTransactionEquityType
-    /** adding missing members */
-    var status: EquityStatus
-    var closingPrice: Double
+    
+    public var assetType: AssetType
+    public var status: EquityStatus
+    public var symbol: String
+    public var instrumentId: Int
+    public var closingPrice: Double
+    public var type: SapiTransactionEquityType
+    
+    
+    enum CodingKeys: String, CodingKey
+    {
+        case assetType = "assetType"
+        case status = "status"
+        case symbol = "symbol"
+        case instrumentId = "instrumentId"
+        case closingPrice = "closingPrice"
+        case type = "type"
+    }
+    
+    // Initializer
+    public init(
+        assetType: AssetType,
+        status: EquityStatus,
+        symbol: String,
+        instrumentId: Int,
+        closingPrice: Double,
+        type: SapiTransactionEquityType
+    )
+    {
+        self.assetType = assetType
+        self.status = status
+        self.symbol = symbol
+        self.instrumentId = instrumentId
+        self.closingPrice = closingPrice
+        self.type = type
+    }
+    
 }

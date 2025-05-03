@@ -100,7 +100,7 @@ class Secrets: Codable
         do
         {
             let encoder : JSONEncoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted]
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             let jsonData = try encoder.encode(self)
             return String(data: jsonData, encoding: .utf8)
         }

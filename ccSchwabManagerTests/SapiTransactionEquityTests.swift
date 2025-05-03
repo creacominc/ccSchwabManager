@@ -13,30 +13,30 @@ import Foundation
 struct SapiTransactionEquityTests
 {
 
-    @Test func testEncodingSapiTransactionEquity() throws
-    {
-        // Arrange
-        let equity = SapiTransactionEquity(
-            assetType: .EQUITY,
-            symbol: "SFM",
-            instrumentId: 1806651,
-            type: .COMMON_STOCK,
-            status: .ACTIVE,
-            closingPrice: 169.76
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = .prettyPrinted
-
-        // Act
-        let jsonData : Data = try encoder.encode(equity)
-        let jsonString = String(data: jsonData, encoding: .utf8)
-
-        // Assert
-        #expect( nil != jsonString, "Encoded JSON string should not be nil" )
-//        print( "Encoded JSON:\n\(jsonString!)" )
-        #expect( jsonString?.contains( "\"symbol\" : \"SFM\"" ) ?? false, "JSON string should contain the symbol 'SFM'" )
-        #expect( jsonString?.contains( "\"closingPrice\" : 169.76" ) ?? false, "JSON string should contain the closingPrice 169.76" )
-    }
+        @Test func testEncodingSapiTransactionEquity() throws
+        {
+            // Arrange
+            let equity = SapiTransactionEquity(
+                assetType: .EQUITY,
+                status: .ACTIVE,
+                symbol: "SFM",
+                instrumentId: 1806651,
+                closingPrice: 169.76,
+                type: .COMMON_STOCK,
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    
+            // Act
+            let jsonData : Data = try encoder.encode(equity)
+            let jsonString = String(data: jsonData, encoding: .utf8)
+    
+            // Assert
+            #expect( nil != jsonString, "Encoded JSON string should not be nil" )
+            //        print( "Encoded JSON:\n\(jsonString!)" )
+            #expect( jsonString?.contains( "\"symbol\" : \"SFM\"" ) ?? false, "JSON string should contain the symbol 'SFM'" )
+            #expect( jsonString?.contains( "\"closingPrice\" : 169.76" ) ?? false, "JSON string should contain the closingPrice 169.76" )
+        }
 
     @Test func testDecodingSapiTransactionEquity() throws
     {
@@ -65,4 +65,5 @@ struct SapiTransactionEquityTests
         #expect(decodedEquity.closingPrice == 169.76, "Closing price should be 169.76")
         #expect(decodedEquity.type == .COMMON_STOCK, "Type should be .COMMON_STOCK")
     }
+
 }
