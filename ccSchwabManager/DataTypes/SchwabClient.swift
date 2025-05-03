@@ -289,16 +289,11 @@ class SchwabClient
     /**
      * fetch account numbers and hashes from schwab
      *
-     *curl -X 'GET' \
-     'https://api.schwabapi.com/trader/v1/accounts/accountNumbers' \
-     -H 'accept: application/json' \
-     -H 'Authorization: Bearer I0.b2F1dGgyLmJkYy5zY2h3YWIuY29t.pTioMWsX9nMaSM6MyniOI4uLFGEzpGcoL2mHfqQFeek@'
-     *
      *
      *[
      {
-       "accountNumber": "88516767",
-       "hashValue": "980170564C529B2EF04942AA98580A590F2C7E52EEBFA38269D281F79CEDED51"
+       "accountNumber": "...767",
+       "hashValue": "980170564C529B2EF04942AA...."
      }
    ]
      *
