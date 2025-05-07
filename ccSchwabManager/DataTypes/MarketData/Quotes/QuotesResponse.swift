@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import SwiftData
 
 //@Model
 public struct QuotesResponse : Codable
@@ -21,11 +20,11 @@ public struct QuotesResponse : Codable
 //        self.m_regular = m_regular
 //    }
 
-    private var m_symbol: SapiSymbol
-    private var m_fundamental: SapiFundamental
-    private var m_quote: SapiQuote
-    private var m_reference: SapiReference
-    private var m_regular: SapiRegularMarket
+    private var m_symbol: Symbol
+    private var m_fundamental: Fundamental
+    private var m_quote: Quote
+    private var m_reference: Reference
+    private var m_regular: RegularMarket
 
 }
 

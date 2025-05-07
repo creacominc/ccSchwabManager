@@ -103,6 +103,7 @@ struct KeychainView: View
                     case .success():
                         Task
                         {
+                            print( " === get access token calling fetchAccountNumbers. === ")
                             await self.m_schwabClient.fetchAccountNumbers()
                             updateSecretsString( errorMsg: "Failed to Encode Secrets with Access Token" )
                         }
@@ -118,6 +119,7 @@ struct KeychainView: View
 
             Button("Fetch Account Numbers") {
                 Task {
+                    print( " === Fetching Account Numbers button pressed. === ")
                     await self.m_schwabClient.fetchAccountNumbers()
                     updateSecretsString( errorMsg: "Failed to Encode Secrets with Account Numbers" )
                 }
@@ -145,7 +147,7 @@ struct KeychainView: View
                 { newValue in
                     Task
                     {
-                        let transactionHistory: [SapiTransaction] = await self.m_schwabClient.fetchTransactionHistory(symbol: newValue)
+                        let transactionHistory: [Transaction] = await self.m_schwabClient.fetchTransactionHistory(symbol: newValue)
                         // print the number of transactions and the first transaction.
                         print( "transaction count: \(transactionHistory.count)" )
                         m_atr = await self.m_schwabClient.computeATR(symbol: newValue)
@@ -164,11 +166,19 @@ struct KeychainView: View
         }
     }
 
-    func getSymbols(from accounts: [SapiAccountContent]) -> [String] {
+    func getSymbols(from accounts: [AccountContent]) -> [String]
+    {
         var symbols: [String] = []
-        for account in accounts {
-            for position in account.securitiesAccount.positions {
-                symbols.append( position?.instrument?.symbol ?? "No Position" )
+        for account in accounts
+        {
+            if( nil == account.securitiesAccount )
+            {
+                print( "ERROR: No Securities Account" )
+                return []
+            }
+            for position in account.securitiesAccount!.positions
+            {
+                symbols.append( position.instrument?.symbol ?? "No Position" )
             }
         }
         return symbols.sorted(by: <)

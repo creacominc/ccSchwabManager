@@ -2,6 +2,10 @@
 
 import Foundation
 
+/**
+   @TODO:  Verify - used by market data quotes.
+ */
+
 public enum EquityAssetSubType: String, Codable, CaseIterable
 {
     case COE

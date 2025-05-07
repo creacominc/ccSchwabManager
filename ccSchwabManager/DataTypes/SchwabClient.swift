@@ -3,9 +3,23 @@ import Foundation
 import AuthenticationServices
 import Compression
 
-let schwabWeb           : String = "https://api.schwabapi.com"
-let authorizationWeb    : String = "\(schwabWeb)/v1/oauth/authorize"
-let accessTokenWeb      : String = "\(schwabWeb)/v1/oauth/token"
+// connection
+private let schwabWeb           : String = "https://api.schwabapi.com"
+
+// OAUTH API
+private let oauthWeb            : String = "\(schwabWeb)/v1/oauth"
+private let authorizationWeb    : String = "\(oauthWeb)/authorize"
+private let accessTokenWeb      : String = "\(oauthWeb)/token"
+
+// traderAPI
+private let traderAPI           : String = "\(schwabWeb)/trader/v1"
+private let accountWeb          : String = "\(traderAPI)/accounts"
+private let accountNumbersWeb   : String = "\(accountWeb)/accountNumbers"
+
+// marketAPI
+private let marketdataAPI       : String = "\(schwabWeb)/marketdata/v1"
+private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
+
 
 
 /**
@@ -20,7 +34,7 @@ class SchwabClient
 {
     private var m_secrets : Secrets
     private var m_selectedAccountName : String = "All"
-    private var m_accounts : [SapiAccountContent] = []
+    private var m_accounts : [AccountContent] = []
     
     /**
      * dump the contents of this object for debugging.
@@ -50,7 +64,7 @@ class SchwabClient
         return self.m_accounts.count > 0
     }
     
-    public func getAccounts() -> [SapiAccountContent]
+    public func getAccounts() -> [AccountContent]
     {
         return self.m_accounts
     }
@@ -60,7 +74,7 @@ class SchwabClient
         var symbolCount : Int = 0
         for account in self.m_accounts
         {
-            symbolCount += account.securitiesAccount.positions.count
+            symbolCount += account.securitiesAccount?.positions.count ?? 0
         }
         return (symbolCount > 0)
     }
@@ -144,15 +158,6 @@ class SchwabClient
         // body
         accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.getCode() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )").data(using: .utf8)!
         print( "Posting access token request:  \(accessTokenRequest)" )
-        
-        
-        let cmdline : String = """
-            curl -X POST https://api.schwabapi.com/v1/oauth/token \ 
-            -H 'Authorization: Basic \(authStringEncoded)' \ 
-            -H 'Content-Type: application/x-www-form-urlencoded' \ 
-            -d 'grant_type=authorization_code&code=\( self.m_secrets.getCode() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )' 
-            """
-        print( "cmdline: \(cmdline)" )
         
         URLSession.shared.dataTask(with: accessTokenRequest)
         { data, response, error in
@@ -300,34 +305,48 @@ class SchwabClient
      */
     func fetchAccountNumbers() async
     {
-        print("In fetchAccountNumbers.")
-        guard let url = URL(string: "\(schwabWeb)/trader/v1/accounts/accountNumbers") else {
+        print(" === fetchAccountNumbers === ")
+        guard let url = URL(string: accountNumbersWeb) else {
             print("Invalid URL")
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        do {
+
+        do
+        {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("Failed to fetch account numbers.")
+//            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+//                print( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode), error: \(httpResponse.description)" )
+//                return
+//            }
+            let httpResponse = response as! HTTPURLResponse
+            if( httpResponse.statusCode != 200 )
+            {
+                print( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode), error: \(httpResponse.description)" )
                 return
             }
-            
+            // print( "response: \(response)" )
+            print( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
+
             let decoder = JSONDecoder()
-            let accountNumberHashes = try decoder.decode([SapiAccountNumberHash].self, from: data)
+            let accountNumberHashes = try decoder.decode([AccountNumberHash].self, from: data)
             print("accountNumberHashes: \(accountNumberHashes.count)")
-            
-            if !accountNumberHashes.isEmpty {
-                await MainActor.run {
+
+            if !accountNumberHashes.isEmpty
+            {
+                await MainActor.run
+                {
                     self.m_secrets.setAccountNumberHash(accountNumberHashes)
-                    if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
+                    if KeychainManager.saveSecrets(secrets: &self.m_secrets)
+                    {
                         print("Save account numbers")
-                    } else {
+                    }
+                    else
+                    {
                         print("Error saving account numbers")
                     }
                 }
@@ -345,8 +364,10 @@ class SchwabClient
     func fetchAccounts() async
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
-        var accountUrl = "\(schwabWeb)/trader/v1/accounts"
-        if self.m_selectedAccountName != "All" {
+        var accountUrl = accountWeb
+        if self.m_selectedAccountName != "All"
+        {
+            print( "fetching for account: \(self.m_selectedAccountName)" )
             accountUrl += "/\(self.m_selectedAccountName)"
         }
         accountUrl += "?fields=positions"
@@ -355,38 +376,49 @@ class SchwabClient
             print("Invalid URL")
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
         
-        do {
+        do
+        {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("Failed to fetch accounts.")
+            let httpResponse = response as? HTTPURLResponse
+            if( httpResponse?.statusCode != 200 )
+            {
+                print("Failed to fetch accounts.  Status: \(httpResponse?.statusCode ?? -1),  response: \(String(describing: httpResponse))")
                 return
             }
+//            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+//                print("Failed to fetch accounts.")
+//                return
+//            }
             
             let decoder = JSONDecoder()
-            m_accounts  = try decoder.decode([SapiAccountContent].self, from: data)
+            print( "decoding accounts" )
+            // print( "data: \(String(data: data, encoding: .utf8) ?? "no data") " )
+            m_accounts  = try decoder.decode([AccountContent].self, from: data)
             return
-        } catch {
+        }
+        catch
+        {
             print("Error: \(error.localizedDescription)")
             return
         }
     }
-    
-    
+
+
     /**
      * fettchPriceHistory  get the history of prices for all securities
      */
-    func fetchPriceHistory( symbol : String ) async -> SapiCandleList?
+    func fetchPriceHistory( symbol : String ) async -> CandleList?
     {
         print("=== fetchPriceHistory  ===")
         
-        var priceHistoryUrl = "\(schwabWeb)/marketdata/v1/pricehistory"
+        var priceHistoryUrl = "\(priceHistoryWeb)"
         priceHistoryUrl += "?symbol=\(symbol)"
-        
+
         /**
          * The chart period being requested.
          * Available values : day, month, year, ytd
@@ -483,15 +515,13 @@ class SchwabClient
             let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
 
             let decoder = JSONDecoder()
-            let candleList : SapiCandleList  = try decoder.decode( SapiCandleList.self, from: decompressedData )
+            let candleList : CandleList  = try decoder.decode( CandleList.self, from: decompressedData )
             print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
             return candleList
         } catch {
             print("Error: \(error.localizedDescription)")
             return nil
         }
-
-
     }
     
     /**
@@ -500,7 +530,7 @@ class SchwabClient
     public func computeATR( symbol : String ) async -> Double
     {
         print("=== computeATR  ===")
-        guard let priceHistory : SapiCandleList  =  await self.fetchPriceHistory( symbol: symbol ) else {
+        guard let priceHistory : CandleList  =  await self.fetchPriceHistory( symbol: symbol ) else {
             print("computeATR Failed to fetch price history.")
             return 0.0
         }
@@ -518,7 +548,7 @@ class SchwabClient
             for indx in 0..<length
             {
                 let position = startIndex + indx
-                let candle : SapiCandle  = priceHistory.candles[position]
+                let candle : Candle  = priceHistory.candles[position]
                 let prevClose : Double  = if (0 == position) {priceHistory.previousClose} else {priceHistory.candles[position-1].close}
                 let tr : Double = max( abs( candle.high - candle.low ), abs( candle.high - prevClose ), abs( candle.low - prevClose ) )
                 close = priceHistory.candles[position].close
@@ -561,10 +591,6 @@ class SchwabClient
      * types *     string     Specifies that only transactions of this status should be returned.
      *
      *
-     * curl -X 'GET' \
-     'https://api.schwabapi.com/trader/v1/accounts/980170564C529B2EF04942AA98580A590F2C7E52EEBFA38269D281F79CEDED51/transactions?startDate=2025-04-02T01%3A00%3A00.000Z&endDate=2025-04-29T17%3A00%3A00.000Z&symbol=SFM&types=TRADE' \
-     -H 'accept: application/json' \
-     -H 'Authorization: Bearer I0.b2F1dGgyLmJkYy5zY2h3YWIuY29t.pTioMWsX9nMaSM6MyniOI4uLFGEzpGcoL2mHfqQFeek@'
      *
      *
      *
@@ -601,7 +627,7 @@ class SchwabClient
      *
      *
      */
-    public func fetchTransactionHistory( symbol : String ) async  -> [SapiTransaction]
+    public func fetchTransactionHistory( symbol : String ) async  -> [Transaction]
     {
 
         print("=== fetchTransactionHistory  ===")
@@ -627,10 +653,10 @@ class SchwabClient
             .timeZone(separator: .omitted)
             .time(includingFractionalSeconds: true)
             .timeSeparator(.colon)
-        ) 
+        )
 
-        let accountNumberHash : String = self.m_secrets.getAccountNumberHash()[0].getHashValue()
-        var transactionHistoryUrl = "\(schwabWeb)/trader/v1/accounts/\(accountNumberHash)/transactions"
+        let accountNumberHash : String = self.m_secrets.getAccountNumberHash()[0].hashValue ?? "N/A"
+        var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash)/transactions"
         transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
         transactionHistoryUrl += "&endDate=\(todayStr)"
         transactionHistoryUrl += "&symbol=\(symbol)"
@@ -667,16 +693,16 @@ class SchwabClient
             print( "isGzipEncoded: \(isGzipEncoded)" )
 
             let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
-            // print first and last 512 characters from the decompressedData
-            let printLength : Int = 1024
-            print( "first \(printLength) bytes: \(String(decoding: Data(decompressedData[0..<printLength]), as: Unicode.UTF8.self))" )
-            //print( "last  \(printLength) bytes: \(String(decoding: Data(decompressedData[decompressedData.count-printLength..<decompressedData.count]), as: Unicode.UTF8.self))" )
+//            // print first and last 512 characters from the decompressedData
+//            let printLength : Int = 1024
+//            print( "first \(printLength) bytes: \(String(decoding: Data(decompressedData[0..<printLength]), as: Unicode.UTF8.self))" )
+//            //print( "last  \(printLength) bytes: \(String(decoding: Data(decompressedData[decompressedData.count-printLength..<decompressedData.count]), as: Unicode.UTF8.self))" )
 
             let decoder = JSONDecoder()
-            let transactionList : [SapiTransaction]  = try decoder.decode( [SapiTransaction].self, from: decompressedData )
+            let transactionList : [Transaction]  = try decoder.decode( [Transaction].self, from: decompressedData )
             print( "Fetched \(transactionList.count) transactions for \(symbol)" )
             // return the list sorted by tradeDate
-            return transactionList.sorted { $0.tradeDate < $1.tradeDate }
+            return transactionList.sorted { $0.tradeDate ?? "" < $1.tradeDate ?? "" }
         } catch {
             print("Error: \(error.localizedDescription)")
             return []
