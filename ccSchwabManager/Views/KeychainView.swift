@@ -160,15 +160,13 @@ struct KeychainView: View
             }
             .padding()
 
-
-
-
         }
     }
 
     func getSymbols(from accounts: [AccountContent]) -> [String]
     {
-        var symbols: [String] = []
+        print( "=== getSymbols ===   accounts count: \(accounts.count)" )
+        var symbols: Set = [ "" ]
         for account in accounts
         {
             if( nil == account.securitiesAccount )
@@ -178,26 +176,29 @@ struct KeychainView: View
             }
             for position in account.securitiesAccount!.positions
             {
-                symbols.append( position.instrument?.symbol ?? "No Position" )
+                symbols.insert( position.instrument?.symbol ?? "" )
             }
         }
         return symbols.sorted(by: <)
     }
 
-    func handleAuthorization(url: String) {
+    func handleAuthorization(url: String)
+    {
         self.m_schwabClient.extractCodeFromURL(from: url) { (result: Result<Void, ErrorCodes>) in
-            switch result {
+            switch result
+            {
             case .success():
                 print("Got code.")
                 updateSecretsString( errorMsg: "Failed to Encode Secrets with Code" )
-                m_gotCode = (!self.m_secrets.getCode().isEmpty && !self.m_secrets.getSession().isEmpty)
+                m_gotCode = (((self.m_secrets.code.isEmpty) == nil) && ((self.m_secrets.session.isEmpty) == nil))
             case .failure(let error):
                 print("extractCodeFromURL failed - error: \(error)")
             }
         }
     }
 
-    func updateSecretsString( errorMsg : String ) {
+    func updateSecretsString( errorMsg : String )
+    {
         self.secretsStr = self.m_secrets.encodeToString() ?? errorMsg
     }
 

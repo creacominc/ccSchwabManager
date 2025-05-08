@@ -1,15 +1,11 @@
 //
-//  SapiCandle.swift
-//  ccSchwabManager
 //
-//  Created by Harold Tomlinson on 2025-04-19.
 //
 
 import Foundation
 
 /**
- 
- 
+
  Candle{
  close    number($double)
  datetime    integer($int64)
@@ -19,39 +15,45 @@ import Foundation
  open    number($double)
  volume    integer($int64)
  }
- 
- 
- CandleList{
- candles    [Candle{...}]
- empty    boolean
- previousClose    number($double)
- previousCloseDate    integer($int64)
- previousCloseDateISO8601    string($yyyy-MM-dd)
- symbol    string
- }
- 
- 
+
  */
 
 
-public struct Candle: Codable {
-    public let close: Double
-    public let datetime: Int64
-    // public let datetimeISO8601: String?
-    public let high: Double
-    public let low: Double
-    public let open: Double
-    public let volume: Int64
+class Candle: Codable, Identifiable
+{
+    public var close: Double?
+    public var datetime: Int64?
+    public var datetimeISO8601: String?
+    public var high: Double?
+    public var low: Double?
+    public var open: Double?
+    public var volume: Int64?
+
+    enum CodingKeys: String, CodingKey
+    {
+        case close = "close"
+        case datetime = "datetime"
+        case datetimeISO8601 = "datetimeISO8601"
+        case high = "high"
+        case low = "low"
+        case open = "open"
+        case volume = "volume"
+    }
+
+    public init( close: Double? = nil, datetime: Int64? = nil,
+          datetimeISO8601: String? = nil, high: Double? = nil,
+          low: Double? = nil, open: Double? = nil, volume: Int64? = nil )
+    {
+        self.close = close
+        self.datetime = datetime
+        self.datetimeISO8601 = datetimeISO8601
+        self.high = high
+        self.low = low
+        self.open = open
+        self.volume = volume
+    }
+    
 }
 
-
-public struct CandleList: Codable {
-    public let candles: [Candle]
-    public let empty: Bool
-    public let previousClose: Double
-    public let previousCloseDate: Int64
-    // public let previousCloseDateISO8601: String?
-    public let symbol: String
-}
 
 

@@ -147,6 +147,7 @@ class Instrument : Codable, Identifiable
     var fundFamilyName: String?
     var fundFamilySymbol: String?
     var fundGroup: String?
+    var exchange: String?
     var exchangeCutoffTime: String?
     var purchaseCutoffTime: String?
     var redemptionCutoffTime: String?
@@ -181,6 +182,7 @@ class Instrument : Codable, Identifiable
                 status: Status? = nil, closingPrice: Double? = nil,
                 netChange: Double? = nil, fundFamilyName: String? = nil,
                 fundFamilySymbol: String? = nil, fundGroup: String? = nil,
+                exchange: String? = nil,
                 exchangeCutoffTime: String? = nil,
                 purchaseCutoffTime: String? = nil,
                 redemptionCutoffTime: String? = nil,
@@ -206,6 +208,7 @@ class Instrument : Codable, Identifiable
         self.fundFamilyName = fundFamilyName
         self.fundFamilySymbol = fundFamilySymbol
         self.fundGroup = fundGroup
+        self.exchange = exchange
         self.exchangeCutoffTime = exchangeCutoffTime
         self.purchaseCutoffTime = purchaseCutoffTime
         self.redemptionCutoffTime = redemptionCutoffTime
@@ -240,6 +243,7 @@ class Instrument : Codable, Identifiable
         case fundFamilyName = "fundFamilyName"
         case fundFamilySymbol = "fundFamilySymbol"
         case fundGroup = "fundGroup"
+        case exchange = "exchange"
         case exchangeCutoffTime = "exchangeCutoffTime"
         case purchaseCutoffTime = "purchaseCutoffTime"
         case redemptionCutoffTime = "redemptionCutoffTime"

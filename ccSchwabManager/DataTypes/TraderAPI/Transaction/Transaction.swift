@@ -48,19 +48,6 @@ import Foundation
 
 class Transaction: Codable, Identifiable
 {
-//    public enum EquityStatus: String, Codable
-//    {
-//        case ACTIVE = "ACTIVE"
-//        case INACTIVE = "INACTIVE"
-//    }
-//
-//    public var assetType: AssetType?
-//    public var status: EquityStatus?
-//    public var symbol: String?
-//    public var instrumentId: Int?
-//    public var closingPrice: Double?
-//    public var type: InstrumentType?
-
     public var activityId: Int64?
     public var time: String?
     public var user: UserDetails?

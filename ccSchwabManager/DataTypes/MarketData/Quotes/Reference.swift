@@ -7,36 +7,6 @@
 
 import Foundation
 
-public struct Reference : Codable
-{
-
-//    init(m_cusip: String, m_description: String, m_exchange: String, m_exchangeName: String, m_fsiDesc: String, m_htbQuantity: Int, m_htbRate: Double, m_isHardToBorrow: Bool, m_isShortable: Bool, m_otcMarketTier: String)
-//    {
-//        self.m_cusip = m_cusip
-//        self.m_description = m_description
-//        self.m_exchange = m_exchange
-//        self.m_exchangeName = m_exchangeName
-//        self.m_fsiDesc = m_fsiDesc
-//        self.m_htbQuantity = m_htbQuantity
-//        self.m_htbRate = m_htbRate
-//        self.m_isHardToBorrow = m_isHardToBorrow
-//        self.m_isShortable = m_isShortable
-//        self.m_otcMarketTier = m_otcMarketTier
-//    }
-
-    private var m_cusip: String = ""
-    private var m_description: String = ""
-    private var m_exchange: String = ""
-    private var m_exchangeName: String = ""
-    private var m_fsiDesc: String = ""
-    private var m_htbQuantity: Int = 0
-    private var m_htbRate: Double = 0.0
-    private var m_isHardToBorrow: Bool = false
-    private var m_isShortable: Bool = false
-    private var m_otcMarketTier: String = ""
-
-}
-
 
 /**
  "reference": {
@@ -49,3 +19,49 @@ public struct Reference : Codable
    "htbRate": 0
  },
  */
+
+
+class Reference : Codable, Identifiable
+{
+    public var cusip: String?
+    public var description: String?
+    public var exchange: String?
+    public var exchangeName: String?
+    public var fsiDesc: String?
+    public var htbQuantity: Int?
+    public var htbRate: Double?
+    public var isHardToBorrow: Bool?
+    public var isShortable: Bool?
+    public var otcMarketTier: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case cusip = "cusip"
+        case description = "description"
+        case exchange = "exchange"
+        case exchangeName = "exchangeName"
+        case fsiDesc = "fsiDesc"
+        case htbQuantity = "htbQuantity"
+        case htbRate = "htbRate"
+        case isHardToBorrow = "isHardToBorrow"
+        case isShortable = "isShortable"
+        case otcMarketTier = "otcMarketTier"
+    }
+
+    public init(cusip: String? = nil, description: String? = nil, exchange: String? = nil, exchangeName: String? = nil, fsiDesc: String? = nil, htbQuantity: Int? = nil, htbRate: Double? = nil, isHardToBorrow: Bool? = nil, isShortable: Bool? = nil, otcMarketTier: String? = nil)
+    {
+        self.cusip = cusip
+        self.description = description
+        self.exchange = exchange
+        self.exchangeName = exchangeName
+        self.fsiDesc = fsiDesc
+        self.htbQuantity = htbQuantity
+        self.htbRate = htbRate
+        self.isHardToBorrow = isHardToBorrow
+        self.isShortable = isShortable
+        self.otcMarketTier = otcMarketTier
+    }
+
+    
+    
+}
+

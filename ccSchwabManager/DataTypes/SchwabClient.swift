@@ -66,16 +66,19 @@ class SchwabClient
     
     public func getAccounts() -> [AccountContent]
     {
+        print( "=== getAccounts: accounts: \(self.m_accounts.count) ===" )
         return self.m_accounts
     }
     
     public func hasSymbols() -> Bool
     {
+        print( "=== hasSymbols: accounts: \(self.m_accounts.count) ===" )
         var symbolCount : Int = 0
         for account in self.m_accounts
         {
             symbolCount += account.securitiesAccount?.positions.count ?? 0
         }
+        print( "=== hasSymbols symbols: \(symbolCount) ===" )
         return (symbolCount > 0)
     }
     
@@ -108,7 +111,7 @@ class SchwabClient
     func getAuthorizationUrl(completion: @escaping (Result<URL, ErrorCodes>) -> Void)
     {
         // provide the URL for authentication.
-        let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.getAppId() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )"
+        let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.appId ?? "No AppId" )&redirect_uri=\( self.m_secrets.redirectUrl ?? "No Redirect URL" )"
         guard let url = URL( string: AUTHORIZE_URL ) else {
             completion(.failure(.invalidResponse))
             return
@@ -116,15 +119,15 @@ class SchwabClient
         completion( .success( url ) )
         return
     }
-    
+
     public func extractCodeFromURL( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
         print( "extractCodeFromURL from \(url)")
         // extract the code and session from the URL
         let urlComponents = URLComponents(string: url )!
         let queryItems = urlComponents.queryItems
-        self.m_secrets.setCode( queryItems?.first(where: { $0.name == "code" })?.value ?? "" )
-        self.m_secrets.setSession( queryItems?.first(where: { $0.name == "session" })?.value ?? "" )
+        self.m_secrets.code = String( queryItems?.first(where: { $0.name == "code" })?.value ?? "" )
+        self.m_secrets.session = String( queryItems?.first(where: { $0.name == "session" })?.value ?? "" )
         //print( "secrets with session: \(self.m_secrets.dump())" )
         if( KeychainManager.saveSecrets(secrets: &self.m_secrets) )
         {
@@ -150,13 +153,13 @@ class SchwabClient
         var accessTokenRequest = URLRequest( url: url )
         accessTokenRequest.httpMethod = "POST"
         // headers
-        let authStringUnencoded = String("\( self.m_secrets.getAppId() ):\( self.m_secrets.getAppSecret() )")
+        let authStringUnencoded = String("\( self.m_secrets.appId ):\( self.m_secrets.appSecret )")
         let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
         
         accessTokenRequest.setValue( "Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization" )
         accessTokenRequest.setValue( "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type" )
         // body
-        accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.getCode() )&redirect_uri=\( self.m_secrets.getRedirectUrl() )").data(using: .utf8)!
+        accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.code )&redirect_uri=\( self.m_secrets.redirectUrl )").data(using: .utf8)!
         print( "Posting access token request:  \(accessTokenRequest)" )
         
         URLSession.shared.dataTask(with: accessTokenRequest)
@@ -174,8 +177,8 @@ class SchwabClient
             {
                 if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
                 {
-                    self.m_secrets.setAccessToken( tokenDict["access_token"] as? String ?? "" )
-                    self.m_secrets.setRefreshToken( tokenDict["refresh_token"] as? String ?? "" )
+                    self.m_secrets.accessToken = ( tokenDict["access_token"] as? String ?? "" )
+                    self.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
                     if( !KeychainManager.saveSecrets(secrets: &self.m_secrets) )
                     {
                         print( "Failed to save secrets with access and refresh tokens." )
@@ -247,13 +250,13 @@ class SchwabClient
                 refreshTokenRequest.httpMethod = "POST"
                 
                 // Headers
-                let authStringUnencoded = "\(self.m_secrets.getAppId()):\(self.m_secrets.getAppSecret())"
+                let authStringUnencoded = "\(self.m_secrets.appId):\(self.m_secrets.appSecret)"
                 let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
                 refreshTokenRequest.setValue("Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization")
                 refreshTokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
                 
                 // Body
-                refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.getRefreshToken())".data(using: .utf8)!
+                refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.refreshToken)".data(using: .utf8)!
                 
                 let semaphore = DispatchSemaphore(value: 0)
                 
@@ -266,16 +269,22 @@ class SchwabClient
                     }
                     
                     // Parse the response
-                    if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                        self.m_secrets.setAccessToken(tokenDict["access_token"] as? String ?? "")
-                        self.m_secrets.setRefreshToken(tokenDict["refresh_token"] as? String ?? "")
-                        
-                        if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
+                    if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+                    {
+                        self.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
+                        self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
+
+                        if KeychainManager.saveSecrets(secrets: &self.m_secrets)
+                        {
                             print("Successfully refreshed and saved access token.")
-                        } else {
+                        }
+                        else
+                        {
                             print("Failed to save refreshed tokens.")
                         }
-                    } else {
+                    }
+                    else
+                    {
                         print("Failed to parse token response.")
                     }
                 }.resume()
@@ -305,7 +314,7 @@ class SchwabClient
      */
     func fetchAccountNumbers() async
     {
-        print(" === fetchAccountNumbers === ")
+        print(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
         guard let url = URL(string: accountNumbersWeb) else {
             print("Invalid URL")
             return
@@ -313,7 +322,7 @@ class SchwabClient
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         do
@@ -326,7 +335,7 @@ class SchwabClient
             let httpResponse = response as! HTTPURLResponse
             if( httpResponse.statusCode != 200 )
             {
-                print( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode), error: \(httpResponse.description)" )
+                print( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode).  Error: \(httpResponse.description)" )
                 return
             }
             // print( "response: \(response)" )
@@ -340,7 +349,7 @@ class SchwabClient
             {
                 await MainActor.run
                 {
-                    self.m_secrets.setAccountNumberHash(accountNumberHashes)
+                    self.m_secrets.acountNumberHash = accountNumberHashes
                     if KeychainManager.saveSecrets(secrets: &self.m_secrets)
                     {
                         print("Save account numbers")
@@ -379,7 +388,7 @@ class SchwabClient
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         
         do
         {
@@ -396,9 +405,10 @@ class SchwabClient
 //            }
             
             let decoder = JSONDecoder()
-            print( "decoding accounts" )
+            print( "=== decoding accounts ===" )
             // print( "data: \(String(data: data, encoding: .utf8) ?? "no data") " )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
+            print( "  decoded accounts" )
             return
         }
         catch
@@ -479,22 +489,18 @@ class SchwabClient
          *  Need previous close price/date
          */
         priceHistoryUrl += "&needPreviousClose=true"
-        
-        print( "fetchPriceHistory. priceHistoryUrl: \(priceHistoryUrl)" )
-        
+
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
             return nil
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
-        
+        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+
         request.setValue("application/json", forHTTPHeaderField: "accept")
-        
-        print( "fetchPriceHistory. request: \(request)" )
-        
+
         do {
             let ( data, response ) = try await URLSession.shared.data(for: request)
             let httpResponse = response as? HTTPURLResponse
@@ -534,7 +540,7 @@ class SchwabClient
             print("computeATR Failed to fetch price history.")
             return 0.0
         }
-        var close : Double  = priceHistory.previousClose
+        var close : Double  = priceHistory.previousClose ?? 0.0
         var atr : Double  = 0.0
         /*
          * Compute the ATR as the average of the True Range.
@@ -549,11 +555,13 @@ class SchwabClient
             {
                 let position = startIndex + indx
                 let candle : Candle  = priceHistory.candles[position]
-                let prevClose : Double  = if (0 == position) {priceHistory.previousClose} else {priceHistory.candles[position-1].close}
-                let tr : Double = max( abs( candle.high - candle.low ), abs( candle.high - prevClose ), abs( candle.low - prevClose ) )
-                close = priceHistory.candles[position].close
+                let prevClose : Double  = if (0 == position) {priceHistory.previousClose ?? 0.0} else {priceHistory.candles[position-1].close ?? 0.0}
+                let high : Double  = candle.high ?? 0.0
+                let low  : Double  = candle.low ?? 0.0
+                let tr : Double = max( abs( high - low ), abs( high - prevClose ), abs( low - prevClose ) )
+                close = priceHistory.candles[position].close ?? 0.0
                 atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
-                
+
                 //                // Example EPOCH time in milliseconds
                 //                let epochMilliseconds: Int64 = candle.datetime
                 //                // Convert milliseconds to seconds
@@ -655,14 +663,12 @@ class SchwabClient
             .timeSeparator(.colon)
         )
 
-        let accountNumberHash : String = self.m_secrets.getAccountNumberHash()[0].hashValue ?? "N/A"
+        let accountNumberHash : String = self.m_secrets.acountNumberHash[0].hashValue ?? "N/A"
         var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash)/transactions"
         transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
         transactionHistoryUrl += "&endDate=\(todayStr)"
         transactionHistoryUrl += "&symbol=\(symbol)"
         transactionHistoryUrl += "&types=TRADE"
-
-        print( "fetchTransactionHistory. transactionHistoryUrl: \(transactionHistoryUrl)" )
 
         guard let url = URL( string: transactionHistoryUrl ) else {
             print("fetchTransactionHistory. Invalid URL")
@@ -671,7 +677,7 @@ class SchwabClient
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(self.m_secrets.getAccessToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
 
         // print( "fetchTransactionHistory. request: \(request)" )

@@ -1,40 +1,41 @@
 //
-//  SapiSymbol.swift
-//  ccSchwabManager
-//
-//  Created by Harold Tomlinson on 2025-01-11.
 //
 
 import Foundation
 
-public struct Symbol : Codable
+class Symbol : Codable, Identifiable
 {
-
-//    init(m_assetType: AssetType, m_assetSubType: EquityAssetSubType, m_quoteType: QuoteType, m_realtime: Bool, m_ssid: Int, m_symbol: String, m_extended: SapiExtendedMarket)
-//    {
-//        self.m_assetType = m_assetType
-//        self.m_assetSubType = m_assetSubType
-//        self.m_quoteType = m_quoteType
-//        self.m_realtime = m_realtime
-//        self.m_ssid = m_ssid
-//        self.m_symbol = m_symbol
-//        self.m_extended = m_extended
-//    }
-
-
-    private var m_assetType: AssetType = AssetType.EQUITY
-    private var m_assetSubType: EquityAssetSubType = EquityAssetSubType.COE
-    private var m_quoteType: QuoteType = QuoteType.NBBO
-    private var m_realtime: Bool = false
-    private var m_ssid: Int = 0
-    private var m_symbol: String = ""
-
-    private var m_extended: ExtendedMarket
-
-
+    public var assetType: AssetType?
+    public var assetSubType: EquityAssetSubType?
+    public var quoteType: QuoteType?
+    public var realtime: Bool?
+    public var ssid: Int?
+    public var symbol: String?
+    public var extended: ExtendedMarket?
+    
+    enum CodingKeys: String, CodingKey
+    {
+        case assetType = "assetType"
+        case assetSubType = "assetSubType"
+        case quoteType = "quoteType"
+        case realtime = "realtime"
+        case ssid = "ssid"
+        case symbol = "symbol"
+        case extended = "extended"
+    }
+    
+    public init(assetType: AssetType? = nil, assetSubType: EquityAssetSubType? = nil, quoteType: QuoteType? = nil, realtime: Bool? = nil, ssid: Int? = nil, symbol: String? = nil, extended: ExtendedMarket? = nil)
+    {
+        self.assetType = assetType
+        self.assetSubType = assetSubType
+        self.quoteType = quoteType
+        self.realtime = realtime
+        self.ssid = ssid
+        self.symbol = symbol
+        self.extended = extended
+    }
+    
 }
 
 
-/**
 
- */

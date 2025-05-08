@@ -1,42 +1,8 @@
 //
-//  SapiExtended.swift
-//  ccSchwabManager
-//
-//  Created by Harold Tomlinson on 2025-01-11.
 //
 
 import Foundation
 
-//@Model
-public struct ExtendedMarket : Codable
-{
-
-//    init(m_askPrice: Double, m_askSize: Int, m_bidPrice: Double, m_bidSize: Int, m_lastPrice: Double, m_lastSize: Int, m_mark: Double, m_quoteTime: Int, m_totalVolume: Int, m_tradeTime: Int)
-//    {
-//        self.m_askPrice = m_askPrice
-//        self.m_askSize = m_askSize
-//        self.m_bidPrice = m_bidPrice
-//        self.m_bidSize = m_bidSize
-//        self.m_lastPrice = m_lastPrice
-//        self.m_lastSize = m_lastSize
-//        self.m_mark = m_mark
-//        self.m_quoteTime = m_quoteTime
-//        self.m_totalVolume = m_totalVolume
-//        self.m_tradeTime = m_tradeTime
-//    }
-
-    private var m_askPrice: Double = 0.0
-    private var m_askSize: Int = 0
-    private var m_bidPrice: Double = 0.0
-    private var m_bidSize: Int = 0
-    private var m_lastPrice: Double = 0.0
-    private var m_lastSize: Int = 0
-    private var m_mark: Double = 0.0
-    private var m_quoteTime: Int = 0
-    private var m_totalVolume: Int = 0
-    private var m_tradeTime: Int = 0
-
-}
 
 /**
  "extended": {
@@ -52,5 +18,51 @@ public struct ExtendedMarket : Codable
     "tradeTime": 1736235303000
  },
  */
+
+
+class ExtendedMarket : Codable, Identifiable
+{
+    public var askPrice: Double?
+    public var askSize: Int?
+    public var bidPrice: Double?
+    public var bidSize: Int?
+    public var lastPrice: Double?
+    public var lastSize: Int?
+    public var mark: Double?
+    public var quoteTime: Int?
+    public var totalVolume: Int?
+    public var tradeTime: Int?
+    
+
+    enum CodingKeys : String, CodingKey
+    {
+        case askPrice = "askPrice"
+        case askSize = "askSize"
+        case bidPrice = "bidPrice"
+        case bidSize = "bidSize"
+        case lastPrice = "lastPrice"
+        case lastSize = "lastSize"
+        case mark = "mark"
+        case quoteTime = "quoteTime"
+        case totalVolume = "totalVolume"
+        case tradeTime = "tradeTime"
+    }
+
+    public init(askPrice: Double? = nil, askSize: Int? = nil, bidPrice: Double? = nil, bidSize: Int? = nil, lastPrice: Double? = nil, lastSize: Int? = nil, mark: Double? = nil, quoteTime: Int? = nil, totalVolume: Int? = nil, tradeTime: Int? = nil)
+    {
+        self.askPrice = askPrice
+        self.askSize = askSize
+        self.bidPrice = bidPrice
+        self.bidSize = bidSize
+        self.lastPrice = lastPrice
+        self.lastSize = lastSize
+        self.mark = mark
+        self.quoteTime = quoteTime
+        self.totalVolume = totalVolume
+        self.tradeTime = tradeTime
+    }
+
+    
+}
 
 

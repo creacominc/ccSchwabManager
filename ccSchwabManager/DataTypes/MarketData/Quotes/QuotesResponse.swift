@@ -1,30 +1,34 @@
 //
-//  QuotesResponse.swift
-//  ccSchwabManager
-//
-//  Created by Harold Tomlinson on 2025-01-11.
 //
 
 import Foundation
 
-//@Model
-public struct QuotesResponse : Codable
+class QuotesResponse : Codable, Identifiable
 {
+    public var symbol: Symbol?
+    public var fundamental: Fundamental?
+    public var quote: Quote?
+    public var reference: Reference?
+    public var regular: RegularMarket?
 
-//    init(m_symbol: SapiSymbol, m_fundamental: SapiFundamental, m_quote: SapiQuote, m_reference: SapiReference, m_regular: SapiRegularMarket)
-//    {
-//        self.m_symbol = m_symbol
-//        self.m_fundamental = m_fundamental
-//        self.m_quote = m_quote
-//        self.m_reference = m_reference
-//        self.m_regular = m_regular
-//    }
+    enum CodingKeys: String, CodingKey
+    {
+        case symbol = "symbol"
+        case fundamental = "fundamental"
+        case quote = "quote"
+        case reference = "reference"
+        case regular = "regular"
+    }
 
-    private var m_symbol: Symbol
-    private var m_fundamental: Fundamental
-    private var m_quote: Quote
-    private var m_reference: Reference
-    private var m_regular: RegularMarket
+    public init(symbol: Symbol? = nil, fundamental: Fundamental? = nil, quote: Quote? = nil, reference: Reference? = nil, regular: RegularMarket? = nil)
+    {
+        self.symbol = symbol
+        self.fundamental = fundamental
+        self.quote = quote
+        self.reference = reference
+        self.regular = regular
+    }
+
 
 }
 
