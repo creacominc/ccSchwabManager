@@ -77,6 +77,11 @@ The table should be able to be filtered sorted on any of these columns.
 
 There should be a way for the user to reset the secrets object partially (clearing all but the appId, appSecret, and callbackUrl) or fully.
 
+In structuring the app, please use ccSchwabManager/ccSchwabManagerApp.swift as the main, ccSchwabManager/Views for all views including ccSchwabManager/Views/ContentView.swift, ccSchwabManager/DataTypes for all JSON data objects, ccSchwabManager/DataTypes/Enums for enums, ccSchwabManager/DataTypes/MarketData for MarketData request objects, ccSchwabManager/DataTypes/TraderAPI for account request objects, and ccSchwabManager/Utilities/Secrets for the secrets data type.
+
+Unit test should use Swift Testing and be placed in the ccSchwabManagerTests folder with the other unit tests.  
+
+Some sample data appears in json files in the tests folders.
 
 
 
