@@ -1,5 +1,3 @@
-
-
 import Foundation
 
 
@@ -74,6 +72,30 @@ class Position: Codable, Identifiable
         self.currentDayCost = currentDayCost
     }
 
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        shortQuantity = try container.decodeIfPresent(Double.self, forKey: .shortQuantity)
+        averagePrice = try container.decodeIfPresent(Double.self, forKey: .averagePrice)
+        currentDayProfitLoss = try container.decodeIfPresent(Double.self, forKey: .currentDayProfitLoss)
+        currentDayProfitLossPercentage = try container.decodeIfPresent(Double.self, forKey: .currentDayProfitLossPercentage)
+        longQuantity = try container.decodeIfPresent(Double.self, forKey: .longQuantity)
+        settledLongQuantity = try container.decodeIfPresent(Double.self, forKey: .settledLongQuantity)
+        settledShortQuantity = try container.decodeIfPresent(Double.self, forKey: .settledShortQuantity)
+        agedQuantity = try container.decodeIfPresent(Double.self, forKey: .agedQuantity)
+        instrument = try container.decodeIfPresent(Instrument.self, forKey: .instrument)
+        marketValue = try container.decodeIfPresent(Double.self, forKey: .marketValue)
+        maintenanceRequirement = try container.decodeIfPresent(Double.self, forKey: .maintenanceRequirement)
+        averageLongPrice = try container.decodeIfPresent(Double.self, forKey: .averageLongPrice)
+        averageShortPrice = try container.decodeIfPresent(Double.self, forKey: .averageShortPrice)
+        taxLotAverageLongPrice = try container.decodeIfPresent(Double.self, forKey: .taxLotAverageLongPrice)
+        taxLotAverageShortPrice = try container.decodeIfPresent(Double.self, forKey: .taxLotAverageShortPrice)
+        longOpenProfitLoss = try container.decodeIfPresent(Double.self, forKey: .longOpenProfitLoss)
+        shortOpenProfitLoss = try container.decodeIfPresent(Double.self, forKey: .shortOpenProfitLoss)
+        previousSessionLongQuantity = try container.decodeIfPresent(Double.self, forKey: .previousSessionLongQuantity)
+        previousSessionShortQuantity = try container.decodeIfPresent(Double.self, forKey: .previousSessionShortQuantity)
+        currentDayCost = try container.decodeIfPresent(Double.self, forKey: .currentDayCost)
+    }
+
 
     func dump() -> String
     {
@@ -98,6 +120,7 @@ class Position: Codable, Identifiable
         return retVal
     }
 
+    
 }
 
 

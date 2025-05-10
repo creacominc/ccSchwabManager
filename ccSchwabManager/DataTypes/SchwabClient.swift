@@ -67,6 +67,10 @@ class SchwabClient
     public func getAccounts() -> [AccountContent]
     {
         print( "=== getAccounts: accounts: \(self.m_accounts.count) ===" )
+        // verify by printing the first account number
+        print( "first account number: \(self.m_accounts[0].securitiesAccount?.accountNumber ?? "???")" )
+        // verify by printing the number of position in the first account
+        print( "first account has \(self.m_accounts[0].securitiesAccount?.positions.count ?? 0) positions" )
         return self.m_accounts
     }
     
@@ -110,8 +114,9 @@ class SchwabClient
      */
     func getAuthorizationUrl(completion: @escaping (Result<URL, ErrorCodes>) -> Void)
     {
+        print( "=== getAuthorizationUrl ===" )
         // provide the URL for authentication.
-        let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.appId ?? "No AppId" )&redirect_uri=\( self.m_secrets.redirectUrl ?? "No Redirect URL" )"
+        let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.appId )&redirect_uri=\( self.m_secrets.redirectUrl )"
         guard let url = URL( string: AUTHORIZE_URL ) else {
             completion(.failure(.invalidResponse))
             return
@@ -122,7 +127,7 @@ class SchwabClient
 
     public func extractCodeFromURL( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
-        print( "extractCodeFromURL from \(url)")
+        print( "=== extractCodeFromURL from \(url) ===" )
         // extract the code and session from the URL
         let urlComponents = URLComponents(string: url )!
         let queryItems = urlComponents.queryItems
@@ -352,7 +357,7 @@ class SchwabClient
                     self.m_secrets.acountNumberHash = accountNumberHashes
                     if KeychainManager.saveSecrets(secrets: &self.m_secrets)
                     {
-                        print("Save account numbers")
+                        print("Save \(self.m_secrets.acountNumberHash.count)  account numbers")
                     }
                     else
                     {
@@ -413,7 +418,9 @@ class SchwabClient
             print( "=== decoding accounts ===" )
             // print( "data: \(String(data: data, encoding: .utf8) ?? "no data") " )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
-            print( "  decoded accounts" )
+            print( "  decoded \(m_accounts.count) accounts" )
+            print( "  positions: \(m_accounts[0].securitiesAccount?.positions.count ?? 0)" )
+            print( m_accounts[0].dump() )
             return
         }
         catch

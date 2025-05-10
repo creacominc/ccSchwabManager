@@ -48,6 +48,44 @@ class Account: Codable, Identifiable
         self.projectedBalances = projectedBalances
     }
 
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        type = try container.decodeIfPresent(AccountTypes.self, forKey: .type)
+        accountNumber = try container.decodeIfPresent(String.self, forKey: .accountNumber)
+        roundTrips = try container.decodeIfPresent(Int32.self, forKey: .roundTrips)
+        isDayTrader = try container.decodeIfPresent(Bool.self, forKey: .isDayTrader)
+        isClosingOnlyRestricted = try container.decodeIfPresent(Bool.self, forKey: .isClosingOnlyRestricted)
+        pfcbFlag = try container.decodeIfPresent(Bool.self, forKey: .pfcbFlag)
+        
+        // Decode positions array
+        if let positionsArray = try? container.decode([Position].self, forKey: .positions) {
+            positions = positionsArray
+        } else {
+            print( "Failed to decode positions" )
+            positions = []
+        }
+        
+        initialBalances = try container.decodeIfPresent(Balance.self, forKey: .initialBalances)
+        currentBalances = try container.decodeIfPresent(Balance.self, forKey: .currentBalances)
+        projectedBalances = try container.decodeIfPresent(Balance.self, forKey: .projectedBalances)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encodeIfPresent(type, forKey: .type)
+        try container.encodeIfPresent(accountNumber, forKey: .accountNumber)
+        try container.encodeIfPresent(roundTrips, forKey: .roundTrips)
+        try container.encodeIfPresent(isDayTrader, forKey: .isDayTrader)
+        try container.encodeIfPresent(isClosingOnlyRestricted, forKey: .isClosingOnlyRestricted)
+        try container.encodeIfPresent(pfcbFlag, forKey: .pfcbFlag)
+        try container.encode(positions, forKey: .positions)
+        try container.encodeIfPresent(initialBalances, forKey: .initialBalances)
+        try container.encodeIfPresent(currentBalances, forKey: .currentBalances)
+        try container.encodeIfPresent(projectedBalances, forKey: .projectedBalances)
+    }
+
     func dump() -> String
     {
         var result: String = "\n"
