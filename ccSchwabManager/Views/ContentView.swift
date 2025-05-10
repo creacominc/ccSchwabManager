@@ -27,14 +27,14 @@ struct ContentView: View
                 .tabItem {
                     Label("Keychain", systemImage: "lock.circle")
                 }
-            SalesCalcView( positionStatementData: $positionStatementData )
-                .tabItem {
-                    Label("Sales Calc", systemImage: "dollarsign.circle")
-                }
-            PositionStatementView( positionStatementData: $positionStatementData )
-                .tabItem {
-                    Label("Position Statement", systemImage: "doc.text")
-                }
+//            SalesCalcView( positionStatementData: $positionStatementData )
+//                .tabItem {
+//                    Label("Sales Calc", systemImage: "dollarsign.circle")
+//                }
+//            PositionStatementView( positionStatementData: $positionStatementData )
+//                .tabItem {
+//                    Label("Position Statement", systemImage: "doc.text")
+//                }
         }
     }
 
