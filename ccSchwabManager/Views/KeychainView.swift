@@ -29,6 +29,7 @@ struct KeychainView: View
 
     @State private var m_selectedSymbol : String = ""
     @State private var m_enableSymbolList : Bool = false
+    @State private var m_transactionHistory: [Transaction] = []
 
     @State private var m_atr : Double = 0.0
 
@@ -117,49 +118,92 @@ struct KeychainView: View
             .buttonStyle( .bordered )
 
 
-            Button("Fetch Account Numbers") {
-                Task {
-                    print( " === Fetching Account Numbers button pressed. === ")
-                    await self.m_schwabClient.fetchAccountNumbers()
-                    updateSecretsString( errorMsg: "Failed to Encode Secrets with Account Numbers" )
+            VStack
+            {
+                Button("Fetch Account Numbers") {
+                    Task {
+                        print( " === Fetching Account Numbers button pressed. === ")
+                        await self.m_schwabClient.fetchAccountNumbers()
+                        updateSecretsString( errorMsg: "Failed to Encode Secrets with Account Numbers" )
+                    }
                 }
+                
+                Button("Fetch Accounts") {
+                    Task {
+                        await self.m_schwabClient.fetchAccounts()
+                        m_enableSymbolList = self.m_schwabClient.hasSymbols()
+                    }
+                }
+                
+                HStack
+                {
+                    // picker for allSymbols
+                    Picker("All Symbols", selection: $m_selectedSymbol) {
+                        ForEach(getSymbols(from: self.m_schwabClient.getAccounts()), id: \.self) { symbol in
+                            Text(symbol)
+                        }
+                    }
+                    .pickerStyle( .menu )
+                    .padding()
+                    .disabled( !m_enableSymbolList )
+                    .onChange(of: m_selectedSymbol)
+                    { newValue in
+                        Task
+                        {
+                            m_transactionHistory = await self.m_schwabClient.fetchTransactionHistory(symbol: newValue)
+                            // print the number of transactions and the first transaction.
+                            print( "transaction count: \(m_transactionHistory.count)" )
+                            m_atr = await self.m_schwabClient.computeATR(symbol: newValue)
+                        }
+                    }
+                    
+                    Text( "Symbol \(m_selectedSymbol)" )
+                        .padding()
+                    Text( "ATR: \(m_atr)" )
+                }
+                .padding()
+                
+                // scrolling table of the transactions in m_transactionHistory
+                LazyVStack
+                {
+                    buildTransactionHistoryRows( transactionHistory: m_transactionHistory )
+                }
+                .frame(maxWidth: .infinity, maxHeight: 400)
+                .scrollClipDisabled(true)
+                
             }
 
-            Button("Fetch Accounts") {
-                Task {
-                    await self.m_schwabClient.fetchAccounts()
-                    m_enableSymbolList = self.m_schwabClient.hasSymbols()
-                }
-            }
 
+
+        }
+    }
+
+
+    func buildTransactionHistoryRows( transactionHistory: [Transaction] ) -> some View
+    {
+        ForEach(transactionHistory, id: \.self)
+        { transaction in
             HStack
             {
-                // picker for allSymbols
-                Picker("All Symbols", selection: $m_selectedSymbol) {
-                    ForEach(getSymbols(from: self.m_schwabClient.getAccounts()), id: \.self) { symbol in
-                        Text(symbol)
-                    }
+                Text( "\(transaction.time ?? "no Time")" )
+                Text( "\(transaction.description ?? "no Description")" )
+                /**
+                 * for each transaction transferItem, create a text field for:
+                 *      instrument: Instrument
+                 *      amount:
+                 *      cost:
+                 *      price
+                 *      feeType
+                 *      positionEffect
+                 */
+                ForEach( transaction.transferItems ?? [], id: \.self )
+                { transferItem in
+                    Text( "\(transferItem.instrument?.symbol ?? "no Symbol")" )
+                    Text( "\(transferItem.amount ?? 0.0)" )
+                    Text( "\(transferItem.cost ?? 0.0)" )
+                    Text( "\(transferItem.price ?? 0.0)" )
                 }
-                .pickerStyle( .menu )
-                .padding()
-                .disabled( !m_enableSymbolList )
-                .onChange(of: m_selectedSymbol)
-                { newValue in
-                    Task
-                    {
-                        let transactionHistory: [Transaction] = await self.m_schwabClient.fetchTransactionHistory(symbol: newValue)
-                        // print the number of transactions and the first transaction.
-                        print( "transaction count: \(transactionHistory.count)" )
-                        m_atr = await self.m_schwabClient.computeATR(symbol: newValue)
-                    }
-                }
-
-                Text( "Symbol \(m_selectedSymbol)" )
-                    .padding()
-                Text( "ATR: \(m_atr)" )
             }
-            .padding()
-
         }
     }
 

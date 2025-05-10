@@ -45,9 +45,18 @@ import Foundation
  */
 
 
-
-class Transaction: Codable, Identifiable
+// Transaction needs to be hashable.
+class Transaction: Codable, Identifiable, Hashable
 {
+    static func == (lhs: Transaction, rhs: Transaction) -> Bool {
+        return (lhs.activityId == rhs.activityId)
+    }
+
+    func hash(into hasher: inout Hasher)
+    {
+        hasher.combine(activityId ?? 0)
+    }
+
     public var activityId: Int64?
     public var time: String?
     public var user: UserDetails?

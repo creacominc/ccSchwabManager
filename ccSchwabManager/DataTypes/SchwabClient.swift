@@ -397,6 +397,11 @@ class SchwabClient
             if( httpResponse?.statusCode != 200 )
             {
                 print("Failed to fetch accounts.  Status: \(httpResponse?.statusCode ?? -1),  response: \(String(describing: httpResponse))")
+                // decode data as a ServiceError
+                let decoder = JSONDecoder()
+                let serviceError : ServiceError = try decoder.decode(ServiceError.self, from: data)
+                print( "Failed to get accouts: \(serviceError.message ?? "no message")" )
+                
                 return
             }
 //            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {

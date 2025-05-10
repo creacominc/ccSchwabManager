@@ -30,14 +30,29 @@ import Foundation
  */
 
 
-class TransferItem: Codable, Identifiable
+class TransferItem: Codable, Identifiable, Hashable
 {
+    static func == (lhs: TransferItem, rhs: TransferItem) -> Bool {
+        return (
+        lhs.instrument?.symbol == rhs.instrument?.symbol
+        && lhs.amount == rhs.amount
+        && lhs.cost == rhs.cost
+        && lhs.price == rhs.price
+        )
+    }
+    
     public var instrument: Instrument?
     public var amount: Double?
     public var cost: Double?
     public var price: Double?
     public var feeType: FeeType?
     public var positionEffect: PositionEffectType?
+
+
+    public func hash(into hasher: inout Hasher)
+    {
+        hasher.combine(ObjectIdentifier(self))
+    }
 
     enum CodingKeys: String, CodingKey
     {
