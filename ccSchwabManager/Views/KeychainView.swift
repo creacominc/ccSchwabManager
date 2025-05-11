@@ -146,8 +146,7 @@ struct KeychainView: View
                     .pickerStyle( .menu )
                     .padding()
                     .disabled( !m_enableSymbolList )
-                    .onChange(of: m_selectedSymbol)
-                    { newValue in
+                    .modifier(OnChangeModifier(selectedSymbol: $m_selectedSymbol) { newValue in
                         Task
                         {
                             m_transactionHistory = await self.m_schwabClient.fetchTransactionHistory(symbol: newValue)
@@ -155,7 +154,7 @@ struct KeychainView: View
                             print( "transaction count: \(m_transactionHistory.count)" )
                             m_atr = await self.m_schwabClient.computeATR(symbol: newValue)
                         }
-                    }
+                    })
                     
                     Text( "Symbol \(m_selectedSymbol)" )
                         .padding()
@@ -169,7 +168,7 @@ struct KeychainView: View
                     buildTransactionHistoryRows( transactionHistory: m_transactionHistory )
                 }
                 .frame(maxWidth: .infinity, maxHeight: 400)
-                .scrollClipDisabled(true)
+                .modifier(ScrollClipModifier())
                 
             }
 
@@ -196,7 +195,7 @@ struct KeychainView: View
                  *      feeType
                  *      positionEffect
                  */
-                ForEach( transaction.transferItems ?? [], id: \.self )
+                ForEach( transaction.transferItems, id: \.self )
                 { transferItem in
                     Text( "\(transferItem.instrument?.symbol ?? "no Symbol")" )
                     Text( "\(transferItem.amount ?? 0.0)" )
@@ -234,7 +233,7 @@ struct KeychainView: View
             case .success():
                 print("Got code.")
                 updateSecretsString( errorMsg: "Failed to Encode Secrets with Code" )
-                m_gotCode = (((self.m_secrets.code.isEmpty) == nil) && ((self.m_secrets.session.isEmpty) == nil))
+                m_gotCode = ( !self.m_secrets.code.isEmpty && !self.m_secrets.session.isEmpty )
             case .failure(let error):
                 print("extractCodeFromURL failed - error: \(error)")
             }
@@ -257,6 +256,33 @@ struct KeychainView: View
 //    }
 
 
+}
+
+struct OnChangeModifier: ViewModifier {
+    @Binding var selectedSymbol: String
+    let action: (String) -> Void
+    
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.onChange(of: selectedSymbol) { oldValue, newValue in
+                action(newValue)
+            }
+        } else {
+            content.onChange(of: selectedSymbol) { newValue in
+                action(newValue)
+            }
+        }
+    }
+}
+
+struct ScrollClipModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.scrollClipDisabled(true)
+        } else {
+            content
+        }
+    }
 }
 
 

@@ -1,7 +1,7 @@
 import Foundation
 
 
-class Position: Codable, Identifiable
+class Position: NSObject, Codable, Identifiable, Comparable
 {
     var shortQuantity                   : Double?
     var averagePrice                    : Double?
@@ -48,8 +48,14 @@ class Position: Codable, Identifiable
         case currentDayCost                  = "currentDayCost"
     }
 
+    override init()
+    {
+        super.init()
+    }
+
     init(shortQuantity: Double? = nil, averagePrice: Double? = nil, currentDayProfitLoss: Double? = nil, currentDayProfitLossPercentage: Double? = nil, longQuantity: Double? = nil, settledLongQuantity: Double? = nil, settledShortQuantity: Double? = nil, agedQuantity: Double? = nil, instrument: Instrument? = nil, marketValue: Double? = nil, maintenanceRequirement: Double? = nil, averageLongPrice: Double? = nil, averageShortPrice: Double? = nil, taxLotAverageLongPrice: Double? = nil, taxLotAverageShortPrice: Double? = nil, longOpenProfitLoss: Double? = nil, shortOpenProfitLoss: Double? = nil, previousSessionLongQuantity: Double? = nil, previousSessionShortQuantity: Double? = nil, currentDayCost: Double? = nil)
     {
+        super.init()
         self.shortQuantity = shortQuantity
         self.averagePrice = averagePrice
         self.currentDayProfitLoss = currentDayProfitLoss
@@ -73,6 +79,7 @@ class Position: Codable, Identifiable
     }
 
     required init(from decoder: Decoder) throws {
+        super.init()
         let container = try decoder.container(keyedBy: CodingKeys.self)
         shortQuantity = try container.decodeIfPresent(Double.self, forKey: .shortQuantity)
         averagePrice = try container.decodeIfPresent(Double.self, forKey: .averagePrice)
@@ -120,7 +127,13 @@ class Position: Codable, Identifiable
         return retVal
     }
 
+    static func < (lhs: Position, rhs: Position) -> Bool {
+        return (lhs.instrument?.symbol ?? "") < (rhs.instrument?.symbol ?? "")
+    }
     
+    static func == (lhs: Position, rhs: Position) -> Bool {
+        return lhs.instrument?.symbol == rhs.instrument?.symbol
+    }
 }
 
 

@@ -68,9 +68,9 @@ class SchwabClient
     {
         print( "=== getAccounts: accounts: \(self.m_accounts.count) ===" )
         // verify by printing the first account number
-        print( "first account number: \(self.m_accounts[0].securitiesAccount?.accountNumber ?? "???")" )
+        //print( "first account number: \(self.m_accounts[0].securitiesAccount?.accountNumber ?? "???")" )
         // verify by printing the number of position in the first account
-        print( "first account has \(self.m_accounts[0].securitiesAccount?.positions.count ?? 0) positions" )
+        //print( "first account has \(self.m_accounts[0].securitiesAccount?.positions.count ?? 0) positions" )
         return self.m_accounts
     }
     
