@@ -57,13 +57,13 @@ struct CredentialsInputView: View {
             VStack(alignment: .leading, spacing: 10) {
                 TextField("App ID", text: $appId)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: appId) { _ in updateJsonPreview() }
+                    .modifier(TextFieldChangeHandler(value: $appId, onChanged: updateJsonPreview))
                 TextField("App Secret", text: $appSecret)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: appSecret) { _ in updateJsonPreview() }
+                    .modifier(TextFieldChangeHandler(value: $appSecret, onChanged: updateJsonPreview))
                 TextField("Redirect URL", text: $redirectUrl)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: redirectUrl) { _ in updateJsonPreview() }
+                    .modifier(TextFieldChangeHandler(value: $redirectUrl, onChanged: updateJsonPreview))
             }
             .frame(maxWidth: 500)
             
@@ -119,5 +119,22 @@ struct CredentialsInputView: View {
         secretsManager.secrets.redirectUrl = redirectUrl
         secretsManager.saveSecrets()
         isPresented = false
+    }
+}
+
+struct TextFieldChangeHandler<T: Equatable>: ViewModifier {
+    @Binding var value: T
+    let onChanged: () -> Void
+    
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.onChange(of: value) { oldValue, newValue in
+                onChanged()
+            }
+        } else {
+            content.onChange(of: value) { _ in
+                onChanged()
+            }
+        }
     }
 } 

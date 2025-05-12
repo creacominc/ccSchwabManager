@@ -229,6 +229,8 @@ struct HoldingsView: View {
             }
             .searchable(text: $searchText)
             .navigationTitle("Holdings")
+            .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
+            .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
         }
         .task {
             // Fetch holdings when view appears
@@ -251,5 +253,39 @@ struct HoldingsView: View {
         }
         holdings = accountPositions.map { $0.0 }
         print("count of holding: \(holdings.count)")
+    }
+}
+
+struct SortColumnChangeHandler: ViewModifier {
+    @Binding var selectedSortColumn: String
+    @Binding var sortDirection: String
+    
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.onChange(of: selectedSortColumn) { oldValue, newValue in
+                sortDirection = "Ascending"
+            }
+        } else {
+            content.onChange(of: selectedSortColumn) { _ in
+                sortDirection = "Ascending"
+            }
+        }
+    }
+}
+
+struct SearchTextChangeHandler: ViewModifier {
+    @Binding var searchText: String
+    @Binding var filterText: String
+    
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.onChange(of: searchText) { oldValue, newValue in
+                filterText = newValue
+            }
+        } else {
+            content.onChange(of: searchText) { newValue in
+                filterText = newValue
+            }
+        }
     }
 } 
