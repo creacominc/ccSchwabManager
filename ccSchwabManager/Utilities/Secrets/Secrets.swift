@@ -145,7 +145,7 @@ class Secrets: Codable, Identifiable
         "Secret = appId: \(self.appId),  appSecret: \(self.appSecret),  redirectUrl: \(self.redirectUrl), code: \(self.code),  session: \(self.session),  accessToken: \(self.accessToken),  refreshToken: \(self.refreshToken),  acountNumberHash: ["
         self.acountNumberHash.forEach
         { hash in
-            retStr += "\n\t\t\t\t\t\t\t\(hash.hashValue)"
+            retStr += "\n\t\t\t\t\t\t\t\(hash.hashValue ?? "no hash")"
         }
         retStr += "\n\t\t\t\t\t\t]"
         return retStr

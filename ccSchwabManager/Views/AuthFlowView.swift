@@ -198,7 +198,7 @@ struct AuthFlowView: View {
                             // Wait for 45 minutes (tokens typically expire after 1 hour)
                             try? await Task.sleep(nanoseconds: 45 * 60 * 1_000_000_000)
                             print("Refreshing access token...")
-                            await schwabClient.refreshAccessToken()
+                            schwabClient.refreshAccessToken()
                             secretsManager.saveSecrets()
                         }
                     }

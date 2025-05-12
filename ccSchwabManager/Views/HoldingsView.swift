@@ -280,6 +280,50 @@ struct FilterControls: View {
     }
 }
 
+struct PositionDetailView: View {
+    let position: Position
+    let accountNumber: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text(position.instrument?.symbol ?? "")
+                .font(.title)
+                .padding(.bottom)
+                .onAppear {
+                    print( position.instrument?.symbol ?? "" ) 
+                }
+            
+            Group {
+                DetailRow(label: "Description", value: position.instrument?.description ?? "")
+                DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
+                DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
+                DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
+                DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
+                DetailRow(label: "P/L %", value: String(format: "%.1f%%", 
+                    (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
+                DetailRow(label: "Asset Type", value: position.instrument?.assetType?.rawValue ?? "")
+                DetailRow(label: "Account", value: accountNumber)
+            }
+        }
+        .padding()
+    }
+}
+
+struct DetailRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.headline)
+                .frame(width: 120, alignment: .leading)
+            Text(value)
+                .monospacedDigit()
+        }
+    }
+}
+
 struct HoldingsTable: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
@@ -288,38 +332,59 @@ struct HoldingsTable: View {
     var body: some View {
         Table(sortedHoldings, selection: $selectedPositionId) {
             TableColumn("Symbol") { position in
-                NavigationLink(destination: Text(position.instrument?.symbol ?? "").font(.title).padding()) {
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
                     Text(position.instrument?.symbol ?? "")
                 }
             }
             TableColumn("Quantity") { position in
-                Text(String(format: "%.2f", position.longQuantity ?? 0.0))
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    Text(String(format: "%.2f", position.longQuantity ?? 0.0))
+                }
             }
             TableColumn("Avg Price") { position in
-                Text(String(format: "%.2f", position.averagePrice ?? 0.0))
-                    .monospacedDigit()
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    Text(String(format: "%.2f", position.averagePrice ?? 0.0))
+                        .monospacedDigit()
+                }
             }
             TableColumn("Market Value") { position in
-                Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                    .monospacedDigit()
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    Text(String(format: "%.2f", position.marketValue ?? 0.0))
+                        .monospacedDigit()
+                }
             }
             TableColumn("P/L") { position in
-                Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
-                    .monospacedDigit()
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
+                        .monospacedDigit()
+                }
             }
             TableColumn("P/L%") { position in
-                let pl = position.longOpenProfitLoss ?? 0
-                let mv = position.marketValue ?? 0
-                let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
-                Text(String(format: "%.1f%%", plPercent))
-                    .monospacedDigit()
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    let pl = position.longOpenProfitLoss ?? 0
+                    let mv = position.marketValue ?? 0
+                    let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
+                    Text(String(format: "%.1f%%", plPercent))
+                        .monospacedDigit()
+                }
             }
             TableColumn("Asset Type") { position in
-                Text(position.instrument?.assetType?.rawValue ?? "")
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    Text(position.instrument?.assetType?.rawValue ?? "")
+                }
             }
             TableColumn("Account") { position in
-                let accountInfo = accountPositions.first { $0.0 === position }
-                Text(accountInfo?.1 ?? "")
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
+                    Text(accountNumber)
+                }
             }
         }
     }
