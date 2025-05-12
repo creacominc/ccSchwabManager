@@ -136,8 +136,14 @@ class Position: NSObject, Codable, Identifiable, Comparable
         return (lhs.instrument?.symbol ?? "") < (rhs.instrument?.symbol ?? "")
     }
     
+    override var hash: Int {
+        var hasher = Hasher()
+        hasher.combine(instrument?.symbol)
+        return hasher.finalize()
+    }
+    
     static func == (lhs: Position, rhs: Position) -> Bool {
-        return lhs.instrument?.symbol == rhs.instrument?.symbol
+        lhs.instrument?.symbol == rhs.instrument?.symbol
     }
 }
 

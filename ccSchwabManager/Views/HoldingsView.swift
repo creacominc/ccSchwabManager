@@ -45,6 +45,7 @@ struct HoldingsView: View {
     @State private var selectedAssetTypes: Set<String> = []
     @State private var accountPositions: [(Position, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
+    @State private var selectedPositionId: Position.ID? = nil
 
     enum SortColumn: String, CaseIterable {
         case symbol = "Symbol"
@@ -146,86 +147,19 @@ struct HoldingsView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
-                TextField("Filter by symbol or description", text: $filterText)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
+                FilterControls(
+                    filterText: $filterText,
+                    selectedAssetTypes: $selectedAssetTypes,
+                    selectedAccountNumbers: $selectedAccountNumbers,
+                    uniqueAssetTypes: uniqueAssetTypes,
+                    uniqueAccountNumbers: uniqueAccountNumbers
+                )
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(alignment: .leading) {
-                        Text("Asset Types:")
-                            .font(.headline)
-                        HStack {
-                            ForEach(uniqueAssetTypes, id: \.self) { assetType in
-                                Toggle(assetType, isOn: Binding(
-                                    get: { selectedAssetTypes.contains(assetType) },
-                                    set: { isSelected in
-                                        if isSelected {
-                                            selectedAssetTypes.insert(assetType)
-                                        } else {
-                                            selectedAssetTypes.remove(assetType)
-                                        }
-                                    }
-                                ))
-                                .toggleStyle(.checkbox)
-                            }
-                        }
-                        
-                        Text("Accounts:")
-                            .font(.headline)
-                            .padding(.top)
-                        HStack {
-                            ForEach(uniqueAccountNumbers, id: \.self) { accountNumber in
-                                Toggle("Acct \(accountNumber)", isOn: Binding(
-                                    get: { selectedAccountNumbers.contains(accountNumber) },
-                                    set: { isSelected in
-                                        if isSelected {
-                                            selectedAccountNumbers.insert(accountNumber)
-                                        } else {
-                                            selectedAccountNumbers.remove(accountNumber)
-                                        }
-                                    }
-                                ))
-                                .toggleStyle(.checkbox)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-
-                Table(sortedHoldings) {
-                    TableColumn("Symbol") { position in
-                        Text(position.instrument?.symbol ?? "")
-                    }
-                    TableColumn("Quantity") { position in
-                        Text(String(format: "%.2f", position.longQuantity ?? 0.0))
-                    }
-                    TableColumn("Avg Price") { position in
-                        Text(String(format: "%.2f", position.averagePrice ?? 0.0))
-                            .monospacedDigit()
-                    }
-                    TableColumn("Market Value") { position in
-                        Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                            .monospacedDigit()
-                    }
-                    TableColumn("P/L") { position in
-                        Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
-                            .monospacedDigit()
-                    }
-                    TableColumn("P/L%") { position in
-                        let pl = position.longOpenProfitLoss ?? 0
-                        let mv = position.marketValue ?? 0
-                        let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
-                        Text(String(format: "%.1f%%", plPercent))
-                            .monospacedDigit()
-                    }
-                    TableColumn("Asset Type") { position in
-                        Text(position.instrument?.assetType?.rawValue ?? "")
-                    }
-                    TableColumn("Account") { position in
-                        let accountInfo = accountPositions.first { $0.0 === position }
-                        Text(accountInfo?.1 ?? "")
-                    }
-                }
+                HoldingsTable(
+                    sortedHoldings: sortedHoldings,
+                    selectedPositionId: $selectedPositionId,
+                    accountPositions: accountPositions
+                )
             }
             .searchable(text: $searchText)
             .navigationTitle("Holdings")
@@ -233,9 +167,7 @@ struct HoldingsView: View {
             .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
         }
         .task {
-            // Fetch holdings when view appears
             await fetchHoldings()
-            // Initialize selected asset types with all available types
             selectedAssetTypes = Set(uniqueAssetTypes)
         }
     }
@@ -285,6 +217,109 @@ struct SearchTextChangeHandler: ViewModifier {
         } else {
             content.onChange(of: searchText) { newValue in
                 filterText = newValue
+            }
+        }
+    }
+}
+
+struct FilterControls: View {
+    @Binding var filterText: String
+    @Binding var selectedAssetTypes: Set<String>
+    @Binding var selectedAccountNumbers: Set<String>
+    let uniqueAssetTypes: [String]
+    let uniqueAccountNumbers: [String]
+    
+    var body: some View {
+        VStack {
+            TextField("Filter by symbol or description", text: $filterText)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading) {
+                    Text("Asset Types:")
+                        .font(.headline)
+                    HStack {
+                        ForEach(uniqueAssetTypes, id: \.self) { assetType in
+                            Toggle(assetType, isOn: Binding(
+                                get: { selectedAssetTypes.contains(assetType) },
+                                set: { isSelected in
+                                    if isSelected {
+                                        selectedAssetTypes.insert(assetType)
+                                    } else {
+                                        selectedAssetTypes.remove(assetType)
+                                    }
+                                }
+                            ))
+                            .toggleStyle(.checkbox)
+                        }
+                    }
+                    
+                    Text("Accounts:")
+                        .font(.headline)
+                        .padding(.top)
+                    HStack {
+                        ForEach(uniqueAccountNumbers, id: \.self) { accountNumber in
+                            Toggle("Acct \(accountNumber)", isOn: Binding(
+                                get: { selectedAccountNumbers.contains(accountNumber) },
+                                set: { isSelected in
+                                    if isSelected {
+                                        selectedAccountNumbers.insert(accountNumber)
+                                    } else {
+                                        selectedAccountNumbers.remove(accountNumber)
+                                    }
+                                }
+                            ))
+                            .toggleStyle(.checkbox)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+}
+
+struct HoldingsTable: View {
+    let sortedHoldings: [Position]
+    @Binding var selectedPositionId: Position.ID?
+    let accountPositions: [(Position, String)]
+    
+    var body: some View {
+        Table(sortedHoldings, selection: $selectedPositionId) {
+            TableColumn("Symbol") { position in
+                NavigationLink(destination: Text(position.instrument?.symbol ?? "").font(.title).padding()) {
+                    Text(position.instrument?.symbol ?? "")
+                }
+            }
+            TableColumn("Quantity") { position in
+                Text(String(format: "%.2f", position.longQuantity ?? 0.0))
+            }
+            TableColumn("Avg Price") { position in
+                Text(String(format: "%.2f", position.averagePrice ?? 0.0))
+                    .monospacedDigit()
+            }
+            TableColumn("Market Value") { position in
+                Text(String(format: "%.2f", position.marketValue ?? 0.0))
+                    .monospacedDigit()
+            }
+            TableColumn("P/L") { position in
+                Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
+                    .monospacedDigit()
+            }
+            TableColumn("P/L%") { position in
+                let pl = position.longOpenProfitLoss ?? 0
+                let mv = position.marketValue ?? 0
+                let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
+                Text(String(format: "%.1f%%", plPercent))
+                    .monospacedDigit()
+            }
+            TableColumn("Asset Type") { position in
+                Text(position.instrument?.assetType?.rawValue ?? "")
+            }
+            TableColumn("Account") { position in
+                let accountInfo = accountPositions.first { $0.0 === position }
+                Text(accountInfo?.1 ?? "")
             }
         }
     }
