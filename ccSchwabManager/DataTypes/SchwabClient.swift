@@ -416,11 +416,14 @@ class SchwabClient
             
             let decoder = JSONDecoder()
             print( "=== decoding accounts ===" )
-            // print( "data: \(String(data: data, encoding: .utf8) ?? "no data") " )
+//            print( "data: \(String(data: data, encoding: .utf8) ?? "no data") " )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
             print( "  decoded \(m_accounts.count) accounts" )
-            print( "  positions: \(m_accounts[0].securitiesAccount?.positions.count ?? 0)" )
-            print( m_accounts[0].dump() )
+//            for account in m_accounts {
+//                print( "account number \(account.securitiesAccount?.accountNumber ?? "no number" ) " )
+//                print( "  positions: \(account.securitiesAccount?.positions.count ?? 0)" )
+//                print( account.dump() ) //< print the positions for debugging
+//            }
             return
         }
         catch

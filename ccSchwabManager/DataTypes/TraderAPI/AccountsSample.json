@@ -1,0 +1,111 @@
+{
+    "securitiesAccount": {
+        "accountId": "123456789",
+        "accountNumber": "1234-5678",
+        "accountNumberHash": "abc123",
+        "accountType": "MARGIN",
+        "accountValue": 100000.00,
+        "balances": {
+            "accruedInterest": 0.0,
+            "availableFunds": 50000.00,
+            "availableFundsNonMarginableTrade": 50000.00,
+            "bondValue": 0.0,
+            "buyingPower": 100000.00,
+            "cashBalance": 50000.00,
+            "cashReceipts": 0.0,
+            "dayTradingBuyingPower": 100000.00,
+            "equity": 100000.00,
+            "equityPercentage": 100.0,
+            "liquidationValue": 100000.00,
+            "longMarginValue": 0.0,
+            "longOptionMarketValue": 0.0,
+            "longStockValue": 50000.00,
+            "maintenanceCall": 0.0,
+            "maintenanceRequirement": 0.0,
+            "margin": 0.0,
+            "marginBalance": 0.0,
+            "marginEquity": 0.0,
+            "moneyMarketFund": 0.0,
+            "mutualFundValue": 0.0,
+            "pendingDeposits": 0.0,
+            "regTCall": 0.0,
+            "shortBalance": 0.0,
+            "shortMarginValue": 0.0,
+            "shortOptionMarketValue": 0.0,
+            "shortStockValue": 0.0,
+            "totalCash": 50000.00,
+            "unsettledCash": 0.0
+        },
+        "initialBalances": {
+            "accruedInterest": 0.0,
+            "availableFundsNonMarginableTrade": 50000.00,
+            "bondValue": 0.0,
+            "buyingPower": 100000.00,
+            "cashBalance": 50000.00,
+            "cashReceipts": 0.0,
+            "dayTradingBuyingPower": 100000.00,
+            "dayTradingBuyingPowerCall": 0.0,
+            "equity": 100000.00,
+            "equityPercentage": 100.0,
+            "liquidationValue": 100000.00,
+            "longMarginValue": 0.0,
+            "longOptionMarketValue": 0.0,
+            "longStockValue": 50000.00,
+            "maintenanceCall": 0.0,
+            "maintenanceRequirement": 0.0,
+            "margin": 0.0,
+            "marginBalance": 0.0,
+            "marginEquity": 0.0,
+            "moneyMarketFund": 0.0,
+            "mutualFundValue": 0.0,
+            "pendingDeposits": 0.0,
+            "regTCall": 0.0,
+            "shortBalance": 0.0,
+            "shortMarginValue": 0.0,
+            "shortOptionMarketValue": 0.0,
+            "shortStockValue": 0.0,
+            "totalCash": 50000.00,
+            "unsettledCash": 0.0
+        },
+        "positions": [
+            {
+                "averagePrice": 150.00,
+                "currentDayProfitLoss": 100.00,
+                "currentDayProfitLossPercentage": 0.67,
+                "instrument": {
+                    "assetType": "EQUITY",
+                    "cusip": "123456789",
+                    "description": "Apple Inc",
+                    "symbol": "AAPL"
+                },
+                "longQuantity": 100.0,
+                "marketValue": 15000.00
+            },
+            {
+                "averagePrice": 300.00,
+                "currentDayProfitLoss": -50.00,
+                "currentDayProfitLossPercentage": -0.17,
+                "instrument": {
+                    "assetType": "EQUITY",
+                    "cusip": "987654321",
+                    "description": "Microsoft Corporation",
+                    "symbol": "MSFT"
+                },
+                "longQuantity": 50.0,
+                "marketValue": 15000.00
+            }
+        ],
+        "projectedBalances": {
+            "availableFunds": 50000.00,
+            "availableFundsNonMarginableTrade": 50000.00,
+            "buyingPower": 100000.00,
+            "dayTradingBuyingPower": 100000.00,
+            "dayTradingBuyingPowerCall": 0.0,
+            "maintenanceCall": 0.0,
+            "regTCall": 0.0,
+            "isInCall": false
+        },
+        "roundTrips": 0,
+        "type": "MARGIN"
+    }
+} 

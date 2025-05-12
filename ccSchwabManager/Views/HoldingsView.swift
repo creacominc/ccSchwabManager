@@ -39,38 +39,192 @@ struct HoldingsView: View {
     @State private var holdings: [Position] = []
     @State private var sortOrder: [KeyPathComparator<Position>] = []
     @State private var searchText = ""
+    @State private var selectedSortColumn = "Symbol"
+    @State private var sortDirection = "Ascending"
+    @State private var filterText = ""
+    @State private var selectedAssetTypes: Set<String> = []
+    @State private var accountPositions: [(Position, String)] = []
+    @State private var selectedAccountNumbers: Set<String> = []
+
+    enum SortColumn: String, CaseIterable {
+        case symbol = "Symbol"
+        case quantity = "Quantity"
+        case avgPrice = "Avg Price"
+        case marketValue = "Market Value"
+        case pl = "P/L"
+        case plPercent = "P/L%"
+        case assetType = "Asset Type"
+        case account = "Account"
+    }
+
+    var uniqueAssetTypes: [String] {
+        Array(Set(holdings.compactMap { $0.instrument?.assetType?.rawValue })).sorted()
+    }
+
+    var uniqueAccountNumbers: [String] {
+        Array(Set(accountPositions.map { $0.1 })).sorted()
+    }
 
     var filteredHoldings: [Position] {
         holdings.filter { position in
-            searchText.isEmpty ||
-            ((position.instrument?.symbol?.localizedCaseInsensitiveContains(searchText)) != nil) ||
-            ((position.instrument?.description?.localizedCaseInsensitiveContains(searchText)) != nil)
+            let matchesText = filterText.isEmpty ||
+                (position.instrument?.symbol?.localizedCaseInsensitiveContains(filterText) ?? false) ||
+                (position.instrument?.description?.localizedCaseInsensitiveContains(filterText) ?? false)
+            
+            let matchesAssetType = (position.instrument?.assetType?.rawValue).map { selectedAssetTypes.contains($0) } ?? false
+            
+            let accountInfo = accountPositions.first { $0.0 === position }
+            let matchesAccount = selectedAccountNumbers.isEmpty || 
+                (accountInfo?.1).map { selectedAccountNumbers.contains($0) } ?? false
+            
+            return matchesText && matchesAssetType && matchesAccount
         }
+    }
+
+    var sortedHoldings: [Position] {
+        let sorted = filteredHoldings.sorted { first, second in
+            let ascending = sortDirection == "Ascending"
+            switch selectedSortColumn {
+            case "Symbol":
+                return ascending ? 
+                    (first.instrument?.symbol ?? "") < (second.instrument?.symbol ?? "") :
+                    (first.instrument?.symbol ?? "") > (second.instrument?.symbol ?? "")
+            case "Quantity":
+                return ascending ?
+                    (first.longQuantity ?? 0) < (second.longQuantity ?? 0) :
+                    (first.longQuantity ?? 0) > (second.longQuantity ?? 0)
+            case "Avg Price":
+                return ascending ?
+                    (first.averagePrice ?? 0) < (second.averagePrice ?? 0) :
+                    (first.averagePrice ?? 0) > (second.averagePrice ?? 0)
+            case "Market Value":
+                return ascending ?
+                    (first.marketValue ?? 0) < (second.marketValue ?? 0) :
+                    (first.marketValue ?? 0) > (second.marketValue ?? 0)
+            case "P/L":
+                return ascending ?
+                    (first.longOpenProfitLoss ?? 0) < (second.longOpenProfitLoss ?? 0) :
+                    (first.longOpenProfitLoss ?? 0) > (second.longOpenProfitLoss ?? 0)
+            case "P/L%":
+                let firstPL = first.longOpenProfitLoss ?? 0
+                let secondPL = second.longOpenProfitLoss ?? 0
+                let firstMV = first.marketValue ?? 0
+                let secondMV = second.marketValue ?? 0
+                let firstPLPercent = firstMV != 0 ? firstPL / (firstMV - firstPL) : 0
+                let secondPLPercent = secondMV != 0 ? secondPL / (secondMV - secondPL) : 0
+                return ascending ? firstPLPercent < secondPLPercent : firstPLPercent > secondPLPercent
+            case "Asset Type":
+                return ascending ?
+                    (first.instrument?.assetType?.rawValue ?? "") < (second.instrument?.assetType?.rawValue ?? "") :
+                    (first.instrument?.assetType?.rawValue ?? "") > (second.instrument?.assetType?.rawValue ?? "")
+            case "Account":
+                let firstAccount = accountPositions.first { $0.0 === first }?.1 ?? ""
+                let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
+                return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
+            default:
+                return false
+            }
+        }
+        return sorted
     }
 
     var body: some View {
         NavigationView {
-            Table(filteredHoldings, sortOrder: $sortOrder) {
-                TableColumn("Symbol") { position in
-                    Text(position.instrument?.symbol ?? "")
+            VStack {
+                Picker("Sort by", selection: $selectedSortColumn) {
+                    ForEach(SortColumn.allCases, id: \.self) { column in
+                        Text(column.rawValue).tag(column.rawValue)
+                    }
                 }
-                TableColumn("Description") { position in
-                    Text(position.instrument?.description ?? "")
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
+                Picker("Direction", selection: $sortDirection) {
+                    Text("Ascending").tag("Ascending")
+                    Text("Descending").tag("Descending")
                 }
-                TableColumn("Quantity") { position in
-                    Text(String(format: "%.2f", position.longQuantity ?? 0.0))
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
+                TextField("Filter by symbol or description", text: $filterText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(alignment: .leading) {
+                        Text("Asset Types:")
+                            .font(.headline)
+                        HStack {
+                            ForEach(uniqueAssetTypes, id: \.self) { assetType in
+                                Toggle(assetType, isOn: Binding(
+                                    get: { selectedAssetTypes.contains(assetType) },
+                                    set: { isSelected in
+                                        if isSelected {
+                                            selectedAssetTypes.insert(assetType)
+                                        } else {
+                                            selectedAssetTypes.remove(assetType)
+                                        }
+                                    }
+                                ))
+                                .toggleStyle(.checkbox)
+                            }
+                        }
+                        
+                        Text("Accounts:")
+                            .font(.headline)
+                            .padding(.top)
+                        HStack {
+                            ForEach(uniqueAccountNumbers, id: \.self) { accountNumber in
+                                Toggle("Acct \(accountNumber)", isOn: Binding(
+                                    get: { selectedAccountNumbers.contains(accountNumber) },
+                                    set: { isSelected in
+                                        if isSelected {
+                                            selectedAccountNumbers.insert(accountNumber)
+                                        } else {
+                                            selectedAccountNumbers.remove(accountNumber)
+                                        }
+                                    }
+                                ))
+                                .toggleStyle(.checkbox)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
                 }
-                TableColumn("Avg Price") { position in
-                    Text(String(format: "%.2f", position.averagePrice ?? 0.0))
-                }
-                TableColumn("Market Value") { position in
-                    Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                }
-                TableColumn("P/L") { position in
-                    Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
-                }
-                TableColumn("Asset Type") { position in
-                    Text(position.instrument?.assetType?.rawValue ?? "")
+
+                Table(sortedHoldings) {
+                    TableColumn("Symbol") { position in
+                        Text(position.instrument?.symbol ?? "")
+                    }
+                    TableColumn("Quantity") { position in
+                        Text(String(format: "%.2f", position.longQuantity ?? 0.0))
+                    }
+                    TableColumn("Avg Price") { position in
+                        Text(String(format: "%.2f", position.averagePrice ?? 0.0))
+                            .monospacedDigit()
+                    }
+                    TableColumn("Market Value") { position in
+                        Text(String(format: "%.2f", position.marketValue ?? 0.0))
+                            .monospacedDigit()
+                    }
+                    TableColumn("P/L") { position in
+                        Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
+                            .monospacedDigit()
+                    }
+                    TableColumn("P/L%") { position in
+                        let pl = position.longOpenProfitLoss ?? 0
+                        let mv = position.marketValue ?? 0
+                        let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
+                        Text(String(format: "%.1f%%", plPercent))
+                            .monospacedDigit()
+                    }
+                    TableColumn("Asset Type") { position in
+                        Text(position.instrument?.assetType?.rawValue ?? "")
+                    }
+                    TableColumn("Account") { position in
+                        let accountInfo = accountPositions.first { $0.0 === position }
+                        Text(accountInfo?.1 ?? "")
+                    }
                 }
             }
             .searchable(text: $searchText)
@@ -79,6 +233,8 @@ struct HoldingsView: View {
         .task {
             // Fetch holdings when view appears
             await fetchHoldings()
+            // Initialize selected asset types with all available types
+            selectedAssetTypes = Set(uniqueAssetTypes)
         }
     }
     
@@ -87,8 +243,13 @@ struct HoldingsView: View {
         let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
         await schwabClient.fetchAccounts()
         
-        // Extract positions from accounts
-        holdings = schwabClient.getAccounts().flatMap { $0.securitiesAccount?.positions ?? [] }
+        // Extract positions from accounts with their account numbers
+        accountPositions = schwabClient.getAccounts().flatMap { accountContent in
+            let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
+            let lastThreeDigits = String(accountNumber.suffix(3))
+            return accountContent.securitiesAccount?.positions.map { ($0, lastThreeDigits) } ?? []
+        }
+        holdings = accountPositions.map { $0.0 }
         print("count of holding: \(holdings.count)")
     }
 } 
