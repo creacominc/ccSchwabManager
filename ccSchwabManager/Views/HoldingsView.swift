@@ -165,6 +165,14 @@ struct HoldingsView: View {
             .navigationTitle("Holdings")
             .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
             .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
+            
+            if let selectedId = selectedPositionId,
+               let position = sortedHoldings.first(where: { $0.id == selectedId }) {
+                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                PositionDetailView(position: position, accountNumber: accountNumber)
+            } else {
+                PositionDetailView(position: Position(), accountNumber: "")
+            }
         }
         .task {
             await fetchHoldings()
@@ -332,59 +340,36 @@ struct HoldingsTable: View {
     var body: some View {
         Table(sortedHoldings, selection: $selectedPositionId) {
             TableColumn("Symbol") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(position.instrument?.symbol ?? "")
-                }
+                Text(position.instrument?.symbol ?? "")
             }
             TableColumn("Quantity") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(String(format: "%.2f", position.longQuantity ?? 0.0))
-                }
+                Text(String(format: "%.2f", position.longQuantity ?? 0.0))
             }
             TableColumn("Avg Price") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(String(format: "%.2f", position.averagePrice ?? 0.0))
-                        .monospacedDigit()
-                }
+                Text(String(format: "%.2f", position.averagePrice ?? 0.0))
+                    .monospacedDigit()
             }
             TableColumn("Market Value") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                        .monospacedDigit()
-                }
+                Text(String(format: "%.2f", position.marketValue ?? 0.0))
+                    .monospacedDigit()
             }
             TableColumn("P/L") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
-                        .monospacedDigit()
-                }
+                Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
+                    .monospacedDigit()
             }
             TableColumn("P/L%") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    let pl = position.longOpenProfitLoss ?? 0
-                    let mv = position.marketValue ?? 0
-                    let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
-                    Text(String(format: "%.1f%%", plPercent))
-                        .monospacedDigit()
-                }
+                let pl = position.longOpenProfitLoss ?? 0
+                let mv = position.marketValue ?? 0
+                let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
+                Text(String(format: "%.1f%%", plPercent))
+                    .monospacedDigit()
             }
             TableColumn("Asset Type") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(position.instrument?.assetType?.rawValue ?? "")
-                }
+                Text(position.instrument?.assetType?.rawValue ?? "")
             }
             TableColumn("Account") { position in
                 let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                NavigationLink(destination: PositionDetailView(position: position, accountNumber: accountNumber)) {
-                    Text(accountNumber)
-                }
+                Text(accountNumber)
             }
         }
     }
