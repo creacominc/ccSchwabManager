@@ -239,9 +239,18 @@ struct FilterControls: View {
     
     var body: some View {
         VStack {
-            TextField("Filter by symbol or description", text: $filterText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal)
+            HStack {
+                TextField("Filter by symbol or description", text: $filterText)
+                    .textFieldStyle(.roundedBorder)
+                if !filterText.isEmpty {
+                    Button(action: { filterText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.gray)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
             
             ScrollView(.horizontal, showsIndicators: false) {
                 VStack(alignment: .leading) {
