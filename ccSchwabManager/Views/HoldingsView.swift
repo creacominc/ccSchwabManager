@@ -46,6 +46,7 @@ struct HoldingsView: View {
     @State private var accountPositions: [(Position, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPositionId: Position.ID? = nil
+    @StateObject private var viewModel = HoldingsViewModel()
 
     enum SortColumn: String, CaseIterable {
         case symbol = "Symbol"
@@ -56,14 +57,6 @@ struct HoldingsView: View {
         case plPercent = "P/L%"
         case assetType = "Asset Type"
         case account = "Account"
-    }
-
-    var uniqueAssetTypes: [String] {
-        Array(Set(holdings.compactMap { $0.instrument?.assetType?.rawValue })).sorted()
-    }
-
-    var uniqueAccountNumbers: [String] {
-        Array(Set(accountPositions.map { $0.1 })).sorted()
     }
 
     var filteredHoldings: [Position] {
@@ -151,8 +144,8 @@ struct HoldingsView: View {
                     filterText: $filterText,
                     selectedAssetTypes: $selectedAssetTypes,
                     selectedAccountNumbers: $selectedAccountNumbers,
-                    uniqueAssetTypes: uniqueAssetTypes,
-                    uniqueAccountNumbers: uniqueAccountNumbers
+                    uniqueAssetTypes: viewModel.uniqueAssetTypes,
+                    uniqueAccountNumbers: viewModel.uniqueAccountNumbers
                 )
 
                 HoldingsTable(
@@ -176,7 +169,7 @@ struct HoldingsView: View {
         }
         .task {
             await fetchHoldings()
-            selectedAssetTypes = Set(uniqueAssetTypes)
+            selectedAssetTypes = Set(viewModel.uniqueAssetTypes)
         }
     }
     
@@ -192,6 +185,7 @@ struct HoldingsView: View {
             return accountContent.securitiesAccount?.positions.map { ($0, lastThreeDigits) } ?? []
         }
         holdings = accountPositions.map { $0.0 }
+        viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
         print("count of holding: \(holdings.count)")
     }
 }
@@ -226,117 +220,6 @@ struct SearchTextChangeHandler: ViewModifier {
             content.onChange(of: searchText) { newValue in
                 filterText = newValue
             }
-        }
-    }
-}
-
-struct FilterControls: View {
-    @Binding var filterText: String
-    @Binding var selectedAssetTypes: Set<String>
-    @Binding var selectedAccountNumbers: Set<String>
-    let uniqueAssetTypes: [String]
-    let uniqueAccountNumbers: [String]
-    
-    var body: some View {
-        VStack {
-            HStack {
-                TextField("Filter by symbol or description", text: $filterText)
-                    .textFieldStyle(.roundedBorder)
-                if !filterText.isEmpty {
-                    Button(action: { filterText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal)
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading) {
-                    Text("Asset Types:")
-                        .font(.headline)
-                    HStack {
-                        ForEach(uniqueAssetTypes, id: \.self) { assetType in
-                            Toggle(assetType, isOn: Binding(
-                                get: { selectedAssetTypes.contains(assetType) },
-                                set: { isSelected in
-                                    if isSelected {
-                                        selectedAssetTypes.insert(assetType)
-                                    } else {
-                                        selectedAssetTypes.remove(assetType)
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.checkbox)
-                        }
-                    }
-                    
-                    Text("Accounts:")
-                        .font(.headline)
-                        .padding(.top)
-                    HStack {
-                        ForEach(uniqueAccountNumbers, id: \.self) { accountNumber in
-                            Toggle("Acct \(accountNumber)", isOn: Binding(
-                                get: { selectedAccountNumbers.contains(accountNumber) },
-                                set: { isSelected in
-                                    if isSelected {
-                                        selectedAccountNumbers.insert(accountNumber)
-                                    } else {
-                                        selectedAccountNumbers.remove(accountNumber)
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.checkbox)
-                        }
-                    }
-                }
-                .padding(.horizontal)
-            }
-        }
-    }
-}
-
-struct PositionDetailView: View {
-    let position: Position
-    let accountNumber: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(position.instrument?.symbol ?? "")
-                .font(.title)
-                .padding(.bottom)
-                .onAppear {
-                    print( position.instrument?.symbol ?? "" ) 
-                }
-            
-            Group {
-                DetailRow(label: "Description", value: position.instrument?.description ?? "")
-                DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
-                DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
-                DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
-                DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
-                DetailRow(label: "P/L %", value: String(format: "%.1f%%", 
-                    (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
-                DetailRow(label: "Asset Type", value: position.instrument?.assetType?.rawValue ?? "")
-                DetailRow(label: "Account", value: accountNumber)
-            }
-        }
-        .padding()
-    }
-}
-
-struct DetailRow: View {
-    let label: String
-    let value: String
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.headline)
-                .frame(width: 120, alignment: .leading)
-            Text(value)
-                .monospacedDigit()
         }
     }
 }
