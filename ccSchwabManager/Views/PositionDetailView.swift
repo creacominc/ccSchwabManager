@@ -168,19 +168,11 @@ struct PositionDetailView: View {
                 await fetchPriceHistory()
             }
         }
-        #if os(iOS)
         .onChange(of: position) { oldValue, newValue in
             Task {
                 await fetchPriceHistory()
             }
         }
-        #else
-        .onChange(of: position) { _ in
-            Task {
-                await fetchPriceHistory()
-            }
-        }
-        #endif
     }
     
     private func fetchPriceHistory() async {

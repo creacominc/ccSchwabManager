@@ -8,7 +8,7 @@ struct FilterControls: View {
     let uniqueAccountNumbers: [String]
     
     var body: some View {
-        VStack {
+        VStack(spacing: 8) {
             HStack {
                 TextField("Filter by symbol or description", text: $filterText)
                     .textFieldStyle(.roundedBorder)
@@ -22,47 +22,60 @@ struct FilterControls: View {
             }
             .padding(.horizontal)
             
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading) {
-                    Text("Asset Types:")
-                        .font(.headline)
+            HStack {
+                Text("Asset Types:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
-                        ForEach(uniqueAssetTypes, id: \.self) { assetType in
-                            Toggle(assetType, isOn: Binding(
-                                get: { selectedAssetTypes.contains(assetType) },
-                                set: { isSelected in
-                                    if isSelected {
-                                        selectedAssetTypes.insert(assetType)
-                                    } else {
-                                        selectedAssetTypes.remove(assetType)
-                                    }
+                        ForEach(uniqueAssetTypes, id: \.self) { type in
+                            Button(action: {
+                                if selectedAssetTypes.contains(type) {
+                                    selectedAssetTypes.remove(type)
+                                } else {
+                                    selectedAssetTypes.insert(type)
                                 }
-                            ))
-                            .toggleStyle(.switch)
+                            }) {
+                                Text(type)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(selectedAssetTypes.contains(type) ? Color.blue : Color.gray.opacity(0.2))
+                                    .foregroundColor(selectedAssetTypes.contains(type) ? .white : .primary)
+                                    .cornerRadius(8)
+                            }
                         }
                     }
-                    
-                    Text("Accounts:")
-                        .font(.headline)
-                        .padding(.top)
-                    HStack {
-                        ForEach(uniqueAccountNumbers, id: \.self) { accountNumber in
-                            Toggle("Acct \(accountNumber)", isOn: Binding(
-                                get: { selectedAccountNumbers.contains(accountNumber) },
-                                set: { isSelected in
-                                    if isSelected {
-                                        selectedAccountNumbers.insert(accountNumber)
-                                    } else {
-                                        selectedAccountNumbers.remove(accountNumber)
-                                    }
-                                }
-                            ))
-                            .toggleStyle(.switch)
-                        }
-                    }
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
+            }
+            
+            HStack {
+                Text("Accounts:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(uniqueAccountNumbers, id: \.self) { account in
+                            Button(action: {
+                                if selectedAccountNumbers.contains(account) {
+                                    selectedAccountNumbers.remove(account)
+                                } else {
+                                    selectedAccountNumbers.insert(account)
+                                }
+                            }) {
+                                Text(account)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(selectedAccountNumbers.contains(account) ? Color.blue : Color.gray.opacity(0.2))
+                                    .foregroundColor(selectedAccountNumbers.contains(account) ? .white : .primary)
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
             }
         }
+        .padding(.vertical, 8)
     }
 } 
