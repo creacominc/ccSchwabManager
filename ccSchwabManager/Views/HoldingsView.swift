@@ -46,6 +46,7 @@ struct HoldingsView: View {
     @State private var accountPositions: [(Position, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPosition: SelectedPosition? = nil
+    @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = HoldingsViewModel()
 
     struct SelectedPosition: Identifiable {
@@ -129,133 +130,78 @@ struct HoldingsView: View {
     }
 
     var body: some View {
-        #if os(iOS)
         NavigationStack {
-            VStack {
-                Picker("Sort by", selection: $selectedSortColumn) {
-                    ForEach(SortColumn.allCases, id: \.self) { column in
-                        Text(column.rawValue).tag(column.rawValue)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                Picker("Direction", selection: $sortDirection) {
-                    Text("Ascending").tag("Ascending")
-                    Text("Descending").tag("Descending")
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                FilterControls(
-                    filterText: $filterText,
-                    selectedAssetTypes: $selectedAssetTypes,
-                    selectedAccountNumbers: $selectedAccountNumbers,
-                    uniqueAssetTypes: viewModel.uniqueAssetTypes,
-                    uniqueAccountNumbers: viewModel.uniqueAccountNumbers
-                )
-
-                HoldingsTable(
-                    sortedHoldings: sortedHoldings,
-                    selectedPositionId: Binding(
-                        get: { selectedPosition?.id },
-                        set: { newId in
-                            if let id = newId,
-                               let position = sortedHoldings.first(where: { $0.id == id }) {
-                                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                                selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
-                            } else {
-                                selectedPosition = nil
-                            }
+            GeometryReader { geometry in
+                VStack {
+                    Picker("Sort by", selection: $selectedSortColumn) {
+                        ForEach(SortColumn.allCases, id: \.self) { column in
+                            Text(column.rawValue).tag(column.rawValue)
                         }
-                    ),
-                    accountPositions: accountPositions
-                )
-            }
-            .searchable(text: $searchText)
-            .navigationTitle("Holdings")
-            .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
-            .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
-            .task {
-                await fetchHoldings()
-                selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    Picker("Direction", selection: $sortDirection) {
+                        Text("Ascending").tag("Ascending")
+                        Text("Descending").tag("Descending")
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    FilterControls(
+                        filterText: $filterText,
+                        selectedAssetTypes: $selectedAssetTypes,
+                        selectedAccountNumbers: $selectedAccountNumbers,
+                        uniqueAssetTypes: viewModel.uniqueAssetTypes,
+                        uniqueAccountNumbers: viewModel.uniqueAccountNumbers
+                    )
+
+                    HoldingsTable(
+                        sortedHoldings: sortedHoldings,
+                        selectedPositionId: Binding(
+                            get: { selectedPosition?.id },
+                            set: { newId in
+                                if let id = newId,
+                                   let position = sortedHoldings.first(where: { $0.id == id }) {
+                                    let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                                    selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
+                                } else {
+                                    selectedPosition = nil
+                                }
+                            }
+                        ),
+                        accountPositions: accountPositions
+                    )
+                }
+                .searchable(text: $searchText)
+                .navigationTitle("Holdings")
+                .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
+                .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
+                .task {
+                    await fetchHoldings()
+                    selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
+                }
+                .onAppear {
+                    viewSize = geometry.size
+                }
+                .onChange(of: geometry.size) { newSize in
+                    viewSize = newSize
+                }
             }
         }
         .sheet(item: $selectedPosition) { selected in
-            NavigationStack {
-                PositionDetailView(position: selected.position, accountNumber: selected.accountNumber)
-                    .navigationTitle(selected.position.instrument?.symbol ?? "")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") {
-                                selectedPosition = nil
-                            }
+            PositionDetailView(position: selected.position, accountNumber: selected.accountNumber)
+                .navigationTitle(selected.position.instrument?.symbol ?? "")
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Button("Done") {
+                            selectedPosition = nil
                         }
                     }
-            }
-        }
-        #else
-        NavigationView {
-            VStack {
-                Picker("Sort by", selection: $selectedSortColumn) {
-                    ForEach(SortColumn.allCases, id: \.self) { column in
-                        Text(column.rawValue).tag(column.rawValue)
-                    }
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                Picker("Direction", selection: $sortDirection) {
-                    Text("Ascending").tag("Ascending")
-                    Text("Descending").tag("Descending")
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                FilterControls(
-                    filterText: $filterText,
-                    selectedAssetTypes: $selectedAssetTypes,
-                    selectedAccountNumbers: $selectedAccountNumbers,
-                    uniqueAssetTypes: viewModel.uniqueAssetTypes,
-                    uniqueAccountNumbers: viewModel.uniqueAccountNumbers
-                )
-
-                HoldingsTable(
-                    sortedHoldings: sortedHoldings,
-                    selectedPositionId: Binding(
-                        get: { selectedPosition?.id },
-                        set: { newId in
-                            if let id = newId,
-                               let position = sortedHoldings.first(where: { $0.id == id }) {
-                                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                                selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
-                            } else {
-                                selectedPosition = nil
-                            }
-                        }
-                    ),
-                    accountPositions: accountPositions
-                )
-            }
-            .searchable(text: $searchText)
-            .navigationTitle("Holdings")
-            .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
-            .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
-            .task {
-                await fetchHoldings()
-                selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
-            }
-            
-            if let selectedId = selectedPosition?.id,
-               let position = sortedHoldings.first(where: { $0.id == selectedId }) {
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                PositionDetailView(position: position, accountNumber: accountNumber)
-            } else {
-                PositionDetailView(position: Position(), accountNumber: "")
-            }
+                .frame(width: viewSize.width * 0.8,
+                       height: viewSize.height * 0.9)
         }
-        #endif
     }
     
     private func fetchHoldings() async {
