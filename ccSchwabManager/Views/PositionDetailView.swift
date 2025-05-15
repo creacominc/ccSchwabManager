@@ -47,7 +47,17 @@ struct PriceHistoryChart: View {
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day)) { value in
                         AxisGridLine()
-                        AxisValueLabel(format: .dateTime.month().day())
+                        if let date = value.as(Date.self) {
+                            let calendar = Calendar.current
+                            let day = calendar.component(.day, from: date)
+                            let isFirstDayOfMonth = calendar.component(.day, from: date) == 1
+                            
+                            if isFirstDayOfMonth {
+                                AxisValueLabel(format: .dateTime.month())
+                            } else {
+                                AxisValueLabel("\(day)")
+                            }
+                        }
                     }
                 }
                 .chartYAxis {
