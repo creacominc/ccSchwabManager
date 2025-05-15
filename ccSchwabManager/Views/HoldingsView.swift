@@ -190,17 +190,29 @@ struct HoldingsView: View {
             }
         }
         .sheet(item: $selectedPosition) { selected in
-            PositionDetailView(position: selected.position, accountNumber: selected.accountNumber)
-                .navigationTitle(selected.position.instrument?.symbol ?? "")
-                .toolbar {
-                    ToolbarItem(placement: .automatic) {
-                        Button("Done") {
-                            selectedPosition = nil
-                        }
+            let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
+            PositionDetailView(
+                position: selected.position,
+                accountNumber: selected.accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: sortedHoldings.count,
+                onNavigate: { newIndex in
+                    guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
+                    let newPosition = sortedHoldings[newIndex]
+                    let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
+                    selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
+                }
+            )
+            .navigationTitle(selected.position.instrument?.symbol ?? "")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button("Done") {
+                        selectedPosition = nil
                     }
                 }
-                .frame(width: viewSize.width * 0.8,
-                       height: viewSize.height * 0.9)
+            }
+            .frame(width: viewSize.width * 0.8,
+                   height: viewSize.height * 0.9)
         }
     }
     

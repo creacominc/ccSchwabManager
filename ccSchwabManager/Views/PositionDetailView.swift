@@ -148,62 +148,36 @@ struct PriceHistoryChart: View {
     }
 }
 
-struct PositionDetailView: View {
-    let position: Position
-    let accountNumber: String
-    @State private var priceHistory: CandleList?
-    @State private var isLoading = false
-    @EnvironmentObject var secretsManager: SecretsManager
-
-    private func formatDate(_ timestamp: Int64?) -> String {
-        guard let timestamp = timestamp else { return "" }
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            PositionDetailsHeader(position: position, accountNumber: accountNumber)
-            Divider()
-            PriceHistorySection(
-                priceHistory: priceHistory,
-                isLoading: isLoading,
-                formatDate: formatDate
-            )
-        }
-        .onAppear {
-            Task {
-                await fetchPriceHistory()
-            }
-        }
-        .onChange(of: position) { oldValue, newValue in
-            Task {
-                await fetchPriceHistory()
-            }
-        }
-    }
-    
-    private func fetchPriceHistory() async {
-        guard let symbol = position.instrument?.symbol else { return }
-        isLoading = true
-        defer { isLoading = false }
-        
-        let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
-        priceHistory = await schwabClient.fetchPriceHistory(symbol: symbol)
-    }
-}
-
 struct PositionDetailsHeader: View {
     let position: Position
     let accountNumber: String
+    let currentIndex: Int
+    let totalPositions: Int
+    let onNavigate: (Int) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(position.instrument?.symbol ?? "")
-                .font(.title2)
-                .bold()
+            HStack {
+                Button(action: { onNavigate(currentIndex - 1) }) {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(currentIndex <= 0)
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                
+                Spacer()
+                
+                Text(position.instrument?.symbol ?? "")
+                    .font(.title2)
+                    .bold()
+                
+                Spacer()
+                
+                Button(action: { onNavigate(currentIndex + 1) }) {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(currentIndex >= totalPositions - 1)
+                .keyboardShortcut(.rightArrow, modifiers: [])
+            }
             
             HStack(spacing: 20) {
                 LeftColumn(position: position)
@@ -309,5 +283,61 @@ struct DetailRow: View {
             Text(value)
                 .monospacedDigit()
         }
+    }
+}
+
+struct PositionDetailView: View {
+    let position: Position
+    let accountNumber: String
+    let currentIndex: Int
+    let totalPositions: Int
+    let onNavigate: (Int) -> Void
+    @State private var priceHistory: CandleList?
+    @State private var isLoading = false
+    @EnvironmentObject var secretsManager: SecretsManager
+
+    private func formatDate(_ timestamp: Int64?) -> String {
+        guard let timestamp = timestamp else { return "" }
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            PositionDetailsHeader(
+                position: position,
+                accountNumber: accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: totalPositions,
+                onNavigate: onNavigate
+            )
+            Divider()
+            PriceHistorySection(
+                priceHistory: priceHistory,
+                isLoading: isLoading,
+                formatDate: formatDate
+            )
+        }
+        .onAppear {
+            Task {
+                await fetchPriceHistory()
+            }
+        }
+        .onChange(of: position) { oldValue, newValue in
+            Task {
+                await fetchPriceHistory()
+            }
+        }
+    }
+    
+    private func fetchPriceHistory() async {
+        guard let symbol = position.instrument?.symbol else { return }
+        isLoading = true
+        defer { isLoading = false }
+        
+        let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
+        priceHistory = await schwabClient.fetchPriceHistory(symbol: symbol)
     }
 } 
