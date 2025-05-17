@@ -380,28 +380,34 @@ struct PositionDetailView: View {
                     onNavigate: onNavigate
                 )
                 .padding(.bottom, 8)
-
+                
                 Divider()
                     .padding(.vertical, 8)
-
-                ScrollView {
-                    PriceHistorySection(
-                        priceHistory: priceHistory,
-                        isLoading: isLoadingPriceHistory,
-                        formatDate: formatDate
-                    )
+                
+                TabView {
+                    ScrollView {
+                        PriceHistorySection(
+                            priceHistory: priceHistory,
+                            isLoading: isLoadingPriceHistory,
+                            formatDate: formatDate
+                        )
+                    }
+                    .tabItem {
+                        Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
+                    }
+                    
+                    ScrollView {
+                        TransactionHistorySection(
+                            transactions: transactions,
+                            isLoading: isLoadingTransactions
+                        )
+                    }
+                    .tabItem {
+                        Label("Transactions", systemImage: "list.bullet")
+                    }
                 }
-
-                Divider()
-                    .padding(.vertical, 8)
-
-                ScrollView {
-                    TransactionHistorySection(
-                        transactions: transactions,
-                        isLoading: isLoadingTransactions
-                    )
-                }
-
+                //.frame(height: geometry.size.height * 0.7)  // 70% of view height
+                .frame(maxHeight: .infinity)
             }
             .padding(.horizontal)
             .onAppear {
