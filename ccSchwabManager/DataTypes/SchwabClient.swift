@@ -727,7 +727,7 @@ class SchwabClient
             let transactionList : [Transaction]  = try decoder.decode( [Transaction].self, from: decompressedData )
             print( "Fetched \(transactionList.count) transactions for \(symbol)" )
             // return the list sorted by tradeDate
-            return transactionList.sorted { $0.tradeDate ?? "" < $1.tradeDate ?? "" }
+            return transactionList.sorted { $0.tradeDate ?? "" > $1.tradeDate ?? "" }
         } catch {
             print("Error: \(error.localizedDescription)")
             return []

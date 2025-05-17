@@ -41,7 +41,6 @@ struct HoldingsView: View {
     @State private var searchText = ""
     @State private var selectedSortColumn = "Symbol"
     @State private var sortDirection = "Ascending"
-    @State private var filterText = ""
     @State private var selectedAssetTypes: Set<String> = []
     @State private var accountPositions: [(Position, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
@@ -68,11 +67,12 @@ struct HoldingsView: View {
 
     var filteredHoldings: [Position] {
         holdings.filter { position in
-            let matchesText = filterText.isEmpty ||
-                (position.instrument?.symbol?.localizedCaseInsensitiveContains(filterText) ?? false) ||
-                (position.instrument?.description?.localizedCaseInsensitiveContains(filterText) ?? false)
+            let matchesText = searchText.isEmpty ||
+                (position.instrument?.symbol?.localizedCaseInsensitiveContains(searchText) ?? false) ||
+                (position.instrument?.description?.localizedCaseInsensitiveContains(searchText) ?? false)
             
-            let matchesAssetType = (position.instrument?.assetType?.rawValue).map { selectedAssetTypes.contains($0) } ?? false
+            let matchesAssetType = selectedAssetTypes.isEmpty || 
+                (position.instrument?.assetType?.rawValue).map { selectedAssetTypes.contains($0) } ?? false
             
             let accountInfo = accountPositions.first { $0.0 === position }
             let matchesAccount = selectedAccountNumbers.isEmpty || 
@@ -149,7 +149,6 @@ struct HoldingsView: View {
                     .padding(.horizontal)
 
                     FilterControls(
-                        filterText: $filterText,
                         selectedAssetTypes: $selectedAssetTypes,
                         selectedAccountNumbers: $selectedAccountNumbers,
                         uniqueAssetTypes: viewModel.uniqueAssetTypes,
@@ -173,10 +172,9 @@ struct HoldingsView: View {
                         accountPositions: accountPositions
                     )
                 }
-                .searchable(text: $searchText)
+                .searchable(text: $searchText, prompt: "Search by symbol or description")
                 .navigationTitle("Holdings")
                 .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
-                .modifier(SearchTextChangeHandler(searchText: $searchText, filterText: $filterText))
                 .task {
                     await fetchHoldings()
                     selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
@@ -244,23 +242,6 @@ struct SortColumnChangeHandler: ViewModifier {
         } else {
             content.onChange(of: selectedSortColumn) { _ in
                 sortDirection = "Ascending"
-            }
-        }
-    }
-}
-
-struct SearchTextChangeHandler: ViewModifier {
-    @Binding var searchText: String
-    @Binding var filterText: String
-    
-    func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content.onChange(of: searchText) { oldValue, newValue in
-                filterText = newValue
-            }
-        } else {
-            content.onChange(of: searchText) { newValue in
-                filterText = newValue
             }
         }
     }

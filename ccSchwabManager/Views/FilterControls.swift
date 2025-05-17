@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct FilterControls: View {
-    @Binding var filterText: String
     @Binding var selectedAssetTypes: Set<String>
     @Binding var selectedAccountNumbers: Set<String>
     let uniqueAssetTypes: [String]
@@ -9,19 +8,6 @@ struct FilterControls: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            HStack {
-                TextField("Filter by symbol or description", text: $filterText)
-                    .textFieldStyle(.roundedBorder)
-                if !filterText.isEmpty {
-                    Button(action: { filterText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal)
-            
             HStack {
                 Text("Asset Types:")
                     .font(.subheadline)
