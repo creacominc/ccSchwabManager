@@ -129,7 +129,7 @@ struct PriceHistoryChart: View {
                     .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
                 }
             }
-            .frame(height: 300)
+            .frame(height: 200)
             .padding()
         } else {
             fallbackView
@@ -143,7 +143,7 @@ struct PriceHistoryChart: View {
             Text("Charts require iOS 16.0 or macOS 13.0 or newer")
                 .foregroundColor(.secondary)
         }
-        .frame(height: 300)
+        .frame(height: 200)
         .padding()
     }
 }
@@ -286,6 +286,68 @@ struct DetailRow: View {
     }
 }
 
+struct TransactionHistorySection: View {
+    let transactions: [Transaction]
+    let isLoading: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Transaction History")
+                .font(.headline)
+                .padding(.horizontal)
+            
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else if transactions.isEmpty {
+                Text("No transactions available")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                Table(transactions) {
+                    TableColumn("Date") { (transaction: Transaction) in
+                        Text(formatDate(transaction.tradeDate))
+                    }
+                    TableColumn("Type") { (transaction: Transaction) in
+                        Text(transaction.type?.rawValue ?? "")
+                    }
+                    TableColumn("Quantity") { (transaction: Transaction) in
+                        if let transferItem = transaction.transferItems.first {
+                            Text(String(format: "%.2f", transferItem.amount ?? 0))
+                        } else {
+                            Text("")
+                        }
+                    }
+                    TableColumn("Price") { (transaction: Transaction) in
+                        if let transferItem = transaction.transferItems.first {
+                            Text(String(format: "%.2f", transferItem.price ?? 0))
+                        } else {
+                            Text("")
+                        }
+                    }
+                    TableColumn("Net Amount") { (transaction: Transaction) in
+                        Text(String(format: "%.2f", transaction.netAmount ?? 0))
+                    }
+                }
+                .frame(height: 300)
+            }
+        }
+        .padding(.vertical)
+    }
+    
+    private func formatDate(_ dateString: String?) -> String {
+        guard let dateString = dateString,
+              let date = ISO8601DateFormatter().date(from: dateString) else {
+            return ""
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+}
+
 struct PositionDetailView: View {
     let position: Position
     let accountNumber: String
@@ -293,8 +355,11 @@ struct PositionDetailView: View {
     let totalPositions: Int
     let onNavigate: (Int) -> Void
     @State private var priceHistory: CandleList?
-    @State private var isLoading = false
+    @State private var transactions: [Transaction] = []
+    @State private var isLoadingPriceHistory = false
+    @State private var isLoadingTransactions = false
     @EnvironmentObject var secretsManager: SecretsManager
+    @State private var viewSize: CGSize = .zero
 
     private func formatDate(_ timestamp: Int64?) -> String {
         guard let timestamp = timestamp else { return "" }
@@ -305,39 +370,72 @@ struct PositionDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            PositionDetailsHeader(
-                position: position,
-                accountNumber: accountNumber,
-                currentIndex: currentIndex,
-                totalPositions: totalPositions,
-                onNavigate: onNavigate
-            )
-            Divider()
-            PriceHistorySection(
-                priceHistory: priceHistory,
-                isLoading: isLoading,
-                formatDate: formatDate
-            )
-        }
-        .onAppear {
-            Task {
-                await fetchPriceHistory()
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                PositionDetailsHeader(
+                    position: position,
+                    accountNumber: accountNumber,
+                    currentIndex: currentIndex,
+                    totalPositions: totalPositions,
+                    onNavigate: onNavigate
+                )
+                .padding(.bottom, 8)
+
+                Divider()
+                    .padding(.vertical, 8)
+
+                ScrollView {
+                    PriceHistorySection(
+                        priceHistory: priceHistory,
+                        isLoading: isLoadingPriceHistory,
+                        formatDate: formatDate
+                    )
+                }
+
+                Divider()
+                    .padding(.vertical, 8)
+
+                ScrollView {
+                    TransactionHistorySection(
+                        transactions: transactions,
+                        isLoading: isLoadingTransactions
+                    )
+                }
+
             }
-        }
-        .onChange(of: position) { oldValue, newValue in
-            Task {
-                await fetchPriceHistory()
+            .padding(.horizontal)
+            .onAppear {
+                viewSize = geometry.size
+                Task {
+                    await fetchPriceHistory()
+                    await fetchTransactions()
+                }
+            }
+            .onChange(of: geometry.size) { newSize in
+                viewSize = newSize
+            }
+            .onChange(of: position) { oldValue, newValue in
+                Task {
+                    await fetchPriceHistory()
+                    await fetchTransactions()
+                }
             }
         }
     }
     
     private func fetchPriceHistory() async {
         guard let symbol = position.instrument?.symbol else { return }
-        isLoading = true
-        defer { isLoading = false }
+        isLoadingPriceHistory = true
+        defer { isLoadingPriceHistory = false }
         
-        let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
-        priceHistory = await schwabClient.fetchPriceHistory(symbol: symbol)
+        priceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+    }
+    
+    private func fetchTransactions() async {
+        guard let symbol = position.instrument?.symbol else { return }
+        isLoadingTransactions = true
+        defer { isLoadingTransactions = false }
+        
+        transactions = await SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
     }
 } 

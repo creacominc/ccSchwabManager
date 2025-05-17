@@ -218,11 +218,10 @@ struct HoldingsView: View {
     
     private func fetchHoldings() async {
         print("=== fetchHoldings ===")
-        let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
-        await schwabClient.fetchAccounts()
+        await SchwabClient.shared.fetchAccounts()
         
         // Extract positions from accounts with their account numbers
-        accountPositions = schwabClient.getAccounts().flatMap { accountContent in
+        accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
             let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
             let lastThreeDigits = String(accountNumber.suffix(3))
             return accountContent.securitiesAccount?.positions.map { ($0, lastThreeDigits) } ?? []

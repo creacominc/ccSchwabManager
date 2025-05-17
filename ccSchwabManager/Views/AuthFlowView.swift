@@ -117,8 +117,7 @@ struct AuthFlowView: View {
                 showingCredentialsInput = true
             } else {
                 // Get authorization URL from SchwabClient
-                let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
-                schwabClient.getAuthorizationUrl { result in
+                SchwabClient.shared.getAuthorizationUrl { result in
                     switch result {
                     case .success(let url):
                         authUrl = url
@@ -154,8 +153,7 @@ struct AuthFlowView: View {
         showingCredentialsInput = false
         
         // Get authorization URL after saving credentials
-        let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
-        schwabClient.getAuthorizationUrl { result in
+        SchwabClient.shared.getAuthorizationUrl { result in
             switch result {
             case .success(let url):
                 authUrl = url
@@ -174,13 +172,12 @@ struct AuthFlowView: View {
             // Fetch account numbers and holdings
             Task {
                 print("task started - fetching account numbers...")
-                let schwabClient = SchwabClient(secrets: &secretsManager.secrets)
                 
                 // Get access token if not already present
                 if secretsManager.secrets.accessToken.isEmpty {
                     print("Getting initial access token...")
                     await withCheckedContinuation { continuation in
-                        schwabClient.getAccessToken { result in
+                        SchwabClient.shared.getAccessToken { result in
                             switch result {
                             case .success:
                                 print("Successfully got access token")
@@ -198,19 +195,19 @@ struct AuthFlowView: View {
                             // Wait for 45 minutes (tokens typically expire after 1 hour)
                             try? await Task.sleep(nanoseconds: 45 * 60 * 1_000_000_000)
                             print("Refreshing access token...")
-                            schwabClient.refreshAccessToken()
+                            SchwabClient.shared.refreshAccessToken()
                             secretsManager.saveSecrets()
                         }
                     }
                 }
                 
-                await schwabClient.fetchAccountNumbers()
+                await SchwabClient.shared.fetchAccountNumbers()
                 
                 // Update secrets with account numbers
                 secretsManager.saveSecrets()
                 
                 // Fetch account holdings
-                await schwabClient.fetchAccounts()
+                await SchwabClient.shared.fetchAccounts()
             }
         } else {
             // Handle invalid URL format

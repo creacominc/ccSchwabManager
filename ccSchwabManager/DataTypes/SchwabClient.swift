@@ -1,4 +1,3 @@
-
 import Foundation
 import AuthenticationServices
 import Compression
@@ -32,6 +31,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
+    static let shared = SchwabClient()
     private var m_secrets : Secrets
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
@@ -52,8 +52,12 @@ class SchwabClient
         return retVal
     }
     
-    init( secrets: inout Secrets )
+    private init()
     {
+        self.m_secrets = Secrets()
+    }
+    
+    func configure(with secrets: inout Secrets) {
         self.m_secrets = secrets
         // start thread to refresh the access token
         self.refreshAccessToken()

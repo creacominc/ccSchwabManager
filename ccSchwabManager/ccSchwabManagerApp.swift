@@ -12,6 +12,12 @@ struct ccSchwabManagerApp: App
 {
     @StateObject private var secretsManager = SecretsManager()
     
+    init() {
+        // Configure SchwabClient with initial secrets
+        var initialSecrets = KeychainManager.readSecrets(prefix: "app/init") ?? Secrets()
+        SchwabClient.shared.configure(with: &initialSecrets)
+    }
+    
     var body: some Scene
     {
         WindowGroup
@@ -34,6 +40,8 @@ class SecretsManager: ObservableObject {
     func saveSecrets() {
         var secretsToSave = secrets
         _ = KeychainManager.saveSecrets(secrets: &secretsToSave)
+        // Update SchwabClient with new secrets
+        SchwabClient.shared.configure(with: &secretsToSave)
     }
     
     func resetSecrets(partial: Bool = false) {
