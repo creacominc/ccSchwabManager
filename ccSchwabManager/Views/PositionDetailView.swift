@@ -6,7 +6,7 @@ struct PriceHistoryChart: View {
     @State private var selectedDate: Date?
     @State private var selectedPrice: Double?
     @State private var tooltipPosition: CGPoint = .zero
-    
+
     private var tooltipBackgroundColor: Color {
         #if os(iOS)
         return Color(.systemBackground)
@@ -16,27 +16,16 @@ struct PriceHistoryChart: View {
     }
     
     var body: some View {
-        #if os(iOS)
-        if #available(iOS 16.0, *) {
             chartContent
-        } else {
-            fallbackView
-        }
-        #else
-        if #available(macOS 13.0, *) {
-            chartContent
-        } else {
-            fallbackView
-        }
-        #endif
     }
     
     @ViewBuilder
     private var chartContent: some View {
-        if #available(macOS 13.0, iOS 16.0, *) {
             ZStack {
                 Chart {
-                    ForEach(candles.sorted { ($0.datetime ?? 0) < ($1.datetime ?? 0) }, id: \.datetime) { candle in
+                    // candles were already sorted when they arrive in getPriceHistory
+                    //ForEach(candles.sorted { ($0.datetime ?? 0) < ($1.datetime ?? 0) }, id: \.datetime) { candle in
+                    ForEach(candles, id: \.datetime) { candle in
                         LineMark(
                             x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
                             y: .value("Price", candle.close ?? 0)
@@ -54,8 +43,8 @@ struct PriceHistoryChart: View {
                             
                             if isFirstDayOfMonth {
                                 AxisValueLabel(format: .dateTime.month())
-                            } else {
-                                AxisValueLabel("\(day)")
+//                            } else {
+//                                AxisValueLabel("\(day)")
                             }
                         }
                     }
@@ -75,29 +64,12 @@ struct PriceHistoryChart: View {
                                 DragGesture(minimumDistance: 0)
                                     .onChanged { value in
                                         let x: CGFloat
-                                        #if os(iOS)
-                                        if #available(iOS 17.0, *) {
-                                            guard let plotFrame = proxy.plotFrame else { return }
-                                            x = value.location.x - geometry[plotFrame].origin.x
-                                            guard x >= 0, x < geometry[plotFrame].width else { return }
-                                        } else {
-                                            x = value.location.x - geometry[proxy.plotAreaFrame].origin.x
-                                            guard x >= 0, x < geometry[proxy.plotAreaFrame].width else { return }
-                                        }
-                                        #else
-                                        if #available(macOS 14.0, *) {
-                                            guard let plotFrame = proxy.plotFrame else { return }
-                                            x = value.location.x - geometry[plotFrame].origin.x
-                                            guard x >= 0, x < geometry[plotFrame].width else { return }
-                                        } else {
-                                            x = value.location.x - geometry[proxy.plotAreaFrame].origin.x
-                                            guard x >= 0, x < geometry[proxy.plotAreaFrame].width else { return }
-                                        }
-                                        #endif
-                                        
+                                        guard let plotFrame = proxy.plotFrame else { return }
+                                        x = value.location.x - geometry[plotFrame].origin.x
+                                        guard x >= 0, x < geometry[plotFrame].width else { return }
                                         let date = proxy.value(atX: x) as Date?
                                         if let date = date,
-                                           let candle = candles.first(where: { 
+                                           let candle = candles.first(where: {
                                                let candleDate = Date(timeIntervalSince1970: TimeInterval($0.datetime ?? 0) / 1000)
                                                return Calendar.current.isDate(candleDate, inSameDayAs: date)
                                            }) {
@@ -131,21 +103,8 @@ struct PriceHistoryChart: View {
             }
             .frame(height: 200)
             .padding()
-        } else {
-            fallbackView
-        }
     }
-    
-    private var fallbackView: some View {
-        VStack {
-            Text("Price History Chart")
-                .font(.headline)
-            Text("Charts require iOS 16.0 or macOS 13.0 or newer")
-                .foregroundColor(.secondary)
-        }
-        .frame(height: 200)
-        .padding()
-    }
+
 }
 
 struct PositionDetailsHeader: View {
@@ -244,7 +203,6 @@ struct PriceHistorySection: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else if let history = priceHistory {
-                PreviousCloseInfo(history: history, formatDate: formatDate)
                 PriceHistoryChart(candles: history.candles)
             } else {
                 Text("No price history available")
@@ -254,19 +212,6 @@ struct PriceHistorySection: View {
             }
         }
         .padding(.vertical)
-    }
-}
-
-struct PreviousCloseInfo: View {
-    let history: CandleList
-    let formatDate: (Int64?) -> String
-    
-    var body: some View {
-        HStack(spacing: 20) {
-            DetailRow(label: "Previous Close", value: String(format: "%.2f", history.previousClose ?? 0))
-            DetailRow(label: "Previous Close Date", value: formatDate(history.previousCloseDate))
-        }
-        .padding(.horizontal)
     }
 }
 
@@ -311,7 +256,7 @@ struct TransactionHistorySection: View {
                         Text(formatDate(transaction.tradeDate))
                     }
                     TableColumn("Type") { (transaction: Transaction) in
-                        Text(transaction.type?.rawValue ?? "")
+                        Text( transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown" )
                     }
                     TableColumn("Quantity") { (transaction: Transaction) in
                         if let transferItem = transaction.transferItems.first {

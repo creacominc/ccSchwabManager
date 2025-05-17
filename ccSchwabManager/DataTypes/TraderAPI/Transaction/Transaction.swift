@@ -120,5 +120,26 @@ class Transaction: Codable, Identifiable, Hashable
         self.transferItems = transferItems
     }
 
+    // print the contents of the transaction
+    public func dump()
+    {
+        print( "=============================================" )
+        print("Transaction Details:")
+        print("Activity Id: \(String(describing: activityId))")
+        print("Time: \(String(describing: time))")
+        print("User: \(String(describing: user))")
+        print("Description: \(String(describing: description))")
+        print("Account Number: \(String(describing: accountNumber))")
+        print("Type: \(String(describing: type))")
+        print("Status: \(String(describing: status))")
+        print("Sub Account: \(String(describing: subAccount))")
+        print("Trade Date: \(String(describing: tradeDate))")
+        print("Settlement Date: \(String(describing: settlementDate))")
+        print("Position Id: \(String(describing: positionId))")
+        print("Order Id: \(String(describing: orderId))")
+        print("Net Amount: \(String(describing: netAmount))")
+        print("Activity Type: \(String(describing: activityType))")
+        print("Transfer Items: \(String(describing: transferItems))")
+    }
 }
 

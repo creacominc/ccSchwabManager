@@ -28,7 +28,7 @@ class Candle: Codable, Identifiable
     public var low: Double?
     public var open: Double?
     public var volume: Int64?
-
+    
     enum CodingKeys: String, CodingKey
     {
         case close = "close"
@@ -39,10 +39,10 @@ class Candle: Codable, Identifiable
         case open = "open"
         case volume = "volume"
     }
-
+    
     public init( close: Double? = nil, datetime: Int64? = nil,
-          datetimeISO8601: String? = nil, high: Double? = nil,
-          low: Double? = nil, open: Double? = nil, volume: Int64? = nil )
+                 datetimeISO8601: String? = nil, high: Double? = nil,
+                 low: Double? = nil, open: Double? = nil, volume: Int64? = nil )
     {
         self.close = close
         self.datetime = datetime
@@ -52,6 +52,26 @@ class Candle: Codable, Identifiable
         self.open = open
         self.volume = volume
     }
+
+    // print the contents of object
+    public func dump( prefix: String = "" )
+    {
+        print( "\(prefix) ==== Candle:" )
+        if let close = close { print( "\(prefix) close: \(close)" ) }
+        if let datetime = datetime {
+            print( "\(prefix) datetime: \(datetime)" )
+            // print the datetime converted to local time
+            print( "\(prefix) datetimeISO8601: \(Date(timeIntervalSince1970: TimeInterval(datetime)/1000))" )
+        }
+        
+        
+        if let datetimeISO8601 = datetimeISO8601 { print( "\(prefix) datetimeISO8601: \(datetimeISO8601)" ) }
+        if let high = high { print( "\(prefix) high: \(high)" ) }
+        if let low = low { print( "\(prefix) low: \(low)" ) }
+        if let open = open { print( "\(prefix) open: \(open)" ) }
+        if let volume = volume { print( "\(prefix) volume: \(volume)" ) }
+    }
+    
     
 }
 

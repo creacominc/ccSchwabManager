@@ -413,21 +413,11 @@ class SchwabClient
                 
                 return
             }
-//            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-//                print("Failed to fetch accounts.")
-//                return
-//            }
             
             let decoder = JSONDecoder()
             print( "=== decoding accounts ===" )
-//            print( "data: \(String(data: data, encoding: .utf8) ?? "no data") " )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
             print( "  decoded \(m_accounts.count) accounts" )
-//            for account in m_accounts {
-//                print( "account number \(account.securitiesAccount?.accountNumber ?? "no number" ) " )
-//                print( "  positions: \(account.securitiesAccount?.positions.count ?? 0)" )
-//                print( account.dump() ) //< print the positions for debugging
-//            }
             return
         }
         catch
@@ -452,7 +442,7 @@ class SchwabClient
          * The chart period being requested.
          * Available values : day, month, year, ytd
          */
-        priceHistoryUrl += "&periodType=month"
+        priceHistoryUrl += "&periodType=year"
         
         /**
          *  The number of chart period types.
@@ -502,12 +492,12 @@ class SchwabClient
          *
          *  If frequency is not specified, default value is 1
          */
-        priceHistoryUrl += "&frequency=1"
+        //priceHistoryUrl += "&frequency=1"
         
         /**
          *  Need previous close price/date
          */
-        priceHistoryUrl += "&needPreviousClose=true"
+        //priceHistoryUrl += "&needPreviousClose=true"
 
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
@@ -535,13 +525,15 @@ class SchwabClient
             let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
             // if the data is compressed, call gunzip
             print( "isGzipEncoded: \(isGzipEncoded)" )
-            // print( " Magic:  \(String( data[0], radix: 16, uppercase: false)) \(String( data[1], radix: 16, uppercase: false))" )
-
             let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
 
             let decoder = JSONDecoder()
             let candleList : CandleList  = try decoder.decode( CandleList.self, from: decompressedData )
             print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
+//            // print the first and last candle
+//            candleList.candles[0].dump( prefix: "  0.  " )
+//            candleList.candles[candleList.candles.count-1].dump( prefix: "  1.  " )
+            // return the candleList assuming they arrived sorted.
             return candleList
         } catch {
             print("Error: \(error.localizedDescription)")
@@ -580,19 +572,6 @@ class SchwabClient
                 let tr : Double = max( abs( high - low ), abs( high - prevClose ), abs( low - prevClose ) )
                 close = priceHistory.candles[position].close ?? 0.0
                 atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
-
-                //                // Example EPOCH time in milliseconds
-                //                let epochMilliseconds: Int64 = candle.datetime
-                //                // Convert milliseconds to seconds
-                //                let epochSeconds = TimeInterval(epochMilliseconds) / 1000
-                //                // Create a Date object
-                //                let date = Date(timeIntervalSince1970: epochSeconds)
-                //                // Format the Date to ISO 8601
-                //                let dateFormatter = ISO8601DateFormatter()
-                //                dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                //                let iso8601String = dateFormatter.string(from: date)
-                //                print( "indx: \(indx), date: \(candle.datetime),  candle.high: \(candle.high), candle.low: \(candle.low), prevClose: \(prevClose), tr: \(tr)" )
-                //                print( "( (atr: \(atr) * Double(indx-1): \(indx-1) + tr: \(tr) ) / Double(indx: \(indx))     date: \(candle.datetime), atr: \(atr),  ISO 8601 Format: \(iso8601String)" )
             }
         }
         // return the ATR as a percent.
@@ -656,7 +635,7 @@ class SchwabClient
      */
     public func fetchTransactionHistory( symbol : String ) async  -> [Transaction]
     {
-
+        var transactionList : [Transaction]  = []
         print("=== fetchTransactionHistory  ===")
 
         // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
@@ -682,56 +661,57 @@ class SchwabClient
             .timeSeparator(.colon)
         )
 
-        let accountNumberHash : String = self.m_secrets.acountNumberHash[0].hashValue ?? "N/A"
-        var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash)/transactions"
-        transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
-        transactionHistoryUrl += "&endDate=\(todayStr)"
-        transactionHistoryUrl += "&symbol=\(symbol)"
-        transactionHistoryUrl += "&types=TRADE"
-
-        guard let url = URL( string: transactionHistoryUrl ) else {
-            print("fetchTransactionHistory. Invalid URL")
-            return []
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "accept")
-
-        // print( "fetchTransactionHistory. request: \(request)" )
-
-        do {
-            let ( data, response ) = try await URLSession.shared.data(for: request)
-            let httpResponse = response as? HTTPURLResponse
-            if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
-            {
-                print("fetchTransactionHistory. Failed to fetch transaction history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
-                return []
+        // fetch the transactions for the given symbol from all accounts
+        for accountNumberHash : AccountNumberHash in self.m_secrets.acountNumberHash {
+            var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
+            transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
+            transactionHistoryUrl += "&endDate=\(todayStr)"
+            transactionHistoryUrl += "&symbol=\(symbol)"
+            transactionHistoryUrl += "&types=TRADE"
+            
+            guard let url = URL( string: transactionHistoryUrl ) else {
+                print("fetchTransactionHistory. Invalid URL")
+                continue
             }
-
-            // Check if the data is GZIP-compressed
-            // do not trust the header.
-            // check for the gzip magic number:  1f 8b
-            let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
-            // if the data is compressed, call gunzip
-            print( "isGzipEncoded: \(isGzipEncoded)" )
-
-            let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
-//            // print first and last 512 characters from the decompressedData
-//            let printLength : Int = 1024
-//            print( "first \(printLength) bytes: \(String(decoding: Data(decompressedData[0..<printLength]), as: Unicode.UTF8.self))" )
-//            //print( "last  \(printLength) bytes: \(String(decoding: Data(decompressedData[decompressedData.count-printLength..<decompressedData.count]), as: Unicode.UTF8.self))" )
-
-            let decoder = JSONDecoder()
-            let transactionList : [Transaction]  = try decoder.decode( [Transaction].self, from: decompressedData )
-            print( "Fetched \(transactionList.count) transactions for \(symbol)" )
-            // return the list sorted by tradeDate
-            return transactionList.sorted { $0.tradeDate ?? "" > $1.tradeDate ?? "" }
-        } catch {
-            print("Error: \(error.localizedDescription)")
-            return []
-        }
-
-    }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "accept")
+            
+            do {
+                let ( data, response ) = try await URLSession.shared.data(for: request)
+                let httpResponse = response as? HTTPURLResponse
+                if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
+                {
+                    print("fetchTransactionHistory. Failed to fetch transaction history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
+                    continue
+                }
+                
+                // Check if the data is GZIP-compressed
+                // do not trust the header.
+                // check for the gzip magic number:  1f 8b
+                let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
+                // if the data is compressed, call gunzip
+                print( "isGzipEncoded: \(isGzipEncoded)" )
+                
+                let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
+                
+                let decoder = JSONDecoder()
+                // append the decoded transactions to transactionList
+                transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: decompressedData ) )
+                continue
+            } catch {
+                print("Error: \(error.localizedDescription)")
+                continue
+            }
+        } // end for each accountHash
+        print( "Fetched \(transactionList.count) transactions for \(symbol)" )
+//        // print out each transaction object
+//        for transaction in transactionList {
+//            print( transaction.dump() )
+//        }
+        // return the list sorted by tradeDate
+        return transactionList.sorted { $0.tradeDate ?? "" > $1.tradeDate ?? "" }
+    } // end of fetchTransactionHistory
 }
