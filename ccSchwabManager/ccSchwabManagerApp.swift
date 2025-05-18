@@ -13,8 +13,9 @@ struct ccSchwabManagerApp: App
     @StateObject private var secretsManager = SecretsManager()
     
     init() {
+        print( "=== ccSchwabManagerApp init getting secrets ===" )
         // Configure SchwabClient with initial secrets
-        var initialSecrets = KeychainManager.readSecrets(prefix: "app/init") ?? Secrets()
+        var initialSecrets = KeychainManager.readSecrets(prefix: "ccSchwabManagerApp/init") ?? Secrets()
         SchwabClient.shared.configure(with: &initialSecrets)
     }
     
@@ -34,10 +35,11 @@ class SecretsManager: ObservableObject {
     @Published var error: String?
     
     init() {
-        self.secrets = KeychainManager.readSecrets(prefix: "app/init") ?? Secrets()
+        self.secrets = KeychainManager.readSecrets(prefix: "SecretsManager/init") ?? Secrets()
     }
     
     func saveSecrets() {
+        print( "=== SecretsManager Saving secrets ===" )
         var secretsToSave = secrets
         _ = KeychainManager.saveSecrets(secrets: &secretsToSave)
         // Update SchwabClient with new secrets

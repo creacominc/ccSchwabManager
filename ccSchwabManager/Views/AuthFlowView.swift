@@ -188,24 +188,13 @@ struct AuthFlowView: View {
                         }
                     }
                     secretsManager.saveSecrets()
-
-//                    // Start token refresh task
-//                    Task {
-//                        while true {
-//                            print("Refreshing access token...")
-//                            SchwabClient.shared.refreshAccessToken()
-//                            secretsManager.saveSecrets()
-//                            // Wait for 45 minutes (tokens typically expire after 1 hour)
-//                            try? await Task.sleep(nanoseconds: 45 * 60 * 1_000_000_000)
-//                        }
-//                    }
                 }
 
                 await SchwabClient.shared.fetchAccountNumbers()
-                
+
                 // Update secrets with account numbers
                 secretsManager.saveSecrets()
-                
+
                 // Fetch account holdings
                 await SchwabClient.shared.fetchAccounts()
             }

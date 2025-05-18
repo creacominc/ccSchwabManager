@@ -56,6 +56,7 @@ struct KeychainManager
 
     static func readSecrets(  prefix: String ) -> Secrets?
     {
+        print( "\(prefix) - Reading secrets" )
         lock.lock()
         defer { lock.unlock() }
 

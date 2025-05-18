@@ -59,9 +59,10 @@ class SchwabClient
     }
     
     func configure(with secrets: inout Secrets) {
+        print( "=== configure - starting refresh thread. ===" )
         self.m_secrets = secrets
-        // start thread to refresh the access token
         self.refreshAccessToken()
+        self.startRefreshAccessTokenThread()
     }
     
     public func hasAccounts() -> Bool
@@ -238,79 +239,63 @@ class SchwabClient
      *
      */
     private func refreshAccessToken() {
-        // only run this once
-        if( m_refreshAccessToken_running ){
-            print( "Refresh Access Token already running." )
+        print("Refreshing access token...")
+        // Access Token Refresh Request
+        guard let url = URL(string: "\(accessTokenWeb)") else {
+            print("Invalid URL for refreshing access token")
             return
         }
-        m_refreshAccessToken_running = true
-        // 15 minute interval (in seconds)
-        let interval: TimeInterval = 15 * 60
         
-        // Create a background thread
-        DispatchQueue.global(qos: .background).async {
-            while true {
-                print("Refreshing access token...")
-                
-                // Access Token Refresh Request
-                guard let url = URL(string: "\(accessTokenWeb)") else {
-                    print("Invalid URL for refreshing access token")
-                    return
-                }
-                
-                var refreshTokenRequest = URLRequest(url: url)
-                refreshTokenRequest.httpMethod = "POST"
-                
-                // Headers
-                let authStringUnencoded = "\(self.m_secrets.appId):\(self.m_secrets.appSecret)"
-                let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
-                refreshTokenRequest.setValue("Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization")
-                refreshTokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-                
-                // Body
-                refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.refreshToken)".data(using: .utf8)!
-                
-                let semaphore = DispatchSemaphore(value: 0)
-                
-                URLSession.shared.dataTask(with: refreshTokenRequest) { data, response, error in
-                    defer { semaphore.signal() }
-                    
-                    guard let data = data, error == nil, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                        print("Failed to refresh access token. Error: \(error?.localizedDescription ?? "Unknown error")")
-                        return
-                    }
-                    
-                    // Parse the response
-                    if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
-                    {
-                        self.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
-                        self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
-
-                        if KeychainManager.saveSecrets(secrets: &self.m_secrets)
-                        {
-                            print("Successfully refreshed and saved access token.")
-                        }
-                        else
-                        {
-                            print("Failed to save refreshed tokens.")
-                        }
-                    }
-                    else
-                    {
-                        print("Failed to parse token response.")
-                    }
-                }.resume()
-                
-                // Wait for the request to finish before sleeping
-                semaphore.wait()
-                
-                // Sleep for the specified interval
-                Thread.sleep(forTimeInterval: interval)
+        var refreshTokenRequest = URLRequest(url: url)
+        refreshTokenRequest.httpMethod = "POST"
+        
+        // Headers
+        let authStringUnencoded = "\(self.m_secrets.appId):\(self.m_secrets.appSecret)"
+        let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
+        refreshTokenRequest.setValue("Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization")
+        refreshTokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        // Body
+        refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.refreshToken)".data(using: .utf8)!
+        
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        URLSession.shared.dataTask(with: refreshTokenRequest) { data, response, error in
+            defer { semaphore.signal() }
+            
+            guard let data = data, error == nil, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                print("Failed to refresh access token. Error: \(error?.localizedDescription ?? "Unknown error")")
+                return
             }
-            print( "Done with dispatch queue." )
-        }
+            
+            // Parse the response
+            if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                self.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
+                self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
+                
+                if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
+                    print("Successfully refreshed and saved access token.")
+                } else {
+                    print("Failed to save refreshed tokens.")
+                }
+            } else {
+                print("Failed to parse token response.")
+            }
+        }.resume()
     }
     
+    private func startRefreshAccessTokenThread() {
+        if (!m_refreshAccessToken_running) {
+            m_refreshAccessToken_running = true
+            let interval: TimeInterval = 15 * 60  // 15 minute interval
+            DispatchQueue.global(qos: .background).async {
+                while true {
+                    self.refreshAccessToken()  // Call the updated method for a single refresh
+                    Thread.sleep(forTimeInterval: interval)
+                }
+            }
+        }
+    }
     
     /**
      * fetch account numbers and hashes from schwab
