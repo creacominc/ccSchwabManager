@@ -21,88 +21,83 @@ struct PriceHistoryChart: View {
     
     @ViewBuilder
     private var chartContent: some View {
-            ZStack {
-                Chart {
-                    // candles were already sorted when they arrive in getPriceHistory
-                    //ForEach(candles.sorted { ($0.datetime ?? 0) < ($1.datetime ?? 0) }, id: \.datetime) { candle in
-                    ForEach(candles, id: \.datetime) { candle in
-                        LineMark(
-                            x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
-                            y: .value("Price", candle.close ?? 0)
-                        )
-                        .foregroundStyle(.blue)
-                    }
+        ZStack {
+            Chart {
+                // candles were already sorted when they arrive in getPriceHistory
+                //ForEach(candles.sorted { ($0.datetime ?? 0) < ($1.datetime ?? 0) }, id: \.datetime) { candle in
+                ForEach(candles, id: \.datetime) { candle in
+                    LineMark(
+                        x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
+                        y: .value("Price", candle.close ?? 0)
+                    )
+                    .foregroundStyle(.blue)
                 }
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
-                        AxisGridLine()
-                        if let date = value.as(Date.self) {
-                            let calendar = Calendar.current
-                            let day = calendar.component(.day, from: date)
-                            let isFirstDayOfMonth = calendar.component(.day, from: date) == 1
-                            
-                            if isFirstDayOfMonth {
-                                AxisValueLabel(format: .dateTime.month())
-//                            } else {
-//                                AxisValueLabel("\(day)")
-                            }
+            }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .day)) { value in
+                    AxisGridLine()
+                    if let date = value.as(Date.self) {
+                        let calendar = Calendar.current
+                        let isFirstDayOfMonth = calendar.component(.day, from: date) == 1
+                        
+                        if isFirstDayOfMonth {
+                            AxisValueLabel(format: .dateTime.month())
                         }
                     }
                 }
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel(format: .currency(code: "USD").precision(.fractionLength(2)))
-                    }
-                }
-                .chartOverlay { proxy in
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(.clear)
-                            .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        let x: CGFloat
-                                        guard let plotFrame = proxy.plotFrame else { return }
-                                        x = value.location.x - geometry[plotFrame].origin.x
-                                        guard x >= 0, x < geometry[plotFrame].width else { return }
-                                        let date = proxy.value(atX: x) as Date?
-                                        if let date = date,
-                                           let candle = candles.first(where: {
-                                               let candleDate = Date(timeIntervalSince1970: TimeInterval($0.datetime ?? 0) / 1000)
-                                               return Calendar.current.isDate(candleDate, inSameDayAs: date)
-                                           }) {
-                                            selectedDate = date
-                                            selectedPrice = candle.close
-                                            tooltipPosition = CGPoint(x: value.location.x, y: value.location.y)
-                                        }
-                                    }
-                                    .onEnded { _ in
-                                        selectedDate = nil
-                                        selectedPrice = nil
-                                    }
-                            )
-                    }
-                }
-                
-                if let date = selectedDate, let price = selectedPrice {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(date, format: .dateTime.month().day().year())
-                            .font(.caption)
-                        Text(String(format: "$%.2f", price))
-                            .font(.caption)
-                            .bold()
-                    }
-                    .padding(8)
-                    .background(tooltipBackgroundColor)
-                    .cornerRadius(8)
-                    .shadow(radius: 2)
-                    .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
+            }
+            .chartYAxis {
+                AxisMarks { value in
+                    AxisGridLine()
+                    AxisValueLabel(format: .currency(code: "USD").precision(.fractionLength(2)))
                 }
             }
-            .frame(height: 200)
-            .padding()
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    let x: CGFloat
+                                    guard let plotFrame = proxy.plotFrame else { return }
+                                    x = value.location.x - geometry[plotFrame].origin.x
+                                    guard x >= 0, x < geometry[plotFrame].width else { return }
+                                    let date = proxy.value(atX: x) as Date?
+                                    if let date = date,
+                                       let candle = candles.first(where: {
+                                           let candleDate = Date(timeIntervalSince1970: TimeInterval($0.datetime ?? 0) / 1000)
+                                           return Calendar.current.isDate(candleDate, inSameDayAs: date)
+                                       }) {
+                                        selectedDate = date
+                                        selectedPrice = candle.close
+                                        tooltipPosition = CGPoint(x: value.location.x, y: value.location.y)
+                                    }
+                                }
+                                .onEnded { _ in
+                                    selectedDate = nil
+                                    selectedPrice = nil
+                                }
+                        )
+                }
+            }
+            
+            if let date = selectedDate, let price = selectedPrice {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(date, format: .dateTime.month().day().year())
+                        .font(.caption)
+                    Text(String(format: "$%.2f", price))
+                        .font(.caption)
+                        .bold()
+                }
+                .padding(8)
+                .background(tooltipBackgroundColor)
+                .cornerRadius(8)
+                .shadow(radius: 2)
+                .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
+            }
+        }
     }
 
 }
@@ -315,55 +310,62 @@ struct PositionDetailView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                PositionDetailsHeader(
-                    position: position,
-                    accountNumber: accountNumber,
-                    currentIndex: currentIndex,
-                    totalPositions: totalPositions,
-                    onNavigate: onNavigate
-                )
-                .padding(.bottom, 8)
-                
-                Divider()
-                    .padding(.vertical, 8)
-                
+        VStack(spacing: 0) {
+            PositionDetailsHeader(
+                position: position,
+                accountNumber: accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: totalPositions,
+                onNavigate: onNavigate
+            )
+            .padding(.bottom, 8)
+            
+            Divider()
+                .padding(.vertical, 8)
+            
+            GeometryReader { geometry in
                 TabView {
+
                     ScrollView {
                         PriceHistorySection(
                             priceHistory: priceHistory,
                             isLoading: isLoadingPriceHistory,
                             formatDate: formatDate
                         )
+                        .frame( width: geometry.size.width * 0.83, height: geometry.size.height * 0.83  )
+                        //.border(Color.white.opacity(0.3), width: 1)
                     }
                     .tabItem {
                         Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
                     }
-                    
+
                     ScrollView {
                         TransactionHistorySection(
                             transactions: transactions,
                             isLoading: isLoadingTransactions
                         )
+                        .frame( width: geometry.size.width * 0.83,  height: geometry.size.height * 0.83  )
+                        //.border(Color.white.opacity(0.3), width: 1)
                     }
                     .tabItem {
                         Label("Transactions", systemImage: "list.bullet")
                     }
+
+                } // TabView
+                .onAppear {
+                    viewSize = geometry.size
                 }
-                //.frame(height: geometry.size.height * 0.7)  // 70% of view height
-                .frame(maxHeight: .infinity)
-            }
+                .onChange(of: geometry.size) { newSize in
+                    viewSize = newSize
+                }
+            } // GeometryReader
+        } // VStack
             .padding(.horizontal)
             .onAppear {
-                viewSize = geometry.size
                 Task {
                     await fetchPriceHistory()
                     await fetchTransactions()
                 }
-            }
-            .onChange(of: geometry.size) { newSize in
-                viewSize = newSize
             }
             .onChange(of: position) { oldValue, newValue in
                 Task {
@@ -371,7 +373,6 @@ struct PositionDetailView: View {
                     await fetchTransactions()
                 }
             }
-        }
     }
     
     private func fetchPriceHistory() async {
