@@ -127,14 +127,8 @@ struct TextFieldChangeHandler<T: Equatable>: ViewModifier {
     let onChanged: () -> Void
     
     func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content.onChange(of: value) { oldValue, newValue in
-                onChanged()
-            }
-        } else {
-            content.onChange(of: value) { _ in
-                onChanged()
-            }
+        content.onChange(of: value) { oldValue, newValue in
+            onChanged()
         }
     }
 } 

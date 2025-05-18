@@ -332,7 +332,7 @@ struct PositionDetailView: View {
                             isLoading: isLoadingPriceHistory,
                             formatDate: formatDate
                         )
-                        .frame( width: geometry.size.width * 0.83, height: geometry.size.height * 0.83  )
+                        .frame( width: geometry.size.width * 0.88, height: geometry.size.height * 0.90  )
                         //.border(Color.white.opacity(0.3), width: 1)
                     }
                     .tabItem {
@@ -344,7 +344,7 @@ struct PositionDetailView: View {
                             transactions: transactions,
                             isLoading: isLoadingTransactions
                         )
-                        .frame( width: geometry.size.width * 0.83,  height: geometry.size.height * 0.83  )
+                        .frame( width: geometry.size.width * 0.88,  height: geometry.size.height * 0.90  )
                         //.border(Color.white.opacity(0.3), width: 1)
                     }
                     .tabItem {

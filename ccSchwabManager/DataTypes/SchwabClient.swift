@@ -35,6 +35,7 @@ class SchwabClient
     private var m_secrets : Secrets
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
+    private var m_refreshAccessToken_running : Bool = false
     
     /**
      * dump the contents of this object for debugging.
@@ -71,10 +72,6 @@ class SchwabClient
     public func getAccounts() -> [AccountContent]
     {
         print( "=== getAccounts: accounts: \(self.m_accounts.count) ===" )
-        // verify by printing the first account number
-        //print( "first account number: \(self.m_accounts[0].securitiesAccount?.accountNumber ?? "???")" )
-        // verify by printing the number of position in the first account
-        //print( "first account has \(self.m_accounts[0].securitiesAccount?.positions.count ?? 0) positions" )
         return self.m_accounts
     }
     
@@ -240,7 +237,13 @@ class SchwabClient
      *
      *
      */
-    func refreshAccessToken() {
+    private func refreshAccessToken() {
+        // only run this once
+        if( m_refreshAccessToken_running ){
+            print( "Refresh Access Token already running." )
+            return
+        }
+        m_refreshAccessToken_running = true
         // 15 minute interval (in seconds)
         let interval: TimeInterval = 15 * 60
         
@@ -337,10 +340,6 @@ class SchwabClient
         do
         {
             let (data, response) = try await URLSession.shared.data(for: request)
-//            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-//                print( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode), error: \(httpResponse.description)" )
-//                return
-//            }
             let httpResponse = response as! HTTPURLResponse
             if( httpResponse.statusCode != 200 )
             {
@@ -519,20 +518,9 @@ class SchwabClient
                 return nil
             }
 
-            // Check if the data is GZIP-compressed
-            // do not trust the header.
-            // check for the gzip magic number:  1f 8b
-            let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
-            // if the data is compressed, call gunzip
-            print( "isGzipEncoded: \(isGzipEncoded)" )
-            let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
-
             let decoder = JSONDecoder()
-            let candleList : CandleList  = try decoder.decode( CandleList.self, from: decompressedData )
+            let candleList : CandleList  = try decoder.decode( CandleList.self, from: data )
             print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
-//            // print the first and last candle
-//            candleList.candles[0].dump( prefix: "  0.  " )
-//            candleList.candles[candleList.candles.count-1].dump( prefix: "  1.  " )
             // return the candleList assuming they arrived sorted.
             return candleList
         } catch {
@@ -687,19 +675,10 @@ class SchwabClient
                     print("fetchTransactionHistory. Failed to fetch transaction history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
                     continue
                 }
-                
-                // Check if the data is GZIP-compressed
-                // do not trust the header.
-                // check for the gzip magic number:  1f 8b
-                let isGzipEncoded = ( (data[0] == 0x1f) && (data[1] == 0x8b) )
-                // if the data is compressed, call gunzip
-                print( "isGzipEncoded: \(isGzipEncoded)" )
-                
-                let decompressedData : Data = (isGzipEncoded ? decompressGzip( data: data ) : data) ?? Data()
-                
+
                 let decoder = JSONDecoder()
                 // append the decoded transactions to transactionList
-                transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: decompressedData ) )
+                transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: data ) )
                 continue
             } catch {
                 print("Error: \(error.localizedDescription)")
@@ -707,10 +686,6 @@ class SchwabClient
             }
         } // end for each accountHash
         print( "Fetched \(transactionList.count) transactions for \(symbol)" )
-//        // print out each transaction object
-//        for transaction in transactionList {
-//            print( transaction.dump() )
-//        }
         // return the list sorted by tradeDate
         return transactionList.sorted { $0.tradeDate ?? "" > $1.tradeDate ?? "" }
     } // end of fetchTransactionHistory

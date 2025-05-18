@@ -235,14 +235,8 @@ struct SortColumnChangeHandler: ViewModifier {
     @Binding var sortDirection: String
     
     func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content.onChange(of: selectedSortColumn) { oldValue, newValue in
-                sortDirection = "Ascending"
-            }
-        } else {
-            content.onChange(of: selectedSortColumn) { _ in
-                sortDirection = "Ascending"
-            }
+        content.onChange(of: selectedSortColumn) { oldValue, newValue in
+            sortDirection = "Ascending"
         }
     }
 }
