@@ -42,11 +42,12 @@ struct HoldingsView: View {
     @State private var selectedSortColumn = "Symbol"
     @State private var sortDirection = "Ascending"
     @State private var selectedAssetTypes: Set<String> = []
-    @State private var accountPositions: [(Position, String)] = []
+    @State private var accountPositions: [(Position, String, Date)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPosition: SelectedPosition? = nil
     @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = HoldingsViewModel()
+    @State private var latestDateForSymbol : [String:Date] = [:]
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -63,6 +64,7 @@ struct HoldingsView: View {
         case plPercent = "P/L%"
         case assetType = "Asset Type"
         case account = "Account"
+        case lastTradeDate = "Last Trade Date"
     }
 
     var filteredHoldings: [Position] {
@@ -122,6 +124,12 @@ struct HoldingsView: View {
                 let firstAccount = accountPositions.first { $0.0 === first }?.1 ?? ""
                 let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
                 return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
+            case "Last Trade Date":
+                let firstDate : Date = latestDateForSymbol[ first.instrument?.symbol ?? "" ] ?? Date()
+                let secondDate : Date = latestDateForSymbol[ second.instrument?.symbol ?? "" ] ?? Date()
+                return ascending ?
+                    (firstDate) < (secondDate) :
+                    (firstDate) > (secondDate)
             default:
                 return false
             }
@@ -169,7 +177,8 @@ struct HoldingsView: View {
                                 }
                             }
                         ),
-                        accountPositions: accountPositions
+                        accountPositions: accountPositions,
+                        latestDateForSymbol: latestDateForSymbol
                     )
                 }
                 .searchable(text: $searchText, prompt: "Search by symbol or description")
@@ -221,15 +230,13 @@ struct HoldingsView: View {
         let recentTransactions : [Transaction] = await SchwabClient.shared.fetchTransactionHistory()
         print( " fetched \(recentTransactions.count) transactions)" )
         // create a map of symbols to the most recent trade date
-        var latestDateForSymbol : [String:String] = [:]
         for transaction in recentTransactions {
             for transferItem in transaction.transferItems {
                 if let symbol = transferItem.instrument?.symbol {
-                    // convert tradeDate string to a Date and back to a string with just YYYY-MM-DD
-                    var dateStr : String = ""
+                    // convert tradeDate string to a Date
+                    var dateDte : Date = Date()
                     do {
-                        let dateDte : Date = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() )
-                        dateStr = dateDte.formatted(.iso8601.year().month().day())
+                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() )
                         // print( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
                     }
                     catch {
@@ -237,9 +244,9 @@ struct HoldingsView: View {
                         continue
                     }
                     // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
-                    if latestDateForSymbol[symbol] == nil || dateStr > latestDateForSymbol[symbol]! {
-                        latestDateForSymbol[symbol] = dateStr
-                        // print( "Added or updated \(symbol) at \(dateStr) - latest date \(latestDateForSymbol[symbol] ?? "missing")" )
+                    if latestDateForSymbol[symbol] == nil || dateDte > latestDateForSymbol[symbol]! {
+                        latestDateForSymbol[symbol] = dateDte
+                        // print( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
                     }
                 }
             }
@@ -250,7 +257,7 @@ struct HoldingsView: View {
             let lastThreeDigits = String(accountNumber.suffix(3))
             return accountContent.securitiesAccount?.positions.map {
                 ($0, lastThreeDigits
-                // , latestDateForSymbol[lastThreeDigits] ?? "n/a"
+                 , latestDateForSymbol[ $0.instrument?.symbol ?? "" ] ?? Date()
                 ) } ?? []
         }
         holdings = accountPositions.map { $0.0 }
@@ -273,8 +280,9 @@ struct SortColumnChangeHandler: ViewModifier {
 struct HoldingsTable: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
-    let accountPositions: [(Position, String)]
-    
+    let accountPositions: [(Position, String, Date)]
+    let latestDateForSymbol : [String:Date]
+
     var body: some View {
         Table(sortedHoldings, selection: $selectedPositionId) {
             TableColumn("Symbol") { position in
@@ -309,9 +317,11 @@ struct HoldingsTable: View {
                 let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
                 Text(accountNumber)
             }
-//            TableColumn("lastTradeDate") { position in
-//                Text( accountPositions.first{ $0.0 === position }?.2 ?? "" )
-//            }
+            TableColumn("Last Trade Date") { position in
+                let symbol : String = position.instrument?.symbol ?? ""
+                let lastTradeDate : Date = latestDateForSymbol[ symbol ] ?? Date()
+                Text( lastTradeDate.dateOnly() )
+            }
         }
     }
 } 
