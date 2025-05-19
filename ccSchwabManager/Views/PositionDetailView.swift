@@ -355,8 +355,8 @@ struct PositionDetailView: View {
                 .onAppear {
                     viewSize = geometry.size
                 }
-                .onChange(of: geometry.size) { newSize in
-                    viewSize = newSize
+                .onChange(of: geometry.size) { oldValue, newValue in
+                    viewSize = newValue
                 }
             } // GeometryReader
         } // VStack

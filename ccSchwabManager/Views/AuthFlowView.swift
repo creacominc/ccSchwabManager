@@ -196,7 +196,7 @@ struct AuthFlowView: View {
                 secretsManager.saveSecrets()
 
                 // Fetch account holdings
-                await SchwabClient.shared.fetchAccounts()
+                await SchwabClient.shared.fetchAccounts( retry: true )
             }
         } else {
             // Handle invalid URL format

@@ -182,8 +182,8 @@ struct HoldingsView: View {
                 .onAppear {
                     viewSize = geometry.size
                 }
-                .onChange(of: geometry.size) { newSize in
-                    viewSize = newSize
+                .onChange(of: geometry.size) { oldValue, newValue in
+                    viewSize = newValue
                 }
             }
         }
@@ -216,13 +216,42 @@ struct HoldingsView: View {
     
     private func fetchHoldings() async {
         print("=== fetchHoldings ===")
-        await SchwabClient.shared.fetchAccounts()
-        
+        await SchwabClient.shared.fetchAccounts( retry: true )
+        // get the lessor of the last 3000  or 1 year of transactions
+        let recentTransactions : [Transaction] = await SchwabClient.shared.fetchTransactionHistory()
+        print( " fetched \(recentTransactions.count) transactions)" )
+        // create a map of symbols to the most recent trade date
+        var latestDateForSymbol : [String:String] = [:]
+        for transaction in recentTransactions {
+            for transferItem in transaction.transferItems {
+                if let symbol = transferItem.instrument?.symbol {
+                    // convert tradeDate string to a Date and back to a string with just YYYY-MM-DD
+                    var dateStr : String = ""
+                    do {
+                        let dateDte : Date = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() )
+                        dateStr = dateDte.formatted(.iso8601.year().month().day())
+                        // print( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
+                    }
+                    catch {
+                        print( "Error parsing date: \(error)" )
+                        continue
+                    }
+                    // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
+                    if latestDateForSymbol[symbol] == nil || dateStr > latestDateForSymbol[symbol]! {
+                        latestDateForSymbol[symbol] = dateStr
+                        // print( "Added or updated \(symbol) at \(dateStr) - latest date \(latestDateForSymbol[symbol] ?? "missing")" )
+                    }
+                }
+            }
+        }
         // Extract positions from accounts with their account numbers
         accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
             let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
             let lastThreeDigits = String(accountNumber.suffix(3))
-            return accountContent.securitiesAccount?.positions.map { ($0, lastThreeDigits) } ?? []
+            return accountContent.securitiesAccount?.positions.map {
+                ($0, lastThreeDigits
+                // , latestDateForSymbol[lastThreeDigits] ?? "n/a"
+                ) } ?? []
         }
         holdings = accountPositions.map { $0.0 }
         viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
@@ -280,6 +309,9 @@ struct HoldingsTable: View {
                 let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
                 Text(accountNumber)
             }
+//            TableColumn("lastTradeDate") { position in
+//                Text( accountPositions.first{ $0.0 === position }?.2 ?? "" )
+//            }
         }
     }
 } 

@@ -363,7 +363,7 @@ class SchwabClient
     /**
      * fetchAccounts - get the account numbers and balances.
      */
-    func fetchAccounts() async
+    func fetchAccounts( retry : Bool = false ) async
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         var accountUrl = accountWeb
@@ -390,11 +390,20 @@ class SchwabClient
             if( httpResponse?.statusCode != 200 )
             {
                 print("Failed to fetch accounts.  Status: \(httpResponse?.statusCode ?? -1),  response: \(String(describing: httpResponse))")
-                // decode data as a ServiceError
-                let decoder = JSONDecoder()
-                let serviceError : ServiceError = try decoder.decode(ServiceError.self, from: data)
-                print( "Failed to get accouts: \(serviceError.message ?? "no message")" )
-                
+                // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
+                if( httpResponse?.statusCode == 401 && retry )
+                {
+                    print( "=== retrying fetchAccounts after refreshing access token ===" )
+                    refreshAccessToken()
+                    await fetchAccounts( retry : false )
+                }
+                else
+                {
+                    // decode data as a ServiceError
+                    let decoder = JSONDecoder()
+                    let serviceError : ServiceError = try decoder.decode(ServiceError.self, from: data)
+                    print( "Failed to get accouts: \(serviceError.message ?? "no message")" )
+                }
                 return
             }
             
@@ -606,7 +615,7 @@ class SchwabClient
      *
      *
      */
-    public func fetchTransactionHistory( symbol : String ) async  -> [Transaction]
+    public func fetchTransactionHistory( symbol : String? = nil ) async  -> [Transaction]
     {
         var transactionList : [Transaction]  = []
         print("=== fetchTransactionHistory  ===")
@@ -639,7 +648,10 @@ class SchwabClient
             var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
             transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
             transactionHistoryUrl += "&endDate=\(todayStr)"
-            transactionHistoryUrl += "&symbol=\(symbol)"
+            if( nil != symbol )
+            {
+                transactionHistoryUrl += "&symbol=\(symbol ?? "" )"
+            }
             transactionHistoryUrl += "&types=TRADE"
             
             guard let url = URL( string: transactionHistoryUrl ) else {
@@ -660,6 +672,8 @@ class SchwabClient
                     print("fetchTransactionHistory. Failed to fetch transaction history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
                     continue
                 }
+                // print the first 200 characters of the data response
+//                print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
 
                 let decoder = JSONDecoder()
                 // append the decoded transactions to transactionList
@@ -667,10 +681,11 @@ class SchwabClient
                 continue
             } catch {
                 print("Error: \(error.localizedDescription)")
+                print("   detail:  \(error)")
                 continue
             }
         } // end for each accountHash
-        print( "Fetched \(transactionList.count) transactions for \(symbol)" )
+        print( "Fetched \(transactionList.count) transactions for \(symbol ?? "all symbols")" )
         // return the list sorted by tradeDate
         return transactionList.sorted { $0.tradeDate ?? "" > $1.tradeDate ?? "" }
     } // end of fetchTransactionHistory

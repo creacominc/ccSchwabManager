@@ -131,6 +131,7 @@ class Instrument : Codable, Identifiable
     {
         case ACTIVE = "ACTIVE"
         case INACTIVE = "INACTIVE"
+        case DISABLED = "DISABLED"
     }
 
     // Instrument
