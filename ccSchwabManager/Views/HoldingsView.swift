@@ -125,8 +125,8 @@ struct HoldingsView: View {
                 let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
                 return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
             case "Last Trade Date":
-                let firstDate : Date = latestDateForSymbol[ first.instrument?.symbol ?? "" ] ?? Date()
-                let secondDate : Date = latestDateForSymbol[ second.instrument?.symbol ?? "" ] ?? Date()
+                let firstDate : String   = latestDateForSymbol[ first.instrument?.symbol ?? "" ]?.dateOnly() ?? "0000"
+                let secondDate : String  = latestDateForSymbol[ second.instrument?.symbol ?? "" ]?.dateOnly() ?? "0000"
                 return ascending ?
                     (firstDate) < (secondDate) :
                     (firstDate) > (secondDate)
@@ -319,8 +319,7 @@ struct HoldingsTable: View {
             }
             TableColumn("Last Trade Date") { position in
                 let symbol : String = position.instrument?.symbol ?? ""
-                let lastTradeDate : Date = latestDateForSymbol[ symbol ] ?? Date()
-                Text( lastTradeDate.dateOnly() )
+                Text( latestDateForSymbol[ symbol ]?.dateOnly() ?? "" )
             }
         }
     }

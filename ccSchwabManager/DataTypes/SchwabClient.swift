@@ -653,7 +653,7 @@ class SchwabClient
                 transactionHistoryUrl += "&symbol=\(symbol ?? "" )"
             }
             transactionHistoryUrl += "&types=TRADE"
-            
+            // print( "fetchTransactionHistory. URL = \(transactionHistoryUrl)" )
             guard let url = URL( string: transactionHistoryUrl ) else {
                 print("fetchTransactionHistory. Invalid URL")
                 continue
@@ -673,7 +673,9 @@ class SchwabClient
                     continue
                 }
                 // print the first 200 characters of the data response
-//                print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
+                // print( " -------------- response --------------" )
+                // print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
+                // print( " --------------          --------------" )
 
                 let decoder = JSONDecoder()
                 // append the decoded transactions to transactionList
@@ -687,6 +689,6 @@ class SchwabClient
         } // end for each accountHash
         print( "Fetched \(transactionList.count) transactions for \(symbol ?? "all symbols")" )
         // return the list sorted by tradeDate
-        return transactionList.sorted { $0.tradeDate ?? "" > $1.tradeDate ?? "" }
+        return transactionList.sorted { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
     } // end of fetchTransactionHistory
 }
