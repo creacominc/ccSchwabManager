@@ -7,6 +7,35 @@
 
 import SwiftUI
 
+// Define SortConfig and SortableColumn at the top level
+struct SortConfig: Equatable {
+    var column: SortableColumn
+    var ascending: Bool
+}
+
+enum SortableColumn: String, CaseIterable, Identifiable {
+    case symbol = "Symbol"
+    case quantity = "Quantity"
+    case avgPrice = "Avg Price"
+    case marketValue = "Market Value"
+    case pl = "P/L"
+    case plPercent = "P/L%"
+    case assetType = "Asset Type"
+    case account = "Account"
+    case lastTradeDate = "Last Trade Date"
+
+    var id: String { self.rawValue }
+
+    var defaultAscending: Bool {
+        switch self {
+        case .symbol, .assetType, .account:
+            return true
+        case .quantity, .avgPrice, .marketValue, .pl, .plPercent, .lastTradeDate:
+            return false
+        }
+    }
+}
+
 /**
  * HoldingsView
  * 
@@ -37,10 +66,8 @@ import SwiftUI
 struct HoldingsView: View {
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var holdings: [Position] = []
-    @State private var sortOrder: [KeyPathComparator<Position>] = []
     @State private var searchText = ""
-    @State private var selectedSortColumn = "Symbol"
-    @State private var sortDirection = "Ascending"
+    @State private var currentSort: SortConfig? = SortConfig(column: .symbol, ascending: SortableColumn.symbol.defaultAscending)
     @State private var selectedAssetTypes: Set<String> = []
     @State private var accountPositions: [(Position, String, Date)] = []
     @State private var selectedAccountNumbers: Set<String> = []
@@ -53,18 +80,6 @@ struct HoldingsView: View {
         let id: Position.ID
         let position: Position
         let accountNumber: String
-    }
-
-    enum SortColumn: String, CaseIterable {
-        case symbol = "Symbol"
-        case quantity = "Quantity"
-        case avgPrice = "Avg Price"
-        case marketValue = "Market Value"
-        case pl = "P/L"
-        case plPercent = "P/L%"
-        case assetType = "Asset Type"
-        case account = "Account"
-        case lastTradeDate = "Last Trade Date"
     }
 
     var filteredHoldings: [Position] {
@@ -85,77 +100,63 @@ struct HoldingsView: View {
     }
 
     var sortedHoldings: [Position] {
-        let sorted = filteredHoldings.sorted { first, second in
-            let ascending = sortDirection == "Ascending"
-            switch selectedSortColumn {
-            case "Symbol":
-                return ascending ? 
+        guard let sortConfig = currentSort else { return filteredHoldings }
+
+        return filteredHoldings.sorted { first, second in
+            let ascending = sortConfig.ascending
+            switch sortConfig.column {
+            case .symbol:
+                return ascending ?
                     (first.instrument?.symbol ?? "") < (second.instrument?.symbol ?? "") :
                     (first.instrument?.symbol ?? "") > (second.instrument?.symbol ?? "")
-            case "Quantity":
+            case .quantity:
                 return ascending ?
                     (first.longQuantity ?? 0) < (second.longQuantity ?? 0) :
                     (first.longQuantity ?? 0) > (second.longQuantity ?? 0)
-            case "Avg Price":
+            case .avgPrice:
                 return ascending ?
                     (first.averagePrice ?? 0) < (second.averagePrice ?? 0) :
                     (first.averagePrice ?? 0) > (second.averagePrice ?? 0)
-            case "Market Value":
+            case .marketValue:
                 return ascending ?
                     (first.marketValue ?? 0) < (second.marketValue ?? 0) :
                     (first.marketValue ?? 0) > (second.marketValue ?? 0)
-            case "P/L":
+            case .pl:
                 return ascending ?
                     (first.longOpenProfitLoss ?? 0) < (second.longOpenProfitLoss ?? 0) :
                     (first.longOpenProfitLoss ?? 0) > (second.longOpenProfitLoss ?? 0)
-            case "P/L%":
+            case .plPercent:
                 let firstPL = first.longOpenProfitLoss ?? 0
                 let secondPL = second.longOpenProfitLoss ?? 0
                 let firstMV = first.marketValue ?? 0
                 let secondMV = second.marketValue ?? 0
-                let firstPLPercent = firstMV != 0 ? firstPL / (firstMV - firstPL) : 0
-                let secondPLPercent = secondMV != 0 ? secondPL / (secondMV - secondPL) : 0
+                let firstCostBasis = firstMV - firstPL
+                let secondCostBasis = secondMV - secondPL
+                let firstPLPercent = firstCostBasis != 0 ? firstPL / firstCostBasis : 0
+                let secondPLPercent = secondCostBasis != 0 ? secondPL / secondCostBasis : 0
                 return ascending ? firstPLPercent < secondPLPercent : firstPLPercent > secondPLPercent
-            case "Asset Type":
+            case .assetType:
                 return ascending ?
                     (first.instrument?.assetType?.rawValue ?? "") < (second.instrument?.assetType?.rawValue ?? "") :
                     (first.instrument?.assetType?.rawValue ?? "") > (second.instrument?.assetType?.rawValue ?? "")
-            case "Account":
+            case .account:
                 let firstAccount = accountPositions.first { $0.0 === first }?.1 ?? ""
                 let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
                 return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
-            case "Last Trade Date":
+            case .lastTradeDate:
                 let firstDate : String   = latestDateForSymbol[ first.instrument?.symbol ?? "" ]?.dateOnly() ?? "0000"
                 let secondDate : String  = latestDateForSymbol[ second.instrument?.symbol ?? "" ]?.dateOnly() ?? "0000"
                 return ascending ?
                     (firstDate) < (secondDate) :
                     (firstDate) > (secondDate)
-            default:
-                return false
             }
         }
-        return sorted
     }
 
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
                 VStack {
-                    Picker("Sort by", selection: $selectedSortColumn) {
-                        ForEach(SortColumn.allCases, id: \.self) { column in
-                            Text(column.rawValue).tag(column.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-
-                    Picker("Direction", selection: $sortDirection) {
-                        Text("Ascending").tag("Ascending")
-                        Text("Descending").tag("Descending")
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-
                     FilterControls(
                         selectedAssetTypes: $selectedAssetTypes,
                         selectedAccountNumbers: $selectedAccountNumbers,
@@ -178,12 +179,12 @@ struct HoldingsView: View {
                             }
                         ),
                         accountPositions: accountPositions,
-                        latestDateForSymbol: latestDateForSymbol
+                        latestDateForSymbol: latestDateForSymbol,
+                        currentSort: $currentSort
                     )
                 }
                 .searchable(text: $searchText, prompt: "Search by symbol or description")
                 .navigationTitle("Holdings")
-                .modifier(SortColumnChangeHandler(selectedSortColumn: $selectedSortColumn, sortDirection: $sortDirection))
                 .task {
                     await fetchHoldings()
                     selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
@@ -198,23 +199,25 @@ struct HoldingsView: View {
         }
         .sheet(item: $selectedPosition) { selected in
             let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
-            PositionDetailView(
-                position: selected.position,
-                accountNumber: selected.accountNumber,
-                currentIndex: currentIndex,
-                totalPositions: sortedHoldings.count,
-                onNavigate: { newIndex in
-                    guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
-                    let newPosition = sortedHoldings[newIndex]
-                    let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
-                    selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
-                }
-            )
-            .navigationTitle(selected.position.instrument?.symbol ?? "")
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("Done") {
-                        selectedPosition = nil
+            NavigationStack {
+                PositionDetailView(
+                    position: selected.position,
+                    accountNumber: selected.accountNumber,
+                    currentIndex: currentIndex,
+                    totalPositions: sortedHoldings.count,
+                    onNavigate: { newIndex in
+                        guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
+                        let newPosition = sortedHoldings[newIndex]
+                        let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
+                        selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
+                    }
+                )
+                .navigationTitle(selected.position.instrument?.symbol ?? "")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            selectedPosition = nil
+                        }
                     }
                 }
             }
@@ -266,61 +269,92 @@ struct HoldingsView: View {
     }
 }
 
-struct SortColumnChangeHandler: ViewModifier {
-    @Binding var selectedSortColumn: String
-    @Binding var sortDirection: String
-    
-    func body(content: Content) -> some View {
-        content.onChange(of: selectedSortColumn) { oldValue, newValue in
-            sortDirection = "Ascending"
-        }
-    }
-}
-
 struct HoldingsTable: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
     let accountPositions: [(Position, String, Date)]
     let latestDateForSymbol : [String:Date]
+    @Binding var currentSort: SortConfig?
+    
+    @ViewBuilder
+    private func columnHeader(title: String, column: SortableColumn) -> some View {
+        Button(action: {
+            if currentSort?.column == column {
+                currentSort?.ascending.toggle()
+            } else {
+                currentSort = SortConfig(column: column, ascending: column.defaultAscending)
+            }
+        }) {
+            HStack {
+                Text(title)
+                Spacer()
+                if currentSort?.column == column {
+                    Image(systemName: currentSort?.ascending ?? true ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                }
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private let columnWidths: [CGFloat] = [100, 80, 80, 100, 80, 80, 100, 80, 120]
 
     var body: some View {
-        Table(sortedHoldings, selection: $selectedPositionId) {
-            TableColumn("Symbol") { position in
-                Text(position.instrument?.symbol ?? "")
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0])
+                columnHeader(title: "Quantity", column: .quantity).frame(width: columnWidths[1])
+                columnHeader(title: "Avg Price", column: .avgPrice).frame(width: columnWidths[2])
+                columnHeader(title: "Market Value", column: .marketValue).frame(width: columnWidths[3])
+                columnHeader(title: "P/L", column: .pl).frame(width: columnWidths[4])
+                columnHeader(title: "P/L%", column: .plPercent).frame(width: columnWidths[5])
+                columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6])
+                columnHeader(title: "Account", column: .account).frame(width: columnWidths[7])
+                columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8])
             }
-            TableColumn("Quantity") { position in
-                Text(String(format: "%.2f", position.longQuantity ?? 0.0))
-            }
-            TableColumn("Avg Price") { position in
-                Text(String(format: "%.2f", position.averagePrice ?? 0.0))
-                    .monospacedDigit()
-            }
-            TableColumn("Market Value") { position in
-                Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                    .monospacedDigit()
-            }
-            TableColumn("P/L") { position in
-                Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
-                    .monospacedDigit()
-            }
-            TableColumn("P/L%") { position in
-                let pl = position.longOpenProfitLoss ?? 0
-                let mv = position.marketValue ?? 0
-                let plPercent = mv != 0 ? pl / (mv - pl) * 100 : 0
-                Text(String(format: "%.1f%%", plPercent))
-                    .monospacedDigit()
-            }
-            TableColumn("Asset Type") { position in
-                Text(position.instrument?.assetType?.rawValue ?? "")
-            }
-            TableColumn("Account") { position in
-                let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                Text(accountNumber)
-            }
-            TableColumn("Last Trade Date") { position in
-                let symbol : String = position.instrument?.symbol ?? ""
-                Text( latestDateForSymbol[ symbol ]?.dateOnly() ?? "" )
+            .padding(.horizontal)
+            .padding(.vertical, 5)
+            .background(Color.gray.opacity(0.1))
+            
+            Divider()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(sortedHoldings) { position in
+                        HStack(spacing: 8) {
+                            Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0], alignment: .leading)
+                            Text(String(format: "%.2f", position.longQuantity ?? 0.0)).frame(width: columnWidths[1], alignment: .trailing)
+                            Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2], alignment: .trailing).monospacedDigit()
+                            Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3], alignment: .trailing).monospacedDigit()
+                            Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0)).frame(width: columnWidths[4], alignment: .trailing).monospacedDigit()
+                            Text(String(format: "%.1f%%", calcPLPercent(position: position))).frame(width: columnWidths[5], alignment: .trailing).monospacedDigit()
+                            Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6], alignment: .leading)
+                            Text(accountNumberFor(position)).frame(width: columnWidths[7], alignment: .leading)
+                            Text(latestDateForSymbol[position.instrument?.symbol ?? ""]?.dateOnly() ?? "").frame(width: columnWidths[8], alignment: .leading)
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedPositionId = position.id
+                        }
+                        Divider()
+                    }
+                }
             }
         }
+    }
+
+    private func calcPLPercent(position: Position) -> Double {
+        let pl = position.longOpenProfitLoss ?? 0
+        let mv = position.marketValue ?? 0
+        let costBasis = mv - pl
+        return costBasis != 0 ? (pl / costBasis) * 100 : 0
+    }
+
+    private func accountNumberFor(_ position: Position) -> String {
+        accountPositions.first { $0.0.id == position.id }?.1 ?? ""
     }
 } 
