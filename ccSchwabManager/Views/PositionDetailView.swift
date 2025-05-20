@@ -1,6 +1,32 @@
 import SwiftUI
 import Charts
 
+// ADD Definitions for Transaction Sorting
+struct TransactionSortConfig: Equatable {
+    var column: TransactionSortableColumn
+    var ascending: Bool
+}
+
+enum TransactionSortableColumn: String, CaseIterable, Identifiable {
+    case date = "Date"
+    case type = "Type" // Buy/Sell derived from netAmount
+    case quantity = "Quantity"
+    case price = "Price"
+    case netAmount = "Net Amount"
+
+    var id: String { self.rawValue }
+
+    var defaultAscending: Bool {
+        switch self {
+        case .date, .quantity, .price:
+            return false // Typically newest first
+        case .type, .netAmount:
+            return true
+        }
+    }
+}
+// END ADD Definitions
+
 struct PriceHistoryChart: View {
     let candles: [Candle]
     @State private var selectedDate: Date?
@@ -229,54 +255,136 @@ struct DetailRow: View {
 struct TransactionHistorySection: View {
     let transactions: [Transaction]
     let isLoading: Bool
-    
+    @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
+
+    private var sortedTransactions: [Transaction] {
+        guard let sortConfig = currentSort else { return transactions }
+
+        return transactions.sorted { t1, t2 in
+            let ascending = sortConfig.ascending
+            switch sortConfig.column {
+            case .date:
+                let date1 = t1.tradeDate ?? ""
+                let date2 = t2.tradeDate ?? ""
+                return ascending ? date1 < date2 : date1 > date2
+            case .type:
+                let type1 = (t1.netAmount ?? 0) < 0 ? "Buy" : (t1.netAmount ?? 0) > 0 ? "Sell" : "Unknown"
+                let type2 = (t2.netAmount ?? 0) < 0 ? "Buy" : (t2.netAmount ?? 0) > 0 ? "Sell" : "Unknown"
+                return ascending ? type1 < type2 : type1 > type2
+            case .quantity:
+                let qty1 = t1.transferItems.first?.amount ?? 0
+                let qty2 = t2.transferItems.first?.amount ?? 0
+                return ascending ? qty1 < qty2 : qty1 > qty2
+            case .price:
+                let price1 = t1.transferItems.first?.price ?? 0
+                let price2 = t2.transferItems.first?.price ?? 0
+                return ascending ? price1 < price2 : price1 > price2
+            case .netAmount:
+                let amount1 = t1.netAmount ?? 0
+                let amount2 = t2.netAmount ?? 0
+                return ascending ? amount1 < amount2 : amount1 > amount2
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func columnHeader(title: String, column: TransactionSortableColumn) -> some View {
+        Button(action: {
+            if currentSort?.column == column {
+                currentSort?.ascending.toggle()
+            } else {
+                currentSort = TransactionSortConfig(column: column, ascending: column.defaultAscending)
+            }
+        }) {
+            HStack {
+                Text(title)
+                Spacer()
+                if currentSort?.column == column {
+                    Image(systemName: currentSort?.ascending ?? true ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                }
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Define proportional widths for columns
+    private let columnProportions: [CGFloat] = [0.25, 0.15, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             Text("Transaction History")
                 .font(.headline)
                 .padding(.horizontal)
-            
+                .padding(.bottom, 5)
+
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-            } else if transactions.isEmpty {
+            } else if sortedTransactions.isEmpty {
                 Text("No transactions available")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
-                Table(transactions) {
-                    TableColumn("Date") { (transaction: Transaction) in
-                        Text(formatDate(transaction.tradeDate))
-                    }
-                    TableColumn("Type") { (transaction: Transaction) in
-                        Text( transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown" )
-                    }
-                    TableColumn("Quantity") { (transaction: Transaction) in
-                        if let transferItem = transaction.transferItems.first {
-                            Text(String(format: "%.2f", transferItem.amount ?? 0))
-                        } else {
-                            Text("")
+                GeometryReader { geometry in
+                    // Account for HStack spacing AND its horizontal padding (assuming default ~16pts per side)
+                    let horizontalPadding: CGFloat = 16 * 2 
+                    let interColumnSpacing = (CGFloat(columnProportions.count - 1) * 8) // 8 is the HStack spacing
+                    let availableWidthForColumns = geometry.size.width - interColumnSpacing - horizontalPadding
+                    let calculatedWidths = columnProportions.map { $0 * availableWidthForColumns }
+
+                    VStack(spacing: 0) {
+                        HStack(spacing: 8) {
+                            columnHeader(title: "Date", column: .date).frame(width: calculatedWidths[0])
+                            columnHeader(title: "Type", column: .type).frame(width: calculatedWidths[1])
+                            columnHeader(title: "Quantity", column: .quantity).frame(width: calculatedWidths[2])
+                            columnHeader(title: "Price", column: .price).frame(width: calculatedWidths[3])
+                            columnHeader(title: "Net Amount", column: .netAmount).frame(width: calculatedWidths[4])
                         }
-                    }
-                    TableColumn("Price") { (transaction: Transaction) in
-                        if let transferItem = transaction.transferItems.first {
-                            Text(String(format: "%.2f", transferItem.price ?? 0))
-                        } else {
-                            Text("")
+                        .padding(.horizontal)
+                        .padding(.vertical, 5)
+                        .background(Color.gray.opacity(0.1))
+                        
+                        Divider()
+
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(sortedTransactions) { transaction in
+                                    HStack(spacing: 8) {
+                                        Text(formatDate(transaction.tradeDate))
+                                            .frame(width: calculatedWidths[0], alignment: .leading)
+                                        Text( transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown" )
+                                            .frame(width: calculatedWidths[1], alignment: .leading)
+                                        if let transferItem = transaction.transferItems.first {
+                                            Text(String(format: "%.2f", transferItem.amount ?? 0))
+                                                .frame(width: calculatedWidths[2], alignment: .trailing)
+                                            Text(String(format: "%.2f", transferItem.price ?? 0))
+                                                .frame(width: calculatedWidths[3], alignment: .trailing)
+                                        } else {
+                                            Text("").frame(width: calculatedWidths[2])
+                                            Text("").frame(width: calculatedWidths[3])
+                                        }
+                                        Text(String(format: "%.2f", transaction.netAmount ?? 0))
+                                            .frame(width: calculatedWidths[4], alignment: .trailing)
+                                    }
+                                    .padding(.horizontal)
+                                    .padding(.vertical, 5)
+                                    Divider()
+                                }
+                            }
                         }
-                    }
-                    TableColumn("Net Amount") { (transaction: Transaction) in
-                        Text(String(format: "%.2f", transaction.netAmount ?? 0))
+                        .frame(height: 300)
                     }
                 }
-                .frame(height: 300)
             }
         }
         .padding(.vertical)
     }
-    
+
     private func formatDate(_ dateString: String?) -> String {
         guard let dateString = dateString,
               let date = ISO8601DateFormatter().date(from: dateString) else {
