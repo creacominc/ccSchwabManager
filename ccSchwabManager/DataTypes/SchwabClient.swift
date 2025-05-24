@@ -14,6 +14,7 @@ private let accessTokenWeb      : String = "\(oauthWeb)/token"
 private let traderAPI           : String = "\(schwabWeb)/trader/v1"
 private let accountWeb          : String = "\(traderAPI)/accounts"
 private let accountNumbersWeb   : String = "\(accountWeb)/accountNumbers"
+private let ordersWeb           : String = "\(traderAPI)/orders"
 
 // marketAPI
 private let marketdataAPI       : String = "\(schwabWeb)/marketdata/v1"
@@ -40,7 +41,9 @@ class SchwabClient
     private var m_latestDateForSymbol : [String:Date] = [:]
     private var m_lastFilteredSymbol : String? = nil
     private var m_lastFilteredTransactions : [Transaction] = []
-
+    private var m_orderList : [Order] = []
+    private var m_todayStr : String
+    private var m_dateOneYearAgoStr : String
     /**
      * dump the contents of this object for debugging.
      */
@@ -60,6 +63,28 @@ class SchwabClient
     private init()
     {
         self.m_secrets = Secrets()
+        // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
+        m_todayStr = Date().formatted(.iso8601
+            .year()
+            .month()
+            .day()
+            .timeZone(separator: .omitted)
+            .time(includingFractionalSeconds: true)
+            .timeSeparator(.colon)
+        ) // "2022-06-10T12:34:56.789Z"
+        
+        // get date one year ago
+        var components = DateComponents()
+        components.year = -1
+        // format a string with the date one year ago.
+        m_dateOneYearAgoStr = Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+            .year()
+            .month()
+            .day()
+            .timeZone(separator: .omitted)
+            .time(includingFractionalSeconds: true)
+            .timeSeparator(.colon)
+        )
     }
     
     func configure(with secrets: inout Secrets) {
@@ -628,34 +653,12 @@ class SchwabClient
         print("=== fetchTransactionHistory  ===")
 
         m_transactionList.removeAll(keepingCapacity: true)
-        // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
-        let todayStr : String = Date().formatted(.iso8601
-            .year()
-            .month()
-            .day()
-            .timeZone(separator: .omitted)
-            .time(includingFractionalSeconds: true)
-            .timeSeparator(.colon)
-        ) // "2022-06-10T12:34:56.789Z"
-        
-        // get date one year ago
-        var components = DateComponents()
-        components.year = -1
-        // format a string with the date one year ago.
-        let dateOneYearAgoStr : String = Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
-            .year()
-            .month()
-            .day()
-            .timeZone(separator: .omitted)
-            .time(includingFractionalSeconds: true)
-            .timeSeparator(.colon)
-        )
         
         // fetch the transactions (optionally for the given symbol) from all accounts
         for accountNumberHash : AccountNumberHash in self.m_secrets.acountNumberHash {
             var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-            transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
-            transactionHistoryUrl += "&endDate=\(todayStr)"
+            transactionHistoryUrl += "?startDate=\(m_dateOneYearAgoStr)"
+            transactionHistoryUrl += "&endDate=\(m_todayStr)"
             transactionHistoryUrl += "&types=TRADE"
             // print( "fetchTransactionHistory. URL = \(transactionHistoryUrl)" )
             guard let url = URL( string: transactionHistoryUrl ) else {
@@ -927,11 +930,88 @@ class SchwabClient
 
 
      */
-//    public func fetchOrderHistory( ) async -> [Order]
-//    {
-//        var orders: [Order] = []
-//        return orders
-//    }
-//    
-    
+    public func fetchOrderHistory( retry : Bool = false ) async
+    {
+        print("=== fetchOrderHistory  ===")
+
+        m_orderList.removeAll(keepingCapacity: true)
+        // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
+        let todayStr : String = Date().formatted(.iso8601
+            .year()
+            .month()
+            .day()
+            .timeZone(separator: .omitted)
+            .time(includingFractionalSeconds: true)
+            .timeSeparator(.colon)
+        ) // "2022-06-10T12:34:56.789Z"
+
+        // get date one year ago
+        var components = DateComponents()
+        components.year = -1
+        // format a string with the date one year ago.
+        let dateOneYearAgoStr : String = Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+            .year()
+            .month()
+            .day()
+            .timeZone(separator: .omitted)
+            .time(includingFractionalSeconds: true)
+            .timeSeparator(.colon)
+        )
+        
+        // fetch the orders from all accounts
+        var orderHistoryUrl = "\(ordersWeb)"
+        orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
+        orderHistoryUrl += "&toEnteredTime=\(todayStr)"
+        /**
+         * consider adding status: AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
+         */
+
+        print( "fetchOrderHistory. URL = \(orderHistoryUrl)" )
+        guard let url = URL( string: orderHistoryUrl ) else {
+            print("fetchOrderHistory. Invalid URL")
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "accept")
+
+        do {
+            let ( data, response ) = try await URLSession.shared.data(for: request)
+            let httpResponse = response as? HTTPURLResponse
+            if( httpResponse?.statusCode != 200 )
+            {
+                print("Failed to orders.  Status: \(httpResponse?.statusCode ?? -1),  response: \(String(describing: httpResponse))")
+                // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
+                if( httpResponse?.statusCode == 401 && retry )
+                {
+                    print( "=== retrying fetchOrderHistory after refreshing access token ===" )
+                    refreshAccessToken()
+                    await fetchOrderHistory( retry : false )
+                }
+                else
+                {
+                    // decode data as a ServiceError
+                    let decoder = JSONDecoder()
+                    let serviceError : ServiceError = try decoder.decode(ServiceError.self, from: data)
+                    print( "Failed to get orders: \(serviceError.message ?? "no message")" )
+                }
+                return
+            }
+            // print the first 200 characters of the data response
+            print( " -------------- response --------------" )
+            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
+            print( " --------------          --------------" )
+
+            let decoder = JSONDecoder()
+            // append the decoded transactions to transactionList
+            m_orderList.append(contentsOf: try decoder.decode( [Order].self, from: data ) )
+        } catch {
+            print("Error: \(error.localizedDescription)")
+            print("   detail:  \(error)")
+        }
+        print( "Fetched \(m_orderList.count) orders for all accounts" )
+        return
+    }
 } // SchwabClient

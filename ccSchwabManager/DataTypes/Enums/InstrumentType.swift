@@ -42,8 +42,8 @@ public enum InstrumentType: String, Codable, CaseIterable
     case WHEN_AS_AND_IF_ISSUED_BOND = "WHEN_AS_AND_IF_ISSUED_BOND"
     case ASSET_BACKED_SECURITY = "ASSET_BACKED_SECURITY"
 
-//    case sweepVehicle = "SWEEP_VEHICLE"
-//    case savings = "SAVINGS"
+    case sweepVehicle = "SWEEP_VEHICLE"
+    case savings = "SAVINGS"
     case moneyMarketFund = "MONEY_MARKET_FUND"
     // Index
     case broadBased = "BROAD_BASED"
