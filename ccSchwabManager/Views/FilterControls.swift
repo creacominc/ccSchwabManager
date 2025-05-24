@@ -12,6 +12,7 @@ struct FilterControls: View {
                 Text("Asset Types:")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .padding( .leading )
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(uniqueAssetTypes, id: \.self) { type in
@@ -39,6 +40,7 @@ struct FilterControls: View {
                 Text("Accounts:")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .padding( .leading )
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(uniqueAccountNumbers, id: \.self) { account in

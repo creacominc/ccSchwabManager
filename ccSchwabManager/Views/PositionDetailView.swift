@@ -221,6 +221,8 @@ struct PriceHistorySection: View {
             
             if isLoading {
                 ProgressView()
+                    .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
+                    .scaleEffect(2.0, anchor: .center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else if let history = priceHistory {
@@ -253,14 +255,14 @@ struct DetailRow: View {
 }
 
 struct TransactionHistorySection: View {
-    let transactions: [Transaction]
     let isLoading: Bool
+    let symbol: String
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
 
     private var sortedTransactions: [Transaction] {
-        guard let sortConfig = currentSort else { return transactions }
-
-        return transactions.sorted { t1, t2 in
+        guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
+        print( "=== Sorting transactions ===  \(symbol)" )
+        return SchwabClient.shared.getTransactionsFor( symbol: symbol ).sorted { t1, t2 in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .date:
@@ -272,12 +274,18 @@ struct TransactionHistorySection: View {
                 let type2 = (t2.netAmount ?? 0) < 0 ? "Buy" : (t2.netAmount ?? 0) > 0 ? "Sell" : "Unknown"
                 return ascending ? type1 < type2 : type1 > type2
             case .quantity:
-                let qty1 = t1.transferItems.first?.amount ?? 0
-                let qty2 = t2.transferItems.first?.amount ?? 0
+                // get the amount from the first transferItem with instrumentSymbol matching symbol
+                let transferItem1 = t1.transferItems.first(where: { $0.instrument?.symbol == symbol })
+                let transferItem2 = t2.transferItems.first(where: { $0.instrument?.symbol == symbol })
+                let qty1 = transferItem1?.amount ?? 0
+                let qty2 = transferItem2?.amount ?? 0
                 return ascending ? qty1 < qty2 : qty1 > qty2
             case .price:
-                let price1 = t1.transferItems.first?.price ?? 0
-                let price2 = t2.transferItems.first?.price ?? 0
+                // get the price from the first transferItem with instrumentSymbol matching symbol
+                let transferItem1 = t1.transferItems.first(where: { $0.instrument?.symbol == symbol })
+                let transferItem2 = t2.transferItems.first(where: { $0.instrument?.symbol == symbol })
+                let price1 = transferItem1?.price ?? 0
+                let price2 = transferItem2?.price ?? 0
                 return ascending ? price1 < price2 : price1 > price2
             case .netAmount:
                 let amount1 = t1.netAmount ?? 0
@@ -287,8 +295,11 @@ struct TransactionHistorySection: View {
         }
     }
 
+    // Define proportional widths for columns
+    private let columnProportions: [CGFloat] = [0.25, 0.15, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
+
     @ViewBuilder
-    private func columnHeader(title: String, column: TransactionSortableColumn) -> some View {
+    private func columnHeader(title: String, column: TransactionSortableColumn, alignment: Alignment = .leading) -> some View {
         Button(action: {
             if currentSort?.column == column {
                 currentSort?.ascending.toggle()
@@ -297,21 +308,60 @@ struct TransactionHistorySection: View {
             }
         }) {
             HStack {
+                if alignment == .trailing {
+                    Spacer()
+                }
                 Text(title)
-                Spacer()
+                if alignment == .leading {
+                    Spacer()
+                }
                 if currentSort?.column == column {
                     Image(systemName: currentSort?.ascending ?? true ? "chevron.up" : "chevron.down")
                         .font(.caption)
                 }
             }
-            .padding(.vertical, 4)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
     }
 
-    // Define proportional widths for columns
-    private let columnProportions: [CGFloat] = [0.25, 0.15, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
+    private static func round(_ value: Double, precision: Int) -> Double {
+        let multiplier = pow(10.0, Double(precision))
+        return (value * multiplier).rounded() / multiplier
+    }
+
+    struct TransactionRow: View {
+        let transaction: Transaction
+        let symbol: String
+        let calculatedWidths: [CGFloat]
+        let formatDate: (String?) -> String
+        
+        var body: some View {
+            HStack(spacing: 8) {
+                Text(formatDate(transaction.tradeDate))
+                    .frame(width: calculatedWidths[0], alignment: .leading)
+                Text(transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown")
+                    .frame(width: calculatedWidths[1], alignment: .leading)
+                if let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) {
+                    let amount = TransactionHistorySection.round(transferItem.amount ?? 0, precision: 2)
+                    let price = TransactionHistorySection.round(transferItem.price ?? 0, precision: 2)
+                    Text(String(format: "%.0f", amount))
+                        .frame(width: calculatedWidths[2], alignment: .trailing)
+                    Text(String(format: "%.2f", price))
+                        .frame(width: calculatedWidths[3], alignment: .trailing)
+                } else {
+                    Text("").frame(width: calculatedWidths[2])
+                    Text("").frame(width: calculatedWidths[3])
+                }
+                Text(String(format: "%.2f", transaction.netAmount ?? 0))
+                    .frame(width: calculatedWidths[4], alignment: .trailing)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 5)
+            Divider()
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -322,6 +372,8 @@ struct TransactionHistorySection: View {
 
             if isLoading {
                 ProgressView()
+                    .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
+                    .scaleEffect(2.0, anchor: .center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else if sortedTransactions.isEmpty {
@@ -341,9 +393,12 @@ struct TransactionHistorySection: View {
                         HStack(spacing: 8) {
                             columnHeader(title: "Date", column: .date).frame(width: calculatedWidths[0])
                             columnHeader(title: "Type", column: .type).frame(width: calculatedWidths[1])
-                            columnHeader(title: "Quantity", column: .quantity).frame(width: calculatedWidths[2])
-                            columnHeader(title: "Price", column: .price).frame(width: calculatedWidths[3])
-                            columnHeader(title: "Net Amount", column: .netAmount).frame(width: calculatedWidths[4])
+                            // right justify the Quantity column header
+                            columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: calculatedWidths[2])
+                            // right justify the Price column header
+                            columnHeader(title: "Price", column: .price, alignment: .trailing).frame(width: calculatedWidths[3])
+                            // right justify the Net Amount column header
+                            columnHeader(title: "Net Amount", column: .netAmount, alignment: .trailing).frame(width: calculatedWidths[4])
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 5)
@@ -354,30 +409,22 @@ struct TransactionHistorySection: View {
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ForEach(sortedTransactions) { transaction in
-                                    HStack(spacing: 8) {
-                                        Text(formatDate(transaction.tradeDate))
-                                            .frame(width: calculatedWidths[0], alignment: .leading)
-                                        Text( transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown" )
-                                            .frame(width: calculatedWidths[1], alignment: .leading)
-                                        if let transferItem = transaction.transferItems.first {
-                                            Text(String(format: "%.2f", transferItem.amount ?? 0))
-                                                .frame(width: calculatedWidths[2], alignment: .trailing)
-                                            Text(String(format: "%.2f", transferItem.price ?? 0))
-                                                .frame(width: calculatedWidths[3], alignment: .trailing)
-                                        } else {
-                                            Text("").frame(width: calculatedWidths[2])
-                                            Text("").frame(width: calculatedWidths[3])
-                                        }
-                                        Text(String(format: "%.2f", transaction.netAmount ?? 0))
-                                            .frame(width: calculatedWidths[4], alignment: .trailing)
-                                    }
-                                    .padding(.horizontal)
-                                    .padding(.vertical, 5)
-                                    Divider()
+                                    TransactionRow(
+                                        transaction: transaction,
+                                        symbol: symbol,
+                                        calculatedWidths: calculatedWidths,
+                                        formatDate: formatDate
+                                    )
                                 }
                             }
                         }
                         .frame(height: 300)
+//                        .task {
+//                            // print each record of the savedTransactions
+//                            for transaction in sortedTransactions {
+//                                print(transaction.dump())
+//                            }
+//                        }
                     }
                 }
             }
@@ -403,7 +450,6 @@ struct PositionDetailView: View {
     let totalPositions: Int
     let onNavigate: (Int) -> Void
     @State private var priceHistory: CandleList?
-    @State private var transactions: [Transaction] = []
     @State private var isLoadingPriceHistory = false
     @State private var isLoadingTransactions = false
     @EnvironmentObject var secretsManager: SecretsManager
@@ -432,25 +478,26 @@ struct PositionDetailView: View {
                 .padding(.vertical, 8)
             
             GeometryReader { geometry in
-                TabView {
 
+                TabView {
+                    // ScrollView with price history chart
                     ScrollView {
                         PriceHistorySection(
                             priceHistory: priceHistory,
                             isLoading: isLoadingPriceHistory,
                             formatDate: formatDate
                         )
-                        .frame( width: geometry.size.width * 0.88, height: geometry.size.height * 0.90  )
+                        .frame( width: geometry.size.width * 0.90, height: geometry.size.height * 0.90  )
                         //.border(Color.white.opacity(0.3), width: 1)
                     }
                     .tabItem {
                         Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
                     }
-
+                    // ScrollView with transaction history table.
                     ScrollView {
                         TransactionHistorySection(
-                            transactions: transactions,
-                            isLoading: isLoadingTransactions
+                            isLoading: isLoadingTransactions,
+                            symbol: position.instrument?.symbol ?? ""
                         )
                         .frame( width: geometry.size.width * 0.88,  height: geometry.size.height * 0.90  )
                         //.border(Color.white.opacity(0.3), width: 1)
@@ -472,30 +519,30 @@ struct PositionDetailView: View {
             .onAppear {
                 Task {
                     await fetchPriceHistory()
-                    await fetchTransactions()
+                    //await fetchTransactions()
                 }
             }
             .onChange(of: position) { oldValue, newValue in
                 Task {
                     await fetchPriceHistory()
-                    await fetchTransactions()
+                    //await fetchTransactions()
                 }
             }
     }
     
     private func fetchPriceHistory() async {
+        print( "=== fetchPriceHistory ===" )
         guard let symbol = position.instrument?.symbol else { return }
         isLoadingPriceHistory = true
         defer { isLoadingPriceHistory = false }
-        
         priceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
     }
     
-    private func fetchTransactions() async {
-        guard let symbol = position.instrument?.symbol else { return }
-        isLoadingTransactions = true
-        defer { isLoadingTransactions = false }
-        
-        transactions = await SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
-    }
+//    private func fetchTransactions() async {
+//        guard let symbol = position.instrument?.symbol else { return }
+//        isLoadingTransactions = true
+//        defer { isLoadingTransactions = false }
+//        // transactions =
+//        //        await SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
+//    }
 } 

@@ -69,12 +69,12 @@ struct HoldingsView: View {
     @State private var searchText = ""
     @State private var currentSort: SortConfig? = SortConfig(column: .symbol, ascending: SortableColumn.symbol.defaultAscending)
     @State private var selectedAssetTypes: Set<String> = []
-    @State private var accountPositions: [(Position, String, Date)] = []
+    @State private var accountPositions: [(Position, String, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPosition: SelectedPosition? = nil
     @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = HoldingsViewModel()
-    @State private var latestDateForSymbol : [String:Date] = [:]
+    @State private var isLoadingAccounts = false
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -144,8 +144,8 @@ struct HoldingsView: View {
                 let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
                 return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
             case .lastTradeDate:
-                let firstDate : String   = latestDateForSymbol[ first.instrument?.symbol ?? "" ]?.dateOnly() ?? "0000"
-                let secondDate : String  = latestDateForSymbol[ second.instrument?.symbol ?? "" ]?.dateOnly() ?? "0000"
+                let firstDate : String   = SchwabClient.shared.getLatestTradeDate( for: first.instrument?.symbol ?? "" )
+                let secondDate : String  = SchwabClient.shared.getLatestTradeDate( for: second.instrument?.symbol ?? "" )
                 return ascending ?
                     (firstDate) < (secondDate) :
                     (firstDate) > (secondDate)
@@ -164,28 +164,38 @@ struct HoldingsView: View {
                         uniqueAccountNumbers: viewModel.uniqueAccountNumbers
                     )
 
-                    HoldingsTable(
-                        sortedHoldings: sortedHoldings,
-                        selectedPositionId: Binding(
-                            get: { selectedPosition?.id },
-                            set: { newId in
-                                if let id = newId,
-                                   let position = sortedHoldings.first(where: { $0.id == id }) {
-                                    let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                                    selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
-                                } else {
-                                    selectedPosition = nil
+                    if isLoadingAccounts {
+                        ProgressView()
+                            .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
+                            .scaleEffect(2.0, anchor: .center)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding()
+                    } else {
+                        HoldingsTable(
+                            sortedHoldings: sortedHoldings,
+                            selectedPositionId: Binding(
+                                get: { selectedPosition?.id },
+                                set: { newId in
+                                    if let id = newId,
+                                       let position = sortedHoldings.first(where: { $0.id == id }) {
+                                        let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                                        selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
+                                    } else {
+                                        selectedPosition = nil
+                                    }
                                 }
-                            }
-                        ),
-                        accountPositions: accountPositions,
-                        latestDateForSymbol: latestDateForSymbol,
-                        currentSort: $currentSort
-                    )
+                            ),
+                            accountPositions: accountPositions,
+                            //                        latestDateForSymbol: latestDateForSymbol,
+                            currentSort: $currentSort
+                        )
+                    }
                 }
                 .searchable(text: $searchText, prompt: "Search by symbol or description")
                 .navigationTitle("Holdings")
                 .task {
+                    defer { isLoadingAccounts = false }
+                    isLoadingAccounts = true
                     await fetchHoldings()
                     selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
                 }
@@ -230,37 +240,14 @@ struct HoldingsView: View {
         print("=== fetchHoldings ===")
         await SchwabClient.shared.fetchAccounts( retry: true )
         // get the lessor of the last 3000  or 1 year of transactions
-        let recentTransactions : [Transaction] = await SchwabClient.shared.fetchTransactionHistory()
-        print( " fetched \(recentTransactions.count) transactions)" )
-        // create a map of symbols to the most recent trade date
-        for transaction in recentTransactions {
-            for transferItem in transaction.transferItems {
-                if let symbol = transferItem.instrument?.symbol {
-                    // convert tradeDate string to a Date
-                    var dateDte : Date = Date()
-                    do {
-                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() )
-                        // print( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
-                    }
-                    catch {
-                        print( "Error parsing date: \(error)" )
-                        continue
-                    }
-                    // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
-                    if latestDateForSymbol[symbol] == nil || dateDte > latestDateForSymbol[symbol]! {
-                        latestDateForSymbol[symbol] = dateDte
-                        // print( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
-                    }
-                }
-            }
-        }
+        await SchwabClient.shared.fetchTransactionHistory()
         // Extract positions from accounts with their account numbers
         accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
             let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
             let lastThreeDigits = String(accountNumber.suffix(3))
             return accountContent.securitiesAccount?.positions.map {
                 ($0, lastThreeDigits
-                 , latestDateForSymbol[ $0.instrument?.symbol ?? "" ] ?? Date()
+                 , SchwabClient.shared.getLatestTradeDate( for: $0.instrument?.symbol ?? "" )
                 ) } ?? []
         }
         holdings = accountPositions.map { $0.0 }
@@ -272,12 +259,12 @@ struct HoldingsView: View {
 struct HoldingsTable: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
-    let accountPositions: [(Position, String, Date)]
-    let latestDateForSymbol : [String:Date]
+    let accountPositions: [(Position, String, String)]
+//    let latestDateForSymbol : [String:Date]
     @Binding var currentSort: SortConfig?
     
     @ViewBuilder
-    private func columnHeader(title: String, column: SortableColumn) -> some View {
+    private func columnHeader(title: String, column: SortableColumn, alignment: Alignment = .leading) -> some View {
         Button(action: {
             if currentSort?.column == column {
                 currentSort?.ascending.toggle()
@@ -286,15 +273,20 @@ struct HoldingsTable: View {
             }
         }) {
             HStack {
+                if alignment == .trailing {
+                    Spacer()
+                }
                 Text(title)
-                Spacer()
+                if alignment == .leading {
+                    Spacer()
+                }
                 if currentSort?.column == column {
                     Image(systemName: currentSort?.ascending ?? true ? "chevron.up" : "chevron.down")
                         .font(.caption)
                 }
             }
-            .padding(.vertical, 4)
             .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
     }
@@ -305,11 +297,11 @@ struct HoldingsTable: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0])
-                columnHeader(title: "Quantity", column: .quantity).frame(width: columnWidths[1])
-                columnHeader(title: "Avg Price", column: .avgPrice).frame(width: columnWidths[2])
-                columnHeader(title: "Market Value", column: .marketValue).frame(width: columnWidths[3])
-                columnHeader(title: "P/L", column: .pl).frame(width: columnWidths[4])
-                columnHeader(title: "P/L%", column: .plPercent).frame(width: columnWidths[5])
+                columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: columnWidths[1])
+                columnHeader(title: "Avg Price", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2])
+                columnHeader(title: "Market Value", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3])
+                columnHeader(title: "P/L", column: .pl, alignment: .trailing).frame(width: columnWidths[4])
+                columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing).frame(width: columnWidths[5])
                 columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6])
                 columnHeader(title: "Account", column: .account).frame(width: columnWidths[7])
                 columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8])
@@ -332,7 +324,7 @@ struct HoldingsTable: View {
                             Text(String(format: "%.1f%%", calcPLPercent(position: position))).frame(width: columnWidths[5], alignment: .trailing).monospacedDigit()
                             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6], alignment: .leading)
                             Text(accountNumberFor(position)).frame(width: columnWidths[7], alignment: .leading)
-                            Text(latestDateForSymbol[position.instrument?.symbol ?? ""]?.dateOnly() ?? "").frame(width: columnWidths[8], alignment: .leading)
+                            Text( SchwabClient.shared.getLatestTradeDate( for:  position.instrument?.symbol ?? "" ) ).frame(width: columnWidths[8], alignment: .leading)
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 5)

@@ -13,7 +13,7 @@ struct ContentView: View
     @State private var showingAuthDialog = false
     @State private var authCode = ""
     @State private var selectedTab = 0
-    
+
     var body: some View
     {
         Group {

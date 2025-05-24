@@ -36,7 +36,9 @@ class SchwabClient
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
-    
+    private var m_transactionList : [Transaction] = []
+    private var m_latestDateForSymbol : [String:Date] = [:]
+
     /**
      * dump the contents of this object for debugging.
      */
@@ -126,7 +128,7 @@ class SchwabClient
         completion( .success( url ) )
         return
     }
-
+    
     public func extractCodeFromURL( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
         print( "=== extractCodeFromURL from \(url) ===" )
@@ -155,6 +157,7 @@ class SchwabClient
     func getAccessToken( completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
         // Access Token Request
+        print( "=== getAccessToken ===" )
         let url = URL( string: "\(accessTokenWeb)" )!
         print( "accessTokenUrl: \(url)" )
         var accessTokenRequest = URLRequest( url: url )
@@ -239,7 +242,7 @@ class SchwabClient
      *
      */
     private func refreshAccessToken() {
-        print("Refreshing access token...")
+        print("=== refreshAccessToken: Refreshing access token...")
         // Access Token Refresh Request
         guard let url = URL(string: "\(accessTokenWeb)") else {
             print("Invalid URL for refreshing access token")
@@ -265,6 +268,9 @@ class SchwabClient
             
             guard let data = data, error == nil, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("Failed to refresh access token. Error: \(error?.localizedDescription ?? "Unknown error")")
+                //                print( "Error: \(error?.localizedDescription ?? "Unknown error" )" )
+                //                print( "data: \(String(data: data ?? Data(), encoding: .utf8) ?? "No data")" )
+                //                print( "response: \(String(describing: response))" )
                 return
             }
             
@@ -303,10 +309,10 @@ class SchwabClient
      *
      *[
      {
-       "accountNumber": "...767",
-       "hashValue": "980170564C529B2EF04942AA...."
+     "accountNumber": "...767",
+     "hashValue": "980170564C529B2EF04942AA...."
      }
-   ]
+     ]
      *
      */
     func fetchAccountNumbers() async
@@ -316,12 +322,12 @@ class SchwabClient
             print("Invalid URL")
             return
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-
+        
         do
         {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -333,11 +339,11 @@ class SchwabClient
             }
             // print( "response: \(response)" )
             print( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
-
+            
             let decoder = JSONDecoder()
             let accountNumberHashes = try decoder.decode([AccountNumberHash].self, from: data)
             print("accountNumberHashes: \(accountNumberHashes.count)")
-
+            
             if !accountNumberHashes.isEmpty
             {
                 await MainActor.run
@@ -378,7 +384,7 @@ class SchwabClient
             print("Invalid URL")
             return
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
@@ -419,8 +425,8 @@ class SchwabClient
             return
         }
     }
-
-
+    
+    
     /**
      * fettchPriceHistory  get the history of prices for all securities
      */
@@ -430,7 +436,7 @@ class SchwabClient
         
         var priceHistoryUrl = "\(priceHistoryWeb)"
         priceHistoryUrl += "?symbol=\(symbol)"
-
+        
         /**
          * The chart period being requested.
          * Available values : day, month, year, ytd
@@ -491,18 +497,18 @@ class SchwabClient
          *  Need previous close price/date
          */
         //priceHistoryUrl += "&needPreviousClose=true"
-
+        
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
             return nil
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-
+        
         request.setValue("application/json", forHTTPHeaderField: "accept")
-
+        
         do {
             let ( data, response ) = try await URLSession.shared.data(for: request)
             let httpResponse = response as? HTTPURLResponse
@@ -511,7 +517,7 @@ class SchwabClient
                 print("fetchPriceHistory. Failed to fetch price history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
                 return nil
             }
-
+            
             let decoder = JSONDecoder()
             let candleList : CandleList  = try decoder.decode( CandleList.self, from: data )
             print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
@@ -584,42 +590,42 @@ class SchwabClient
      *
      *[
      {
-       "activityId": 95512265692,
-       "time": "2025-04-23T19:59:12+0000",
-       "accountNumber": "88516767",
-       "type": "TRADE",
-       "status": "VALID",
-       "subAccount": "CASH",
-       "tradeDate": "2025-04-23T19:59:12+0000",
-       "positionId": 2788793997,
-       "orderId": 1003188442747,
-       "netAmount": -164.85,
-       "transferItems": [
-         {
-           "instrument": {
-             "assetType": "EQUITY",
-             "status": "ACTIVE",
-             "symbol": "SFM",
-             "instrumentId": 1806651,
-             "closingPrice": 169.76,
-             "type": "COMMON_STOCK"
-           },
-           "amount": 1,
-           "cost": -164.85,
-           "price": 164.85,
-           "positionEffect": "OPENING"
-         }
-       ]
+     "activityId": 95512265692,
+     "time": "2025-04-23T19:59:12+0000",
+     "accountNumber": "88516767",
+     "type": "TRADE",
+     "status": "VALID",
+     "subAccount": "CASH",
+     "tradeDate": "2025-04-23T19:59:12+0000",
+     "positionId": 2788793997,
+     "orderId": 1003188442747,
+     "netAmount": -164.85,
+     "transferItems": [
+     {
+     "instrument": {
+     "assetType": "EQUITY",
+     "status": "ACTIVE",
+     "symbol": "SFM",
+     "instrumentId": 1806651,
+     "closingPrice": 169.76,
+     "type": "COMMON_STOCK"
+     },
+     "amount": 1,
+     "cost": -164.85,
+     "price": 164.85,
+     "positionEffect": "OPENING"
      }
-   ]
+     ]
+     }
+     ]
      *
      *
      */
-    public func fetchTransactionHistory( symbol : String? = nil ) async  -> [Transaction]
+    public func fetchTransactionHistory( ) async
     {
-        var transactionList : [Transaction]  = []
         print("=== fetchTransactionHistory  ===")
 
+        m_transactionList.removeAll(keepingCapacity: true)
         // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
         let todayStr : String = Date().formatted(.iso8601
             .year()
@@ -629,7 +635,7 @@ class SchwabClient
             .time(includingFractionalSeconds: true)
             .timeSeparator(.colon)
         ) // "2022-06-10T12:34:56.789Z"
-
+        
         // get date one year ago
         var components = DateComponents()
         components.year = -1
@@ -642,16 +648,12 @@ class SchwabClient
             .time(includingFractionalSeconds: true)
             .timeSeparator(.colon)
         )
-
-        // fetch the transactions for the given symbol from all accounts
+        
+        // fetch the transactions (optionally for the given symbol) from all accounts
         for accountNumberHash : AccountNumberHash in self.m_secrets.acountNumberHash {
             var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
             transactionHistoryUrl += "?startDate=\(dateOneYearAgoStr)"
             transactionHistoryUrl += "&endDate=\(todayStr)"
-            if( nil != symbol )
-            {
-                transactionHistoryUrl += "&symbol=\(symbol ?? "" )"
-            }
             transactionHistoryUrl += "&types=TRADE"
             // print( "fetchTransactionHistory. URL = \(transactionHistoryUrl)" )
             guard let url = URL( string: transactionHistoryUrl ) else {
@@ -676,10 +678,10 @@ class SchwabClient
                 // print( " -------------- response --------------" )
                 // print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
                 // print( " --------------          --------------" )
-
+                
                 let decoder = JSONDecoder()
                 // append the decoded transactions to transactionList
-                transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: data ) )
+                m_transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: data ) )
                 continue
             } catch {
                 print("Error: \(error.localizedDescription)")
@@ -687,8 +689,241 @@ class SchwabClient
                 continue
             }
         } // end for each accountHash
-        print( "Fetched \(transactionList.count) transactions for \(symbol ?? "all symbols")" )
-        // return the list sorted by tradeDate
-        return transactionList.sorted { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        print( "Fetched \(m_transactionList.count) transactions for all symbols" )
+        // sort by tradeDate
+        m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        //return transactionList.sorted { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        self.setLatestTradeDates()
     } // end of fetchTransactionHistory
-}
+    
+
+    /**
+     * getTransactions - return the m_transactionList.   TODO:  rethink this.  it is odd to have fetchTransactionHistory and getTransactions.  Also what of when we fetch all vs for a security?
+     */
+    public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
+    {
+        // return the transactionlist where the symbol matches what is provided
+        return m_transactionList.filter { transaction in
+            // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+            return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+        }
+    }
+
+    private func setLatestTradeDates()
+    {
+        m_latestDateForSymbol.removeAll(keepingCapacity: true)
+        // create a map of symbols to the most recent trade date
+        for transaction in m_transactionList {
+            for transferItem in transaction.transferItems {
+                if let symbol = transferItem.instrument?.symbol {
+                    // convert tradeDate string to a Date
+                    var dateDte : Date = Date()
+                    do {
+                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() )
+                        // print( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
+                    }
+                    catch {
+                        print( "Error parsing date: \(error)" )
+                        continue
+                    }
+                    // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
+                    if m_latestDateForSymbol[symbol] == nil || dateDte > m_latestDateForSymbol[symbol]! {
+                        m_latestDateForSymbol[symbol] = dateDte
+                        // print( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * getLatestTradeDate( for: String )  get the latest trade date for a given symbol.
+     */
+    public func getLatestTradeDate( for symbol: String ) -> String
+    {
+        return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
+    }
+
+    /**
+     * fetchOrderHistory
+     *
+     * /orders
+     *
+     *Parameters
+     Name    Description
+     maxResults
+     integer($int64)
+     (query)
+     The max number of orders to retrieve. Default is 3000.
+
+
+     fromEnteredTime *
+     string
+     (query)
+     Specifies that no orders entered before this time should be returned. Valid ISO-8601 formats are- yyyy-MM-dd'T'HH:mm:ss.SSSZ Date must be within 60 days from today's date. 'toEnteredTime' must also be set.
+
+
+     toEnteredTime *
+     string
+     (query)
+     Specifies that no orders entered after this time should be returned.Valid ISO-8601 formats are - yyyy-MM-dd'T'HH:mm:ss.SSSZ. 'fromEnteredTime' must also be set.
+
+
+     status
+     string
+     (query)
+     Specifies that only orders of this status should be returned.
+
+     Available values : AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
+
+
+    * alternate:  get orders for account:
+     *    GET
+     /accounts/{accountNumber}/orders
+     Get all orders for a specific account.
+
+     All orders for a specific account. Orders retrieved can be filtered based on input parameters below. Maximum date range is 1 year.
+
+     Parameters
+     Name    Description
+     accountNumber *
+     string
+     (path)
+     The encrypted ID of the account
+
+
+     *
+     *
+     *
+     * example response
+     *[
+     {
+       "session": "NORMAL",
+       "duration": "DAY",
+       "orderType": "MARKET",
+       "cancelTime": "2025-05-21T11:15:04.856Z",
+       "complexOrderStrategyType": "NONE",
+       "quantity": 0,
+       "filledQuantity": 0,
+       "remainingQuantity": 0,
+       "requestedDestination": "INET",
+       "destinationLinkName": "string",
+       "releaseTime": "2025-05-21T11:15:04.856Z",
+       "stopPrice": 0,
+       "stopPriceLinkBasis": "MANUAL",
+       "stopPriceLinkType": "VALUE",
+       "stopPriceOffset": 0,
+       "stopType": "STANDARD",
+       "priceLinkBasis": "MANUAL",
+       "priceLinkType": "VALUE",
+       "price": 0,
+       "taxLotMethod": "FIFO",
+       "orderLegCollection": [
+         {
+           "orderLegType": "EQUITY",
+           "legId": 0,
+           "instrument": {
+             "cusip": "string",
+             "symbol": "string",
+             "description": "string",
+             "instrumentId": 0,
+             "netChange": 0,
+             "type": "SWEEP_VEHICLE"
+           },
+           "instruction": "BUY",
+           "positionEffect": "OPENING",
+           "quantity": 0,
+           "quantityType": "ALL_SHARES",
+           "divCapGains": "REINVEST",
+           "toSymbol": "string"
+         }
+       ],
+       "activationPrice": 0,
+       "specialInstruction": "ALL_OR_NONE",
+       "orderStrategyType": "SINGLE",
+       "orderId": 0,
+       "cancelable": false,
+       "editable": false,
+       "status": "AWAITING_PARENT_ORDER",
+       "enteredTime": "2025-05-21T11:15:04.856Z",
+       "closeTime": "2025-05-21T11:15:04.856Z",
+       "tag": "string",
+       "accountNumber": 0,
+       "orderActivityCollection": [
+         {
+           "activityType": "EXECUTION",
+           "executionType": "FILL",
+           "quantity": 0,
+           "orderRemainingQuantity": 0,
+           "executionLegs": [
+             {
+               "legId": 0,
+               "price": 0,
+               "quantity": 0,
+               "mismarkedQuantity": 0,
+               "instrumentId": 0,
+               "time": "2025-05-21T11:15:04.856Z"
+             }
+           ]
+         }
+       ],
+       "replacingOrderCollection": [
+         "string"
+       ],
+       "childOrderStrategies": [
+         "string"
+       ],
+       "statusDescription": "string"
+     }
+   ]
+
+
+
+     Orders
+
+
+     GET
+     /accounts/{accountNumber}/orders
+     Get all orders for a specific account.
+
+
+     POST
+     /accounts/{accountNumber}/orders
+     Place order for a specific account.
+
+
+     GET
+     /accounts/{accountNumber}/orders/{orderId}
+     Get a specific order by its ID, for a specific account
+
+
+     DELETE
+     /accounts/{accountNumber}/orders/{orderId}
+     Cancel an order for a specific account
+
+
+     PUT
+     /accounts/{accountNumber}/orders/{orderId}
+     Replace order for a specific account
+
+
+     GET
+     /orders
+     Get all orders for all accounts
+
+
+     POST
+     /accounts/{accountNumber}/previewOrder
+     Preview order for a specific account. **Coming Soon**.
+
+
+
+     */
+//    public func fetchOrderHistory( ) async -> [Order]
+//    {
+//        var orders: [Order] = []
+//        return orders
+//    }
+//    
+    
+} // SchwabClient

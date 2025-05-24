@@ -70,20 +70,28 @@ struct AuthFlowView: View {
                     Link("Open Schwab Login", destination: url)
                         .buttonStyle(.borderedProminent)
                 }
-                
+
                 TextField("Paste Authorization Code", text: $authCode)
                     .textFieldStyle(.roundedBorder)
                     .padding()
-                
+//                    .onChange(of: authCode) { oldValue, newValue in
+//                        print( "changed authCode to \(newValue)" )
+//                        print( "authCode = \(authCode)" )
+//                    }
+
                 Button("Submit") {
+                    // if this button is pressed, reset the tokens
+                    secretsManager.secrets.accessToken = ""
+                    secretsManager.secrets.refreshToken = ""
+                    // get the code from the pasted URL
                     handleAuthCode()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(authCode.isEmpty)
             }
-            
+
             Spacer()
-            
+
             Button("Reset All Credentials") {
                 showingResetAlert = true
             }
@@ -165,10 +173,10 @@ struct AuthFlowView: View {
     
     private func handleAuthCode() {
         // Extract the code from the URL
+        print( "=== handleAuthCode ===" )
         if let code = extractCodeFromURL(authCode) {
             secretsManager.secrets.code = code
             secretsManager.saveSecrets()
-            print("=== handleAuthCode ===")
             // Fetch account numbers and holdings
             Task {
                 print("task started - fetching account numbers...")
