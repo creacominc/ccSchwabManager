@@ -23,7 +23,6 @@ enum SortableColumn: String, CaseIterable, Identifiable {
     case assetType = "Asset Type"
     case account = "Account"
     case lastTradeDate = "Last Trade Date"
-    case hasOrders = "Has Orders"
 
     var id: String { self.rawValue }
 
@@ -31,7 +30,7 @@ enum SortableColumn: String, CaseIterable, Identifiable {
         switch self {
         case .symbol, .assetType, .account:
             return true
-        case .quantity, .avgPrice, .marketValue, .pl, .plPercent, .lastTradeDate, .hasOrders:
+        case .quantity, .avgPrice, .marketValue, .pl, .plPercent, .lastTradeDate:
             return false
         }
     }
@@ -70,7 +69,7 @@ struct HoldingsView: View {
     @State private var searchText = ""
     @State private var currentSort: SortConfig? = SortConfig(column: .symbol, ascending: SortableColumn.symbol.defaultAscending)
     @State private var selectedAssetTypes: Set<String> = []
-    @State private var accountPositions: [(Position, String, String, String)] = []
+    @State private var accountPositions: [(Position, String, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPosition: SelectedPosition? = nil
     @State private var viewSize: CGSize = .zero
@@ -150,12 +149,6 @@ struct HoldingsView: View {
                 return ascending ?
                     (firstDate) < (secondDate) :
                     (firstDate) > (secondDate)
-            case .hasOrders:
-                let firstHasOrders : Bool  = SchwabClient.shared.hasOrders( symbol: first.instrument?.symbol ?? ""  )
-                let secondHasOrders : Bool = SchwabClient.shared.hasOrders( symbol: second.instrument?.symbol ?? ""  )
-                return ascending ?
-                firstHasOrders && !secondHasOrders :
-                !firstHasOrders && secondHasOrders
             }
         }
     }
@@ -258,7 +251,6 @@ struct HoldingsView: View {
             return accountContent.securitiesAccount?.positions.map {
                 ($0, lastThreeDigits
                  , SchwabClient.shared.getLatestTradeDate( for: $0.instrument?.symbol ?? "" )
-                 , SchwabClient.shared.hasOrders( symbol: $0.instrument?.symbol ?? "" ) ? "Y" : "N"
                 ) } ?? []
         }
         holdings = accountPositions.map { $0.0 }
@@ -270,11 +262,11 @@ struct HoldingsView: View {
 struct HoldingsTable: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
-    let accountPositions: [(Position, String, String, String)]
+    let accountPositions: [(Position, String, String)]
     @Binding var currentSort: SortConfig?
     let viewSize: CGSize
 
-    private let columnWidths: [CGFloat] = [0.10, 0.08, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08, 0.12, 0.05]
+    private let columnWidths: [CGFloat] = [0.10, 0.08, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08, 0.12]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -335,7 +327,6 @@ private struct TableHeader: View {
             columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width)
             columnHeader(title: "Account", column: .account).frame(width: columnWidths[7] * viewSize.width)
             columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
-            columnHeader(title: "Ords", column: .hasOrders).frame(width: columnWidths[9] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -346,7 +337,7 @@ private struct TableHeader: View {
 private struct TableContent: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
-    let accountPositions: [(Position, String, String, String)]
+    let accountPositions: [(Position, String, String)]
     let viewSize: CGSize
     let columnWidths: [CGFloat]
 
@@ -404,7 +395,6 @@ private struct TableRow: View {
             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
             Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
             Text(SchwabClient.shared.getLatestTradeDate(for: position.instrument?.symbol ?? "")).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
-            Text(SchwabClient.shared.hasOrders(symbol: position.instrument?.symbol ?? "") ? "Y" : "N").frame(width: columnWidths[9] * viewSize.width, alignment: .leading)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
