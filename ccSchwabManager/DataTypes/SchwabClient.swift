@@ -39,6 +39,7 @@ class SchwabClient
     private var m_refreshAccessToken_running : Bool = false
     private var m_transactionList : [Transaction] = []
     private var m_latestDateForSymbol : [String:Date] = [:]
+    private var m_symbolsWithOrders: Set<String> = []
     private var m_lastFilteredSymbol : String? = nil
     private var m_lastFilteredTransactions : [Transaction] = []
     private var m_orderList : [Order] = []
@@ -651,7 +652,7 @@ class SchwabClient
     public func fetchTransactionHistory( ) async
     {
         print("=== fetchTransactionHistory  ===")
-
+        
         m_transactionList.removeAll(keepingCapacity: true)
         
         // fetch the transactions (optionally for the given symbol) from all accounts
@@ -701,7 +702,7 @@ class SchwabClient
         self.setLatestTradeDates()
     } // end of fetchTransactionHistory
     
-
+    
     /**
      * getTransactions - return the m_transactionList.
      */
@@ -719,7 +720,7 @@ class SchwabClient
         return m_lastFilteredTransactions
         
     }
-
+    
     private func setLatestTradeDates()
     {
         m_latestDateForSymbol.removeAll(keepingCapacity: true)
@@ -746,7 +747,7 @@ class SchwabClient
             }
         }
     }
-
+    
     /**
      * getLatestTradeDate( for: String )  get the latest trade date for a given symbol.
      */
@@ -754,7 +755,7 @@ class SchwabClient
     {
         return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
     }
-
+    
     /**
      * fetchOrderHistory
      *
@@ -766,174 +767,174 @@ class SchwabClient
      integer($int64)
      (query)
      The max number of orders to retrieve. Default is 3000.
-
-
+     
+     
      fromEnteredTime *
      string
      (query)
      Specifies that no orders entered before this time should be returned. Valid ISO-8601 formats are- yyyy-MM-dd'T'HH:mm:ss.SSSZ Date must be within 60 days from today's date. 'toEnteredTime' must also be set.
-
-
+     
+     
      toEnteredTime *
      string
      (query)
      Specifies that no orders entered after this time should be returned.Valid ISO-8601 formats are - yyyy-MM-dd'T'HH:mm:ss.SSSZ. 'fromEnteredTime' must also be set.
-
-
+     
+     
      status
      string
      (query)
      Specifies that only orders of this status should be returned.
-
+     
      Available values : AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
-
-
-    * alternate:  get orders for account:
+     
+     
+     * alternate:  get orders for account:
      *    GET
      /accounts/{accountNumber}/orders
      Get all orders for a specific account.
-
+     
      All orders for a specific account. Orders retrieved can be filtered based on input parameters below. Maximum date range is 1 year.
-
+     
      Parameters
      Name    Description
      accountNumber *
      string
      (path)
      The encrypted ID of the account
-
-
+     
+     
      *
      *
      *
      * example response
      *[
      {
-       "session": "NORMAL",
-       "duration": "DAY",
-       "orderType": "MARKET",
-       "cancelTime": "2025-05-21T11:15:04.856Z",
-       "complexOrderStrategyType": "NONE",
-       "quantity": 0,
-       "filledQuantity": 0,
-       "remainingQuantity": 0,
-       "requestedDestination": "INET",
-       "destinationLinkName": "string",
-       "releaseTime": "2025-05-21T11:15:04.856Z",
-       "stopPrice": 0,
-       "stopPriceLinkBasis": "MANUAL",
-       "stopPriceLinkType": "VALUE",
-       "stopPriceOffset": 0,
-       "stopType": "STANDARD",
-       "priceLinkBasis": "MANUAL",
-       "priceLinkType": "VALUE",
-       "price": 0,
-       "taxLotMethod": "FIFO",
-       "orderLegCollection": [
-         {
-           "orderLegType": "EQUITY",
-           "legId": 0,
-           "instrument": {
-             "cusip": "string",
-             "symbol": "string",
-             "description": "string",
-             "instrumentId": 0,
-             "netChange": 0,
-             "type": "SWEEP_VEHICLE"
-           },
-           "instruction": "BUY",
-           "positionEffect": "OPENING",
-           "quantity": 0,
-           "quantityType": "ALL_SHARES",
-           "divCapGains": "REINVEST",
-           "toSymbol": "string"
-         }
-       ],
-       "activationPrice": 0,
-       "specialInstruction": "ALL_OR_NONE",
-       "orderStrategyType": "SINGLE",
-       "orderId": 0,
-       "cancelable": false,
-       "editable": false,
-       "status": "AWAITING_PARENT_ORDER",
-       "enteredTime": "2025-05-21T11:15:04.856Z",
-       "closeTime": "2025-05-21T11:15:04.856Z",
-       "tag": "string",
-       "accountNumber": 0,
-       "orderActivityCollection": [
-         {
-           "activityType": "EXECUTION",
-           "executionType": "FILL",
-           "quantity": 0,
-           "orderRemainingQuantity": 0,
-           "executionLegs": [
-             {
-               "legId": 0,
-               "price": 0,
-               "quantity": 0,
-               "mismarkedQuantity": 0,
-               "instrumentId": 0,
-               "time": "2025-05-21T11:15:04.856Z"
-             }
-           ]
-         }
-       ],
-       "replacingOrderCollection": [
-         "string"
-       ],
-       "childOrderStrategies": [
-         "string"
-       ],
-       "statusDescription": "string"
+     "session": "NORMAL",
+     "duration": "DAY",
+     "orderType": "MARKET",
+     "cancelTime": "2025-05-21T11:15:04.856Z",
+     "complexOrderStrategyType": "NONE",
+     "quantity": 0,
+     "filledQuantity": 0,
+     "remainingQuantity": 0,
+     "requestedDestination": "INET",
+     "destinationLinkName": "string",
+     "releaseTime": "2025-05-21T11:15:04.856Z",
+     "stopPrice": 0,
+     "stopPriceLinkBasis": "MANUAL",
+     "stopPriceLinkType": "VALUE",
+     "stopPriceOffset": 0,
+     "stopType": "STANDARD",
+     "priceLinkBasis": "MANUAL",
+     "priceLinkType": "VALUE",
+     "price": 0,
+     "taxLotMethod": "FIFO",
+     "orderLegCollection": [
+     {
+     "orderLegType": "EQUITY",
+     "legId": 0,
+     "instrument": {
+     "cusip": "string",
+     "symbol": "string",
+     "description": "string",
+     "instrumentId": 0,
+     "netChange": 0,
+     "type": "SWEEP_VEHICLE"
+     },
+     "instruction": "BUY",
+     "positionEffect": "OPENING",
+     "quantity": 0,
+     "quantityType": "ALL_SHARES",
+     "divCapGains": "REINVEST",
+     "toSymbol": "string"
      }
-   ]
-
-
-
+     ],
+     "activationPrice": 0,
+     "specialInstruction": "ALL_OR_NONE",
+     "orderStrategyType": "SINGLE",
+     "orderId": 0,
+     "cancelable": false,
+     "editable": false,
+     "status": "AWAITING_PARENT_ORDER",
+     "enteredTime": "2025-05-21T11:15:04.856Z",
+     "closeTime": "2025-05-21T11:15:04.856Z",
+     "tag": "string",
+     "accountNumber": 0,
+     "orderActivityCollection": [
+     {
+     "activityType": "EXECUTION",
+     "executionType": "FILL",
+     "quantity": 0,
+     "orderRemainingQuantity": 0,
+     "executionLegs": [
+     {
+     "legId": 0,
+     "price": 0,
+     "quantity": 0,
+     "mismarkedQuantity": 0,
+     "instrumentId": 0,
+     "time": "2025-05-21T11:15:04.856Z"
+     }
+     ]
+     }
+     ],
+     "replacingOrderCollection": [
+     "string"
+     ],
+     "childOrderStrategies": [
+     "string"
+     ],
+     "statusDescription": "string"
+     }
+     ]
+     
+     
+     
      Orders
-
-
+     
+     
      GET
      /accounts/{accountNumber}/orders
      Get all orders for a specific account.
-
-
+     
+     
      POST
      /accounts/{accountNumber}/orders
      Place order for a specific account.
-
-
+     
+     
      GET
      /accounts/{accountNumber}/orders/{orderId}
      Get a specific order by its ID, for a specific account
-
-
+     
+     
      DELETE
      /accounts/{accountNumber}/orders/{orderId}
      Cancel an order for a specific account
-
-
+     
+     
      PUT
      /accounts/{accountNumber}/orders/{orderId}
      Replace order for a specific account
-
-
+     
+     
      GET
      /orders
      Get all orders for all accounts
-
-
+     
+     
      POST
      /accounts/{accountNumber}/previewOrder
      Preview order for a specific account. **Coming Soon**.
-
-
-
+     
+     
+     
      */
     public func fetchOrderHistory( retry : Bool = false ) async
     {
         print("=== fetchOrderHistory  ===")
-
+        
         m_orderList.removeAll(keepingCapacity: true)
         // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
         let todayStr : String = Date().formatted(.iso8601
@@ -944,7 +945,7 @@ class SchwabClient
             .time(includingFractionalSeconds: true)
             .timeSeparator(.colon)
         ) // "2022-06-10T12:34:56.789Z"
-
+        
         // get date one year ago
         var components = DateComponents()
         components.year = -1
@@ -965,18 +966,18 @@ class SchwabClient
         /**
          * consider adding status: AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
          */
-
+        
         // print( "fetchOrderHistory. URL = \(orderHistoryUrl)" )
         guard let url = URL( string: orderHistoryUrl ) else {
             print("fetchOrderHistory. Invalid URL")
             return
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
-
+        
         do {
             let ( data, response ) = try await URLSession.shared.data(for: request)
             let httpResponse = response as? HTTPURLResponse
@@ -999,11 +1000,11 @@ class SchwabClient
                 }
                 return
             }
-//            // print the first 200 characters of the data response
-//            print( " -------------- response --------------" )
-//            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
-//            print( " --------------          --------------" )
-
+            //            // print the first 200 characters of the data response
+            //            print( " -------------- response --------------" )
+            //            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
+            //            print( " --------------          --------------" )
+            
             let decoder = JSONDecoder()
             // append the decoded transactions to transactionList
             m_orderList.append(contentsOf: try decoder.decode( [Order].self, from: data ) )
@@ -1012,6 +1013,49 @@ class SchwabClient
             print("   detail:  \(error)")
         }
         print( "Fetched \(m_orderList.count) orders for all accounts" )
+        //        // print the first 20 orders
+        //        for i in 0..<min(20, m_orderList.count) {
+        //            var msg: String = "\(i+1). "
+        //            msg += " \(m_orderList[i].orderLegCollection?[0].instrument?.symbol ?? "no symbol")"
+        //            msg += ", \(m_orderList[i].status ?? OrderStatus.unknown)"
+        //            msg += ", \(m_orderList[i].statusDescription ?? "no description")"
+        //            print( msg )
+        //        }
+        
+        // update the m_symbolHasOrders dictionary with each symbol in the orderList with orders that are in awaiting states
+        m_symbolsWithOrders.removeAll(keepingCapacity: true)
+        for order in m_orderList {
+            if( order.status == OrderStatus.awaitingParentOrder ||
+                order.status == OrderStatus.awaitingCondition ||
+                order.status == OrderStatus.awaitingStopCondition ||
+                order.status == OrderStatus.awaitingManualReview ||
+                order.status == OrderStatus.pendingActivation ||
+                order.status == OrderStatus.accepted ||
+                order.status == OrderStatus.working ||
+                order.status == OrderStatus.new ||
+                order.status == OrderStatus.awaitingReleaseTime
+            ) {
+                for leg in order.orderLegCollection ?? [] {
+                    if( leg.instrument?.symbol != nil ) {
+                        m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+                    }
+                    else {
+                        print( "\(leg.instrument?.symbol ?? "no symbol") has orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
+                    }
+                }
+            }
+//            else {
+//                print( "order states \(order.status ?? OrderStatus.unknown)" )
+//            }
+        } // for order
+        print( "\(m_symbolsWithOrders.count) symbols have orders in awaiting states" )
         return
     }
+    
+    public func hasOrders( symbol: String? = nil ) -> Bool
+    {
+        return m_symbolsWithOrders.contains( symbol ?? "" )
+    }
+    
+    
 } // SchwabClient
