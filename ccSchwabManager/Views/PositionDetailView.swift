@@ -376,7 +376,7 @@ struct TransactionHistorySection: View {
                     .scaleEffect(2.0, anchor: .center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-            } else if sortedTransactions.isEmpty {
+            } else if SchwabClient.shared.getTransactionsFor( symbol: symbol ).isEmpty {
                 Text("No transactions available")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)

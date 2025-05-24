@@ -38,6 +38,8 @@ class SchwabClient
     private var m_refreshAccessToken_running : Bool = false
     private var m_transactionList : [Transaction] = []
     private var m_latestDateForSymbol : [String:Date] = [:]
+    private var m_lastFilteredSymbol : String? = nil
+    private var m_lastFilteredTransactions : [Transaction] = []
 
     /**
      * dump the contents of this object for debugging.
@@ -698,15 +700,21 @@ class SchwabClient
     
 
     /**
-     * getTransactions - return the m_transactionList.   TODO:  rethink this.  it is odd to have fetchTransactionHistory and getTransactions.  Also what of when we fetch all vs for a security?
+     * getTransactions - return the m_transactionList.
      */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
-        // return the transactionlist where the symbol matches what is provided
-        return m_transactionList.filter { transaction in
-            // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-            return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+        // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
+        if m_lastFilteredSymbol != symbol {
+            m_lastFilteredSymbol = symbol
+            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
+                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+            }
         }
+        // return the transactionlist where the symbol matches what is provided
+        return m_lastFilteredTransactions
+        
     }
 
     private func setLatestTradeDates()
