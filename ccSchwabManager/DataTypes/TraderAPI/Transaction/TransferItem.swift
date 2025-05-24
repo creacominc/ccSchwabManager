@@ -79,4 +79,16 @@ class TransferItem: Codable, Identifiable, Hashable
     }
 
 
+    // print the contents of the transfer item
+    public func dump()
+    {
+        print( "                       ----------------------")
+        print("     TransferItem Details:")
+        if let instrumentSymbol = instrument?.symbol { print("      instrumentSymbol: \(instrumentSymbol)") }
+        if let amount = amount { print("      amount: \(amount)") }
+        if let cost = cost { print("      cost: \(cost)") }
+        if let price = price { print("      price: \(price)") }
+        if let positionEffect = positionEffect { print("      positionEffect: \(positionEffect)") }
+    }
+
 }
