@@ -139,7 +139,12 @@ class Transaction: Codable, Identifiable, Hashable
         print("Order Id: \(String(describing: orderId))")
         print("Net Amount: \(String(describing: netAmount))")
         print("Activity Type: \(String(describing: activityType))")
-        print("Transfer Items: \(String(describing: transferItems))")
+        // dump each transfer item
+        for item in transferItems
+        {
+            item.dump()
+        }
+        print( "=============================================" )
     }
 }
 
