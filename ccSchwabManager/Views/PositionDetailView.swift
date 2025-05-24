@@ -519,13 +519,11 @@ struct PositionDetailView: View {
             .onAppear {
                 Task {
                     await fetchPriceHistory()
-                    //await fetchTransactions()
                 }
             }
             .onChange(of: position) { oldValue, newValue in
                 Task {
                     await fetchPriceHistory()
-                    //await fetchTransactions()
                 }
             }
     }
@@ -538,11 +536,4 @@ struct PositionDetailView: View {
         priceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
     }
     
-//    private func fetchTransactions() async {
-//        guard let symbol = position.instrument?.symbol else { return }
-//        isLoadingTransactions = true
-//        defer { isLoadingTransactions = false }
-//        // transactions =
-//        //        await SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
-//    }
 } 
