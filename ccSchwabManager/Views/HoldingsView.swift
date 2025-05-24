@@ -186,9 +186,10 @@ struct HoldingsView: View {
                                 }
                             ),
                             accountPositions: accountPositions,
-                            //                        latestDateForSymbol: latestDateForSymbol,
-                            currentSort: $currentSort
+                            currentSort: $currentSort,
+                            viewSize: viewSize
                         )
+                        .padding()
                     }
                 }
                 .searchable(text: $searchText, prompt: "Search by symbol or description")
@@ -231,7 +232,7 @@ struct HoldingsView: View {
                     }
                 }
             }
-            .frame(width: viewSize.width * 0.8,
+            .frame(width: viewSize.width * 0.9,
                    height: viewSize.height * 0.9)
         }
     }
@@ -262,9 +263,9 @@ struct HoldingsTable: View {
     let sortedHoldings: [Position]
     @Binding var selectedPositionId: Position.ID?
     let accountPositions: [(Position, String, String)]
-//    let latestDateForSymbol : [String:Date]
     @Binding var currentSort: SortConfig?
-    
+    let viewSize: CGSize
+
     @ViewBuilder
     private func columnHeader(title: String, column: SortableColumn, alignment: Alignment = .leading) -> some View {
         Button(action: {
@@ -293,20 +294,21 @@ struct HoldingsTable: View {
         .buttonStyle(.plain)
     }
 
-    private let columnWidths: [CGFloat] = [100, 80, 80, 100, 80, 80, 100, 80, 120]
+    //private let columnWidths: [CGFloat] = [100, 80, 80, 100, 80, 80, 100, 80, 120]
+    private let columnWidths: [CGFloat] = [0.10, 0.08, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08, 0.12]
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0])
-                columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: columnWidths[1])
-                columnHeader(title: "Avg Price", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2])
-                columnHeader(title: "Market Value", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3])
-                columnHeader(title: "P/L", column: .pl, alignment: .trailing).frame(width: columnWidths[4])
-                columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing).frame(width: columnWidths[5])
-                columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6])
-                columnHeader(title: "Account", column: .account).frame(width: columnWidths[7])
-                columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8])
+                columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0] * viewSize.width )
+                columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: columnWidths[1] * viewSize.width )
+                columnHeader(title: "Avg Price", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2] * viewSize.width )
+                columnHeader(title: "Market Value", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3] * viewSize.width )
+                columnHeader(title: "P/L", column: .pl, alignment: .trailing).frame(width: columnWidths[4] * viewSize.width )
+                columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing).frame(width: columnWidths[5] * viewSize.width )
+                columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width )
+                columnHeader(title: "Account", column: .account).frame(width: columnWidths[7] * viewSize.width )
+                columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width )
             }
             .padding(.horizontal)
             .padding(.vertical, 5)
@@ -318,15 +320,15 @@ struct HoldingsTable: View {
                 LazyVStack(spacing: 0) {
                     ForEach(sortedHoldings) { position in
                         HStack(spacing: 8) {
-                            Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0], alignment: .leading)
-                            Text(String(format: "%.2f", position.longQuantity ?? 0.0)).frame(width: columnWidths[1], alignment: .trailing)
-                            Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2], alignment: .trailing).monospacedDigit()
-                            Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3], alignment: .trailing).monospacedDigit()
-                            Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0)).frame(width: columnWidths[4], alignment: .trailing).monospacedDigit()
-                            Text(String(format: "%.1f%%", calcPLPercent(position: position))).frame(width: columnWidths[5], alignment: .trailing).monospacedDigit()
-                            Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6], alignment: .leading)
-                            Text(accountNumberFor(position)).frame(width: columnWidths[7], alignment: .leading)
-                            Text( SchwabClient.shared.getLatestTradeDate( for:  position.instrument?.symbol ?? "" ) ).frame(width: columnWidths[8], alignment: .leading)
+                            Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width , alignment: .leading)
+                            Text(String(format: "%.2f", position.longQuantity ?? 0.0)).frame(width: columnWidths[1] * viewSize.width , alignment: .trailing)
+                            Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2] * viewSize.width , alignment: .trailing).monospacedDigit()
+                            Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3] * viewSize.width , alignment: .trailing).monospacedDigit()
+                            Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0)).frame(width: columnWidths[4] * viewSize.width , alignment: .trailing).monospacedDigit()
+                            Text(String(format: "%.1f%%", calcPLPercent(position: position))).frame(width: columnWidths[5] * viewSize.width , alignment: .trailing).monospacedDigit()
+                            Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width , alignment: .leading)
+                            Text(accountNumberFor(position)).frame(width: columnWidths[7] * viewSize.width , alignment: .leading)
+                            Text( SchwabClient.shared.getLatestTradeDate( for:  position.instrument?.symbol ?? "" ) ).frame(width: columnWidths[8] * viewSize.width , alignment: .leading)
                         }
                         .padding(.horizontal)
                         .padding(.vertical, 5)

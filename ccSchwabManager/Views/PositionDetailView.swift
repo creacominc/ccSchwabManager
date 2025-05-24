@@ -478,7 +478,7 @@ struct PositionDetailView: View {
                 .padding(.vertical, 8)
             
             GeometryReader { geometry in
-
+                
                 TabView {
                     // ScrollView with price history chart
                     ScrollView {
@@ -505,7 +505,7 @@ struct PositionDetailView: View {
                     .tabItem {
                         Label("Transactions", systemImage: "list.bullet")
                     }
-
+                    
                 } // TabView
                 .onAppear {
                     viewSize = geometry.size
@@ -515,17 +515,17 @@ struct PositionDetailView: View {
                 }
             } // GeometryReader
         } // VStack
-            .padding(.horizontal)
-            .onAppear {
-                Task {
-                    await fetchPriceHistory()
-                }
+        .padding(.horizontal)
+        .onAppear {
+            Task {
+                await fetchPriceHistory()
             }
-            .onChange(of: position) { oldValue, newValue in
-                Task {
-                    await fetchPriceHistory()
-                }
+        }
+        .onChange(of: position) { oldValue, newValue in
+            Task {
+                await fetchPriceHistory()
             }
+        }
     }
     
     private func fetchPriceHistory() async {

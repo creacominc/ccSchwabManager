@@ -966,7 +966,7 @@ class SchwabClient
          * consider adding status: AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
          */
 
-        print( "fetchOrderHistory. URL = \(orderHistoryUrl)" )
+        // print( "fetchOrderHistory. URL = \(orderHistoryUrl)" )
         guard let url = URL( string: orderHistoryUrl ) else {
             print("fetchOrderHistory. Invalid URL")
             return
@@ -999,10 +999,10 @@ class SchwabClient
                 }
                 return
             }
-            // print the first 200 characters of the data response
-            print( " -------------- response --------------" )
-            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
-            print( " --------------          --------------" )
+//            // print the first 200 characters of the data response
+//            print( " -------------- response --------------" )
+//            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
+//            print( " --------------          --------------" )
 
             let decoder = JSONDecoder()
             // append the decoded transactions to transactionList
