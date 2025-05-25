@@ -41,6 +41,16 @@ struct PriceHistoryChart: View {
         #endif
     }
     
+    private var yAxisRange: ClosedRange<Double> {
+        guard !candles.isEmpty else { return 0...100 }
+        let closes = candles.compactMap { $0.close }
+        guard !closes.isEmpty else { return 0...100 }
+        let minClose = closes.min() ?? 0
+        let maxClose = closes.max() ?? 100
+        let padding = (maxClose - minClose) * 0.1
+        return (minClose - padding)...(maxClose + padding)
+    }
+    
     var body: some View {
             chartContent
     }
@@ -50,7 +60,6 @@ struct PriceHistoryChart: View {
         ZStack {
             Chart {
                 // candles were already sorted when they arrive in getPriceHistory
-                //ForEach(candles.sorted { ($0.datetime ?? 0) < ($1.datetime ?? 0) }, id: \.datetime) { candle in
                 ForEach(candles, id: \.datetime) { candle in
                     LineMark(
                         x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
@@ -59,6 +68,7 @@ struct PriceHistoryChart: View {
                     .foregroundStyle(.blue)
                 }
             }
+            .chartYScale(domain: yAxisRange)
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day)) { value in
                     AxisGridLine()
