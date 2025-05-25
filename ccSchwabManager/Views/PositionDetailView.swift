@@ -190,15 +190,28 @@ struct PositionDetailsHeader: View {
 
 struct LeftColumn: View {
     let position: Position
+    @State private var atrValue: Double = 0.0
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            DetailRow(label: "Description", value: position.instrument?.description ?? "")
             DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
             DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
             DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
+            DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task {
+            if let symbol = position.instrument?.symbol {
+                atrValue = await SchwabClient.shared.computeATR(symbol: symbol)
+            }
+        }
+        .onChange(of: position.instrument?.symbol) { oldValue, newValue in
+            if let symbol = newValue {
+                Task {
+                    atrValue = await SchwabClient.shared.computeATR(symbol: symbol)
+                }
+            }
+        }
     }
 }
 

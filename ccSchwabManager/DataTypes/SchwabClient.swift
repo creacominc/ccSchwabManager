@@ -591,8 +591,7 @@ class SchwabClient
             }
         }
         // return the ATR as a percent.
-        // return (atr * 0.78  / close * 100.0)
-        return (atr * 0.89  / close * 100.0)
+        return (atr * 1.08  / close * 100.0)
     }
     
     
