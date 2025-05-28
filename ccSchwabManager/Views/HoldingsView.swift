@@ -75,6 +75,9 @@ struct HoldingsView: View {
     @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = HoldingsViewModel()
     @State private var isLoadingAccounts = false
+//    @State private var sellOrder: SalesCalcResultsRecord
+//    @State private var copiedValue: String
+    @State private var atrValue: Double = 0.0
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -191,7 +194,7 @@ struct HoldingsView: View {
                         )
                         .padding()
                     }
-                }
+                } // VStack
                 .searchable(text: $searchText, prompt: "Search by symbol or description")
                 .navigationTitle("Holdings")
                 .task {
@@ -216,18 +219,34 @@ struct HoldingsView: View {
                     accountNumber: selected.accountNumber,
                     currentIndex: currentIndex,
                     totalPositions: sortedHoldings.count,
+                    symbol: selected.position.instrument?.symbol ?? "",
+                    atrValue: atrValue,
                     onNavigate: { newIndex in
                         guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
                         let newPosition = sortedHoldings[newIndex]
                         let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
                         selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
                     }
-                )
+//                    sellOrder: sellOrder,
+//                    copiedValue: copiedValue
+                )  // PositionDetailView
                 .navigationTitle(selected.position.instrument?.symbol ?? "")
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") {
                             selectedPosition = nil
+                        }
+                    }
+                }
+                .task {
+                    if let tmpsymbol = selected.position.instrument?.symbol {
+                        atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
+                    }
+                }
+                .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
+                    if let tmpsymbol = newValue {
+                        Task {
+                            atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
                         }
                     }
                 }

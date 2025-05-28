@@ -144,6 +144,9 @@ struct PositionDetailsHeader: View {
     let currentIndex: Int
     let totalPositions: Int
     let onNavigate: (Int) -> Void
+    //
+    let symbol: String
+    let atrValue: Double
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -168,9 +171,11 @@ struct PositionDetailsHeader: View {
                 .disabled(currentIndex >= totalPositions - 1)
                 .keyboardShortcut(.rightArrow, modifiers: [])
             }
-            
+
             HStack(spacing: 20) {
-                LeftColumn(position: position)
+                LeftColumn(position: position,
+                           atrValue: atrValue
+                )
                 RightColumn(position: position, accountNumber: accountNumber)
             }
         }
@@ -190,8 +195,8 @@ struct PositionDetailsHeader: View {
 
 struct LeftColumn: View {
     let position: Position
-    @State private var atrValue: Double = 0.0
-    
+    let atrValue: Double
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
@@ -200,18 +205,6 @@ struct LeftColumn: View {
             DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .task {
-            if let symbol = position.instrument?.symbol {
-                atrValue = await SchwabClient.shared.computeATR(symbol: symbol)
-            }
-        }
-        .onChange(of: position.instrument?.symbol) { oldValue, newValue in
-            if let symbol = newValue {
-                Task {
-                    atrValue = await SchwabClient.shared.computeATR(symbol: symbol)
-                }
-            }
-        }
     }
 }
 
@@ -466,17 +459,154 @@ struct TransactionHistorySection: View {
     }
 }
 
+struct PriceHistoryTab: View {
+    let priceHistory: CandleList?
+    let isLoading: Bool
+    let formatDate: (Int64?) -> String
+    let geometry: GeometryProxy
+    
+    var body: some View {
+        ScrollView {
+            PriceHistorySection(
+                priceHistory: priceHistory,
+                isLoading: isLoading,
+                formatDate: formatDate
+            )
+            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.90)
+        }
+        .tabItem {
+            Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
+        }
+    }
+}
+
+struct TransactionsTab: View {
+    let isLoading: Bool
+    let symbol: String
+    let geometry: GeometryProxy
+    
+    var body: some View {
+        ScrollView {
+            TransactionHistorySection(
+                isLoading: isLoading,
+                symbol: symbol
+            )
+            .frame(width: geometry.size.width * 0.88, height: geometry.size.height * 0.90)
+        }
+        .tabItem {
+            Label("Transactions", systemImage: "list.bullet")
+        }
+    }
+}
+
+struct SalesCalcTab: View {
+    let symbol: String
+    let atrValue: Double
+    // SellOrderDetailSection
+//    let sellOrder: SalesCalcResultsRecord
+//    let copiedValue: String
+
+    var body: some View {
+        ScrollView {
+//            VStack
+//            {
+//                Text( "symbol: \(symbol)" )
+//                Text( "ATR: \(atrValue) %" )
+//            }
+            SalesCalcView(
+                symbol: symbol,
+                atrValue: atrValue
+//                sellOrder: sellOrder
+//                copiedValue: copiedValue
+            )
+        }
+        .tabItem {
+            Label("Sales Calc", systemImage: "calculator")
+        }
+    }
+}
+
+struct PositionDetailContent: View {
+    let position: Position
+    let accountNumber: String
+    let currentIndex: Int
+    let totalPositions: Int
+    let symbol: String
+    let atrValue: Double
+    let onNavigate: (Int) -> Void
+    let priceHistory: CandleList?
+    let isLoadingPriceHistory: Bool
+    let isLoadingTransactions: Bool
+    let formatDate: (Int64?) -> String
+    @Binding var viewSize: CGSize
+//    let sellOrder: SalesCalcResultsRecord
+//    let copiedValue: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            PositionDetailsHeader(
+                position: position,
+                accountNumber: accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: totalPositions,
+                onNavigate: onNavigate,
+                symbol: symbol,
+                atrValue: atrValue
+            )
+            .padding(.bottom, 8)
+            
+            Divider()
+                .padding(.vertical, 8)
+            
+            GeometryReader { geometry in
+                TabView {
+                    PriceHistoryTab(
+                        priceHistory: priceHistory,
+                        isLoading: isLoadingPriceHistory,
+                        formatDate: formatDate,
+                        geometry: geometry
+                    )
+                    
+                    TransactionsTab(
+                        isLoading: isLoadingTransactions,
+                        symbol: position.instrument?.symbol ?? "",
+                        geometry: geometry
+                    )
+                    
+                    SalesCalcTab(
+                        symbol: symbol,
+                        atrValue: atrValue
+                        //,
+//                        sellOrder: sellOrder,
+//                        copiedValue: copiedValue
+                    )
+                }
+                .onAppear {
+                    viewSize = geometry.size
+                }
+                .onChange(of: geometry.size) { oldValue, newValue in
+                    viewSize = newValue
+                }
+            }
+        }
+    }
+}
+
 struct PositionDetailView: View {
     let position: Position
     let accountNumber: String
     let currentIndex: Int
     let totalPositions: Int
+    let symbol: String
+    let atrValue: Double
     let onNavigate: (Int) -> Void
     @State private var priceHistory: CandleList?
     @State private var isLoadingPriceHistory = false
     @State private var isLoadingTransactions = false
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
+//    let sellOrder: SalesCalcResultsRecord
+//    let copiedValue: String
 
     private func formatDate(_ timestamp: Int64?) -> String {
         guard let timestamp = timestamp else { return "" }
@@ -487,57 +617,23 @@ struct PositionDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            PositionDetailsHeader(
-                position: position,
-                accountNumber: accountNumber,
-                currentIndex: currentIndex,
-                totalPositions: totalPositions,
-                onNavigate: onNavigate
-            )
-            .padding(.bottom, 8)
-            
-            Divider()
-                .padding(.vertical, 8)
-            
-            GeometryReader { geometry in
-                
-                TabView {
-                    // ScrollView with price history chart
-                    ScrollView {
-                        PriceHistorySection(
-                            priceHistory: priceHistory,
-                            isLoading: isLoadingPriceHistory,
-                            formatDate: formatDate
-                        )
-                        .frame( width: geometry.size.width * 0.90, height: geometry.size.height * 0.90  )
-                        //.border(Color.white.opacity(0.3), width: 1)
-                    }
-                    .tabItem {
-                        Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
-                    }
-                    // ScrollView with transaction history table.
-                    ScrollView {
-                        TransactionHistorySection(
-                            isLoading: isLoadingTransactions,
-                            symbol: position.instrument?.symbol ?? ""
-                        )
-                        .frame( width: geometry.size.width * 0.88,  height: geometry.size.height * 0.90  )
-                        //.border(Color.white.opacity(0.3), width: 1)
-                    }
-                    .tabItem {
-                        Label("Transactions", systemImage: "list.bullet")
-                    }
-                    
-                } // TabView
-                .onAppear {
-                    viewSize = geometry.size
-                }
-                .onChange(of: geometry.size) { oldValue, newValue in
-                    viewSize = newValue
-                }
-            } // GeometryReader
-        } // VStack
+        PositionDetailContent(
+            position: position,
+            accountNumber: accountNumber,
+            currentIndex: currentIndex,
+            totalPositions: totalPositions,
+            symbol: symbol,
+            atrValue: atrValue,
+            onNavigate: onNavigate,
+            priceHistory: priceHistory,
+            isLoadingPriceHistory: isLoadingPriceHistory,
+            isLoadingTransactions: isLoadingTransactions,
+            formatDate: formatDate,
+            viewSize: $viewSize
+            // ,
+//            sellOrder: sellOrder,
+//            copiedValue: copiedValue
+        )
         .padding(.horizontal)
         .onAppear {
             Task {
@@ -552,11 +648,10 @@ struct PositionDetailView: View {
     }
     
     private func fetchPriceHistory() async {
-        print( "=== fetchPriceHistory ===" )
+        print("=== fetchPriceHistory ===")
         guard let symbol = position.instrument?.symbol else { return }
         isLoadingPriceHistory = true
         defer { isLoadingPriceHistory = false }
         priceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
     }
-    
 } 

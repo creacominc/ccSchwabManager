@@ -84,25 +84,24 @@ func rowStyle( item: SalesCalcResultsRecord ) -> Color
 struct InformationSection: View
 {
     @State var copiedValue: String = "TBD"
-    let symbol: String
-    let atrValue: Double
+//    @Binding var symbol: String
+//    @Binding var atrValue: Double
 
     var body: some View
     {
         // Information row w/ Symbol, ATR, adn what is copied to clipboard
         HStack
         {
-//            TextField( "Symbol", text: symbol )
+//            TextField( "Symbol", text: $symbol )
 //                .disableAutocorrection( true )
 //                .textCase( .uppercase )
 //                .disabled(true)
-//                .padding( .leading )
 //                .onSubmit( )
 //            {
 ////                    getOrders()
 //            }
-            Text( "\(symbol)" )
-            Text( "\(atrValue, specifier: "%.2f") %")
+//            .padding( .leading )
+//            Text( "\(atrValue, specifier: "%.2f") %")
             Text( copiedValue )
                 .frame( maxWidth: .infinity, alignment: .trailing)
                 .padding( .trailing )
@@ -114,8 +113,8 @@ struct InformationSection: View
 struct BuyOrderDetailSection: View
 {
     // buy order
-//    @State var buyOrder: SalesCalcBuyOrder? = nil
-//    @State var copiedValue: String = "TBD"
+    @State var buyOrder: SalesCalcBuyOrder? = nil
+    @State var copiedValue: String = "TBD"
 
     var body: some View
     {
@@ -125,19 +124,19 @@ struct BuyOrderDetailSection: View
             Text("Buy Order Details:")
                 .font(.headline)
                 .padding( .horizontal )
-//            if( nil != buyOrder )
-//            {
-//                Text( "Buy \( buyOrder!.percent * 100.0, specifier: "%.2f") %" )
-//                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.percent * 100.0, format: "%.2f", copiedValue: &copiedValue ) }
-//                Text( "(\( buyOrder!.equivalentShares, specifier: "%d"))" )
-//                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.equivalentShares, format: "%d", copiedValue: &copiedValue ) }
-//                Text( "TS: \( buyOrder!.trailingStop * 100.0, specifier: "%.0f") %" )
-//                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.trailingStop * 100.0, format: "%.0f", copiedValue: &copiedValue ) }
-//                Text( "After: \(buyOrder!.submitDate.dateOnly())" )
-//                    .onTapGesture(count: 1) { copyToClipboard( text: buyOrder!.submitDate.dateOnly(), copiedValue: &copiedValue ) }
-//                Text( "Bid >: \(buyOrder!.bidPriceOver, specifier: "%.2f")" )
-//                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.bidPriceOver, format: "%.2f", copiedValue: &copiedValue ) }
-//            }
+            if( nil != buyOrder )
+            {
+                Text( "Buy \( buyOrder!.percent * 100.0, specifier: "%.2f") %" )
+                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.percent * 100.0, format: "%.2f", copiedValue: &copiedValue ) }
+                Text( "(\( buyOrder!.equivalentShares, specifier: "%d"))" )
+                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.equivalentShares, format: "%d", copiedValue: &copiedValue ) }
+                Text( "TS: \( buyOrder!.trailingStop * 100.0, specifier: "%.0f") %" )
+                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.trailingStop * 100.0, format: "%.0f", copiedValue: &copiedValue ) }
+                Text( "After: \(buyOrder!.submitDate.dateOnly())" )
+                    .onTapGesture(count: 1) { copyToClipboard( text: buyOrder!.submitDate.dateOnly(), copiedValue: &copiedValue ) }
+                Text( "Bid >: \(buyOrder!.bidPriceOver, specifier: "%.2f")" )
+                    .onTapGesture(count: 1) { copyToClipboard( value: buyOrder!.bidPriceOver, format: "%.2f", copiedValue: &copiedValue ) }
+            }
         }
     }
 }
@@ -146,8 +145,8 @@ struct BuyOrderDetailSection: View
 
 struct SellOrderDetailSection: View{
     // sell order
-//    @State var sellOrder: SalesCalcResultsRecord
-//    @State var copiedValue: String
+    @State var sellOrder: SalesCalcResultsRecord
+    @State var copiedValue: String
 
     var body: some View
     {
@@ -157,25 +156,25 @@ struct SellOrderDetailSection: View{
             Text("Sell Order Details:")
                 .font(.headline)
                 .padding( .horizontal )
-//            Text("\(sellOrder.rollingGainLoss, specifier: "%.2f")")
-//            Text("\(sellOrder.breakEven, specifier: "%.2f")")
-//            Text("\(sellOrder.gain, specifier: "%.2f")%")
-//            Text("\(sellOrder.sharesToSell, specifier: "%.0f")")
-//                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.sharesToSell, format: "%.0f", copiedValue: &copiedValue ) }
-//                .foregroundStyle( rowStyle(item: sellOrder) )
-//            Text("\(sellOrder.trailingStop, specifier: "%.1f")%")
-//                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.trailingStop, format: "%.1f", copiedValue: &copiedValue ) }
-//                .foregroundStyle( rowStyle(item: sellOrder) )
-//            Text("\(sellOrder.entry, specifier: "%.2f")")
-//                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.entry, format: "%.2f", copiedValue: &copiedValue ) }
-//                .foregroundStyle( rowStyle(item: sellOrder) )
-//            Text("\(sellOrder.cancel, specifier: "%.2f")")
-//                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.cancel, format: "%.2f", copiedValue: &copiedValue ) }
-//                .foregroundStyle( rowStyle(item: sellOrder) )
-//            Text( "     " )
-//            Text(sellOrder.description)
-//                .onTapGesture(count: 1) { copyToClipboard( text: sellOrder.description, copiedValue: &copiedValue ) }
-//                .foregroundStyle( rowStyle(item: sellOrder) )
+            Text("\(sellOrder.rollingGainLoss, specifier: "%.2f")")
+            Text("\(sellOrder.breakEven, specifier: "%.2f")")
+            Text("\(sellOrder.gain, specifier: "%.2f")%")
+            Text("\(sellOrder.sharesToSell, specifier: "%.0f")")
+                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.sharesToSell, format: "%.0f", copiedValue: &copiedValue ) }
+                .foregroundStyle( rowStyle(item: sellOrder) )
+            Text("\(sellOrder.trailingStop, specifier: "%.1f")%")
+                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.trailingStop, format: "%.1f", copiedValue: &copiedValue ) }
+                .foregroundStyle( rowStyle(item: sellOrder) )
+            Text("\(sellOrder.entry, specifier: "%.2f")")
+                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.entry, format: "%.2f", copiedValue: &copiedValue ) }
+                .foregroundStyle( rowStyle(item: sellOrder) )
+            Text("\(sellOrder.cancel, specifier: "%.2f")")
+                .onTapGesture(count: 1) { copyToClipboard( value: sellOrder.cancel, format: "%.2f", copiedValue: &copiedValue ) }
+                .foregroundStyle( rowStyle(item: sellOrder) )
+            Text( "     " )
+            Text(sellOrder.description)
+                .onTapGesture(count: 1) { copyToClipboard( text: sellOrder.description, copiedValue: &copiedValue ) }
+                .foregroundStyle( rowStyle(item: sellOrder) )
         }
 
     }
@@ -295,8 +294,8 @@ struct PositionsDataSection: View
 struct SalesCalcView: View
 {
 //    @State var resultsData: [SalesCalcResultsRecord] = []
-    let symbol: String
-    let atrValue: Double
+//    let symbol: String
+//    let atrValue: Double
     // SellOrderDetailSection
 //    let sellOrder: SalesCalcResultsRecord
 //    let copiedValue: String
@@ -311,7 +310,7 @@ struct SalesCalcView: View
     {
         VStack
         {
-            InformationSection( symbol: symbol, atrValue: atrValue )
+            InformationSection(/*symbol: $symbol, atrValue: $atrValue*/)
 //            BuyOrderDetailSection()
 //            SellOrderDetailSection( sellOrder: sellOrder, copiedValue: copiedValue )
 //            PositionsDataSection(resultsData: resultsData)
