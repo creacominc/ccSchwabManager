@@ -15,8 +15,7 @@ enum SalesCalcColumns : String, CaseIterable
     case CostPerShare     = "Cost/Share"
     case MarketValue      = "Market Value"
     case CostBasis        = "Cost Basis"
-    case GainLossPct      = "Gain/Loss %"
     case GainLossDollar   = "Gain/Loss $"
-    case HoldingPeriod    = "Holding Period"
+    case GainLossPct      = "Gain/Loss %"
 }
 

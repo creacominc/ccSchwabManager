@@ -3,7 +3,7 @@ import XCTest
 
 final class ServiceErrorTests: XCTestCase {
     
-    func testServiceErrorDecoding() throws {
+    func testServiceErrorDecodingWithErrorsArray() throws {
         // Given
         let jsonString = """
         {
@@ -26,8 +26,9 @@ final class ServiceErrorTests: XCTestCase {
         let serviceError = try JSONDecoder().decode(ServiceError.self, from: jsonData)
         
         // Then
-        XCTAssertEqual(serviceError.errors.count, 1)
-        let errorDetail = serviceError.errors[0].details
+        XCTAssertNotNil(serviceError.errors)
+        XCTAssertEqual(serviceError.errors?.count, 1)
+        let errorDetail = serviceError.errors![0].details
         
         // Test string values
         if case .string(let id) = errorDetail["id"] {
@@ -63,7 +64,27 @@ final class ServiceErrorTests: XCTestCase {
         }
     }
     
-    func testServiceErrorEncoding() throws {
+    func testServiceErrorDecodingWithSimpleError() throws {
+        // Given
+        let jsonString = """
+        {
+            "error": "invalid_grant",
+            "error_description": "Invalid refresh token: null"
+        }
+        """
+        
+        let jsonData = jsonString.data(using: .utf8)!
+        
+        // When
+        let serviceError = try JSONDecoder().decode(ServiceError.self, from: jsonData)
+        
+        // Then
+        XCTAssertEqual(serviceError.error, "invalid_grant")
+        XCTAssertEqual(serviceError.errorDescription, "Invalid refresh token: null")
+        XCTAssertNil(serviceError.errors)
+    }
+    
+    func testServiceErrorEncodingWithErrorsArray() throws {
         // Given
         var details: [String: ServiceError.ErrorDetail.StringOrInt] = [:]
         details["id"] = .string("01234abcd-da01-az19-a123-1234asdf")
@@ -81,8 +102,9 @@ final class ServiceErrorTests: XCTestCase {
         let decodedError = try JSONDecoder().decode(ServiceError.self, from: jsonData)
         
         // Then
-        XCTAssertEqual(decodedError.errors.count, 1)
-        let decodedDetails = decodedError.errors[0].details
+        XCTAssertNotNil(decodedError.errors)
+        XCTAssertEqual(decodedError.errors?.count, 1)
+        let decodedDetails = decodedError.errors![0].details
         
         // Verify all values are preserved
         XCTAssertEqual(decodedDetails["id"], details["id"])
@@ -91,5 +113,22 @@ final class ServiceErrorTests: XCTestCase {
         XCTAssertEqual(decodedDetails["detail"], details["detail"])
         XCTAssertEqual(decodedDetails["custom_field"], details["custom_field"])
         XCTAssertEqual(decodedDetails["error_code"], details["error_code"])
+    }
+    
+    func testServiceErrorEncodingWithSimpleError() throws {
+        // Given
+        let serviceError = ServiceError(
+            error: "invalid_grant",
+            errorDescription: "Invalid refresh token: null"
+        )
+        
+        // When
+        let jsonData = try JSONEncoder().encode(serviceError)
+        let decodedError = try JSONDecoder().decode(ServiceError.self, from: jsonData)
+        
+        // Then
+        XCTAssertEqual(decodedError.error, "invalid_grant")
+        XCTAssertEqual(decodedError.errorDescription, "Invalid refresh token: null")
+        XCTAssertNil(decodedError.errors)
     }
 } 

@@ -84,7 +84,7 @@ class TransferItem: Codable, Identifiable, Hashable
     {
         print( "                       ----------------------")
         print("     TransferItem Details:")
-        if let instrumentSymbol = instrument?.symbol { print("      instrumentSymbol: \(instrumentSymbol)") }
+        if let instrumentSymbol = instrument?.symbol { print("      instrument.symbol: \(instrumentSymbol)") }
         if let amount = amount { print("      amount: \(amount)") }
         if let cost = cost { print("      cost: \(cost)") }
         if let price = price { print("      price: \(price)") }

@@ -16,13 +16,13 @@ struct testSecrets
     @Test func testSecretsInitialization() async throws {
         let secrets = Secrets()
 
-        #expect(secrets.getAppId() == "", "App ID should be UNINITIALIZED")
-        #expect(secrets.getAppSecret() == "", "App Secret should be UNINITIALIZED")
-        #expect(secrets.getRedirectUrl() == "", "Redirect URL should be UNINITIALIZED")
-        #expect(secrets.getCode() == "", "Code should be UNINITIALIZED")
-        #expect(secrets.getSession() == "", "Session should be UNINITIALIZED")
-        #expect(secrets.getAccessToken() == "", "Access Token should be UNINITIALIZED")
-        #expect(secrets.getRefreshToken() == "", "Refresh Token should be UNINITIALIZED")
+        #expect(secrets.appId == "", "App ID should be UNINITIALIZED")
+        #expect(secrets.appSecret == "", "App Secret should be UNINITIALIZED")
+        #expect(secrets.redirectUrl == "", "Redirect URL should be UNINITIALIZED")
+        #expect(secrets.code == "", "Code should be UNINITIALIZED")
+        #expect(secrets.session == "", "Session should be UNINITIALIZED")
+        #expect(secrets.accessToken == "", "Access Token should be UNINITIALIZED")
+        #expect(secrets.refreshToken == "", "Refresh Token should be UNINITIALIZED")
     }
 
     func removeHashesFromString( input: String ) -> String
@@ -50,14 +50,10 @@ struct testSecrets
     @Test func testSecretsEncoding() async throws {
         // testing secret encoding to json
         // create a secret
-        let secrets = Secrets()
-        secrets.setAppId("appIdValue")
-        secrets.setAppSecret("appSecretValue")
-        secrets.setRedirectUrl("redirectUrlValue")
-        secrets.setCode("codeValue")
-        secrets.setSession("sessionValue")
-        secrets.setAccessToken("accessTokenValue")
-        secrets.setRefreshToken("refreshTokenValue")
+        let secrets = Secrets(
+                appId: "appIdValue", appSecret: "appSecretValue", redirectUrl: "redirectUrlValue",
+                code: "codeValue", session: "sessionValue", accessToken: "accessTokenValue",
+                refreshToken: "refreshTokenValue", acountNumberHash: [])
 
         // call the encodeToString method to get a JSON encoded string.
         let jsonEncodedString: String? = secrets.encodeToString()
@@ -97,14 +93,9 @@ struct testSecrets
 
     @Test func testSecretsDump() async throws
     {
-        let secrets = Secrets()
-        secrets.setAppId("appIdValue")
-        secrets.setAppSecret("appSecretValue")
-        secrets.setRedirectUrl("redirectUrlValue")
-        secrets.setCode("codeValue")
-        secrets.setSession("sessionValue")
-        secrets.setAccessToken("accessTokenValue")
-        secrets.setRefreshToken("refreshTokenValue")
+        let secrets = Secrets( appId: "appIdValue", appSecret: "appSecretValue", redirectUrl: "redirectUrlValue",
+                               code: "codeValue", session: "sessionValue", accessToken: "accessTokenValue",
+                               refreshToken: "refreshTokenValue", acountNumberHash: [])
 
         let dumpOutput = secrets.dump()
         let expectedOutput = """

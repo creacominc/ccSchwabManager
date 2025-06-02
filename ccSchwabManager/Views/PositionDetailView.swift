@@ -196,7 +196,7 @@ struct PositionDetailsHeader: View {
 struct LeftColumn: View {
     let position: Position
     let atrValue: Double
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
@@ -500,9 +500,14 @@ struct TransactionsTab: View {
 }
 
 struct SalesCalcTab: View {
+    // SellOrderDetailSection
     let symbol: String
     let atrValue: Double
-    // SellOrderDetailSection
+//    // current position and tax lots for a given security
+//    let currentCostBasis: Double
+//    let currentShares: Int
+//    let transactionList : [Transaction]
+
 //    let sellOrder: SalesCalcResultsRecord
 //    let copiedValue: String
 
@@ -516,6 +521,10 @@ struct SalesCalcTab: View {
             SalesCalcView(
                 symbol: symbol,
                 atrValue: atrValue
+                //,
+//                currentCostBasis: currentCostBasis,
+//                currentShares: currentShares,
+//                transactionList: transactionList
 //                sellOrder: sellOrder
 //                copiedValue: copiedValue
             )
@@ -539,6 +548,11 @@ struct PositionDetailContent: View {
     let isLoadingTransactions: Bool
     let formatDate: (Int64?) -> String
     @Binding var viewSize: CGSize
+//    // current position and tax lots for a given security
+//    let currentCostBasis: Double
+//    let currentShares: Int
+//    let transactionList : [Transaction]
+
 //    let sellOrder: SalesCalcResultsRecord
 //    let copiedValue: String
 
@@ -575,7 +589,10 @@ struct PositionDetailContent: View {
                     
                     SalesCalcTab(
                         symbol: symbol,
-                        atrValue: atrValue
+                        atrValue: atrValue,
+//                        currentCostBasis: currentCostBasis,
+//                        currentShares: currentShares,
+//                        transactionList: transactionList
                         //,
 //                        sellOrder: sellOrder,
 //                        copiedValue: copiedValue
@@ -605,8 +622,6 @@ struct PositionDetailView: View {
     @State private var isLoadingTransactions = false
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
-//    let sellOrder: SalesCalcResultsRecord
-//    let copiedValue: String
 
     private func formatDate(_ timestamp: Int64?) -> String {
         guard let timestamp = timestamp else { return "" }

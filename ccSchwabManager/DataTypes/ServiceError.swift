@@ -91,7 +91,10 @@ class ServiceError: Codable, Identifiable
                 }
             }
         }
-    }
+
+
+
+    } // ErrorDetail
     
     struct DynamicCodingKeys: CodingKey {
         var stringValue: String
@@ -108,10 +111,14 @@ class ServiceError: Codable, Identifiable
         }
     }
     
-    let errors: [ErrorDetail]
+    let errors: [ErrorDetail]?
+    let error: String?
+    let errorDescription: String?
     
-    init(errors: [ErrorDetail]) {
+    init(errors: [ErrorDetail]? = nil, error: String? = nil, errorDescription: String? = nil) {
         self.errors = errors
+        self.error = error
+        self.errorDescription = errorDescription
     }
     
     var id: String {
@@ -120,5 +127,33 @@ class ServiceError: Codable, Identifiable
     
     enum CodingKeys: String, CodingKey {
         case errors
+        case error
+        case errorDescription = "error_description"
     }
+    
+    public func printErrors( prefix: String = "" )
+    {
+        print( "\(prefix) --- ServiceError:" )
+        if let errors = errors {
+            print( "\t\terrors:" )
+            for (index, error) in errors.enumerated() {
+                print( "\t\t[\(index)]:" )
+                for (key, value) in error.details {
+                    switch value {
+                    case .string(let str):
+                        print( "\t\t\t\(key): \(str)" )
+                    case .integer(let num):
+                        print( "\t\t\t\(key): \(num)" )
+                    }
+                }
+            }
+        }
+        if let error = error {
+            print( "\t\terror: \(error)" )
+        }
+        if let errorDescription = errorDescription {
+            print( "\t\terrorDescription: \(errorDescription)" )
+        }
+    }
+    
 }

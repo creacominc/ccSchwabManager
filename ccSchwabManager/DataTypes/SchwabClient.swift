@@ -42,6 +42,7 @@ class SchwabClient
     private var m_symbolsWithOrders: Set<String> = []
     private var m_lastFilteredSymbol : String? = nil
     private var m_lastFilteredTransactions : [Transaction] = []
+    private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
     private var m_todayStr : String
     private var m_dateOneYearAgoStr : String
@@ -87,7 +88,7 @@ class SchwabClient
             .timeSeparator(.colon)
         )
     }
-    
+
     func configure(with secrets: inout Secrets) {
         print( "=== configure - starting refresh thread. ===" )
         self.m_secrets = secrets
@@ -117,7 +118,29 @@ class SchwabClient
         print( "=== hasSymbols symbols: \(symbolCount) ===" )
         return (symbolCount > 0)
     }
-    
+
+    public func getShareCount( symbol: String ) -> Double
+    {
+        print( "=== getShareCount symbol: \(symbol) ===" )
+        var shareCount : Double = 0.0
+        /** @TODO:  review.  I am sure this can be more efficient.  */
+        for account in self.m_accounts
+        {
+            if let positions = account.securitiesAccount?.positions
+            {
+                for position in positions
+                {
+                    if position.instrument?.symbol == symbol
+                    {
+                        shareCount = position.settledLongQuantity ?? 0.0
+                        return shareCount
+                    }
+                }
+            }
+        }
+        return shareCount
+    }
+
     public func getSecrets() -> Secrets
     {
         return self.m_secrets
@@ -291,29 +314,32 @@ class SchwabClient
         
         let semaphore = DispatchSemaphore(value: 0)
         
-        URLSession.shared.dataTask(with: refreshTokenRequest) { data, response, error in
+        URLSession.shared.dataTask(with: refreshTokenRequest) { [weak self] data, response, error in
             defer { semaphore.signal() }
-            
-            guard let data = data, error == nil, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                print("Failed to refresh access token. Error: \(error?.localizedDescription ?? "Unknown error")")
-                //                print( "Error: \(error?.localizedDescription ?? "Unknown error" )" )
-                //                print( "data: \(String(data: data ?? Data(), encoding: .utf8) ?? "No data")" )
-                //                print( "response: \(String(describing: response))" )
-                return
-            }
-            
-            // Parse the response
-            if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                self.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
-                self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
-                
-                if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
-                    print("Successfully refreshed and saved access token.")
-                } else {
-                    print("Failed to save refreshed tokens.")
+            do {
+                if let data = data {
+                    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, error == nil {
+                        // Parse the response
+                        if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
+                            self?.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
+                            self?.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
+                            
+                            if KeychainManager.saveSecrets(secrets: &self!.m_secrets) {
+                                print("Successfully refreshed and saved access token.")
+                            } else {
+                                print("Failed to save refreshed tokens.")
+                            }
+                        } else {
+                            print("Failed to parse token response.")
+                        }
+                    } else {
+                        let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
+                        serviceError.printErrors(prefix: "refreshAccessToken ")
+                    }
                 }
-            } else {
-                print("Failed to parse token response.")
+                return
+            } catch {
+                print("Error processing response: \(error)")
             }
         }.resume()
     }
@@ -390,7 +416,8 @@ class SchwabClient
                 print("No account numbers returned")
             }
         } catch {
-            print("Error: \(error.localizedDescription)")
+            print("fetchAccountNumbers Error: \(error.localizedDescription)")
+            print("   detail:  \(error)")
         }
     }
     
@@ -412,31 +439,27 @@ class SchwabClient
             print("Invalid URL")
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-        
+
         do
         {
             let (data, response) = try await URLSession.shared.data(for: request)
             let httpResponse = response as? HTTPURLResponse
             if( httpResponse?.statusCode != 200 )
             {
-                print("Failed to fetch accounts.  Status: \(httpResponse?.statusCode ?? -1),  response: \(String(describing: httpResponse))")
+                // decode data as a ServiceError
+                print( "fetchAccounts: decoding json as ServiceError" )
+                let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
+                serviceError.printErrors(prefix: "fetchAccounts ")
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
                 if( httpResponse?.statusCode == 401 && retry )
                 {
                     print( "=== retrying fetchAccounts after refreshing access token ===" )
                     refreshAccessToken()
                     await fetchAccounts( retry : false )
-                }
-                else
-                {
-                    // decode data as a ServiceError
-                    let decoder = JSONDecoder()
-                    let serviceError : ServiceError = try decoder.decode(ServiceError.self, from: data)
-                    print( "Failed to get accouts: \(serviceError.message ?? "no message")" )
                 }
                 return
             }
@@ -449,7 +472,8 @@ class SchwabClient
         }
         catch
         {
-            print("Error: \(error.localizedDescription)")
+            print("fetchAccounts Error: \(error.localizedDescription)")
+            print("   detail:  \(error)")
             return
         }
     }
@@ -552,7 +576,8 @@ class SchwabClient
             // return the candleList assuming they arrived sorted.
             return candleList
         } catch {
-            print("Error: \(error.localizedDescription)")
+            print("fetchPriceHistory Error: \(error.localizedDescription)")
+            print("   detail:  \(error)")
             return nil
         }
     }
@@ -577,7 +602,6 @@ class SchwabClient
         {
             let length : Int  =  min( priceHistory.candles.count, 21 )
             let startIndex : Int = priceHistory.candles.count - length
-            //            print( "length \(length),  startIndex \(startIndex),  previousClose \(priceHistory.previousClose),  date \(priceHistory.previousCloseDate)" )
             for indx in 0..<length
             {
                 let position = startIndex + indx
@@ -660,23 +684,24 @@ class SchwabClient
             transactionHistoryUrl += "?startDate=\(m_dateOneYearAgoStr)"
             transactionHistoryUrl += "&endDate=\(m_todayStr)"
             transactionHistoryUrl += "&types=TRADE"
-            // print( "fetchTransactionHistory. URL = \(transactionHistoryUrl)" )
+
             guard let url = URL( string: transactionHistoryUrl ) else {
                 print("fetchTransactionHistory. Invalid URL")
                 continue
             }
-            
+
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "accept")
-            
+
             do {
                 let ( data, response ) = try await URLSession.shared.data(for: request)
                 let httpResponse = response as? HTTPURLResponse
                 if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
                 {
-                    print("fetchTransactionHistory. Failed to fetch transaction history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
+                    let serviceError : ServiceError = try JSONDecoder().decode(ServiceError.self, from: data)
+                    serviceError.printErrors( prefix: "  fetchTransactionHistory " )
                     continue
                 }
                 // print the first 200 characters of the data response
@@ -689,7 +714,7 @@ class SchwabClient
                 m_transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: data ) )
                 continue
             } catch {
-                print("Error: \(error.localizedDescription)")
+                print("fetchTransactionHistory Error: \(error.localizedDescription)")
                 print("   detail:  \(error)")
                 continue
             }
@@ -978,11 +1003,15 @@ class SchwabClient
         request.setValue("application/json", forHTTPHeaderField: "accept")
         
         do {
+
+
             let ( data, response ) = try await URLSession.shared.data(for: request)
             let httpResponse = response as? HTTPURLResponse
             if( httpResponse?.statusCode != 200 )
             {
-                print("Failed to orders.  Status: \(httpResponse?.statusCode ?? -1),  response: \(String(describing: httpResponse))")
+                let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
+                serviceError.printErrors(prefix: "fetchOrderHistory ")
+
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
                 if( httpResponse?.statusCode == 401 && retry )
                 {
@@ -993,12 +1022,13 @@ class SchwabClient
                 else
                 {
                     // decode data as a ServiceError
-                    let decoder = JSONDecoder()
-                    let serviceError : ServiceError = try decoder.decode(ServiceError.self, from: data)
-                    print( "Failed to get orders: \(serviceError.message ?? "no message")" )
+                    let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
+                    serviceError.printErrors( prefix: "  fetchOrderHistory - " )
                 }
                 return
             }
+
+
             //            // print the first 200 characters of the data response
             //            print( " -------------- response --------------" )
             //            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
@@ -1008,7 +1038,7 @@ class SchwabClient
             // append the decoded transactions to transactionList
             m_orderList.append(contentsOf: try decoder.decode( [Order].self, from: data ) )
         } catch {
-            print("Error: \(error.localizedDescription)")
+            print("fetchOrderHistory Error: \(error.localizedDescription)")
             print("   detail:  \(error)")
         }
         print( "Fetched \(m_orderList.count) orders for all accounts" )
@@ -1043,9 +1073,9 @@ class SchwabClient
                     }
                 }
             }
-//            else {
-//                print( "order states \(order.status ?? OrderStatus.unknown)" )
-//            }
+            //            else {
+            //                print( "order states \(order.status ?? OrderStatus.unknown)" )
+            //            }
         } // for order
         print( "\(m_symbolsWithOrders.count) symbols have orders in awaiting states" )
         return
@@ -1056,5 +1086,90 @@ class SchwabClient
         return m_symbolsWithOrders.contains( symbol ?? "" )
     }
     
+    
+    /**
+     * computeTaxLots - compute a list of tax lots as [SalesCalcPositionsRecord]
+     *
+     * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
+     */
+    public func computeTaxLots( symbol: String )  -> [SalesCalcPositionsRecord]
+    {
+        if( symbol == m_lastFilteredSymbol )
+        {
+            return m_lastFilteredPositionRecords
+        }
+
+        /**
+         * Find all the tax lots by saving all the transactions from the end toward the begininning until we find a zero share count.
+         * After finding the zero share count, walk forward through the filtered position recoreds until we find a sale and remove
+         * the sale record and the most expensive shares bought up to that point.
+         *
+         * If we do not find zero, we need to call teh fetTransactionHistory to get more records for this security.
+         */
+        var stillFetching : Int = 1
+        fetchingLoop: while( stillFetching != 0) {
+            stillFetching -= 1
+            /** @TODO:  Improve the efficiency here... we do not need to start again after each fetch, but the set of transactions may differ.  */
+            m_lastFilteredPositionRecords.removeAll( keepingCapacity: true )
+            var currentShareCount : Double = getShareCount(symbol: symbol)
+            print( " -- \(symbol) -- computeTaxLots() -- ")  /** @TODO:  REMOVE */
+            print( " -- \(symbol)  currentShareCount: \(currentShareCount) --" )  /** @TODO:  REMOVE */
+            // get the transactions for this symbol
+            let transactionsForSymbol : [Transaction] = getTransactionsFor( symbol: symbol )
+            
+            /**
+             * iterate over the collection to populate the positions records until we find a zero share count
+             *  by subtracting buys from and adding sells to the currentShareCount
+             */
+            transactionLoop: for transaction in transactionsForSymbol {
+                if ( transaction.type == .trade )
+                {
+                    // for each transfer item
+                    transferLoop: for transferItem in transaction.transferItems {
+                        let numberOfShares : Double = transferItem.amount ?? 0.0
+                        let marketValue : Double = transferItem.cost ?? 0.0
+                        let costPerShare : Double = transferItem.price ?? 0.0
+                        if( ( numberOfShares != 0.0 )
+                            && ( marketValue != 0.0 )
+                            && ( costPerShare != 0.0 ) ) {
+                            let lastPrice : Double = transferItem.instrument?.closingPrice ?? 0.0
+                            let gainLossDollar : Double = (lastPrice - costPerShare) * numberOfShares
+                            let gainLossPct : Double = ((lastPrice - costPerShare) / costPerShare) * 100.0
+                            var tradeDate : String = ""
+                            do {
+                                tradeDate = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() ).dateOnly()
+                            }
+                            catch {
+                                print( " -- \(symbol)  Error parsing tradeDate: \(error) --" )
+                            }
+                            currentShareCount -=  numberOfShares
+
+                            // add to position records
+                            m_lastFilteredPositionRecords.append(
+                                SalesCalcPositionsRecord(
+                                    openDate: tradeDate,
+                                    gainLossPct: gainLossPct,
+                                    gainLossDollar: gainLossDollar,
+                                    quantity: numberOfShares,
+                                    price: lastPrice,
+                                    costPerShare: costPerShare,
+                                    marketValue: lastPrice * numberOfShares,
+                                    costBasis: costPerShare * numberOfShares
+                                )
+                            )
+
+                            // stop when the currentShareCount is zero or less
+                            if currentShareCount <= 0.0 {
+                                print( " === found 0 or less \(currentShareCount)")
+                                stillFetching = 0
+                                break fetchingLoop
+                            }
+                        } // if amount, cost, and price are non-nil and non-zero.
+                    } // for transferItem
+                } // if trade
+            } // for transaction
+        } // stillFetching
+        return m_lastFilteredPositionRecords
+    }
     
 } // SchwabClient

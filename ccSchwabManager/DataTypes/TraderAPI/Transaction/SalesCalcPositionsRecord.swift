@@ -18,7 +18,19 @@ struct SalesCalcPositionsRecord: Identifiable
     var costPerShare: Double = 0.0
     var marketValue: Double = 0.0
     var costBasis: Double = 0.0
-    var holdingPeriod: String = ""
+
+    init(openDate: String, gainLossPct: Double, gainLossDollar: Double, quantity: Double, price: Double, costPerShare: Double, marketValue: Double, costBasis: Double
+    ) {
+        self.openDate = openDate
+        self.gainLossPct = gainLossPct
+        self.gainLossDollar = gainLossDollar
+        self.quantity = quantity
+        self.price = price
+        self.costPerShare = costPerShare
+        self.marketValue = marketValue
+        self.costBasis = costBasis
+    }
+    
 }
 
 

@@ -55,7 +55,7 @@ extension Date
     {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.timeZone = .current
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         return  dateFormatter.string(from: self)
     }
     func afterOpen() -> Date

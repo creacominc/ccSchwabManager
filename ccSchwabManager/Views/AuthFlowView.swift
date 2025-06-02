@@ -38,6 +38,7 @@ struct AuthFlowView: View {
     @State private var showingResetAlert = false
     @State private var showingCredentialsInput = false
     @State private var credentialsText = ""
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         VStack(spacing: 20) {
@@ -80,11 +81,13 @@ struct AuthFlowView: View {
 //                    }
 
                 Button("Submit") {
+                    print( "--- submit button pressed ---" )
                     // if this button is pressed, reset the tokens
                     secretsManager.secrets.accessToken = ""
                     secretsManager.secrets.refreshToken = ""
                     // get the code from the pasted URL
                     handleAuthCode()
+                    dismiss()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(authCode.isEmpty)

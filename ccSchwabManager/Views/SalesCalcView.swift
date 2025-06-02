@@ -13,21 +13,17 @@ import AppKit
 func daysBetweenDates(dateString: String) -> Int?
 {
     let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat = "MM/dd/yyyy"
-    
+    dateFormatter.dateFormat =  "yyyy-MM-dd" // "MM/dd/yyyy" //
     // Convert the date string to a Date object
     guard let date = dateFormatter.date(from: dateString) else {
-        print("Invalid date format")
+        print("Invalid date format.  date = \(dateString)")
         return nil
     }
-    
     // Get today's date
     let today = Date()
-    
     // Calculate the difference in days
     let calendar = Calendar.current
     let components = calendar.dateComponents([.day], from: date, to: today)
-    
     return components.day
 }
 
@@ -145,6 +141,11 @@ struct BuyOrderDetailSection: View
 
 
 struct SellOrderDetailSection: View{
+    // current position and tax lots for a given security
+    let symbol: String
+//    let currentCostBasis: Double
+//    let currentShares: Int
+//    let transactionList : [Transaction]
     // sell order
 //    @State var sellOrder: SalesCalcResultsRecord
 //    @State var copiedValue: String
@@ -183,7 +184,9 @@ struct SellOrderDetailSection: View{
 
 struct PositionsDataSection: View
 {
-    @State var sourceData: [SalesCalcPositionsRecord] = []
+    let symbol : String
+    @State var sourceData: [SalesCalcPositionsRecord]
+
     @State var copiedValue: String = "TBD"
 
     // results data with custom width for Description column
@@ -194,7 +197,7 @@ struct PositionsDataSection: View
             return GridItem(.flexible( minimum: 20, maximum: 100 ))
         }
     }
-    let resultsData: [SalesCalcResultsRecord]
+    let resultsData: [SalesCalcResultsRecord] = []
 
     // source data
     let salesCalcColumns: [GridItem] = Array(repeating: .init(.flexible()), count: SalesCalcColumns.allCases.count)
@@ -222,18 +225,16 @@ struct PositionsDataSection: View
                 { item in
                     Text(item.openDate)
                         .foregroundStyle( daysBetweenDates(dateString: item.openDate) ?? 0 > 30 ? .green : .red )
-                    Text("\(item.gainLossPct, specifier: "%.2f")%")
-                        .foregroundStyle( item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red )
-                    Text("\(item.gainLossDollar, specifier: "%.2f")")
-                        .foregroundStyle( item.gainLossDollar > 0.0 ? .green : .red )
-                    
                     Text("\(item.quantity, specifier: "%.2f")")
                     Text("\(item.price, specifier: "%.2f")")
                     Text("\(item.costPerShare, specifier: "%.2f")")
                     Text("\(item.marketValue, specifier: "%.2f")")
                     Text("\(item.costBasis, specifier: "%.2f")")
-                    
-                    Text(item.holdingPeriod)
+                    Text("\(item.gainLossDollar, specifier: "%.2f")")
+                        .foregroundStyle( item.gainLossDollar > 0.0 ? .green : .red )
+                    Text("\(item.gainLossPct, specifier: "%.2f")%")
+                        .foregroundStyle( item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red )
+//                    Text(item.holdingPeriod)
                 }
                 .background(Color.gray.opacity(0.1))
                 
@@ -294,9 +295,15 @@ struct PositionsDataSection: View
 
 struct SalesCalcView: View
 {
-//    @State var resultsData: [SalesCalcResultsRecord] = []
     let symbol: String
     let atrValue: Double
+//    // current position and tax lots for a given security
+//    let currentCostBasis: Double
+//    let currentShares: Int
+//    let transactionList : [Transaction]
+
+
+    //    @State var resultsData: [SalesCalcResultsRecord] = []
     // SellOrderDetailSection
 //    let sellOrder: SalesCalcResultsRecord
 //    let copiedValue: String
@@ -313,8 +320,14 @@ struct SalesCalcView: View
         {
             InformationSection( symbol: symbol, atrValue: atrValue )
 //            BuyOrderDetailSection()
-//            SellOrderDetailSection( sellOrder: sellOrder, copiedValue: copiedValue )
-//            PositionsDataSection(resultsData: resultsData)
+//            SellOrderDetailSection( symbol: symbol
+                                    // ,
+//                                    currentCostBasis: currentCostBasis,
+//                                    currentShares: currentShares,
+//                                    transactionList: transactionList
+//        )
+            PositionsDataSection( symbol: symbol,
+                                  sourceData: SchwabClient.shared.computeTaxLots(symbol: symbol) )
         } // VStack
     }
     
