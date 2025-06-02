@@ -35,25 +35,9 @@
 		367617D62D94C9700030D285 /* ccSchwabManagerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ccSchwabManagerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		36E1316E2DE5292400D93390 /* Exceptions for "ccSchwabManager" folder in "ccSchwabManager" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				ToBeDeleted/PositionStatementView.swift,
-				ToBeDeleted/SalesCalcBuyOrder.swift,
-				ToBeDeleted/SecretsEditorView.swift,
-				ToBeDeleted/SettingsView.swift,
-			);
-			target = 367617B82D94C96E0030D285 /* ccSchwabManager */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		367617BB2D94C96E0030D285 /* ccSchwabManager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				36E1316E2DE5292400D93390 /* Exceptions for "ccSchwabManager" folder in "ccSchwabManager" target */,
-			);
 			path = ccSchwabManager;
 			sourceTree = "<group>";
 		};
