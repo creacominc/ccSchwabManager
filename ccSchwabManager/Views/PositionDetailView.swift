@@ -275,10 +275,11 @@ struct TransactionHistorySection: View {
     let symbol: String
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
 
+    /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
     private var sortedTransactions: [Transaction] {
-        guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
+        guard let sortConfig = currentSort else { return SchwabClient.shared.fetchTransactionHistory( symbol: symbol ) }
         print( "=== Sorting transactions ===  \(symbol)" )
-        return SchwabClient.shared.getTransactionsFor( symbol: symbol ).sorted { t1, t2 in
+        return SchwabClient.shared.fetchTransactionHistory( symbol: symbol ).sorted { t1, t2 in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .date:
@@ -360,9 +361,9 @@ struct TransactionHistorySection: View {
                 Text(transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown")
                     .frame(width: calculatedWidths[1], alignment: .leading)
                 if let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) {
-                    let amount = TransactionHistorySection.round(transferItem.amount ?? 0, precision: 2)
+                    let amount = TransactionHistorySection.round(transferItem.amount ?? 0, precision: 4)
                     let price = TransactionHistorySection.round(transferItem.price ?? 0, precision: 2)
-                    Text(String(format: "%.0f", amount))
+                    Text(String(format: "%.4f", amount))
                         .frame(width: calculatedWidths[2], alignment: .trailing)
                     Text(String(format: "%.2f", price))
                         .frame(width: calculatedWidths[3], alignment: .trailing)
@@ -392,7 +393,7 @@ struct TransactionHistorySection: View {
                     .scaleEffect(2.0, anchor: .center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-            } else if SchwabClient.shared.getTransactionsFor( symbol: symbol ).isEmpty {
+            } else if SchwabClient.shared.fetchTransactionHistory( symbol: symbol ).isEmpty {
                 Text("No transactions available")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -424,6 +425,7 @@ struct TransactionHistorySection: View {
 
                         ScrollView {
                             LazyVStack(spacing: 0) {
+                                /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
                                 ForEach(sortedTransactions) { transaction in
                                     TransactionRow(
                                         transaction: transaction,
@@ -618,6 +620,7 @@ struct PositionDetailView: View {
     let atrValue: Double
     let onNavigate: (Int) -> Void
     @State private var priceHistory: CandleList?
+//    @State private var transactionHistory: [Transaction]?
     @State private var isLoadingPriceHistory = false
     @State private var isLoadingTransactions = false
     @EnvironmentObject var secretsManager: SecretsManager
@@ -652,21 +655,25 @@ struct PositionDetailView: View {
         .padding(.horizontal)
         .onAppear {
             Task {
-                await fetchPriceHistory()
+                await fetchHistoryForSymbol()
             }
         }
         .onChange(of: position) { oldValue, newValue in
             Task {
-                await fetchPriceHistory()
+                await fetchHistoryForSymbol()
             }
         }
     }
     
-    private func fetchPriceHistory() async {
-        print("=== fetchPriceHistory ===")
+    private func fetchHistoryForSymbol() async {
+        print("=== fetchHistoryForSymbol \(position.instrument?.symbol ?? "ERROR" ) ===")
         guard let symbol = position.instrument?.symbol else { return }
         isLoadingPriceHistory = true
         defer { isLoadingPriceHistory = false }
-        priceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        priceHistory =  SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
+        _ = SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
+//        // get the order history
+//        SchwabClient.shared.fetchOrderHistory()
     }
 } 

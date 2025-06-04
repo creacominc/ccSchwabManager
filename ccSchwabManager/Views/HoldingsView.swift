@@ -259,10 +259,8 @@ struct HoldingsView: View {
     private func fetchHoldings() async {
         print("=== fetchHoldings ===")
         await SchwabClient.shared.fetchAccounts( retry: true )
-        // get the lessor of the last 3000  or 1 year of transactions
-        await SchwabClient.shared.fetchTransactionHistory()
-        // get the order history
-        await SchwabClient.shared.fetchOrderHistory()
+        // get the order history for all accounts and all symbols (there is no per-symbol option)
+        SchwabClient.shared.fetchOrderHistory()
         // Extract positions from accounts with their account numbers
         accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
             let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""

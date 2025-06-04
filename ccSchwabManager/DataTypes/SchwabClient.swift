@@ -37,15 +37,15 @@ class SchwabClient
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
-    private var m_transactionList : [Transaction] = []
     private var m_latestDateForSymbol : [String:Date] = [:]
     private var m_symbolsWithOrders: Set<String> = []
-    private var m_lastFilteredSymbol : String? = nil
+    private var m_lastFilteredTransactionSymbol : String? = nil
+    private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_lastFilteredTransactions : [Transaction] = []
+    private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
-    private var m_todayStr : String
-    private var m_dateOneYearAgoStr : String
+
     /**
      * dump the contents of this object for debugging.
      */
@@ -65,21 +65,15 @@ class SchwabClient
     private init()
     {
         self.m_secrets = Secrets()
-        // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
-        m_todayStr = Date().formatted(.iso8601
-            .year()
-            .month()
-            .day()
-            .timeZone(separator: .omitted)
-            .time(includingFractionalSeconds: true)
-            .timeSeparator(.colon)
-        ) // "2022-06-10T12:34:56.789Z"
-        
+    }
+
+    func getDateOneNYearsAgoStr( yearDelta : Int ) -> String
+    {
         // get date one year ago
         var components = DateComponents()
-        components.year = -1
+        components.year = -yearDelta
         // format a string with the date one year ago.
-        m_dateOneYearAgoStr = Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+        return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
             .year()
             .month()
             .day()
@@ -482,73 +476,15 @@ class SchwabClient
     /**
      * fettchPriceHistory  get the history of prices for all securities
      */
-    func fetchPriceHistory( symbol : String ) async -> CandleList?
+    func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory  ===")
         
         var priceHistoryUrl = "\(priceHistoryWeb)"
         priceHistoryUrl += "?symbol=\(symbol)"
-        
-        /**
-         * The chart period being requested.
-         * Available values : day, month, year, ytd
-         */
         priceHistoryUrl += "&periodType=year"
-        
-        /**
-         *  The number of chart period types.
-         *
-         *  If the periodType is
-         *  • day - valid values are 1, 2, 3, 4, 5, 10
-         *  • month - valid values are 1, 2, 3, 6
-         *  • year - valid values are 1, 2, 3, 5, 10, 15, 20
-         *  • ytd - valid values are 1
-         *
-         *  If the period is not specified and the periodType is
-         *  • day - default period is 10.
-         *  • month - default period is 1.
-         *  • year - default period is 1.
-         *  • ytd - default period is 1.
-         */
         priceHistoryUrl += "&period=1"
-        
-        
-        /**
-         *  The time frequencyType
-         *
-         *  If the periodType is
-         *  • day - valid value is minute
-         *  • month - valid values are daily, weekly
-         *  • year - valid values are daily, weekly, monthly
-         *  • ytd - valid values are daily, weekly
-         *
-         *  If frequencyType is not specified, default value depends on the periodType
-         *  • day - defaulted to minute.
-         *  • month - defaulted to weekly.
-         *  • year - defaulted to monthly.
-         *  • ytd - defaulted to weekly.
-         *
-         *  Available values : minute, daily, weekly, monthly
-         */
         priceHistoryUrl += "&frequencyType=daily"
-        
-        /**
-         *  The time frequency duration
-         *
-         *  If the frequencyType is
-         *  • minute - valid values are 1, 5, 10, 15, 30
-         *  • daily - valid value is 1
-         *  • weekly - valid value is 1
-         *  • monthly - valid value is 1
-         *
-         *  If frequency is not specified, default value is 1
-         */
-        //priceHistoryUrl += "&frequency=1"
-        
-        /**
-         *  Need previous close price/date
-         */
-        //priceHistoryUrl += "&needPreviousClose=true"
         
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
@@ -558,25 +494,44 @@ class SchwabClient
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-        
         request.setValue("application/json", forHTTPHeaderField: "accept")
         
+        let semaphore = DispatchSemaphore(value: 0)
+        var responseData: Data?
+        var responseError: Error?
+        var httpResponse: HTTPURLResponse?
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            responseData = data
+            responseError = error
+            httpResponse = response as? HTTPURLResponse
+            semaphore.signal()
+        }.resume()
+        
+        semaphore.wait()
+        
+        if let error = responseError {
+            print("fetchPriceHistory - Error: \(error.localizedDescription)")
+            return nil
+        }
+        
+        guard let data = responseData else {
+            print("fetchPriceHistory. No data received")
+            return nil
+        }
+        
+        if httpResponse?.statusCode != 200 {
+            print("fetchPriceHistory - Failed to fetch price history.  code = \(httpResponse?.statusCode ?? -1)")
+            return nil
+        }
+        
         do {
-            let ( data, response ) = try await URLSession.shared.data(for: request)
-            let httpResponse = response as? HTTPURLResponse
-            if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
-            {
-                print("fetchPriceHistory. Failed to fetch price history.  code = \(httpResponse?.statusCode ?? -1).  \(response)")
-                return nil
-            }
-            
             let decoder = JSONDecoder()
-            let candleList : CandleList  = try decoder.decode( CandleList.self, from: data )
-            print( "Fetched \(candleList.candles.count) candles for \(symbol)" )
-            // return the candleList assuming they arrived sorted.
+            let candleList: CandleList = try decoder.decode(CandleList.self, from: data)
+            print("fetchPriceHistory - Fetched \(candleList.candles.count) candles for \(symbol)")
             return candleList
         } catch {
-            print("fetchPriceHistory Error: \(error.localizedDescription)")
+            print("fetchPriceHistory - Error: \(error.localizedDescription)")
             print("   detail:  \(error)")
             return nil
         }
@@ -588,7 +543,7 @@ class SchwabClient
     public func computeATR( symbol : String ) async -> Double
     {
         print("=== computeATR  ===")
-        guard let priceHistory : CandleList  =  await self.fetchPriceHistory( symbol: symbol ) else {
+        guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
             print("computeATR Failed to fetch price history.")
             return 0.0
         }
@@ -672,19 +627,43 @@ class SchwabClient
      *
      *
      */
-    public func fetchTransactionHistory( ) async
+    /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
+    public func fetchTransactionHistory( symbol: String, yearDelta: Int = 0 )  -> [Transaction]
     {
-        print("=== fetchTransactionHistory  ===")
-        
-        m_transactionList.removeAll(keepingCapacity: true)
-        
+        print("=== fetchTransactionHistory - symbol: \(symbol), yearDelta: \(yearDelta) ===")
+        // return the prior collection if the symbol and yearDelta are unchanged.
+        if( ( symbol == m_lastFilteredTransactionSymbol ) && ( yearDelta == m_lastfilteredTransactionsYears ) )
+        {
+            print( " returning cached values" )
+            /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
+            return m_lastFilteredTransactions
+        }
+        /**
+         * Clear the current content if this is not the last symbol fetched or the yearDelta is not 1 more than the last yearDelta
+         */
+        if(( yearDelta != (m_lastfilteredTransactionsYears + 1) )
+           || (symbol != m_lastFilteredTransactionSymbol) )
+        {
+            // @TODO:  REMOVE
+            if( (symbol != m_lastFilteredTransactionSymbol) && ( m_lastFilteredTransactionSymbol != nil ) )  {
+                print( "WARN!!! this should not be.  \(symbol) != \(m_lastFilteredTransactionSymbol ?? "uninitialized")")
+            }
+            m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+            m_lastfilteredTransactionsYears = yearDelta
+            m_lastFilteredTransactionSymbol = symbol
+        }
+
+        let endDate = getDateOneNYearsAgoStr( yearDelta: yearDelta )
+        let startDate = getDateOneNYearsAgoStr( yearDelta: yearDelta + 1 )
         // fetch the transactions (optionally for the given symbol) from all accounts
         for accountNumberHash : AccountNumberHash in self.m_secrets.acountNumberHash {
             var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-            transactionHistoryUrl += "?startDate=\(m_dateOneYearAgoStr)"
-            transactionHistoryUrl += "&endDate=\(m_todayStr)"
+            transactionHistoryUrl += "?startDate=\(startDate)"
+            transactionHistoryUrl += "&endDate=\(endDate)"
+            transactionHistoryUrl += "&symbol=\(symbol)"
             transactionHistoryUrl += "&types=TRADE"
 
+            // print( "transactionHistoryUrl \(transactionHistoryUrl)" )
             guard let url = URL( string: transactionHistoryUrl ) else {
                 print("fetchTransactionHistory. Invalid URL")
                 continue
@@ -695,61 +674,85 @@ class SchwabClient
             request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "accept")
 
-            do {
-                let ( data, response ) = try await URLSession.shared.data(for: request)
-                let httpResponse = response as? HTTPURLResponse
-                if( (nil == httpResponse) || (httpResponse?.statusCode != 200) )
-                {
-                    let serviceError : ServiceError = try JSONDecoder().decode(ServiceError.self, from: data)
-                    serviceError.printErrors( prefix: "  fetchTransactionHistory " )
-                    continue
-                }
-                // print the first 200 characters of the data response
-                // print( " -------------- response --------------" )
-                // print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
-                // print( " --------------          --------------" )
-                
-                let decoder = JSONDecoder()
-                // append the decoded transactions to transactionList
-                m_transactionList.append(contentsOf: try decoder.decode( [Transaction].self, from: data ) )
+            let semaphore = DispatchSemaphore(value: 0)
+            var responseData: Data?
+            var responseError: Error?
+            var httpResponse: HTTPURLResponse?
+
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                responseData = data
+                responseError = error
+                httpResponse = response as? HTTPURLResponse
+                semaphore.signal()
+            }.resume()
+
+            semaphore.wait()
+
+            if let error = responseError {
+                print("fetchTransactionHistory Error: \(error.localizedDescription)")
                 continue
+            }
+
+            guard let data = responseData else {
+                print("fetchTransactionHistory. No data received")
+                continue
+            }
+
+            if httpResponse?.statusCode != 200 {
+                print( "response code: \(String(describing: httpResponse?.statusCode))  data: \(String(data: data, encoding: .utf8) ?? "N/A") " )
+                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                    serviceError.printErrors(prefix: "  fetchTransactionHistory ")
+                }
+                continue
+            }
+
+            // print( "httpResponse: \(String(describing: httpResponse))" )
+            // print data content
+            // print( "    code: \(String(data: data, encoding: .utf8) ?? "N/A") " )
+
+            do {
+                let decoder = JSONDecoder()
+                m_lastFilteredTransactions.append(contentsOf: try decoder.decode([Transaction].self, from: data))
             } catch {
                 print("fetchTransactionHistory Error: \(error.localizedDescription)")
                 print("   detail:  \(error)")
                 continue
             }
-        } // end for each accountHash
-        print( "Fetched \(m_transactionList.count) transactions for all symbols" )
-        // sort by tradeDate
-        m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
-        //return transactionList.sorted { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
-        self.setLatestTradeDates()
-    } // end of fetchTransactionHistory
-    
-    
-    /**
-     * getTransactions - return the m_transactionList.
-     */
-    public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
-    {
-        // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
-        if m_lastFilteredSymbol != symbol {
-            m_lastFilteredSymbol = symbol
-            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
-                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-            }
         }
-        // return the transactionlist where the symbol matches what is provided
+        print("Fetched \(m_lastFilteredTransactions.count) transactions for \(symbol)")
+        m_lastFilteredTransactions.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        self.setLatestTradeDates()
+        /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
         return m_lastFilteredTransactions
-        
     }
+    
+    
+//    /**
+//     * getTransactions - return the m_transactionList.
+//     */
+//    public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
+//    {
+//        // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
+//        if m_lastFilteredSymbol != symbol {
+//            m_lastFilteredSymbol = symbol
+//            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
+//                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+//                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+//            }
+//        }
+//        // return the transactionlist where the symbol matches what is provided
+//        return m_lastFilteredTransactions
+//        
+//    }
     
     private func setLatestTradeDates()
     {
+        /**
+         * @TODO:  REVIEW - this is probably not needed as the m_lastFilteredTransactions is already sorted by trade date.
+         */
         m_latestDateForSymbol.removeAll(keepingCapacity: true)
         // create a map of symbols to the most recent trade date
-        for transaction in m_transactionList {
+        for transaction in m_lastFilteredTransactions {
             for transferItem in transaction.transferItems {
                 if let symbol = transferItem.instrument?.symbol {
                     // convert tradeDate string to a Date
@@ -955,7 +958,7 @@ class SchwabClient
      
      
      */
-    public func fetchOrderHistory( retry : Bool = false ) async
+    public func fetchOrderHistory( retry : Bool = false ) 
     {
         print("=== fetchOrderHistory  ===")
         
@@ -968,7 +971,7 @@ class SchwabClient
             .timeZone(separator: .omitted)
             .time(includingFractionalSeconds: true)
             .timeSeparator(.colon)
-        ) // "2022-06-10T12:34:56.789Z"
+        )
         
         // get date one year ago
         var components = DateComponents()
@@ -987,11 +990,7 @@ class SchwabClient
         var orderHistoryUrl = "\(ordersWeb)"
         orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
         orderHistoryUrl += "&toEnteredTime=\(todayStr)"
-        /**
-         * consider adding status: AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
-         */
         
-        // print( "fetchOrderHistory. URL = \(orderHistoryUrl)" )
         guard let url = URL( string: orderHistoryUrl ) else {
             print("fetchOrderHistory. Invalid URL")
             return
@@ -1002,54 +1001,54 @@ class SchwabClient
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
         
-        do {
-
-
-            let ( data, response ) = try await URLSession.shared.data(for: request)
-            let httpResponse = response as? HTTPURLResponse
-            if( httpResponse?.statusCode != 200 )
-            {
-                let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
-                serviceError.printErrors(prefix: "fetchOrderHistory ")
-
-                // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
-                if( httpResponse?.statusCode == 401 && retry )
-                {
-                    print( "=== retrying fetchOrderHistory after refreshing access token ===" )
-                    refreshAccessToken()
-                    await fetchOrderHistory( retry : false )
-                }
-                else
-                {
-                    // decode data as a ServiceError
-                    let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
-                    serviceError.printErrors( prefix: "  fetchOrderHistory - " )
-                }
+        let semaphore = DispatchSemaphore(value: 0)
+        var responseData: Data?
+        var responseError: Error?
+        var httpResponse: HTTPURLResponse?
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            responseData = data
+            responseError = error
+            httpResponse = response as? HTTPURLResponse
+            semaphore.signal()
+        }.resume()
+        
+        semaphore.wait()
+        
+        if let error = responseError {
+            print("fetchOrderHistory Error: \(error.localizedDescription)")
+            return
+        }
+        
+        guard let data = responseData else {
+            print("fetchOrderHistory. No data received")
+            return
+        }
+        
+        if httpResponse?.statusCode != 200 {
+            if httpResponse?.statusCode == 401 && retry {
+                print("=== retrying fetchOrderHistory after refreshing access token ===")
+                refreshAccessToken()
+                fetchOrderHistory(retry: false)
                 return
             }
-
-
-            //            // print the first 200 characters of the data response
-            //            print( " -------------- response --------------" )
-            //            print( (String(data: data, encoding: .utf8) ?? "No data").prefix(2400) )
-            //            print( " --------------          --------------" )
             
+            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                serviceError.printErrors(prefix: "fetchOrderHistory ")
+            }
+            return
+        }
+        
+        do {
             let decoder = JSONDecoder()
-            // append the decoded transactions to transactionList
-            m_orderList.append(contentsOf: try decoder.decode( [Order].self, from: data ) )
+            m_orderList.append(contentsOf: try decoder.decode([Order].self, from: data))
         } catch {
             print("fetchOrderHistory Error: \(error.localizedDescription)")
             print("   detail:  \(error)")
+            return
         }
-        print( "Fetched \(m_orderList.count) orders for all accounts" )
-        //        // print the first 20 orders
-        //        for i in 0..<min(20, m_orderList.count) {
-        //            var msg: String = "\(i+1). "
-        //            msg += " \(m_orderList[i].orderLegCollection?[0].instrument?.symbol ?? "no symbol")"
-        //            msg += ", \(m_orderList[i].status ?? OrderStatus.unknown)"
-        //            msg += ", \(m_orderList[i].statusDescription ?? "no description")"
-        //            print( msg )
-        //        }
+        
+        print("Fetched \(m_orderList.count) orders for all accounts")
         
         // update the m_symbolHasOrders dictionary with each symbol in the orderList with orders that are in awaiting states
         m_symbolsWithOrders.removeAll(keepingCapacity: true)
@@ -1073,14 +1072,10 @@ class SchwabClient
                     }
                 }
             }
-            //            else {
-            //                print( "order states \(order.status ?? OrderStatus.unknown)" )
-            //            }
-        } // for order
-        print( "\(m_symbolsWithOrders.count) symbols have orders in awaiting states" )
-        return
+        }
+        print("\(m_symbolsWithOrders.count) symbols have orders in awaiting states")
     }
-    
+
     public func hasOrders( symbol: String? = nil ) -> Bool
     {
         return m_symbolsWithOrders.contains( symbol ?? "" )
@@ -1094,10 +1089,13 @@ class SchwabClient
      */
     public func computeTaxLots( symbol: String )  -> [SalesCalcPositionsRecord]
     {
-        if( symbol == m_lastFilteredSymbol )
+        print( "=== computeTaxLots \(symbol) ===" )
+        if( symbol == m_lastFilteredTaxLotSymbol )
         {
+            print( "=== computeTaxLots \(symbol) - returning cached ===" )
             return m_lastFilteredPositionRecords
         }
+        m_lastFilteredTaxLotSymbol = symbol
 
         /**
          * Find all the tax lots by saving all the transactions from the end toward the begininning until we find a zero share count.
@@ -1112,16 +1110,14 @@ class SchwabClient
             /** @TODO:  Improve the efficiency here... we do not need to start again after each fetch, but the set of transactions may differ.  */
             m_lastFilteredPositionRecords.removeAll( keepingCapacity: true )
             var currentShareCount : Double = getShareCount(symbol: symbol)
-            print( " -- \(symbol) -- computeTaxLots() -- ")  /** @TODO:  REMOVE */
-            print( " -- \(symbol)  currentShareCount: \(currentShareCount) --" )  /** @TODO:  REMOVE */
-            // get the transactions for this symbol
-            let transactionsForSymbol : [Transaction] = getTransactionsFor( symbol: symbol )
+//            print( " -- \(symbol) -- computeTaxLots() -- ")
+//            print( " -- \(symbol)  currentShareCount: \(currentShareCount) --" )
             
             /**
              * iterate over the collection to populate the positions records until we find a zero share count
              *  by subtracting buys from and adding sells to the currentShareCount
              */
-            transactionLoop: for transaction in transactionsForSymbol {
+            transactionLoop: for transaction in m_lastFilteredTransactions {
                 if ( transaction.type == .trade )
                 {
                     // for each transfer item
@@ -1160,7 +1156,7 @@ class SchwabClient
 
                             // stop when the currentShareCount is zero or less
                             if currentShareCount <= 0.0 {
-                                print( " === found 0 or less \(currentShareCount)")
+                                print( " === found 0 or less.  currentShareCount = \(currentShareCount)")
                                 stillFetching = 0
                                 break fetchingLoop
                             }
