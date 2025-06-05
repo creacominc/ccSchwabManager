@@ -285,7 +285,17 @@ struct PositionsDataSection: View
     }
 }
 
-
+struct LoadingOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .edgesIgnoringSafeArea(.all)
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                .scaleEffect(1.5)
+        }
+    }
+}
 
 /**
             InformationSectiom:          symbol,   atrPercent,  copiedValue
@@ -293,213 +303,224 @@ struct PositionsDataSection: View
             SellOrderDetailSection:      current positions
  */
 
-struct SalesCalcView: View
-{
+struct SalesCalcView: View {
     let symbol: String
     let atrValue: Double
     @State private var positionsData: [SalesCalcPositionsRecord] = []
-
-    var body: some View
-    {
-        VStack
-        {
-            InformationSection( symbol: symbol, atrValue: atrValue )
-            PositionsDataSection( symbol: symbol,
-                                  sourceData: positionsData )
-        } // VStack
-        .onAppear {
-            refreshData()
-        }
-        .onChange(of: symbol) { newSymbol in
-            print("Symbol changed to: \(newSymbol)")
-            // Use DispatchQueue to ensure we're using the latest symbol value
-            DispatchQueue.main.async {
-                positionsData = SchwabClient.shared.computeTaxLots(symbol: newSymbol)
+    @StateObject private var loadingState = LoadingState()
+    private let schwabClient = SchwabClient.shared
+    
+    var body: some View {
+        ZStack {
+            VStack {
+                InformationSection(symbol: symbol, atrValue: atrValue)
+                PositionsDataSection(symbol: symbol,
+                                     sourceData: positionsData)
+            }
+            .onAppear {
+                refreshData()
+            }
+            .onChange(of: symbol) { newSymbol in
+                print("Symbol changed to: \(newSymbol)")
+                // Use DispatchQueue to ensure we're using the latest symbol value
+                DispatchQueue.main.async {
+                    refreshDataWithSymbol(newSymbol)
+                }
             }
         }
+        .withLoadingState(loadingState)
     }
     
     private func refreshData() {
         print("Refreshing data for symbol: \(symbol)")
-        positionsData = SchwabClient.shared.computeTaxLots(symbol: symbol)
+        loadingState.isLoading = true
+        positionsData = schwabClient.computeTaxLots(symbol: symbol)
+        loadingState.isLoading = false
+    }
+    
+    private func refreshDataWithSymbol(_ newSymbol: String) {
+        print("Refreshing data for symbol: \(newSymbol)")
+        loadingState.isLoading = true
+        positionsData = schwabClient.computeTaxLots(symbol: newSymbol)
+        loadingState.isLoading = false
     }
 
 
 
-//    private func getResults( context: [SalesCalcPositionsRecord] ) -> [ResultsRecord]
-//    {
-//        var results : [ResultsRecord] = []
-//        var rollingGain : Double = 0.0
-//        var totalShares : Double = 0.0
-//        var totalCost:    Double = 0.0
-//
-//        // populate results collection
-//        for item in context
-//        {
-//            totalShares += item.quantity
-//            totalCost   += item.costBasis
-//            rollingGain += item.gainLossDollar
-//            let breakEven : Double = totalCost / totalShares
-//            /** @TODO:  round this. */
-//            let gain : Double      = ( ( ( item.price - breakEven ) / item.price ) - 0.005 ) * 100.0
-//            let trailingStop: Double = gain / 2.5 - 0.5
-//            let entry: Double      = item.price * ( 1 - trailingStop / 100.0 ) + 0.005
-//            let cancel: Double     = (entry - 0.005) * ( 1 - trailingStop / 100.0 ) - 0.005
-//            
-//            let result : ResultsRecord = ResultsRecord(
-//                shares:           totalShares,
-//                rollingGainLoss:  rollingGain,
-//                breakEven:        breakEven,
-//                gain:             gain,
-//                sharesToSell:     totalShares,
-//                trailingStop:     trailingStop,
-//                entry:            entry,
-//                cancel:           cancel,
-//                description: String(format: "Sell %.0f shares TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f", totalShares, trailingStop, entry, cancel),
-//                openDate:        item.openDate
-//            )
-//            results.append( result )
-//        }
-//        return results
-//    }
-//    
+
+    //    private func getResults( context: [SalesCalcPositionsRecord] ) -> [ResultsRecord]
+    //    {
+    //        var results : [ResultsRecord] = []
+    //        var rollingGain : Double = 0.0
+    //        var totalShares : Double = 0.0
+    //        var totalCost:    Double = 0.0
+    //
+    //        // populate results collection
+    //        for item in context
+    //        {
+    //            totalShares += item.quantity
+    //            totalCost   += item.costBasis
+    //            rollingGain += item.gainLossDollar
+    //            let breakEven : Double = totalCost / totalShares
+    //            /** @TODO:  round this. */
+    //            let gain : Double      = ( ( ( item.price - breakEven ) / item.price ) - 0.005 ) * 100.0
+    //            let trailingStop: Double = gain / 2.5 - 0.5
+    //            let entry: Double      = item.price * ( 1 - trailingStop / 100.0 ) + 0.005
+    //            let cancel: Double     = (entry - 0.005) * ( 1 - trailingStop / 100.0 ) - 0.005
+    //
+    //            let result : ResultsRecord = ResultsRecord(
+    //                shares:           totalShares,
+    //                rollingGainLoss:  rollingGain,
+    //                breakEven:        breakEven,
+    //                gain:             gain,
+    //                sharesToSell:     totalShares,
+    //                trailingStop:     trailingStop,
+    //                entry:            entry,
+    //                cancel:           cancel,
+    //                description: String(format: "Sell %.0f shares TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f", totalShares, trailingStop, entry, cancel),
+    //                openDate:        item.openDate
+    //            )
+    //            results.append( result )
+    //        }
+    //        return results
+    //    }
+    //
+        
+        
+    //    private func getRecordsFromClipboard(content: String)  -> [SalesCalcPositionsRecord]
+    //    {
+    //        var allResults : [SalesCalcPositionsRecord] = []
+    //        var currentRow : [String] = []
+    //        let rows : [String] = content.components( separatedBy: "\n" )
+    //        // data rows appear as two rows when copied from the web site, the first with the date, the second tab delimited columns
+    //        for row in rows
+    //        {
+    //            //print( "ROW:  \(row)" )
+    //            var dataFields : [String] = row.split( separator: "\t" ).map{ String($0) }
+    //            // handle the case where we get the date separately
+    //            if( dataFields.count == 1 )
+    //            { // got just the date, create a new currentRow collection
+    //                currentRow = dataFields
+    //                //print( " Got date:  \(currentRow)" )
+    //                continue
+    //            }
+    //            else if( dataFields.count == SalesCalcColumns.allCases.count - 1 )
+    //            { // got all but the date, append to currentRow
+    //                dataFields.insert(contentsOf: currentRow, at: 0)
+    //                //print( " Filled in:  \(dataFields)" )
+    //            }
+    //            if( dataFields.count == SalesCalcColumns.allCases.count )
+    //            {
+    //                //print( "Fields: \(dataFields)" )
+    //                var record : SalesCalcPositionsRecord = SalesCalcPositionsRecord()
+    //                var indx : Int = 0
+    //                record.openDate       = dataFields[ indx ]; indx += 1;
+    //                record.quantity       = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.price          = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.costPerShare   = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.marketValue    = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.costBasis      = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.gainLossDollar = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.gainLossPct    = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
+    //                record.holdingPeriod  = dataFields[ indx ]; indx += 1;
+    //
+    //                allResults.append( record )
+    //            }
+    //            else
+    //            {
+    //                print( "fields size (\(dataFields.count)) != columns size (\(SalesCalcColumns.allCases.count)) \n\t  for pasted row: \(row) \n\t  from content: \(content)" )
+    //            }
+    //        }
+    //        // Sort the array by costPerShare in descending order
+    //        return allResults.sorted { $0.costPerShare > $1.costPerShare }
+    //    } // getRecordsFromClipboard
+
+    //
+    //    // get buy and sell order details
+    //    private func getOrders()
+    //    {
+    //        var atrPercent : Double = 0.0
+    //        var quantity   : Double = 0.0
+    //        var netLiquid  : Double = 0.0
+    //        // var lastPrice  : Double = 0.0
+    //        var gainPct    : Double = 0.0
+    //        var equivalentShares : Int = 0
+    //        var bidPriceOver : Double = 0.0
+    //
+    //        // Populate ATR field
+    //        // get the 1.5*ATR value from the data record with the symbol
+    //        var indx : Int = 0
+    //        self.symbol = self.symbol.uppercased()
+    //        while( indx < $positionStatementData.count )
+    //        {
+    //            if( positionStatementData[indx].instrument == self.symbol )
+    //            {
+    //                // The ATR I pull from ThinkOrSwim is actually ATR*1.5.  Divide here to compensate.
+    //                atrPercent = positionStatementData[indx].atr / positionStatementData[indx].last
+    //                quantity   = positionStatementData[indx].quantity
+    //                netLiquid  = positionStatementData[indx].netLiquid
+    //                // lastPrice  = positionStatementData[indx].last
+    //                gainPct    = positionStatementData[indx].plPercent / 100.0
+    //
+    //                bidPriceOver = positionStatementData[indx].last + ( 2.0 * positionStatementData[indx].atr )
+    //
+    //                self.atrPercent = atrPercent
+    //                break
+    //            }
+    //            indx += 1
+    //        }
+    //
+    //        // print( "atrPercent = \(atrPercent),   quantity = \(quantity),   netLiquid = \(netLiquid),   lastPrice = \(lastPrice),   gainPct = \(gainPct)" )
+    //
+    //        // Populate sell order
+    //        // Iterate over resultsData to find the result record with a Trailing Stop > atrPercent
+    //        for( result ) in self.resultsData
+    //        {
+    //            //print( "result.trailingStop = \(result.trailingStop),  atrPercent = \(atrPercent),  sharesToSell = \(result.sharesToSell),  gain = \(result.gain) " )
+    //            if( ( result.trailingStop > 100.0 * atrPercent ) && ( 2.0 < result.gain ) )
+    //            {
+    //                self.sellOrder = result
+    //                break
+    //            }
+    //        }
+    //
+    //        // The percentage we buy will be half of the percent gain to a max of $2000 and a minimum of 1 share
+    //        var buyPercent : Double = gainPct / 2.0
+    //        if( ( 0.0 != netLiquid ) && ( 2000.0 < buyPercent * netLiquid ) )
+    //        { // if buying that percent results in more than $2000, lower the percent to a $2000 buy.
+    //            buyPercent = 2000.0 / netLiquid - 0.005
+    //            // print( "buyPercent adjusted to 2000 limit = \(buyPercent*100.0),  netLiquid = \(netLiquid),  gainPct = \(gainPct*100.0)" )
+    //        }
+    //        // Minimum buy would be 1 share
+    //        if( ( 0.0 != quantity ) && ( 1.0 > buyPercent * quantity ) )
+    //        {
+    //            buyPercent = 1.0 / quantity + 0.01
+    //            // print( "setting for minimum buy of 1 share - buyPercent = \(buyPercent),  quantity = \(quantity)" )
+    //        }
+    //        equivalentShares = Int( buyPercent * quantity )
+    //        // print( "buyPercent = \(buyPercent),  quantity = \(quantity),   equivalentShares = \(equivalentShares)" )
+    //
+    //        // Submittion date
+    //        let nextTradeDate = getNextTradeDate()
+    //
+    //        // Set order entry over bid of the greater of the last buy price and the average
+    //        // of the last and greatest buy points and half atr over the current price.
+    //
+    //
+    //
+    //        // Populate buy order
+    //        buyOrder = BuyOrder( percent: buyPercent,
+    //                             equivalentShares: equivalentShares,
+    //                             trailingStop: atrPercent,
+    //                             submitDate: nextTradeDate,
+    //                             bidPriceOver: bidPriceOver
+    //        )
+    //
+    //
+    //    }
+    //
+
+
     
-    
-//    private func getRecordsFromClipboard(content: String)  -> [SalesCalcPositionsRecord]
-//    {
-//        var allResults : [SalesCalcPositionsRecord] = []
-//        var currentRow : [String] = []
-//        let rows : [String] = content.components( separatedBy: "\n" )
-//        // data rows appear as two rows when copied from the web site, the first with the date, the second tab delimited columns
-//        for row in rows
-//        {
-//            //print( "ROW:  \(row)" )
-//            var dataFields : [String] = row.split( separator: "\t" ).map{ String($0) }
-//            // handle the case where we get the date separately
-//            if( dataFields.count == 1 )
-//            { // got just the date, create a new currentRow collection
-//                currentRow = dataFields
-//                //print( " Got date:  \(currentRow)" )
-//                continue
-//            }
-//            else if( dataFields.count == SalesCalcColumns.allCases.count - 1 )
-//            { // got all but the date, append to currentRow
-//                dataFields.insert(contentsOf: currentRow, at: 0)
-//                //print( " Filled in:  \(dataFields)" )
-//            }
-//            if( dataFields.count == SalesCalcColumns.allCases.count )
-//            {
-//                //print( "Fields: \(dataFields)" )
-//                var record : SalesCalcPositionsRecord = SalesCalcPositionsRecord()
-//                var indx : Int = 0
-//                record.openDate       = dataFields[ indx ]; indx += 1;
-//                record.quantity       = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.price          = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.costPerShare   = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.marketValue    = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.costBasis      = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.gainLossDollar = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.gainLossPct    = stringToDouble(  content: dataFields[ indx ] ); indx += 1;
-//                record.holdingPeriod  = dataFields[ indx ]; indx += 1;
-//                
-//                allResults.append( record )
-//            }
-//            else
-//            {
-//                print( "fields size (\(dataFields.count)) != columns size (\(SalesCalcColumns.allCases.count)) \n\t  for pasted row: \(row) \n\t  from content: \(content)" )
-//            }
-//        }
-//        // Sort the array by costPerShare in descending order
-//        return allResults.sorted { $0.costPerShare > $1.costPerShare }
-//    } // getRecordsFromClipboard
-
-//
-//    // get buy and sell order details
-//    private func getOrders()
-//    {
-//        var atrPercent : Double = 0.0
-//        var quantity   : Double = 0.0
-//        var netLiquid  : Double = 0.0
-//        // var lastPrice  : Double = 0.0
-//        var gainPct    : Double = 0.0
-//        var equivalentShares : Int = 0
-//        var bidPriceOver : Double = 0.0
-//
-//        // Populate ATR field
-//        // get the 1.5*ATR value from the data record with the symbol
-//        var indx : Int = 0
-//        self.symbol = self.symbol.uppercased()
-//        while( indx < $positionStatementData.count )
-//        {
-//            if( positionStatementData[indx].instrument == self.symbol )
-//            {
-//                // The ATR I pull from ThinkOrSwim is actually ATR*1.5.  Divide here to compensate.
-//                atrPercent = positionStatementData[indx].atr / positionStatementData[indx].last
-//                quantity   = positionStatementData[indx].quantity
-//                netLiquid  = positionStatementData[indx].netLiquid
-//                // lastPrice  = positionStatementData[indx].last
-//                gainPct    = positionStatementData[indx].plPercent / 100.0
-//
-//                bidPriceOver = positionStatementData[indx].last + ( 2.0 * positionStatementData[indx].atr )
-//
-//                self.atrPercent = atrPercent
-//                break
-//            }
-//            indx += 1
-//        }
-//
-//        // print( "atrPercent = \(atrPercent),   quantity = \(quantity),   netLiquid = \(netLiquid),   lastPrice = \(lastPrice),   gainPct = \(gainPct)" )
-//
-//        // Populate sell order
-//        // Iterate over resultsData to find the result record with a Trailing Stop > atrPercent
-//        for( result ) in self.resultsData
-//        {
-//            //print( "result.trailingStop = \(result.trailingStop),  atrPercent = \(atrPercent),  sharesToSell = \(result.sharesToSell),  gain = \(result.gain) " )
-//            if( ( result.trailingStop > 100.0 * atrPercent ) && ( 2.0 < result.gain ) )
-//            {
-//                self.sellOrder = result
-//                break
-//            }
-//        }
-//
-//        // The percentage we buy will be half of the percent gain to a max of $2000 and a minimum of 1 share
-//        var buyPercent : Double = gainPct / 2.0
-//        if( ( 0.0 != netLiquid ) && ( 2000.0 < buyPercent * netLiquid ) )
-//        { // if buying that percent results in more than $2000, lower the percent to a $2000 buy.
-//            buyPercent = 2000.0 / netLiquid - 0.005
-//            // print( "buyPercent adjusted to 2000 limit = \(buyPercent*100.0),  netLiquid = \(netLiquid),  gainPct = \(gainPct*100.0)" )
-//        }
-//        // Minimum buy would be 1 share
-//        if( ( 0.0 != quantity ) && ( 1.0 > buyPercent * quantity ) )
-//        {
-//            buyPercent = 1.0 / quantity + 0.01
-//            // print( "setting for minimum buy of 1 share - buyPercent = \(buyPercent),  quantity = \(quantity)" )
-//        }
-//        equivalentShares = Int( buyPercent * quantity )
-//        // print( "buyPercent = \(buyPercent),  quantity = \(quantity),   equivalentShares = \(equivalentShares)" )
-//
-//        // Submittion date
-//        let nextTradeDate = getNextTradeDate()
-//
-//        // Set order entry over bid of the greater of the last buy price and the average
-//        // of the last and greatest buy points and half atr over the current price.
-//
-//
-//
-//        // Populate buy order
-//        buyOrder = BuyOrder( percent: buyPercent,
-//                             equivalentShares: equivalentShares,
-//                             trailingStop: atrPercent,
-//                             submitDate: nextTradeDate,
-//                             bidPriceOver: bidPriceOver
-//        )
-//
-//
-//    }
-//
-
-
-
-
 } // SalesCalcView
 

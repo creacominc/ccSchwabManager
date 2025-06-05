@@ -2,6 +2,13 @@ import Foundation
 import AuthenticationServices
 import Compression
 
+// Import the LoadingStateDelegate protocol
+@_exported import struct Foundation.URL
+@_exported import class Foundation.URLSession
+@_exported import class Foundation.JSONDecoder
+@_exported import class Foundation.NSError
+@_exported import var Foundation.NSLocalizedDescriptionKey
+
 // connection
 private let schwabWeb           : String = "https://api.schwabapi.com"
 
@@ -20,8 +27,6 @@ private let ordersWeb           : String = "\(traderAPI)/orders"
 private let marketdataAPI       : String = "\(schwabWeb)/marketdata/v1"
 private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
 
-
-
 /**
    SchwabClient - interaction with Schwab web site.
     Members:
@@ -33,6 +38,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
 class SchwabClient
 {
     static let shared = SchwabClient()
+    var loadingDelegate: LoadingStateDelegate?
     private var m_secrets : Secrets
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
@@ -479,6 +485,10 @@ class SchwabClient
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory  ===")
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
         
         var priceHistoryUrl = "\(priceHistoryWeb)"
         priceHistoryUrl += "?symbol=\(symbol)"
@@ -627,10 +637,14 @@ class SchwabClient
      *
      *
      */
-    /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
     public func fetchTransactionHistory( symbol: String, yearDelta: Int = 0 )  -> [Transaction]
     {
         print("=== fetchTransactionHistory - symbol: \(symbol), yearDelta: \(yearDelta) ===")
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+        
         // return the prior collection if the symbol and yearDelta are unchanged.
         if( ( symbol == m_lastFilteredTransactionSymbol ) && ( yearDelta == m_lastfilteredTransactionsYears ) )
         {
@@ -701,10 +715,6 @@ class SchwabClient
                 }
                 continue
             }
-
-            // print( "httpResponse: \(String(describing: httpResponse))" )
-            // print data content
-            // print( "    code: \(String(data: data, encoding: .utf8) ?? "N/A") " )
 
             do {
                 let decoder = JSONDecoder()
@@ -1083,12 +1093,15 @@ class SchwabClient
      *
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
      */
-    public func computeTaxLots( symbol: String )  -> [SalesCalcPositionsRecord]
-    {
-        print( "=== computeTaxLots \(symbol) ===" )
-        if( symbol == m_lastFilteredTaxLotSymbol )
-        {
-            print( "=== computeTaxLots \(symbol) - returning cached ===" )
+    public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+        
+        print("=== computeTaxLots \(symbol) ===")
+        if symbol == m_lastFilteredTaxLotSymbol {
+            print("=== computeTaxLots \(symbol) - returning cached ===")
             return m_lastFilteredPositionRecords
         }
         m_lastFilteredTaxLotSymbol = symbol
@@ -1164,4 +1177,43 @@ class SchwabClient
         return m_lastFilteredPositionRecords
     }
     
+    // Add loading state handling to other network methods
+    func fetchData<T: Decodable>(from url: URL) async throws -> T {
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+        
+        let (data, _) = try await URLSession.shared.data(from: url)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+    
+    func fetchDataWithTask<T: Decodable>(from url: URL, completion: @escaping (Result<T, Error>) -> Void) {
+        loadingDelegate?.setLoading(true)
+        
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            defer {
+                DispatchQueue.main.async {
+                    self?.loadingDelegate?.setLoading(false)
+                }
+            }
+            
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data else {
+                completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
+                return
+            }
+            
+            do {
+                let decoded = try JSONDecoder().decode(T.self, from: data)
+                completion(.success(decoded))
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
 } // SchwabClient

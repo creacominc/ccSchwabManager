@@ -227,9 +227,7 @@ struct HoldingsView: View {
                         let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
                         selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
                     }
-//                    sellOrder: sellOrder,
-//                    copiedValue: copiedValue
-                )  // PositionDetailView
+                )
                 .navigationTitle(selected.position.instrument?.symbol ?? "")
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {

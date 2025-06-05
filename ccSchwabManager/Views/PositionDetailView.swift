@@ -151,6 +151,7 @@ struct PositionDetailsHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
+                // Previous Position Button
                 Button(action: { onNavigate(currentIndex - 1) }) {
                     Image(systemName: "chevron.left")
                 }
@@ -165,6 +166,7 @@ struct PositionDetailsHeader: View {
                 
                 Spacer()
                 
+                // Next Position Button
                 Button(action: { onNavigate(currentIndex + 1) }) {
                     Image(systemName: "chevron.right")
                 }
@@ -620,11 +622,11 @@ struct PositionDetailView: View {
     let atrValue: Double
     let onNavigate: (Int) -> Void
     @State private var priceHistory: CandleList?
-//    @State private var transactionHistory: [Transaction]?
     @State private var isLoadingPriceHistory = false
     @State private var isLoadingTransactions = false
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
+    @StateObject private var loadingState = LoadingState()
 
     private func formatDate(_ timestamp: Int64?) -> String {
         guard let timestamp = timestamp else { return "" }
@@ -634,46 +636,56 @@ struct PositionDetailView: View {
         return formatter.string(from: date)
     }
 
+    private func fetchHistoryForSymbol() async {
+        loadingState.isLoading = true
+        defer { loadingState.isLoading = false }
+        
+        isLoadingPriceHistory = true
+        isLoadingTransactions = true
+        
+        if let symbol = position.instrument?.symbol {
+            priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            _ = SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
+        }
+        
+        isLoadingPriceHistory = false
+        isLoadingTransactions = false
+    }
+
     var body: some View {
-        PositionDetailContent(
-            position: position,
-            accountNumber: accountNumber,
-            currentIndex: currentIndex,
-            totalPositions: totalPositions,
-            symbol: symbol,
-            atrValue: atrValue,
-            onNavigate: onNavigate,
-            priceHistory: priceHistory,
-            isLoadingPriceHistory: isLoadingPriceHistory,
-            isLoadingTransactions: isLoadingTransactions,
-            formatDate: formatDate,
-            viewSize: $viewSize
-            // ,
-//            sellOrder: sellOrder,
-//            copiedValue: copiedValue
-        )
-        .padding(.horizontal)
+        ZStack {
+            PositionDetailContent(
+                position: position,
+                accountNumber: accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: totalPositions,
+                symbol: symbol,
+                atrValue: atrValue,
+                onNavigate: { newIndex in
+                    guard newIndex >= 0 && newIndex < totalPositions else { return }
+                    loadingState.isLoading = true
+                    onNavigate(newIndex)
+                },
+                priceHistory: priceHistory,
+                isLoadingPriceHistory: isLoadingPriceHistory,
+                isLoadingTransactions: isLoadingTransactions,
+                formatDate: formatDate,
+                viewSize: $viewSize
+            )
+            .padding(.horizontal)
+        }
         .onAppear {
+            loadingState.isLoading = true
             Task {
                 await fetchHistoryForSymbol()
             }
         }
         .onChange(of: position) { oldValue, newValue in
+            loadingState.isLoading = true
             Task {
                 await fetchHistoryForSymbol()
             }
         }
-    }
-    
-    private func fetchHistoryForSymbol() async {
-        print("=== fetchHistoryForSymbol \(position.instrument?.symbol ?? "ERROR" ) ===")
-        guard let symbol = position.instrument?.symbol else { return }
-        isLoadingPriceHistory = true
-        defer { isLoadingPriceHistory = false }
-        priceHistory =  SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-        /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
-        _ = SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
-//        // get the order history
-//        SchwabClient.shared.fetchOrderHistory()
+        .withLoadingState(loadingState)
     }
 } 
