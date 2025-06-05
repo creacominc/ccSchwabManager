@@ -644,10 +644,6 @@ class SchwabClient
         if(( yearDelta != (m_lastfilteredTransactionsYears + 1) )
            || (symbol != m_lastFilteredTransactionSymbol) )
         {
-            // @TODO:  REMOVE
-            if( (symbol != m_lastFilteredTransactionSymbol) && ( m_lastFilteredTransactionSymbol != nil ) )  {
-                print( "WARN!!! this should not be.  \(symbol) != \(m_lastFilteredTransactionSymbol ?? "uninitialized")")
-            }
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
             m_lastfilteredTransactionsYears = yearDelta
             m_lastFilteredTransactionSymbol = symbol

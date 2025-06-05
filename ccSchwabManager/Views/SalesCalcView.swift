@@ -185,7 +185,7 @@ struct SellOrderDetailSection: View{
 struct PositionsDataSection: View
 {
     let symbol : String
-    @State var sourceData: [SalesCalcPositionsRecord]
+    let sourceData: [SalesCalcPositionsRecord]
 
     @State var copiedValue: String = "TBD"
 
@@ -297,40 +297,33 @@ struct SalesCalcView: View
 {
     let symbol: String
     let atrValue: Double
-//    // current position and tax lots for a given security
-//    let currentCostBasis: Double
-//    let currentShares: Int
-//    let transactionList : [Transaction]
-
-
-    //    @State var resultsData: [SalesCalcResultsRecord] = []
-    // SellOrderDetailSection
-//    let sellOrder: SalesCalcResultsRecord
-//    let copiedValue: String
-
-
-//    init(symbol: String, atrValue: Double) {
-//        _symbol = State(initialValue: symbol)
-//        _atrValue = State(initialValue: atrValue)
-//    }
+    @State private var positionsData: [SalesCalcPositionsRecord] = []
 
     var body: some View
     {
         VStack
         {
             InformationSection( symbol: symbol, atrValue: atrValue )
-//            BuyOrderDetailSection()
-//            SellOrderDetailSection( symbol: symbol
-                                    // ,
-//                                    currentCostBasis: currentCostBasis,
-//                                    currentShares: currentShares,
-//                                    transactionList: transactionList
-//        )
             PositionsDataSection( symbol: symbol,
-                                  sourceData: SchwabClient.shared.computeTaxLots(symbol: symbol) )
+                                  sourceData: positionsData )
         } // VStack
+        .onAppear {
+            refreshData()
+        }
+        .onChange(of: symbol) { newSymbol in
+            print("Symbol changed to: \(newSymbol)")
+            // Use DispatchQueue to ensure we're using the latest symbol value
+            DispatchQueue.main.async {
+                positionsData = SchwabClient.shared.computeTaxLots(symbol: newSymbol)
+            }
+        }
     }
     
+    private func refreshData() {
+        print("Refreshing data for symbol: \(symbol)")
+        positionsData = SchwabClient.shared.computeTaxLots(symbol: symbol)
+    }
+
 
 
 //    private func getResults( context: [SalesCalcPositionsRecord] ) -> [ResultsRecord]
