@@ -37,10 +37,12 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
+    private let maxQuarterDelta : Int = 8
+    private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     var loadingDelegate: LoadingStateDelegate?
     private var m_secrets : Secrets
-    private var m_yearDelta : Int = 0
+    private var m_quarterDelta : Int = 0
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
@@ -75,11 +77,11 @@ class SchwabClient
         self.m_secrets = Secrets()
     }
 
-    func getDateOneNYearsAgoStr( yearDelta : Int ) -> String
+    func getDateNQuartersAgoStr( quarterDelta : Int ) -> String
     {
         // get date one year ago
         var components = DateComponents()
-        components.year = -yearDelta
+        components.month = -quarterDelta * 3
         // format a string with the date one year ago.
         return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
             .year()
@@ -214,6 +216,8 @@ class SchwabClient
         let url = URL( string: "\(accessTokenWeb)" )!
         print( "accessTokenUrl: \(url)" )
         var accessTokenRequest = URLRequest( url: url )
+        // set a 10 second timeout on this request
+        accessTokenRequest.timeoutInterval = self.requestTimeout
         accessTokenRequest.httpMethod = "POST"
         // headers
         let authStringUnencoded = String("\( self.m_secrets.appId ):\( self.m_secrets.appSecret )")
@@ -303,6 +307,8 @@ class SchwabClient
         }
         
         var refreshTokenRequest = URLRequest(url: url)
+        // set a 10 second timeout on this request
+        refreshTokenRequest.timeoutInterval = self.requestTimeout
         refreshTokenRequest.httpMethod = "POST"
         
         // Headers
@@ -383,7 +389,9 @@ class SchwabClient
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
+        // set a 10 second timeout on this request
+        request.timeoutInterval = self.requestTimeout
+
         do
         {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -426,7 +434,7 @@ class SchwabClient
     /**
      * fetchAccounts - get the account numbers and balances.
      */
-    func fetchAccounts( retry : Bool = false ) async
+    func fetchAccounts( retry : Bool = false )
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         var accountUrl = accountWeb
@@ -445,11 +453,33 @@ class SchwabClient
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+        // set a 10 second timeout on this request
+        request.timeoutInterval = self.requestTimeout
 
         do
         {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let httpResponse = response as? HTTPURLResponse
+            let semaphore = DispatchSemaphore(value: 0)
+            var responseData: Data?
+            var responseError: Error?
+            var httpResponse: HTTPURLResponse?
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                responseData = data
+                responseError = error
+                httpResponse = response as? HTTPURLResponse
+                semaphore.signal()
+            }.resume()
+            semaphore.wait()
+            
+            if let error = responseError {
+                print("fetchPriceHistory - Error: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let data = responseData else {
+                print("fetchPriceHistory. No data received")
+                return
+            }
+            
             if( httpResponse?.statusCode != 200 )
             {
                 // decode data as a ServiceError
@@ -461,7 +491,7 @@ class SchwabClient
                 {
                     print( "=== retrying fetchAccounts after refreshing access token ===" )
                     refreshAccessToken()
-                    await fetchAccounts( retry : false )
+                    fetchAccounts( retry : false )
                 }
                 return
             }
@@ -507,7 +537,9 @@ class SchwabClient
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
-        
+        // set a 10 second timeout on this request
+        request.timeoutInterval = self.requestTimeout
+
         let semaphore = DispatchSemaphore(value: 0)
         var responseData: Data?
         var responseError: Error?
@@ -585,7 +617,27 @@ class SchwabClient
         return (atr * 1.08  / close * 100.0)
     }
     
-    
+
+    /**
+     * fetchTransactionHistorySync - synchronous fetch of transaction history
+     */
+    public func fetchTransactionHistorySync()
+    {
+        print("=== fetchTransactionHistorySync  ===")
+        // Create a semaphore to wait for the async operation
+        let semaphore = DispatchSemaphore(value: 0)
+        // Create a task to run the async operation
+        Task {
+            await self.fetchTransactionHistory()
+            print( " --- fetchTransactionHistory done, signalling semaphore ---" )
+            semaphore.signal()
+        }
+        // Wait for the async operation to complete
+        print( " --- fetchTransactionHistorySync waiting for semaphore ---" )
+        semaphore.wait()
+        print( " --- fetchTransactionHistorySync done ---" )
+    }
+
     /**
      * fetchTransactionHistory - get the transactions for the last year for this holding.
      *
@@ -603,15 +655,25 @@ class SchwabClient
      * types *     string     Specifies that only transactions of this status should be returned.
      */
     public func fetchTransactionHistory() async {
-        print("=== fetchTransactionHistory -  yearDelta: \(m_yearDelta) ===")
-        let initialSize : Int = m_transactionList.count
+        print("=== fetchTransactionHistory -  quarterDelta: \(m_quarterDelta) ===")
         loadingDelegate?.setLoading(true)
         defer {
             loadingDelegate?.setLoading(false)
         }
-
-        let endDate = getDateOneNYearsAgoStr(yearDelta: m_yearDelta)
-        let startDate = getDateOneNYearsAgoStr(yearDelta: m_yearDelta + 1)
+        // if we have already fetched maxMonthDelta, return
+        if( maxQuarterDelta <= m_quarterDelta )
+        {
+            print( " --- fetchTransactionHistory -  maxMonthDelta reached" )
+            return
+        }
+        // if this is year0, remove any and all entries
+        if ( 0 == m_quarterDelta )
+        {
+            m_transactionList.removeAll(keepingCapacity: true)
+        }
+        let initialSize : Int = m_transactionList.count
+        let endDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta)
+        let startDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta + 1)
         
         // Create a task group to handle multiple account requests concurrently
         await withTaskGroup(of: [Transaction]?.self) { group in
@@ -632,6 +694,8 @@ class SchwabClient
                     request.httpMethod = "GET"
                     request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "accept")
+                    // set a 10 second timeout on this request
+                    request.timeoutInterval = self.requestTimeout
 
                     do {
                         let (data, response) = try await URLSession.shared.data(for: request)
@@ -670,25 +734,40 @@ class SchwabClient
         print("Fetched \(m_transactionList.count - initialSize) transactions")
         m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
         self.setLatestTradeDates()
+        // increment m_monthDelta to 3 at most
+        if( maxQuarterDelta > m_quarterDelta ) {
+            m_quarterDelta += 1
+        }
     }
-    
-    
+
+
     /**
      * getTransactionsFor - return the m_transactionList.
      */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
+        print( "==== getTransactionsFor \(symbol ?? "nil") ====" )
+        if( nil == symbol ) {
+            return m_transactionList
+        }
         // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
         if m_lastFilteredTransactionSymbol != symbol {
             m_lastFilteredTransactionSymbol = symbol
-            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
-                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+            m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+            // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
+            while( (self.maxQuarterDelta > self.m_quarterDelta) && (self.m_lastFilteredTransactions.count == 0) ) {
+                m_lastFilteredTransactions =  m_transactionList.filter { transaction in
+                    // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+                    return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                }
+                // if we do not have filtered transactions yet, get more transactions
+                if( self.m_lastFilteredTransactions.count == 0 ) {
+                    self.fetchTransactionHistorySync()
+                }
             }
         }
         // return the transactionlist where the symbol matches what is provided
         return m_lastFilteredTransactions
-        
     }
     
     private func setLatestTradeDates()
@@ -717,6 +796,7 @@ class SchwabClient
                 }
             }
         }
+        print( " ! setLatestTradeDates - set dates for \(m_latestDateForSymbol.count) symbols !" )
     }
     
     /**
@@ -944,7 +1024,9 @@ class SchwabClient
         request.httpMethod = "GET"
         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "accept")
-        
+        // set a 10 second timeout on this request
+        request.timeoutInterval = self.requestTimeout
+
         let semaphore = DispatchSemaphore(value: 0)
         var responseData: Data?
         var responseError: Error?
@@ -1051,14 +1133,12 @@ class SchwabClient
          *
          * If we do not find zero, we need to call teh fetTransactionHistory to get more records for this security.
          */
-        var stillFetching : Int = 1
-        fetchingLoop: while( stillFetching != 0) {
-            stillFetching -= 1
+        fetchingLoop: while( maxQuarterDelta > self.m_quarterDelta ) {
             /** @TODO:  Improve the efficiency here... we do not need to start again after each fetch, but the set of transactions may differ.  */
             m_lastFilteredPositionRecords.removeAll( keepingCapacity: true )
             var currentShareCount : Double = getShareCount(symbol: symbol)
-//            print( " -- \(symbol) -- computeTaxLots() -- ")
-//            print( " -- \(symbol)  currentShareCount: \(currentShareCount) --" )
+            print( " -- \(symbol) -- computeTaxLots() -- ")
+            print( " -- \(symbol)  currentShareCount: \(currentShareCount) --" )
             
             /**
              * iterate over the collection to populate the positions records until we find a zero share count
@@ -1104,14 +1184,18 @@ class SchwabClient
                             // stop when the currentShareCount is zero or less
                             if currentShareCount <= 0.0 {
                                 print( " === found 0 or less.  currentShareCount = \(currentShareCount)")
-                                stillFetching = 0
                                 break fetchingLoop
                             }
                         } // if amount, cost, and price are non-nil and non-zero.
-                    } // for transferItem
+                    } // transferLoop
                 } // if trade
-            } // for transaction
-        } // stillFetching
+            } // transactionLoop
+            print( " !!!!!!  Zero not found.  \(currentShareCount).  Quarters: \(self.m_quarterDelta)")
+            // fetch more records if we do not have a record.
+            self.fetchTransactionHistorySync()
+            print( " !!!     sync fetch completed." )
+        } // fetchingLoop
+        print( " ! returning \(m_lastFilteredPositionRecords.count) records" )
         return m_lastFilteredPositionRecords
     }
     
