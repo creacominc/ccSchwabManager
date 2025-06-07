@@ -257,6 +257,10 @@ struct HoldingsView: View {
     private func fetchHoldings() async {
         print("=== fetchHoldings ===")
         await SchwabClient.shared.fetchAccounts( retry: true )
+        // get the first year of transactions in the background
+        Task {
+            await SchwabClient.shared.fetchTransactionHistory()
+        }
         // get the order history for all accounts and all symbols (there is no per-symbol option)
         SchwabClient.shared.fetchOrderHistory()
         // Extract positions from accounts with their account numbers
