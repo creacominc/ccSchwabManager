@@ -279,9 +279,9 @@ struct TransactionHistorySection: View {
 
     /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
     private var sortedTransactions: [Transaction] {
-        guard let sortConfig = currentSort else { return SchwabClient.shared.fetchTransactionHistory( symbol: symbol ) }
+        guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
         print( "=== Sorting transactions ===  \(symbol)" )
-        return SchwabClient.shared.fetchTransactionHistory( symbol: symbol ).sorted { t1, t2 in
+        return SchwabClient.shared.getTransactionsFor( symbol: symbol ).sorted { t1, t2 in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .date:
@@ -395,7 +395,7 @@ struct TransactionHistorySection: View {
                     .scaleEffect(2.0, anchor: .center)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-            } else if SchwabClient.shared.fetchTransactionHistory( symbol: symbol ).isEmpty {
+            } else if SchwabClient.shared.getTransactionsFor( symbol: symbol ).isEmpty {
                 Text("No transactions available")
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -645,7 +645,7 @@ struct PositionDetailView: View {
         
         if let symbol = position.instrument?.symbol {
             priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-            _ = SchwabClient.shared.fetchTransactionHistory(symbol: symbol)
+            _ = SchwabClient.shared.getTransactionsFor(symbol: symbol)
         }
         
         isLoadingPriceHistory = false

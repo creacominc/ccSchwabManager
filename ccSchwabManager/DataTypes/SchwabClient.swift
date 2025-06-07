@@ -40,6 +40,7 @@ class SchwabClient
     static let shared = SchwabClient()
     var loadingDelegate: LoadingStateDelegate?
     private var m_secrets : Secrets
+    private var m_yearDelta : Int = 0
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
@@ -47,6 +48,7 @@ class SchwabClient
     private var m_symbolsWithOrders: Set<String> = []
     private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
+    private var m_transactionList : [Transaction] = []
     private var m_lastFilteredTransactions : [Transaction] = []
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
@@ -599,166 +601,102 @@ class SchwabClient
      *                    yyyy-MM-dd'T'HH:mm:ss.SSSZ. Example start date is '2024-05-10T21:10:42.000Z'. The 'startDate' must also be set.
      * symbol     string     It filters all the transaction activities based on the symbol specified. NOTE: If there is any special character in the symbol, please send th encoded value.
      * types *     string     Specifies that only transactions of this status should be returned.
-     *
-     *
-     *
-     *
-     *
-     *[
-     {
-     "activityId": 95512265692,
-     "time": "2025-04-23T19:59:12+0000",
-     "accountNumber": "88516767",
-     "type": "TRADE",
-     "status": "VALID",
-     "subAccount": "CASH",
-     "tradeDate": "2025-04-23T19:59:12+0000",
-     "positionId": 2788793997,
-     "orderId": 1003188442747,
-     "netAmount": -164.85,
-     "transferItems": [
-     {
-     "instrument": {
-     "assetType": "EQUITY",
-     "status": "ACTIVE",
-     "symbol": "SFM",
-     "instrumentId": 1806651,
-     "closingPrice": 169.76,
-     "type": "COMMON_STOCK"
-     },
-     "amount": 1,
-     "cost": -164.85,
-     "price": 164.85,
-     "positionEffect": "OPENING"
-     }
-     ]
-     }
-     ]
-     *
-     *
      */
-    public func fetchTransactionHistory( symbol: String, yearDelta: Int = 0 )  -> [Transaction]
-    {
-        print("=== fetchTransactionHistory - symbol: \(symbol), yearDelta: \(yearDelta) ===")
+    public func fetchTransactionHistory() async {
+        print("=== fetchTransactionHistory -  yearDelta: \(m_yearDelta) ===")
+        let initialSize : Int = m_transactionList.count
         loadingDelegate?.setLoading(true)
         defer {
             loadingDelegate?.setLoading(false)
         }
+
+        let endDate = getDateOneNYearsAgoStr(yearDelta: m_yearDelta)
+        let startDate = getDateOneNYearsAgoStr(yearDelta: m_yearDelta + 1)
         
-        // return the prior collection if the symbol and yearDelta are unchanged.
-        if( ( symbol == m_lastFilteredTransactionSymbol ) && ( yearDelta == m_lastfilteredTransactionsYears ) )
-        {
-            print( " returning cached values" )
-            /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
-            return m_lastFilteredTransactions
-        }
-        /**
-         * Clear the current content if this is not the last symbol fetched or the yearDelta is not 1 more than the last yearDelta
-         */
-        if(( yearDelta != (m_lastfilteredTransactionsYears + 1) )
-           || (symbol != m_lastFilteredTransactionSymbol) )
-        {
-            m_lastFilteredTransactions.removeAll(keepingCapacity: true)
-            m_lastfilteredTransactionsYears = yearDelta
-            m_lastFilteredTransactionSymbol = symbol
-        }
+        // Create a task group to handle multiple account requests concurrently
+        await withTaskGroup(of: [Transaction]?.self) { group in
+            // Add a task for each account
+            for accountNumberHash in self.m_secrets.acountNumberHash {
+                group.addTask {
+                    var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
+                    transactionHistoryUrl += "?startDate=\(startDate)"
+                    transactionHistoryUrl += "&endDate=\(endDate)"
+                    transactionHistoryUrl += "&types=TRADE"
 
-        let endDate = getDateOneNYearsAgoStr( yearDelta: yearDelta )
-        let startDate = getDateOneNYearsAgoStr( yearDelta: yearDelta + 1 )
-        // fetch the transactions (optionally for the given symbol) from all accounts
-        for accountNumberHash : AccountNumberHash in self.m_secrets.acountNumberHash {
-            var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-            transactionHistoryUrl += "?startDate=\(startDate)"
-            transactionHistoryUrl += "&endDate=\(endDate)"
-            transactionHistoryUrl += "&symbol=\(symbol)"
-            transactionHistoryUrl += "&types=TRADE"
+                    guard let url = URL(string: transactionHistoryUrl) else {
+                        print("fetchTransactionHistory. Invalid URL")
+                        return nil
+                    }
 
-            // print( "transactionHistoryUrl \(transactionHistoryUrl)" )
-            guard let url = URL( string: transactionHistoryUrl ) else {
-                print("fetchTransactionHistory. Invalid URL")
-                continue
-            }
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "accept")
 
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-            request.setValue("application/json", forHTTPHeaderField: "accept")
+                    do {
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        
+                        guard let httpResponse = response as? HTTPURLResponse else {
+                            print("Invalid response type")
+                            return nil
+                        }
+                        
+                        if httpResponse.statusCode != 200 {
+                            print("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
+                            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                serviceError.printErrors(prefix: "  fetchTransactionHistory ")
+                            }
+                            return nil
+                        }
 
-            let semaphore = DispatchSemaphore(value: 0)
-            var responseData: Data?
-            var responseError: Error?
-            var httpResponse: HTTPURLResponse?
-
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                responseData = data
-                responseError = error
-                httpResponse = response as? HTTPURLResponse
-                semaphore.signal()
-            }.resume()
-
-            semaphore.wait()
-
-            if let error = responseError {
-                print("fetchTransactionHistory Error: \(error.localizedDescription)")
-                continue
-            }
-
-            guard let data = responseData else {
-                print("fetchTransactionHistory. No data received")
-                continue
-            }
-
-            if httpResponse?.statusCode != 200 {
-                print( "response code: \(String(describing: httpResponse?.statusCode))  data: \(String(data: data, encoding: .utf8) ?? "N/A") " )
-                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                    serviceError.printErrors(prefix: "  fetchTransactionHistory ")
+                        let decoder = JSONDecoder()
+                        return try decoder.decode([Transaction].self, from: data)
+                    } catch {
+                        print("fetchTransactionHistory Error: \(error.localizedDescription)")
+                        print("   detail:  \(error)")
+                        return nil
+                    }
                 }
-                continue
             }
 
-            do {
-                let decoder = JSONDecoder()
-                m_lastFilteredTransactions.append(contentsOf: try decoder.decode([Transaction].self, from: data))
-            } catch {
-                print("fetchTransactionHistory Error: \(error.localizedDescription)")
-                print("   detail:  \(error)")
-                continue
+            // Collect results from all tasks
+            for await transactions in group {
+                if let transactions = transactions {
+                    m_transactionList.append(contentsOf: transactions)
+                }
             }
         }
-        print("Fetched \(m_lastFilteredTransactions.count) transactions for \(symbol)")
-        m_lastFilteredTransactions.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+
+        print("Fetched \(m_transactionList.count - initialSize) transactions")
+        m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
         self.setLatestTradeDates()
-        /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
-        return m_lastFilteredTransactions
     }
     
     
-//    /**
-//     * getTransactions - return the m_transactionList.
-//     */
-//    public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
-//    {
-//        // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
-//        if m_lastFilteredSymbol != symbol {
-//            m_lastFilteredSymbol = symbol
-//            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
-//                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-//                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-//            }
-//        }
-//        // return the transactionlist where the symbol matches what is provided
-//        return m_lastFilteredTransactions
-//        
-//    }
+    /**
+     * getTransactionsFor - return the m_transactionList.
+     */
+    public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
+    {
+        // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
+        if m_lastFilteredTransactionSymbol != symbol {
+            m_lastFilteredTransactionSymbol = symbol
+            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
+                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+            }
+        }
+        // return the transactionlist where the symbol matches what is provided
+        return m_lastFilteredTransactions
+        
+    }
     
     private func setLatestTradeDates()
     {
-        /**
-         * @TODO:  REVIEW - this is probably not needed as the m_lastFilteredTransactions is already sorted by trade date.
-         */
+        print( "--- setLatestTradeDates ---" )
         m_latestDateForSymbol.removeAll(keepingCapacity: true)
         // create a map of symbols to the most recent trade date
-        for transaction in m_lastFilteredTransactions {
+        for transaction in m_transactionList {
             for transferItem in transaction.transferItems {
                 if let symbol = transferItem.instrument?.symbol {
                     // convert tradeDate string to a Date
