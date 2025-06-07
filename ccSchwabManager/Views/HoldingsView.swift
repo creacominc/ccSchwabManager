@@ -67,7 +67,7 @@ struct HoldingsView: View {
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var holdings: [Position] = []
     @State private var searchText = ""
-    @State private var currentSort: SortConfig? = SortConfig(column: .symbol, ascending: SortableColumn.symbol.defaultAscending)
+    @State private var currentSort: SortConfig? = SortConfig(column: .lastTradeDate, ascending: SortableColumn.lastTradeDate.defaultAscending)
     @State private var selectedAssetTypes: Set<String> = []
     @State private var accountPositions: [(Position, String, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
@@ -200,7 +200,7 @@ struct HoldingsView: View {
                 .task {
                     defer { isLoadingAccounts = false }
                     isLoadingAccounts = true
-                    await fetchHoldings()
+                    fetchHoldings()
                     selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
                 }
                 .onAppear {
@@ -254,12 +254,16 @@ struct HoldingsView: View {
         }
     }
     
-    private func fetchHoldings() async {
+    private func fetchHoldings()  {
         print("=== fetchHoldings ===")
-        await SchwabClient.shared.fetchAccounts( retry: true )
-        // get the first year of transactions in the background
+        SchwabClient.shared.fetchAccounts( retry: true )
+        // get the first year of transactions sychronously so that sorting is done correctly
+        SchwabClient.shared.fetchTransactionHistorySync()
+        // fetch three more quarters of transactions by calling fetchTransactionHistory three times asynchronously
         Task {
-            await SchwabClient.shared.fetchTransactionHistory()
+            for _ in 0..<3 {
+                await SchwabClient.shared.fetchTransactionHistory()
+            }
         }
         // get the order history for all accounts and all symbols (there is no per-symbol option)
         SchwabClient.shared.fetchOrderHistory()
