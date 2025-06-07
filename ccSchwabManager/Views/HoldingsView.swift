@@ -261,7 +261,8 @@ struct HoldingsView: View {
         SchwabClient.shared.fetchTransactionHistorySync()
         // fetch three more quarters of transactions by calling fetchTransactionHistory three times asynchronously
         Task {
-            for _ in 0..<3 {
+            print( " !!!!!!!!!!!!!!!! using maxQuarterDelta of \(SchwabClient.shared.maxQuarterDelta - 1)" )
+            for _ in 0..<(SchwabClient.shared.maxQuarterDelta - 1) {
                 await SchwabClient.shared.fetchTransactionHistory()
             }
         }
@@ -289,7 +290,7 @@ struct HoldingsTable: View {
     @Binding var currentSort: SortConfig?
     let viewSize: CGSize
 
-    private let columnWidths: [CGFloat] = [0.10, 0.08, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08, 0.12]
+    private let columnWidths: [CGFloat] = [0.12, 0.08, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08, 0.10]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -407,14 +408,31 @@ private struct TableRow: View {
         return costBasis != 0 ? (pl / costBasis) * 100 : 0
     }
 
+    private func plColor(_ percent: Double) -> Color {
+        if percent < 0 {
+            return .red
+        } else if percent < 7 {
+            return .orange // Amber-like color
+        } else {
+            return .primary
+        }
+    }
+
     var body: some View {
+        let plPercent = calcPLPercent(position: position)
         HStack(spacing: 8) {
             Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
             Text(String(format: "%.2f", position.longQuantity ?? 0.0)).frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
             Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2] * viewSize.width, alignment: .trailing).monospacedDigit()
             Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3] * viewSize.width, alignment: .trailing).monospacedDigit()
-            Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0)).frame(width: columnWidths[4] * viewSize.width, alignment: .trailing).monospacedDigit()
-            Text(String(format: "%.1f%%", calcPLPercent(position: position))).frame(width: columnWidths[5] * viewSize.width, alignment: .trailing).monospacedDigit()
+            Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
+                .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
+                .monospacedDigit()
+                .foregroundColor(plColor(plPercent))
+            Text(String(format: "%.1f%%", plPercent))
+                .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
+                .monospacedDigit()
+                .foregroundColor(plColor(plPercent))
             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
             Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
             Text(SchwabClient.shared.getLatestTradeDate(for: position.instrument?.symbol ?? "")).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)

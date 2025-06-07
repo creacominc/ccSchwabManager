@@ -37,7 +37,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
-    private let maxQuarterDelta : Int = 8
+    public let maxQuarterDelta : Int = 9
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     var loadingDelegate: LoadingStateDelegate?
@@ -47,11 +47,15 @@ class SchwabClient
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
     private var m_latestDateForSymbol : [String:Date] = [:]
+    private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: Set<String> = []
     private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_transactionList : [Transaction] = []
+    private let m_transactionListLock = NSLock()  // Add mutex for m_transactionList
     private var m_lastFilteredTransactions : [Transaction] = []
+    private var m_lastFilteredTransaxtionsSourceCount : Int = 0
+    private let m_filteredTransactionsLock = NSLock()  // Add mutex for filtered transactions
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
@@ -663,12 +667,14 @@ class SchwabClient
         // if we have already fetched maxMonthDelta, return
         if( maxQuarterDelta <= m_quarterDelta )
         {
-            print( " --- fetchTransactionHistory -  maxMonthDelta reached" )
+            print( " --- fetchTransactionHistory -  maxQuarterDelta reached" )
             return
         }
         // if this is year0, remove any and all entries
         if ( 0 == m_quarterDelta )
         {
+            m_transactionListLock.lock()
+            defer { m_transactionListLock.unlock() }
             m_transactionList.removeAll(keepingCapacity: true)
         }
         let initialSize : Int = m_transactionList.count
@@ -724,6 +730,9 @@ class SchwabClient
             }
 
             // Collect results from all tasks
+            m_transactionListLock.lock()
+            defer { m_transactionListLock.unlock() }
+            
             for await transactions in group {
                 if let transactions = transactions {
                     m_transactionList.append(contentsOf: transactions)
@@ -734,7 +743,7 @@ class SchwabClient
         print("Fetched \(m_transactionList.count - initialSize) transactions")
         m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
         self.setLatestTradeDates()
-        // increment m_monthDelta to 3 at most
+        // increment m_quarterDelta
         if( maxQuarterDelta > m_quarterDelta ) {
             m_quarterDelta += 1
         }
@@ -748,31 +757,56 @@ class SchwabClient
     {
         print( "==== getTransactionsFor \(symbol ?? "nil") ====" )
         if( nil == symbol ) {
+            print( "  !!!!! No symbol provided" )
+            m_transactionListLock.lock()
+            defer { m_transactionListLock.unlock() }
             return m_transactionList
         }
+        
+        m_filteredTransactionsLock.lock()
+        defer { m_filteredTransactionsLock.unlock() }
+        
+        m_transactionListLock.lock()
+        defer { m_transactionListLock.unlock() }
+        
         // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
-        if m_lastFilteredTransactionSymbol != symbol {
+        // also track the count of the source list.  if it changes, we need to update.
+        if ( (m_lastFilteredTransactionSymbol != symbol)
+             || ( m_lastFilteredTransaxtionsSourceCount != m_transactionList.count ) ) {
+            print( "  !!!! symbol = \(symbol ?? "nil"), prior symbol = \(m_lastFilteredTransactionSymbol ?? "nil"), size of list: \(m_transactionList.count), prior: \(m_lastFilteredTransaxtionsSourceCount)" )
             m_lastFilteredTransactionSymbol = symbol
+            m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+            print( "  !!!!! cleared filtered transactions" )
             // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
+            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
+                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+            }
+            // repeat after fetching more if we are not at the limit
             while( (self.maxQuarterDelta > self.m_quarterDelta) && (self.m_lastFilteredTransactions.count == 0) ) {
+                print( "   !!! still no records, fetching again" )
+                self.fetchTransactionHistorySync()
                 m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                     // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
                     return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
                 }
-                // if we do not have filtered transactions yet, get more transactions
-                if( self.m_lastFilteredTransactions.count == 0 ) {
-                    self.fetchTransactionHistorySync()
-                }
             }
         }
+        else {
+            print( "  !!!! getTransactionsFor  same symbol \(symbol ?? "nil") as last time" )
+        }
         // return the transactionlist where the symbol matches what is provided
+        print( " --- getTransactionsFor returning \(m_lastFilteredTransactions.count) transactions -- " )
         return m_lastFilteredTransactions
     }
     
     private func setLatestTradeDates()
     {
         print( "--- setLatestTradeDates ---" )
+        m_latestDateForSymbolLock.lock()
+        defer { m_latestDateForSymbolLock.unlock() }
+        
         m_latestDateForSymbol.removeAll(keepingCapacity: true)
         // create a map of symbols to the most recent trade date
         for transaction in m_transactionList {
@@ -804,6 +838,9 @@ class SchwabClient
      */
     public func getLatestTradeDate( for symbol: String ) -> String
     {
+        m_latestDateForSymbolLock.lock()
+        defer { m_latestDateForSymbolLock.unlock() }
+        
         return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
     }
     
