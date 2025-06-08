@@ -356,6 +356,10 @@ struct TransactionHistorySection: View {
         let calculatedWidths: [CGFloat]
         let formatDate: (String?) -> String
         
+        private var isSell: Bool {
+            return transaction.netAmount ?? 0 > 0
+        }
+        
         var body: some View {
             HStack(spacing: 8) {
                 Text(formatDate(transaction.tradeDate))
@@ -378,6 +382,7 @@ struct TransactionHistorySection: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 5)
+            .foregroundColor(isSell ? .red : .primary)
             Divider()
         }
     }

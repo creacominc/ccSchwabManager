@@ -673,9 +673,9 @@ class SchwabClient
         // if this is year0, remove any and all entries
         if ( 0 == m_quarterDelta )
         {
-            m_transactionListLock.lock()
-            defer { m_transactionListLock.unlock() }
-            m_transactionList.removeAll(keepingCapacity: true)
+            m_transactionListLock.withLock {
+                m_transactionList.removeAll(keepingCapacity: true)
+            }
         }
         let initialSize : Int = m_transactionList.count
         let endDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta)
@@ -730,19 +730,24 @@ class SchwabClient
             }
 
             // Collect results from all tasks
-            m_transactionListLock.lock()
-            defer { m_transactionListLock.unlock() }
-            
+            var newTransactions: [Transaction] = []
             for await transactions in group {
                 if let transactions = transactions {
-                    m_transactionList.append(contentsOf: transactions)
+                    newTransactions.append(contentsOf: transactions)
                 }
+            }
+            m_transactionListLock.withLock {
+                m_transactionList.append(contentsOf: newTransactions)
             }
         }
 
         print("Fetched \(m_transactionList.count - initialSize) transactions")
-        m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        /** @TODO:  check for efficiency here.  I think we can avoid sorting and calling setLatestTradeDate for most threads. */
+        m_transactionListLock.withLock {
+            m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        }
         self.setLatestTradeDates()
+
         // increment m_quarterDelta
         if( maxQuarterDelta > m_quarterDelta ) {
             m_quarterDelta += 1
