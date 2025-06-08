@@ -682,12 +682,14 @@ struct PositionDetailView: View {
         .onAppear {
             loadingState.isLoading = true
             Task {
+                print( " --- onAppear Fetching history for symbol: \(symbol) ---" )
                 await fetchHistoryForSymbol()
             }
         }
         .onChange(of: position) { oldValue, newValue in
             loadingState.isLoading = true
             Task {
+                print( " --- onChange Fetching history for symbol: \(symbol) ---" )
                 await fetchHistoryForSymbol()
             }
         }

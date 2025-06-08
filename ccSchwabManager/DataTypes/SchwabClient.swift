@@ -37,7 +37,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
-    public let maxQuarterDelta : Int = 9
+    public let maxQuarterDelta : Int = 13
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     var loadingDelegate: LoadingStateDelegate?
@@ -520,7 +520,7 @@ class SchwabClient
      */
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
-        print("=== fetchPriceHistory  ===")
+        print("=== fetchPriceHistory \(symbol) ===")
         loadingDelegate?.setLoading(true)
         defer {
             loadingDelegate?.setLoading(false)
@@ -1175,7 +1175,7 @@ class SchwabClient
          *
          * If we do not find zero, we need to call teh fetTransactionHistory to get more records for this security.
          */
-        fetchingLoop: while( maxQuarterDelta > self.m_quarterDelta ) {
+        fetchingLoop: while( maxQuarterDelta + 1 > self.m_quarterDelta ) {
             /** @TODO:  Improve the efficiency here... we do not need to start again after each fetch, but the set of transactions may differ.  */
             m_lastFilteredPositionRecords.removeAll( keepingCapacity: true )
             var currentShareCount : Double = getShareCount(symbol: symbol)

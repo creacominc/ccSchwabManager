@@ -339,7 +339,7 @@ struct SalesCalcView: View {
     }
     
     private func refreshDataWithSymbol(_ newSymbol: String) {
-        print("Refreshing data for symbol: \(newSymbol)")
+        print("refreshDataWithSymbol - Refreshing data for symbol: \(newSymbol)")
         loadingState.isLoading = true
         positionsData = schwabClient.computeTaxLots(symbol: newSymbol)
         loadingState.isLoading = false
