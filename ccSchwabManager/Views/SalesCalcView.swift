@@ -26,55 +26,55 @@ func daysBetweenDates(dateString: String) -> Int?
     let components = calendar.dateComponents([.day], from: date, to: today)
     return components.day
 }
+//
+//func copyToClipboard( text: String, copiedValue: inout String )
+//{
+//#if canImport(UIKit)
+//    UIPasteboard.general.string = text
+//    copiedValue = UIPasteboard.general.string ?? "no string"
+//#elseif canImport(AppKit)
+//    NSPasteboard.general.clearContents()
+//    NSPasteboard.general.setString( text, forType: .string )
+//    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no string"
+//#endif
+//    // print( "Copied string to clipboard: \(text)" )
+//}
+//
+//func copyToClipboard( value: Double, format: String, copiedValue: inout String )
+//{
+//#if canImport(UIKit)
+//    UIPasteboard.general.string = String( format: format, value )
+//    copiedValue = UIPasteboard.general.string ?? "no double"
+//#elseif canImport(AppKit)
+//    NSPasteboard.general.clearContents()
+//    NSPasteboard.general.setString( String( format: format, value ), forType: .string )
+//    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no double"
+//#endif
+//    // print( "Copied double to clipboard: \(String( format: format, value ) )" )
+//}
+//
+//func copyToClipboard( value: Int, format: String, copiedValue: inout String )
+//{
+//#if canImport(UIKit)
+//    UIPasteboard.general.string = String( format: format, value )
+//    copiedValue = UIPasteboard.general.string ?? "no Int"
+//#elseif canImport(AppKit)
+//    NSPasteboard.general.clearContents()
+//    NSPasteboard.general.setString( String( format: format, value ), forType: .string )
+//    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no Int"
+//#endif
+//    // print( "Copied Int to clipboard: \(String( format: format, value ) )" )
+//}
 
-func copyToClipboard( text: String, copiedValue: inout String )
-{
-#if canImport(UIKit)
-    UIPasteboard.general.string = text
-    copiedValue = UIPasteboard.general.string ?? "no string"
-#elseif canImport(AppKit)
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString( text, forType: .string )
-    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no string"
-#endif
-    // print( "Copied string to clipboard: \(text)" )
-}
-
-func copyToClipboard( value: Double, format: String, copiedValue: inout String )
-{
-#if canImport(UIKit)
-    UIPasteboard.general.string = String( format: format, value )
-    copiedValue = UIPasteboard.general.string ?? "no double"
-#elseif canImport(AppKit)
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString( String( format: format, value ), forType: .string )
-    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no double"
-#endif
-    // print( "Copied double to clipboard: \(String( format: format, value ) )" )
-}
-
-func copyToClipboard( value: Int, format: String, copiedValue: inout String )
-{
-#if canImport(UIKit)
-    UIPasteboard.general.string = String( format: format, value )
-    copiedValue = UIPasteboard.general.string ?? "no Int"
-#elseif canImport(AppKit)
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString( String( format: format, value ), forType: .string )
-    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no Int"
-#endif
-    // print( "Copied Int to clipboard: \(String( format: format, value ) )" )
-}
-
-func rowStyle( item: SalesCalcResultsRecord ) -> Color
-{
-    // print( "Trailing Stop: \(item.trailingStop), Open Date: \(item.openDate)" )
-    return ( ( item.trailingStop <= 2.0 ) || ( daysBetweenDates(dateString: item.openDate) ?? 0 < 31  ) )
-    ? Color.red
-    : item.trailingStop < 5.0
-    ? Color.yellow
-    : Color.green
-}
+//func rowStyle( item: SalesCalcResultsRecord ) -> Color
+//{
+//    // print( "Trailing Stop: \(item.trailingStop), Open Date: \(item.openDate)" )
+//    return ( ( item.trailingStop <= 2.0 ) || ( daysBetweenDates(dateString: item.openDate) ?? 0 < 31  ) )
+//    ? Color.red
+//    : item.trailingStop < 5.0
+//    ? Color.yellow
+//    : Color.green
+//}
 
 
 struct InformationSection: View
@@ -85,25 +85,72 @@ struct InformationSection: View
 
     var body: some View
     {
-        // Information row w/ Symbol, ATR, adn what is copied to clipboard
-        HStack
-        {
-//            TextField( "Symbol", text: symbol )
-//                .disableAutocorrection( true )
-//                .textCase( .uppercase )
-//                .disabled(true)
-//                .padding( .leading )
-//                .onSubmit( )
-//            {
-////                    getOrders()
-//            }
-            Text( "\(symbol)" )
-            Text( "\(atrValue, specifier: "%.2f") %")
-            Text( copiedValue )
-                .frame( maxWidth: .infinity, alignment: .trailing)
-                .padding( .trailing )
+        VStack(alignment: .leading, spacing: 12) {
+            Text(symbol)
+                .font(.title2)
+                .bold()
+                .frame(maxWidth: .infinity, alignment: .center)
+            
+            HStack(spacing: 20) {
+                SalesCalcLeftColumn(atrValue: atrValue)
+                SalesCalcRightColumn(copiedValue: copiedValue)
+            }
         }
+        .padding()
+        .background(backgroundColor)
+        .frame(maxWidth: .infinity)
+    }
+    
+    private var backgroundColor: Color {
+        #if os(iOS)
+        return Color(.systemBackground)
+        #else
+        return Color(.windowBackgroundColor)
+        #endif
+    }
+}
 
+struct SalesCalcLeftColumn: View
+{
+    let atrValue: Double
+    
+    var body: some View
+    {
+        VStack(alignment: .leading, spacing: 8) {
+            SalesCalcDetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SalesCalcRightColumn: View
+{
+    let copiedValue: String
+    
+    var body: some View
+    {
+        VStack(alignment: .leading, spacing: 8) {
+            SalesCalcDetailRow(label: "Copied", value: copiedValue)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SalesCalcDetailRow: View
+{
+    let label: String
+    let value: String
+    
+    var body: some View
+    {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .leading)
+            Text(value)
+                .monospacedDigit()
+        }
     }
 }
 
@@ -182,120 +229,120 @@ struct SellOrderDetailSection: View{
     }
 }
 
-struct PositionsDataSection: View
-{
-    let symbol : String
-    let sourceData: [SalesCalcPositionsRecord]
-
-    @State var copiedValue: String = "TBD"
-
-    // results data with custom width for Description column
-    let resultsColumns: [GridItem] = SalesCalcResultsColumns.allCases.map { column in
-        if column == .Description {
-            return GridItem(.flexible(minimum: 200, maximum: .infinity))
-        } else {
-            return GridItem(.flexible( minimum: 20, maximum: 100 ))
-        }
-    }
-    let resultsData: [SalesCalcResultsRecord] = []
-
-    // source data
-    let salesCalcColumns: [GridItem] = Array(repeating: .init(.flexible()), count: SalesCalcColumns.allCases.count)
-
-    var body: some View
-    {
-
-        // TItle row for the PositionsDataSection
-        LazyVGrid(columns: salesCalcColumns, spacing: 20)
-        {
-            ForEach(SalesCalcColumns.allCases, id: \.self)
-            { column in
-                Text(column.rawValue)
-                    .font(.headline)
-            }
-            .background(Color.gray.opacity(0.2))
-            .padding(.horizontal)
-        }
-        // ScrollView with the pasted data
-        ScrollView
-        {
-            LazyVGrid(columns: salesCalcColumns, spacing: 20)
-            {
-                ForEach(sourceData)
-                { item in
-                    Text(item.openDate)
-                        .foregroundStyle( daysBetweenDates(dateString: item.openDate) ?? 0 > 30 ? .green : .red )
-                    Text("\(item.quantity, specifier: "%.2f")")
-                    Text("\(item.price, specifier: "%.2f")")
-                    Text("\(item.costPerShare, specifier: "%.2f")")
-                    Text("\(item.marketValue, specifier: "%.2f")")
-                    Text("\(item.costBasis, specifier: "%.2f")")
-                    Text("\(item.gainLossDollar, specifier: "%.2f")")
-                        .foregroundStyle( item.gainLossDollar > 0.0 ? .green : .red )
-                    Text("\(item.gainLossPct, specifier: "%.2f")%")
-                        .foregroundStyle( item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red )
-//                    Text(item.holdingPeriod)
-                }
-                .background(Color.gray.opacity(0.1))
-                
-            } //LazyVGrid
-        } // ScrollView with the pasted data
-        
-        // Title row for the results
-        LazyVGrid(columns: resultsColumns, spacing: 20)
-        {
-            ForEach(SalesCalcResultsColumns.allCases, id: \.self)
-            { column in
-                Text(column.rawValue)
-                    .font(.headline)
-            }
-            .background(Color.gray.opacity(0.2))
-            .padding(.horizontal)
-        }
-        // ScrollView with the results
-        ScrollView
-        {
-            LazyVGrid(columns: resultsColumns, spacing: 20)
-            {
-                ForEach(resultsData) { item in
-                    Group {
-                        Text("\(item.rollingGainLoss, specifier: "%.2f")")
-                        Text("\(item.breakEven, specifier: "%.2f")")
-                        Text("\(item.gain, specifier: "%.2f")%")
-                        Text("\(item.sharesToSell, specifier: "%.0f")")
-                            .onTapGesture(count: 1) { copyToClipboard( value: item.sharesToSell, format: "%.0f", copiedValue: &copiedValue ) }
-                            .foregroundStyle( rowStyle(item: item) )
-                        Text("\(item.trailingStop, specifier: "%.1f")%")
-                            .onTapGesture(count: 1) { copyToClipboard( value: item.trailingStop, format: "%.1f", copiedValue: &copiedValue ) }
-                            .foregroundStyle( rowStyle(item: item) )
-                        Text("\(item.entry, specifier: "%.2f")")
-                            .onTapGesture(count: 1) { copyToClipboard( value: item.entry, format: "%.2f", copiedValue: &copiedValue ) }
-                            .foregroundStyle( rowStyle(item: item) )
-                        Text("\(item.cancel, specifier: "%.2f")")
-                            .onTapGesture(count: 1) { copyToClipboard( value: item.cancel, format: "%.2f", copiedValue: &copiedValue ) }
-                            .foregroundStyle( rowStyle(item: item) )
-                        Text(item.description)
-                            .onTapGesture(count: 1) { copyToClipboard( text: item.description, copiedValue: &copiedValue ) }
-                            .foregroundStyle( rowStyle(item: item) )
-                    }
-                }
-                .background(Color.gray.opacity(0.1))
-            } //LazyVGrid
-        } // ScrollView with the results
-    }
-}
-
-struct LoadingOverlay: View {
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.4)
-                .edgesIgnoringSafeArea(.all)
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .scaleEffect(1.5)
-        }
-    }
-}
+//struct PositionsDataSection: View
+//{
+//    let symbol : String
+//    let sourceData: [SalesCalcPositionsRecord]
+//
+//    @State var copiedValue: String = "TBD"
+//
+//    // results data with custom width for Description column
+//    let resultsColumns: [GridItem] = SalesCalcResultsColumns.allCases.map { column in
+//        if column == .Description {
+//            return GridItem(.flexible(minimum: 200, maximum: .infinity))
+//        } else {
+//            return GridItem(.flexible( minimum: 20, maximum: 100 ))
+//        }
+//    }
+//    let resultsData: [SalesCalcResultsRecord] = []
+//
+//    // source data
+//    let salesCalcColumns: [GridItem] = Array(repeating: .init(.flexible()), count: SalesCalcColumns.allCases.count)
+//
+//    var body: some View
+//    {
+//
+//        // TItle row for the PositionsDataSection
+//        LazyVGrid(columns: salesCalcColumns, spacing: 20)
+//        {
+//            ForEach(SalesCalcColumns.allCases, id: \.self)
+//            { column in
+//                Text(column.rawValue)
+//                    .font(.headline)
+//            }
+//            .background(Color.gray.opacity(0.2))
+//            .padding(.horizontal)
+//        }
+//        // ScrollView with the pasted data
+//        ScrollView
+//        {
+//            LazyVGrid(columns: salesCalcColumns, spacing: 20)
+//            {
+//                ForEach(sourceData)
+//                { item in
+//                    Text(item.openDate)
+//                        .foregroundStyle( daysBetweenDates(dateString: item.openDate) ?? 0 > 30 ? .green : .red )
+//                    Text("\(item.quantity, specifier: "%.2f")")
+//                    Text("\(item.price, specifier: "%.2f")")
+//                    Text("\(item.costPerShare, specifier: "%.2f")")
+//                    Text("\(item.marketValue, specifier: "%.2f")")
+//                    Text("\(item.costBasis, specifier: "%.2f")")
+//                    Text("\(item.gainLossDollar, specifier: "%.2f")")
+//                        .foregroundStyle( item.gainLossDollar > 0.0 ? .green : .red )
+//                    Text("\(item.gainLossPct, specifier: "%.2f")%")
+//                        .foregroundStyle( item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red )
+////                    Text(item.holdingPeriod)
+//                }
+//                .background(Color.gray.opacity(0.1))
+//                
+//            } //LazyVGrid
+//        } // ScrollView with the pasted data
+//        
+//        // Title row for the results
+//        LazyVGrid(columns: resultsColumns, spacing: 20)
+//        {
+//            ForEach(SalesCalcResultsColumns.allCases, id: \.self)
+//            { column in
+//                Text(column.rawValue)
+//                    .font(.headline)
+//            }
+//            .background(Color.gray.opacity(0.2))
+//            .padding(.horizontal)
+//        }
+//        // ScrollView with the results
+//        ScrollView
+//        {
+//            LazyVGrid(columns: resultsColumns, spacing: 20)
+//            {
+//                ForEach(resultsData) { item in
+//                    Group {
+//                        Text("\(item.rollingGainLoss, specifier: "%.2f")")
+//                        Text("\(item.breakEven, specifier: "%.2f")")
+//                        Text("\(item.gain, specifier: "%.2f")%")
+//                        Text("\(item.sharesToSell, specifier: "%.0f")")
+//                            .onTapGesture(count: 1) { copyToClipboard( value: item.sharesToSell, format: "%.0f", copiedValue: &copiedValue ) }
+//                            .foregroundStyle( rowStyle(item: item) )
+//                        Text("\(item.trailingStop, specifier: "%.1f")%")
+//                            .onTapGesture(count: 1) { copyToClipboard( value: item.trailingStop, format: "%.1f", copiedValue: &copiedValue ) }
+//                            .foregroundStyle( rowStyle(item: item) )
+//                        Text("\(item.entry, specifier: "%.2f")")
+//                            .onTapGesture(count: 1) { copyToClipboard( value: item.entry, format: "%.2f", copiedValue: &copiedValue ) }
+//                            .foregroundStyle( rowStyle(item: item) )
+//                        Text("\(item.cancel, specifier: "%.2f")")
+//                            .onTapGesture(count: 1) { copyToClipboard( value: item.cancel, format: "%.2f", copiedValue: &copiedValue ) }
+//                            .foregroundStyle( rowStyle(item: item) )
+//                        Text(item.description)
+//                            .onTapGesture(count: 1) { copyToClipboard( text: item.description, copiedValue: &copiedValue ) }
+//                            .foregroundStyle( rowStyle(item: item) )
+//                    }
+//                }
+//                .background(Color.gray.opacity(0.1))
+//            } //LazyVGrid
+//        } // ScrollView with the results
+//    }
+//}
+//
+//struct LoadingOverlay: View {
+//    var body: some View {
+//        ZStack {
+//            Color.black.opacity(0.4)
+//                .edgesIgnoringSafeArea(.all)
+//            ProgressView()
+//                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+//                .scaleEffect(1.5)
+//        }
+//    }
+//}
 
 /**
             InformationSectiom:          symbol,   atrPercent,  copiedValue
@@ -303,51 +350,64 @@ struct LoadingOverlay: View {
             SellOrderDetailSection:      current positions
  */
 
+class SalesCalcViewModel: ObservableObject {
+    @Published var positionsData: [SalesCalcPositionsRecord] = []
+    private let schwabClient = SchwabClient.shared
+    
+    func refreshData(symbol: String) {
+        print("Refreshing data for symbol: \(symbol)")
+        positionsData = schwabClient.computeTaxLots(symbol: symbol)
+        print("refreshData - Received \(positionsData.count) tax lot records")
+    }
+}
+
 struct SalesCalcView: View {
     let symbol: String
     let atrValue: Double
-    @State private var positionsData: [SalesCalcPositionsRecord] = []
+    @StateObject private var viewModel = SalesCalcViewModel()
     @StateObject private var loadingState = LoadingState()
-    private let schwabClient = SchwabClient.shared
+    @State private var currentSort: SalesCalcSortConfig? = SalesCalcSortConfig(column: .costPerShare, ascending: SalesCalcSortableColumn.costPerShare.defaultAscending )
+    @State private var viewSize: CGSize = .zero
     
     var body: some View {
-        ZStack {
+        GeometryReader { geometry in
             VStack {
                 InformationSection(symbol: symbol, atrValue: atrValue)
-                PositionsDataSection(symbol: symbol,
-                                     sourceData: positionsData)
+                    .padding(.horizontal)
+//                PositionsDataSection(symbol: symbol,
+//                                     sourceData: positionsData)
+
+                SalesCalcTable(
+                    positionsData: viewModel.positionsData,
+                    currentSort: $currentSort,
+                    viewSize: geometry.size
+                )
+                .onAppear {
+                    viewSize = geometry.size
+                }
+                .onChange(of: geometry.size) { _, newValue in
+                    viewSize = newValue
+                }
+                .padding(.horizontal)
             }
             .onAppear {
-                refreshData()
+                // Use DispatchQueue to ensure we're using the latest symbol value
+                DispatchQueue.main.async {
+                    viewModel.refreshData(symbol: symbol)
+                }
             }
-            .onChange(of: symbol) { oldValue, newValue in
+            .onChange(of: symbol) { _, newValue in
                 print("Symbol changed to: \(newValue)")
                 // Use DispatchQueue to ensure we're using the latest symbol value
                 DispatchQueue.main.async {
-                    refreshDataWithSymbol(newValue)
+                    viewModel.refreshData(symbol: newValue)
                 }
             }
+//            .border(Color.red)
         }
         .withLoadingState(loadingState)
     }
     
-    private func refreshData() {
-        print("Refreshing data for symbol: \(symbol)")
-        loadingState.isLoading = true
-        positionsData = schwabClient.computeTaxLots(symbol: symbol)
-        loadingState.isLoading = false
-    }
-    
-    private func refreshDataWithSymbol(_ newSymbol: String) {
-        print("refreshDataWithSymbol - Refreshing data for symbol: \(newSymbol)")
-        loadingState.isLoading = true
-        positionsData = schwabClient.computeTaxLots(symbol: newSymbol)
-        loadingState.isLoading = false
-    }
-
-
-
-
     //    private func getResults( context: [SalesCalcPositionsRecord] ) -> [ResultsRecord]
     //    {
     //        var results : [ResultsRecord] = []

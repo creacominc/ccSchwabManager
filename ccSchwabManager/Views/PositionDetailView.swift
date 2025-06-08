@@ -512,6 +512,7 @@ struct SalesCalcTab: View {
     // SellOrderDetailSection
     let symbol: String
     let atrValue: Double
+    let geometry: GeometryProxy
 //    // current position and tax lots for a given security
 //    let currentCostBasis: Double
 //    let currentShares: Int
@@ -537,6 +538,9 @@ struct SalesCalcTab: View {
 //                sellOrder: sellOrder
 //                copiedValue: copiedValue
             )
+            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.90)
+//            .padding(.horizontal)
+//            .border(Color.pink)
         }
         .tabItem {
             Label("Sales Calc", systemImage: "calculator")
@@ -599,6 +603,7 @@ struct PositionDetailContent: View {
                     SalesCalcTab(
                         symbol: symbol,
                         atrValue: atrValue,
+                        geometry: geometry
 //                        currentCostBasis: currentCostBasis,
 //                        currentShares: currentShares,
 //                        transactionList: transactionList

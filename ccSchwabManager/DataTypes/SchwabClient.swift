@@ -127,25 +127,23 @@ class SchwabClient
         return (symbolCount > 0)
     }
 
-    public func getShareCount( symbol: String ) -> Double
-    {
-        print( "=== getShareCount symbol: \(symbol) ===" )
-        var shareCount : Double = 0.0
-        /** @TODO:  review.  I am sure this can be more efficient.  */
-        for account in self.m_accounts
-        {
-            if let positions = account.securitiesAccount?.positions
-            {
-                for position in positions
-                {
-                    if position.instrument?.symbol == symbol
-                    {
-                        shareCount = position.settledLongQuantity ?? 0.0
+    private func getShareCount(symbol: String) -> Double {
+        print("=== getShareCount \(symbol) ===")
+        var shareCount: Double = 0.0
+        
+        // Find the position for this symbol
+        for account in m_accounts {
+            if let positions = account.securitiesAccount?.positions {
+                for position in positions {
+                    if position.instrument?.symbol == symbol {
+                        shareCount = position.longQuantity ?? 0.0
+                        print("Found position with \(shareCount) shares")
                         return shareCount
                     }
                 }
             }
         }
+        print("No position found for \(symbol)")
         return shareCount
     }
 
@@ -761,6 +759,8 @@ class SchwabClient
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
         print( "==== getTransactionsFor \(symbol ?? "nil") ====" )
+        print("Current transaction list size: \(m_transactionList.count)")
+        
         if( nil == symbol ) {
             print( "  !!!!! No symbol provided" )
             m_transactionListLock.lock()
@@ -778,7 +778,7 @@ class SchwabClient
         // also track the count of the source list.  if it changes, we need to update.
         if ( (m_lastFilteredTransactionSymbol != symbol)
              || ( m_lastFilteredTransaxtionsSourceCount != m_transactionList.count ) ) {
-            print( "  !!!! symbol = \(symbol ?? "nil"), prior symbol = \(m_lastFilteredTransactionSymbol ?? "nil"), size of list: \(m_transactionList.count), prior: \(m_lastFilteredTransaxtionsSourceCount)" )
+            
             m_lastFilteredTransactionSymbol = symbol
             m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
@@ -786,16 +786,27 @@ class SchwabClient
             // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
             m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                 // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                if matches {
+                    print("Found matching transaction for \(symbol ?? "nil"): \(transaction.tradeDate ?? "no date")")
+                }
+                return matches
             }
+            print("Found \(m_lastFilteredTransactions.count) matching transactions")
+            
             // repeat after fetching more if we are not at the limit
             while( (self.maxQuarterDelta > self.m_quarterDelta) && (self.m_lastFilteredTransactions.count == 0) ) {
                 print( "   !!! still no records, fetching again" )
                 self.fetchTransactionHistorySync()
                 m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                     // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                    return symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                    let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                    if matches {
+                        print("Found matching transaction for \(symbol ?? "nil"): \(transaction.tradeDate ?? "no date")")
+                    }
+                    return matches
                 }
+                print("Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
             }
         }
         else {
@@ -1162,8 +1173,10 @@ class SchwabClient
         }
         
         print("=== computeTaxLots \(symbol) ===")
+        print("Number of filtered transactions: \(m_lastFilteredTransactions.count)")
+        
         if symbol == m_lastFilteredTaxLotSymbol {
-            print("=== computeTaxLots \(symbol) - returning cached ===")
+            print("=== computeTaxLots \(symbol) - returning \(m_lastFilteredPositionRecords.count) cached ===")
             return m_lastFilteredPositionRecords
         }
         m_lastFilteredTaxLotSymbol = symbol
@@ -1173,22 +1186,22 @@ class SchwabClient
          * After finding the zero share count, walk forward through the filtered position recoreds until we find a sale and remove
          * the sale record and the most expensive shares bought up to that point.
          *
-         * If we do not find zero, we need to call teh fetTransactionHistory to get more records for this security.
+         * If we do not find zero, we need to call the fetTransactionHistory to get more records for this security.
          */
-        fetchingLoop: while( maxQuarterDelta + 1 > self.m_quarterDelta ) {
+        
+        fetchingLoop: while true {
             /** @TODO:  Improve the efficiency here... we do not need to start again after each fetch, but the set of transactions may differ.  */
             m_lastFilteredPositionRecords.removeAll( keepingCapacity: true )
             var currentShareCount : Double = getShareCount(symbol: symbol)
-            print( " -- \(symbol) -- computeTaxLots() -- ")
-            print( " -- \(symbol)  currentShareCount: \(currentShareCount) --" )
+            print( " -- \(symbol) -- computeTaxLots()   currentShareCount: \(currentShareCount)   quarterDelta: \(self.m_quarterDelta)  -- ")
             
             /**
              * iterate over the collection to populate the positions records until we find a zero share count
              *  by subtracting buys from and adding sells to the currentShareCount
              */
             transactionLoop: for transaction in m_lastFilteredTransactions {
-                if ( transaction.type == .trade )
-                {
+                if ( transaction.type == .trade ) {
+                    print("Processing trade transaction: \(transaction.tradeDate ?? "no date")")
                     // for each transfer item
                     transferLoop: for transferItem in transaction.transferItems {
                         let numberOfShares : Double = transferItem.amount ?? 0.0
@@ -1197,6 +1210,7 @@ class SchwabClient
                         if( ( numberOfShares != 0.0 )
                             && ( marketValue != 0.0 )
                             && ( costPerShare != 0.0 ) ) {
+                            print("Found valid transfer item - Shares: \(numberOfShares), Market Value: \(marketValue), Cost/Share: \(costPerShare)")
                             let lastPrice : Double = transferItem.instrument?.closingPrice ?? 0.0
                             let gainLossDollar : Double = (lastPrice - costPerShare) * numberOfShares
                             let gainLossPct : Double = ((lastPrice - costPerShare) / costPerShare) * 100.0
@@ -1222,21 +1236,25 @@ class SchwabClient
                                     costBasis: costPerShare * numberOfShares
                                 )
                             )
+                            print("Added position record. Current share count: \(currentShareCount)")
 
                             // stop when the currentShareCount is zero or less
                             if currentShareCount <= 0.0 {
                                 print( " === found 0 or less.  currentShareCount = \(currentShareCount)")
                                 break fetchingLoop
                             }
-                        } // if amount, cost, and price are non-nil and non-zero.
-                    } // transferLoop
-                } // if trade
-            } // transactionLoop
+                        }
+                        else {
+                            print("Skipping invalid transfer item - Shares: \(numberOfShares), Market Value: \(marketValue), Cost/Share: \(costPerShare)")
+                        }
+                    }
+                }
+            }
             print( " !!!!!!  Zero not found.  \(currentShareCount).  Quarters: \(self.m_quarterDelta)")
             // fetch more records if we do not have a record.
             self.fetchTransactionHistorySync()
             print( " !!!     sync fetch completed." )
-        } // fetchingLoop
+        }
         print( " ! returning \(m_lastFilteredPositionRecords.count) records" )
         return m_lastFilteredPositionRecords
     }
