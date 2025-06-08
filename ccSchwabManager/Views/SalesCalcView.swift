@@ -320,11 +320,11 @@ struct SalesCalcView: View {
             .onAppear {
                 refreshData()
             }
-            .onChange(of: symbol) { newSymbol in
-                print("Symbol changed to: \(newSymbol)")
+            .onChange(of: symbol) { oldValue, newValue in
+                print("Symbol changed to: \(newValue)")
                 // Use DispatchQueue to ensure we're using the latest symbol value
                 DispatchQueue.main.async {
-                    refreshDataWithSymbol(newSymbol)
+                    refreshDataWithSymbol(newValue)
                 }
             }
         }
