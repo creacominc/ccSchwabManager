@@ -261,8 +261,8 @@ struct HoldingsView: View {
         SchwabClient.shared.fetchTransactionHistorySync()
         // fetch three more quarters of transactions by calling fetchTransactionHistory three times asynchronously
         Task {
-            print( " !!!!!!!!!!!!!!!! using maxQuarterDelta of \(SchwabClient.shared.maxQuarterDelta - 1)" )
-            for _ in 0..<(SchwabClient.shared.maxQuarterDelta - 1) {
+//            print( " !!!!!!!!!!!!!!!! using maxQuarterDelta of \(SchwabClient.shared.maxQuarterDelta - 1)" )
+            for _ in 0..<( min(SchwabClient.shared.maxQuarterDelta, 3) ) {
                 await SchwabClient.shared.fetchTransactionHistory()
             }
         }

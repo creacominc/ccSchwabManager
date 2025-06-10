@@ -13,7 +13,7 @@ import AppKit
 func daysBetweenDates(dateString: String) -> Int?
 {
     let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat =  "yyyy-MM-dd" // "MM/dd/yyyy" //
+    dateFormatter.dateFormat =  "yyyy-MM-dd HH:mm:ss" // "MM/dd/yyyy" //
     // Convert the date string to a Date object
     guard let date = dateFormatter.date(from: dateString) else {
         print("Invalid date format.  date = \(dateString)")
@@ -77,38 +77,38 @@ func daysBetweenDates(dateString: String) -> Int?
 //}
 
 
-struct InformationSection: View
-{
-    @State var copiedValue: String = "TBD"
-    let symbol: String
-    let atrValue: Double
-
-    var body: some View
-    {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(symbol)
-                .font(.title2)
-                .bold()
-                .frame(maxWidth: .infinity, alignment: .center)
-            
-            HStack(spacing: 20) {
-                SalesCalcLeftColumn(atrValue: atrValue)
-                SalesCalcRightColumn(copiedValue: copiedValue)
-            }
-        }
-        .padding()
-        .background(backgroundColor)
-        .frame(maxWidth: .infinity)
-    }
-    
-    private var backgroundColor: Color {
-        #if os(iOS)
-        return Color(.systemBackground)
-        #else
-        return Color(.windowBackgroundColor)
-        #endif
-    }
-}
+//struct InformationSection: View
+//{
+//    @State var copiedValue: String = "TBD"
+//    let symbol: String
+//    let atrValue: Double
+//
+//    var body: some View
+//    {
+//        VStack(alignment: .leading, spacing: 12) {
+//            Text(symbol)
+//                .font(.title2)
+//                .bold()
+//                .frame(maxWidth: .infinity, alignment: .center)
+//            
+//            HStack(spacing: 20) {
+//                SalesCalcLeftColumn(atrValue: atrValue)
+//                SalesCalcRightColumn(copiedValue: copiedValue)
+//            }
+//        }
+//        .padding()
+//        .background(backgroundColor)
+//        .frame(maxWidth: .infinity)
+//    }
+//    
+//    private var backgroundColor: Color {
+//        #if os(iOS)
+//        return Color(.systemBackground)
+//        #else
+//        return Color(.windowBackgroundColor)
+//        #endif
+//    }
+//}
 
 struct SalesCalcLeftColumn: View
 {
@@ -368,12 +368,13 @@ struct SalesCalcView: View {
     @StateObject private var loadingState = LoadingState()
     @State private var currentSort: SalesCalcSortConfig? = SalesCalcSortConfig(column: .costPerShare, ascending: SalesCalcSortableColumn.costPerShare.defaultAscending )
     @State private var viewSize: CGSize = .zero
+    @State private var showIncompleteDataWarning = false
     
     var body: some View {
         GeometryReader { geometry in
             VStack {
-                InformationSection(symbol: symbol, atrValue: atrValue)
-                    .padding(.horizontal)
+//                InformationSection(symbol: symbol, atrValue: atrValue)
+//                    .padding(.horizontal)
 //                PositionsDataSection(symbol: symbol,
 //                                     sourceData: positionsData)
 
@@ -403,7 +404,16 @@ struct SalesCalcView: View {
                     viewModel.refreshData(symbol: newValue)
                 }
             }
-//            .border(Color.red)
+            .onChange(of: SchwabClient.shared.showIncompleteDataWarning) { _, newValue in
+                showIncompleteDataWarning = newValue
+            }
+            .alert("Incomplete Data Warning", isPresented: $showIncompleteDataWarning) {
+                Button("OK", role: .cancel) {
+                    SchwabClient.shared.showIncompleteDataWarning = false
+                }
+            } message: {
+                Text("The information for \(symbol) may be incomplete and inaccurate due to missing historical data.")
+            }
         }
         .withLoadingState(loadingState)
     }

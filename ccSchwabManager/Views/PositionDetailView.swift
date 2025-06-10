@@ -233,9 +233,9 @@ struct PriceHistorySection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Price History")
-                .font(.headline)
-                .padding(.horizontal)
+//            Text("Price History")
+//                .font(.headline)
+//                .padding(.horizontal)
             
             if isLoading {
                 ProgressView()
@@ -389,10 +389,10 @@ struct TransactionHistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Transaction History")
-                .font(.headline)
-                .padding(.horizontal)
-                .padding(.bottom, 5)
+//            Text("Transaction History")
+//                .font(.headline)
+//                .padding(.horizontal)
+//                .padding(.bottom, 5)
 
             if isLoading {
                 ProgressView()
@@ -443,7 +443,7 @@ struct TransactionHistorySection: View {
                                 }
                             }
                         }
-                        .frame(height: 300)
+//                        .frame(height: .infinity)
 //                        .task {
 //                            // print each record of the savedTransactions
 //                            for transaction in sortedTransactions {

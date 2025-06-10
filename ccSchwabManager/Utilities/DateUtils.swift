@@ -58,6 +58,13 @@ extension Date
         dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         return  dateFormatter.string(from: self)
     }
+    func dateString() -> String
+    {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return  dateFormatter.string(from: self)
+    }
     func afterOpen() -> Date
     {
         guard let localDate = Calendar.current.date( bySettingHour: 9, minute: 40, second: 0, of: self ) else {return self}
