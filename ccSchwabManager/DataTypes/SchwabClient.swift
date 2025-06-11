@@ -37,7 +37,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
-    public let maxQuarterDelta : Int = 12 // 2.5 years
+    public let maxQuarterDelta : Int = 8 // 2 years
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     var loadingDelegate: LoadingStateDelegate?
@@ -1174,179 +1174,133 @@ class SchwabClient
         }
         
         print("=== computeTaxLots \(symbol) ===")
-        print("Number of filtered transactions: \(m_lastFilteredTransactions.count)")
         
+        // Return cached results if available
         if symbol == m_lastFilteredTaxLotSymbol {
             print("=== computeTaxLots \(symbol) - returning \(m_lastFilteredPositionRecords.count) cached ===")
             return m_lastFilteredPositionRecords
         }
         m_lastFilteredTaxLotSymbol = symbol
-
-        /**
-         * Find all the tax lots by saving all the transactions from the end toward the begininning until we find a zero share count.
-         * After finding the zero share count, walk forward through the filtered position recoreds until we find a sale and remove
-         * the sale record and the most expensive shares bought up to that point.
-         *
-         * If we do not find zero, we need to call the fetTransactionHistory to get more records for this security.
-         */
         
-        fetchingLoop: while true {
-            /** @TODO:  Improve the efficiency here... we do not need to start again after each fetch, but the set of transactions may differ.  */
-            m_lastFilteredPositionRecords.removeAll( keepingCapacity: true )
-            var currentShareCount : Double = getShareCount(symbol: symbol)
-            print( " -- \(symbol) -- computeTaxLots()   currentShareCount: \(currentShareCount)   quarterDelta: \(self.m_quarterDelta)  -- ")
-            
-            /**
-             * iterate over the collection to populate the positions records until we find a zero share count
-             *  by subtracting buys from and adding sells to the currentShareCount
-             */
-            transactionLoop: for transaction in m_lastFilteredTransactions {
-                if ( transaction.type == .trade ) {
-                    print("Processing trade transaction: \(transaction.tradeDate ?? "no date")")
-                    // for each transfer item
-                    transferLoop: for transferItem in transaction.transferItems {
-                        let numberOfShares : Double = transferItem.amount ?? 0.0
-                        let marketValue : Double = transferItem.cost ?? 0.0
-                        let costPerShare : Double = transferItem.price ?? 0.0
-                        if( ( numberOfShares != 0.0 )
-                            && ( marketValue != 0.0 )
-                            && ( costPerShare != 0.0 ) ) {
-                            print("Found valid transfer item - Shares: \(numberOfShares), Market Value: \(marketValue), Cost/Share: \(costPerShare)")
-                            let lastPrice : Double = transferItem.instrument?.closingPrice ?? 0.0
-                            let gainLossDollar : Double = (lastPrice - costPerShare) * numberOfShares
-                            let gainLossPct : Double = ((lastPrice - costPerShare) / costPerShare) * 100.0
-                            var tradeDate : String = ""
-                            do { // eg "2024-07-16T17:24:35+0000"
-                                tradeDate = try Date( transaction.tradeDate ?? "1970-01-01T00:00:00+0000", strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false) ).dateString() // was .dateOnly()
-                                print( " !!! tradeDate parsed: \(tradeDate) !!!" )
-                            }
-                            catch {
-                                print( " -- \(symbol)  Error parsing tradeDate: \(error) --" )
-                            }
-                            currentShareCount -=  numberOfShares
-
-                            // add to position records
-                            m_lastFilteredPositionRecords.append(
-                                SalesCalcPositionsRecord(
-                                    openDate: tradeDate,
-                                    gainLossPct: gainLossPct,
-                                    gainLossDollar: gainLossDollar,
-                                    quantity: numberOfShares,
-                                    price: lastPrice,
-                                    costPerShare: costPerShare,
-                                    marketValue: lastPrice * numberOfShares,
-                                    costBasis: costPerShare * numberOfShares
-                                )
-                            )
-                            print("Added position record. Current share count: \(currentShareCount)")
-
-                            // stop when the currentShareCount is zero or less
-                            if currentShareCount <= 0.0 {
-                                print( " === found zero or less.  currentShareCount = \(currentShareCount)")
-                                break fetchingLoop
-                            }
-                        }
-                    } // transferLoop
+        // Clear previous results
+        m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
+        
+        // Get current share count
+        var currentShareCount = getShareCount(symbol: symbol)
+        print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(self.m_quarterDelta) --")
+        
+        // Process transactions until we find zero shares or reach max quarters
+        while true {
+            // Process all transactions
+            for transaction in m_lastFilteredTransactions where transaction.type == .trade {
+                for transferItem in transaction.transferItems {
+                    guard let numberOfShares = transferItem.amount,
+                          let marketValue = transferItem.cost,
+                          let costPerShare = transferItem.price,
+                          numberOfShares != 0.0,
+                          marketValue != 0.0,
+                          costPerShare != 0.0 else {
+                        continue
+                    }
+                    
+                    let lastPrice = transferItem.instrument?.closingPrice ?? 0.0
+                    let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
+                    let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
+                    
+                    // Parse trade date
+                    guard let tradeDate = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
+                                                  strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
+                        continue
+                    }
+                    
+                    // Update share count
+                    currentShareCount -= numberOfShares
+                    
+                    // Add position record
+                    m_lastFilteredPositionRecords.append(
+                        SalesCalcPositionsRecord(
+                            openDate: tradeDate,
+                            gainLossPct: gainLossPct,
+                            gainLossDollar: gainLossDollar,
+                            quantity: numberOfShares,
+                            price: lastPrice,
+                            costPerShare: costPerShare,
+                            marketValue: lastPrice * numberOfShares,
+                            costBasis: costPerShare * numberOfShares
+                        )
+                    )
                 }
-            } // transactionLoop
-            print( " !!!!!!  Zero not found.  \(currentShareCount).  Quarters: \(self.m_quarterDelta)")
-            // exit if we have fetched the maximum number of quarters
-            if( self.maxQuarterDelta <= self.m_quarterDelta ) {
-                showIncompleteDataWarning = true
-                break fetchingLoop
             }
-            // fetch more records if we do not have a record.
+            
+            // Break if we've found zero shares or reached max quarters
+            if currentShareCount <= 0.0 || self.maxQuarterDelta <= self.m_quarterDelta {
+                if currentShareCount > 0.0 {
+                    showIncompleteDataWarning = true
+                }
+                break
+            }
+            
+            // Fetch more records if needed
             self.fetchTransactionHistorySync()
-            print( " !!!     sync fetch completed." )
-        } // fetchingLoop
-        print( " ! processing \(m_lastFilteredPositionRecords.count) records" )
-        // sort from oldest to newest
-        m_lastFilteredPositionRecords.sort { ( ($0.openDate < $1.openDate) || (($0.openDate == $1.openDate) && ($0.costPerShare > $1.costPerShare)) ) }
-        /**
-         * Walk through the m_lastFilteredPositionRecords form the oldest to the newest.  
-         * If the record is a sell, look for the highest cost shares bought up to that point.
-         * If the share count in the prior buy record is equal to the sell record, remove the buy and sell records.
-         * If the share count in the prior buy record is greater than the sell record, remove the sell record and decrement the buy record share count by the sell record share count.
-         * If the share count in the prior buy record is less than the sell record, remove the buy record and decrement the sell record share count by the buy record share count.
-         * Continue until all records are processed.
-         */
-
-        // Process records from oldest to newest
-        var i = 0
-        while i < m_lastFilteredPositionRecords.count {
-            let record = m_lastFilteredPositionRecords[i]
-            //print( "     == examining record \(i): \(record.openDate), \(record.quantity), \(record.costPerShare)" )
-            // Skip if not a sell (negative quantity)
-            if record.quantity >= 0 {
-//                print( "     -- skipping record \t\(i): \(record.openDate), \t\(record.quantity), \t\(record.costPerShare)" )
-                i += 1
-                continue
-            }
-//            print( "     ++ examining sell record \t\(i):  \(record.openDate), \t\(record.quantity), \t\(record.costPerShare)" )
-
-            let sellQuantity = abs(record.quantity)
-            var remainingSellQuantity = sellQuantity
-            
-            // Find all buy records before this sell record
-            var buyRecords: [(index: Int, record: SalesCalcPositionsRecord)] = []
-            for j in 0..<i {
-                if m_lastFilteredPositionRecords[j].quantity > 0 {
-                    buyRecords.append((j, m_lastFilteredPositionRecords[j]))
-                }
-            }
-            
-            // Sort buy records by cost per share (highest first)
-            buyRecords.sort { $0.record.costPerShare > $1.record.costPerShare }
-            
-            // Process each buy record until we've matched the sell quantity
-            for buyRecord in buyRecords {
-                if remainingSellQuantity <= 0 {
-                    print( "     == remainingSelQuantity <= 0  \(remainingSellQuantity)" )
-                    break
-                }
-                
-                let buyQuantity = buyRecord.record.quantity
-                let buyIndex = buyRecord.index
-                
-                if buyQuantity == remainingSellQuantity {
-                    print( "     == matching quantity in buy record \n\t\t\(buyIndex): \(m_lastFilteredPositionRecords[buyIndex]),  \n\t\ti: \(i):  \(m_lastFilteredPositionRecords[i])" )
-                    // Remove both buy and sell records
-                    m_lastFilteredPositionRecords.remove(at: i)
-                    m_lastFilteredPositionRecords.remove(at: buyIndex)
-                    i -= 1 // Adjust index since we removed a record
-                    remainingSellQuantity = 0
-                } else if buyQuantity > remainingSellQuantity {
-                    print( "     == buy quantity \(buyQuantity) greater than remaining sell quantity \(remainingSellQuantity) in sell record \n\t\t\(buyIndex): \(m_lastFilteredPositionRecords[buyIndex]),  \n\t\ti: \(i):  \(m_lastFilteredPositionRecords[i])" )
-                    // Decrement buy record quantity
-                    m_lastFilteredPositionRecords[buyIndex].quantity -= remainingSellQuantity
-                    m_lastFilteredPositionRecords[buyIndex].marketValue = m_lastFilteredPositionRecords[buyIndex].quantity * m_lastFilteredPositionRecords[buyIndex].price
-                    m_lastFilteredPositionRecords[buyIndex].costBasis = m_lastFilteredPositionRecords[buyIndex].quantity * m_lastFilteredPositionRecords[buyIndex].costPerShare
-                    // Remove sell record
-                    m_lastFilteredPositionRecords.remove(at: i)
-                    i -= 1 // Adjust index since we removed a record
-                    remainingSellQuantity = 0
-                } else {
-                    print( "     == buy quantity less than remaining sell quantity in sell record \n\t\t\(buyIndex): \(m_lastFilteredPositionRecords[buyIndex]),  \n\t\ti: \(i):  \(m_lastFilteredPositionRecords[i])" )
-                    // Remove buy record and decrement sell quantity
-                    m_lastFilteredPositionRecords.remove(at: buyIndex)
-                    remainingSellQuantity -= buyQuantity
-                    i -= 1 // Adjust index since we removed a record
-                }
-            }
-            
-            // If we still have remaining sell quantity, keep the sell record with adjusted quantity
-            if remainingSellQuantity > 0 {
-                m_lastFilteredPositionRecords[i].quantity = -remainingSellQuantity
-                m_lastFilteredPositionRecords[i].marketValue = remainingSellQuantity * m_lastFilteredPositionRecords[i].price
-                m_lastFilteredPositionRecords[i].costBasis = remainingSellQuantity * m_lastFilteredPositionRecords[i].costPerShare
-            }
-            
-            i += 1
         }
-
-        print( " ! returning \(m_lastFilteredPositionRecords.count) records" )
+        
+        // Sort records by date (oldest first) and cost (highest first for same date)
+        m_lastFilteredPositionRecords.sort { ($0.openDate < $1.openDate) || ($0.openDate == $1.openDate && $0.costPerShare > $1.costPerShare) }
+        
+        // Match sells with buys using FIFO (First In, First Out)
+        var remainingRecords: [SalesCalcPositionsRecord] = []
+        var buyQueue: [SalesCalcPositionsRecord] = []
+        
+        for record in m_lastFilteredPositionRecords {
+            if record.quantity > 0 {
+                // Add buy record to queue
+                buyQueue.append(record)
+            } else {
+                // Process sell record
+                var remainingSellQuantity = abs(record.quantity)
+                var matchedBuys: [SalesCalcPositionsRecord] = []
+                
+                // Match sell with buys
+                while remainingSellQuantity > 0 && !buyQueue.isEmpty {
+                    var buyRecord = buyQueue.removeFirst()
+                    let buyQuantity = buyRecord.quantity
+                    
+                    if buyQuantity <= remainingSellQuantity {
+                        // Buy record fully matches sell
+                        remainingSellQuantity -= buyQuantity
+                        matchedBuys.append(buyRecord)
+                    } else {
+                        // Buy record partially matches sell
+                        let matchedQuantity = remainingSellQuantity
+                        buyRecord.quantity -= matchedQuantity
+                        buyRecord.marketValue = buyRecord.quantity * buyRecord.price
+                        buyRecord.costBasis = buyRecord.quantity * buyRecord.costPerShare
+                        buyQueue.insert(buyRecord, at: 0)
+                        remainingSellQuantity = 0
+                    }
+                }
+                
+                // If we couldn't match all shares, keep the remaining sell
+                if remainingSellQuantity > 0 {
+                    var modifiedRecord = record
+                    modifiedRecord.quantity = -remainingSellQuantity
+                    modifiedRecord.marketValue = remainingSellQuantity * record.price
+                    modifiedRecord.costBasis = remainingSellQuantity * record.costPerShare
+                    remainingRecords.append(modifiedRecord)
+                }
+            }
+        }
+        
+        // Add any remaining buy records
+        remainingRecords.append(contentsOf: buyQueue)
+        
+        // Sort final records by date
+        remainingRecords.sort { $0.openDate < $1.openDate }
+        
+        m_lastFilteredPositionRecords = remainingRecords
+        print("! returning \(m_lastFilteredPositionRecords.count) records")
         return m_lastFilteredPositionRecords
-    } // computeTaxLots
+    }
     
     // Add loading state handling to other network methods
     func fetchData<T: Decodable>(from url: URL) async throws -> T {

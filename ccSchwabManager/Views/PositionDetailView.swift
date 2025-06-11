@@ -509,7 +509,6 @@ struct TransactionsTab: View {
 }
 
 struct SalesCalcTab: View {
-    // SellOrderDetailSection
     let symbol: String
     let atrValue: Double
     let geometry: GeometryProxy
@@ -523,24 +522,23 @@ struct SalesCalcTab: View {
 
     var body: some View {
         ScrollView {
-//            VStack
-//            {
-//                Text( "symbol: \(symbol)" )
-//                Text( "ATR: \(atrValue) %" )
-//            }
+
             SalesCalcView(
                 symbol: symbol,
                 atrValue: atrValue
-                //,
-//                currentCostBasis: currentCostBasis,
-//                currentShares: currentShares,
-//                transactionList: transactionList
-//                sellOrder: sellOrder
-//                copiedValue: copiedValue
             )
-            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.90)
+            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.45)
 //            .padding(.horizontal)
 //            .border(Color.pink)
+
+            Divider()
+
+            SellListView(
+                symbol: symbol,
+                atrValue: atrValue
+                )
+            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.45)
+
         }
         .tabItem {
             Label("Sales Calc", systemImage: "calculator")

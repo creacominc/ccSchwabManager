@@ -26,89 +26,6 @@ func daysBetweenDates(dateString: String) -> Int?
     let components = calendar.dateComponents([.day], from: date, to: today)
     return components.day
 }
-//
-//func copyToClipboard( text: String, copiedValue: inout String )
-//{
-//#if canImport(UIKit)
-//    UIPasteboard.general.string = text
-//    copiedValue = UIPasteboard.general.string ?? "no string"
-//#elseif canImport(AppKit)
-//    NSPasteboard.general.clearContents()
-//    NSPasteboard.general.setString( text, forType: .string )
-//    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no string"
-//#endif
-//    // print( "Copied string to clipboard: \(text)" )
-//}
-//
-//func copyToClipboard( value: Double, format: String, copiedValue: inout String )
-//{
-//#if canImport(UIKit)
-//    UIPasteboard.general.string = String( format: format, value )
-//    copiedValue = UIPasteboard.general.string ?? "no double"
-//#elseif canImport(AppKit)
-//    NSPasteboard.general.clearContents()
-//    NSPasteboard.general.setString( String( format: format, value ), forType: .string )
-//    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no double"
-//#endif
-//    // print( "Copied double to clipboard: \(String( format: format, value ) )" )
-//}
-//
-//func copyToClipboard( value: Int, format: String, copiedValue: inout String )
-//{
-//#if canImport(UIKit)
-//    UIPasteboard.general.string = String( format: format, value )
-//    copiedValue = UIPasteboard.general.string ?? "no Int"
-//#elseif canImport(AppKit)
-//    NSPasteboard.general.clearContents()
-//    NSPasteboard.general.setString( String( format: format, value ), forType: .string )
-//    copiedValue = NSPasteboard.general.string(forType: .string) ?? "no Int"
-//#endif
-//    // print( "Copied Int to clipboard: \(String( format: format, value ) )" )
-//}
-
-//func rowStyle( item: SalesCalcResultsRecord ) -> Color
-//{
-//    // print( "Trailing Stop: \(item.trailingStop), Open Date: \(item.openDate)" )
-//    return ( ( item.trailingStop <= 2.0 ) || ( daysBetweenDates(dateString: item.openDate) ?? 0 < 31  ) )
-//    ? Color.red
-//    : item.trailingStop < 5.0
-//    ? Color.yellow
-//    : Color.green
-//}
-
-
-//struct InformationSection: View
-//{
-//    @State var copiedValue: String = "TBD"
-//    let symbol: String
-//    let atrValue: Double
-//
-//    var body: some View
-//    {
-//        VStack(alignment: .leading, spacing: 12) {
-//            Text(symbol)
-//                .font(.title2)
-//                .bold()
-//                .frame(maxWidth: .infinity, alignment: .center)
-//            
-//            HStack(spacing: 20) {
-//                SalesCalcLeftColumn(atrValue: atrValue)
-//                SalesCalcRightColumn(copiedValue: copiedValue)
-//            }
-//        }
-//        .padding()
-//        .background(backgroundColor)
-//        .frame(maxWidth: .infinity)
-//    }
-//    
-//    private var backgroundColor: Color {
-//        #if os(iOS)
-//        return Color(.systemBackground)
-//        #else
-//        return Color(.windowBackgroundColor)
-//        #endif
-//    }
-//}
 
 struct SalesCalcLeftColumn: View
 {
@@ -373,11 +290,6 @@ struct SalesCalcView: View {
     var body: some View {
         GeometryReader { geometry in
             VStack {
-//                InformationSection(symbol: symbol, atrValue: atrValue)
-//                    .padding(.horizontal)
-//                PositionsDataSection(symbol: symbol,
-//                                     sourceData: positionsData)
-
                 SalesCalcTable(
                     positionsData: viewModel.positionsData,
                     currentSort: $currentSort,
