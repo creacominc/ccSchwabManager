@@ -37,7 +37,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
-    public let maxQuarterDelta : Int = 8 // 2 years
+    public let maxQuarterDelta : Int = 12 // 3 years
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     var loadingDelegate: LoadingStateDelegate?
@@ -679,7 +679,13 @@ class SchwabClient
         let initialSize : Int = m_transactionList.count
         let endDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta)
         let startDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta + 1)
-        
+
+        // increment m_quarterDelta
+        if( maxQuarterDelta > m_quarterDelta ) {
+            print( "  -- incrementing m_quarterDelta to \(m_quarterDelta+1)" )
+            m_quarterDelta += 1
+        }
+
         // Create a task group to handle multiple account requests concurrently
         await withTaskGroup(of: [Transaction]?.self) { group in
             // Add a task for each account
@@ -746,11 +752,6 @@ class SchwabClient
             m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
         }
         self.setLatestTradeDates()
-
-        // increment m_quarterDelta
-        if( maxQuarterDelta > m_quarterDelta ) {
-            m_quarterDelta += 1
-        }
     }
 
 
@@ -759,7 +760,7 @@ class SchwabClient
      */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
-        print( "==== getTransactionsFor \(symbol ?? "nil") ====" )
+        print( "==== getTransactionsFor \(symbol ?? "nil")  quarters: \(self.m_quarterDelta) ====" )
         print("Current transaction list size: \(m_transactionList.count)")
         
         if( nil == symbol ) {
@@ -793,8 +794,8 @@ class SchwabClient
 //                }
                 return matches
             }
-            print("Found \(m_lastFilteredTransactions.count) matching transactions")
-            
+            print("Found \(m_lastFilteredTransactions.count) matching transactions.  \(self.m_quarterDelta) of \(self.maxQuarterDelta)")
+
             // repeat after fetching more if we are not at the limit
             while( (self.maxQuarterDelta > self.m_quarterDelta) && (self.m_lastFilteredTransactions.count == 0) ) {
                 print( "   !!! still no records, fetching again" )
@@ -811,7 +812,7 @@ class SchwabClient
             }
         }
         else {
-            print( "  !!!! getTransactionsFor  same symbol \(symbol ?? "nil") as last time" )
+            print( "  !!!! getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
         }
         // return the transactionlist where the symbol matches what is provided
         print( " --- getTransactionsFor returning \(m_lastFilteredTransactions.count) transactions -- " )
@@ -1168,6 +1169,7 @@ class SchwabClient
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
      */
     public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
+        // display the busy indicator
         loadingDelegate?.setLoading(true)
         defer {
             loadingDelegate?.setLoading(false)
@@ -1181,19 +1183,22 @@ class SchwabClient
             return m_lastFilteredPositionRecords
         }
         m_lastFilteredTaxLotSymbol = symbol
-        
+
         // Clear previous results
         m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
-        
-        // Get current share count
-        var currentShareCount = getShareCount(symbol: symbol)
-        print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(self.m_quarterDelta) --")
-        
+
         // Process transactions until we find zero shares or reach max quarters
         while true {
-            // Process all transactions
-            for transaction in m_lastFilteredTransactions where transaction.type == .trade {
+
+            // Get current share count
+            var currentShareCount : Double = getShareCount(symbol: symbol)
+            print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(self.m_quarterDelta) --")
+
+            // Process all trade transactions - only process again if the number of transactions changes
+            print( " -- computeTaxLots() - calling getTransactionsFor(symbol: \(symbol))" )
+            for transaction in self.getTransactionsFor(symbol: symbol) where transaction.type == .trade {
                 for transferItem in transaction.transferItems {
+                    // find transferItems where the shares, value, and cost are not 0
                     guard let numberOfShares = transferItem.amount,
                           let marketValue = transferItem.cost,
                           let costPerShare = transferItem.price,
@@ -1202,7 +1207,7 @@ class SchwabClient
                           costPerShare != 0.0 else {
                         continue
                     }
-                    
+
                     let lastPrice = transferItem.instrument?.closingPrice ?? 0.0
                     let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
                     let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
@@ -1214,7 +1219,8 @@ class SchwabClient
                     }
                     
                     // Update share count
-                    currentShareCount -= numberOfShares
+                    currentShareCount = ( (currentShareCount - numberOfShares) * 100000 ).rounded()/100000
+                    print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare) --" )
                     
                     // Add position record
                     m_lastFilteredPositionRecords.append(
@@ -1229,19 +1235,30 @@ class SchwabClient
                             costBasis: costPerShare * numberOfShares
                         )
                     )
+
+                } // for transferItem
+
+                // break if we find zero
+                if isNearZero( currentShareCount ) {
+                    print( " -- Found zero -- " )
+                    break
                 }
-            }
+
+            } // for transaction
             
             // Break if we've found zero shares or reached max quarters
-            if currentShareCount <= 0.0 || self.maxQuarterDelta <= self.m_quarterDelta {
+            if ( ( isNearZero(currentShareCount) ) || ( self.maxQuarterDelta <= self.m_quarterDelta ) ) {
                 if currentShareCount > 0.0 {
                     showIncompleteDataWarning = true
                 }
                 break
             }
+            else
+            {
+                // Fetch more records if needed
+                self.fetchTransactionHistorySync()
+            }
             
-            // Fetch more records if needed
-            self.fetchTransactionHistorySync()
         }
         
         // Sort records by date (oldest first) and cost (highest first for same date)
@@ -1340,5 +1357,9 @@ class SchwabClient
                 completion(.failure(error))
             }
         }.resume()
+    }
+
+    private func isNearZero(_ value: Double) -> Bool {
+        return abs(value) < 0.0001
     }
 } // SchwabClient

@@ -40,7 +40,7 @@ struct SellListView: View {
     @State private var currentSort: SellListSortConfig? = SellListSortConfig(column: .trailingStop, ascending: SellListSortableColumn.trailingStop.defaultAscending)
     
     // Define proportional widths for columns
-    private let columnWidths: [CGFloat] = [0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.16]
+    private let columnWidths: [CGFloat] = [0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.28]
     
     var sortedData: [SalesCalcResultsRecord] {
         guard let sort = currentSort else { return getResults(context: viewModel.positionsData) }
@@ -85,8 +85,11 @@ struct SellListView: View {
                 viewSize = geometry.size
                 viewModel.refreshData(symbol: symbol)
             }
-            .onChange(of: geometry.size) { newValue in
+            .onChange(of: geometry.size) { _, newValue in
                 viewSize = newValue
+            }
+            .onChange(of: symbol) { _, newSymbol in
+                viewModel.refreshData(symbol: newSymbol)
             }
         }
     }

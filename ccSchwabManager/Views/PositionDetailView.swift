@@ -463,7 +463,7 @@ struct TransactionHistorySection: View {
             return ""
         }
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)
     }
 }
@@ -640,7 +640,7 @@ struct PositionDetailView: View {
         guard let timestamp = timestamp else { return "" }
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)
     }
 
