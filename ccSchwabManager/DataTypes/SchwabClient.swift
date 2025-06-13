@@ -87,6 +87,7 @@ class SchwabClient
         // get date one year ago
         var components = DateComponents()
         components.month = -quarterDelta * 3
+        components.day = +1
         // format a string with the date one year ago.
         return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
             .year()
@@ -1184,11 +1185,12 @@ class SchwabClient
         }
         m_lastFilteredTaxLotSymbol = symbol
 
-        // Clear previous results
-        m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
-
+        print( " --- computeTaxLots() - seeking zero ---" )
         // Process transactions until we find zero shares or reach max quarters
         while true {
+
+            // Clear previous results
+            m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
 
             // Get current share count
             var currentShareCount : Double = getShareCount(symbol: symbol)
@@ -1243,18 +1245,31 @@ class SchwabClient
                     print( " -- Found zero -- " )
                     break
                 }
+                else if ( 0 > currentShareCount ) {
+                    print( " -- Negative share count --" )
+                    break
+                }
 
             } // for transaction
             
             // Break if we've found zero shares or reached max quarters
-            if ( ( isNearZero(currentShareCount) ) || ( self.maxQuarterDelta <= self.m_quarterDelta ) ) {
-                if currentShareCount > 0.0 {
-                    showIncompleteDataWarning = true
-                }
+            if ( isNearZero(currentShareCount) ) {
+                print( " -- found near zero --  currentShareCount = \(currentShareCount)" )
+                break
+            }
+            else if ( 0 > currentShareCount ) {
+                showIncompleteDataWarning = true
+                print( " -- Negative share count --" )
+                break
+            }
+            else if  ( self.maxQuarterDelta <= self.m_quarterDelta )  {
+                showIncompleteDataWarning = true
+                print( " -- Reached max quarter delta --" )
                 break
             }
             else
             {
+                print( " -- Fetching more records --" )
                 // Fetch more records if needed
                 self.fetchTransactionHistorySync()
             }
@@ -1264,41 +1279,52 @@ class SchwabClient
         // Sort records by date (oldest first) and cost (highest first for same date)
         m_lastFilteredPositionRecords.sort { ($0.openDate < $1.openDate) || ($0.openDate == $1.openDate && $0.costPerShare > $1.costPerShare) }
         
-        // Match sells with buys using FIFO (First In, First Out)
+        // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
-        
+        print( " -- removing sold shares -- " )
         for record in m_lastFilteredPositionRecords {
+            // collect buy records until you find a sell record.
             if record.quantity > 0 {
+                print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
+                print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
+                // sort the buy queue by high price
+                buyQueue.sort { ($0.costPerShare > $1.costPerShare) }
+
                 // Process sell record
                 var remainingSellQuantity = abs(record.quantity)
-                var matchedBuys: [SalesCalcPositionsRecord] = []
+                //var matchedBuys: [SalesCalcPositionsRecord] = []
                 
                 // Match sell with buys
                 while remainingSellQuantity > 0 && !buyQueue.isEmpty {
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
-                    
+
+                    print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
+                    print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
-                        matchedBuys.append(buyRecord)
+                        //matchedBuys.append(buyRecord)
                     } else {
-                        // Buy record partially matches sell
-                        let matchedQuantity = remainingSellQuantity
-                        buyRecord.quantity -= matchedQuantity
-                        buyRecord.marketValue = buyRecord.quantity * buyRecord.price
-                        buyRecord.costBasis = buyRecord.quantity * buyRecord.costPerShare
-                        buyQueue.insert(buyRecord, at: 0)
-                        remainingSellQuantity = 0
+                        // Buy record partially matches sell - put it at the head of the queue if it is at least $0.01
+                        if( 0.01 <= round( buyRecord.quantity * 100.0 ) / 100.0 )
+                        {
+                            let matchedQuantity = remainingSellQuantity
+                            buyRecord.quantity -= matchedQuantity
+                            buyRecord.marketValue = buyRecord.quantity * buyRecord.price
+                            buyRecord.costBasis = buyRecord.quantity * buyRecord.costPerShare
+                            buyQueue.insert(buyRecord, at: 0)
+                            remainingSellQuantity = 0
+                        }
                     }
                 }
                 
-                // If we couldn't match all shares, keep the remaining sell
-                if remainingSellQuantity > 0 {
+                // If we couldn't match all shares, keep the remaining sell if the buy queue is not empty
+                if ( (remainingSellQuantity > 0) && (!buyQueue.isEmpty) ) {
                     var modifiedRecord = record
                     modifiedRecord.quantity = -remainingSellQuantity
                     modifiedRecord.marketValue = remainingSellQuantity * record.price
