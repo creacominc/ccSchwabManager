@@ -60,7 +60,9 @@ class SchwabClient
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
-
+    private let m_lastFilteredPriceHistoryLock = NSLock()
+    private var m_lastFilteredPriceHistory: CandleList?
+    private var m_lastFilteredPriceHistorySymbol: String = ""
     /**
      * dump the contents of this object for debugging.
      */
@@ -475,12 +477,12 @@ class SchwabClient
             semaphore.wait()
             
             if let error = responseError {
-                print("fetchPriceHistory - Error: \(error.localizedDescription)")
+                print("fetchAccounts - Error: \(error.localizedDescription)")
                 return
             }
             
             guard let data = responseData else {
-                print("fetchPriceHistory. No data received")
+                print("fetchAccounts. No data received")
                 return
             }
             
@@ -525,12 +527,29 @@ class SchwabClient
         defer {
             loadingDelegate?.setLoading(false)
         }
-        
+        m_lastFilteredPriceHistoryLock.lock()
+        defer {
+            m_lastFilteredPriceHistoryLock.unlock()
+        }
+        if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
+        {
+            print( "  fetchPriceHistory - returning cached." )
+            return m_lastFilteredPriceHistory
+        }
+        m_lastFilteredPriceHistorySymbol = symbol
+        m_lastFilteredPriceHistory?.candles.removeAll(keepingCapacity: true)
+
+        let millisecondsSinceEpoch : Int64 = Int64(Date().timeIntervalSince1970 * 1000)
+        // print date
+        print( "      endDate = \(Date( timeIntervalSince1970: Double(millisecondsSinceEpoch)/1000.0 ) )")
+
         var priceHistoryUrl = "\(priceHistoryWeb)"
         priceHistoryUrl += "?symbol=\(symbol)"
         priceHistoryUrl += "&periodType=year"
         priceHistoryUrl += "&period=1"
         priceHistoryUrl += "&frequencyType=daily"
+//        priceHistoryUrl += "&endDate=\(millisecondsSinceEpoch)"
+        print( "     priceHistoryUrl: \(priceHistoryUrl)" )
         
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
@@ -575,9 +594,18 @@ class SchwabClient
         
         do {
             let decoder = JSONDecoder()
-            let candleList: CandleList = try decoder.decode(CandleList.self, from: data)
-            print("fetchPriceHistory - Fetched \(candleList.candles.count) candles for \(symbol)")
-            return candleList
+            m_lastFilteredPriceHistory = try decoder.decode(CandleList.self, from: data)
+            print("fetchPriceHistory - Fetched \(m_lastFilteredPriceHistory?.candles.count ?? 0) candles for \(symbol)")
+            // print first and last dates in ISO8601 format
+            print( "  date range:  \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.first!.datetime ?? Int64(0.0))/1000.0)) - \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.last!.datetime ?? Int64(0.0))/1000.0))" )
+            // print the last 5 dates and closing prices
+            for i in stride(from: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 1, to: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 6, by: -1) {
+                let candle: Candle = m_lastFilteredPriceHistory?.candles[i] ?? Candle()
+                print( "  \(Date(timeIntervalSince1970: Double(candle.datetime ?? Int64(0.0))/1000.0)):  \(candle.close ?? 0.0)" )
+            }
+
+
+            return m_lastFilteredPriceHistory
         } catch {
             print("fetchPriceHistory - Error: \(error.localizedDescription)")
             print("   detail:  \(error)")
@@ -818,7 +846,7 @@ class SchwabClient
         // return the transactionlist where the symbol matches what is provided
         print( " --- getTransactionsFor returning \(m_lastFilteredTransactions.count) transactions -- " )
         return m_lastFilteredTransactions
-    }
+    } // getTransactionsFor
     
     private func setLatestTradeDates()
     {
@@ -834,7 +862,9 @@ class SchwabClient
                     // convert tradeDate string to a Date
                     var dateDte : Date = Date()
                     do {
-                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01", strategy: .iso8601.year().month().day() )
+                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01 00:00:00", strategy: .iso8601.year().month().day()
+                            .time(includingFractionalSeconds: false)
+                        )
                         // print( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
                     }
                     catch {
@@ -860,7 +890,7 @@ class SchwabClient
         m_latestDateForSymbolLock.lock()
         defer { m_latestDateForSymbolLock.unlock() }
         
-        return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
+        return m_latestDateForSymbol[symbol]?.dateString() ?? "0000"
     }
     
     /**
@@ -1196,6 +1226,9 @@ class SchwabClient
             var currentShareCount : Double = getShareCount(symbol: symbol)
             print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(self.m_quarterDelta) --")
 
+            // get last price for this security
+            let lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+
             // Process all trade transactions - only process again if the number of transactions changes
             print( " -- computeTaxLots() - calling getTransactionsFor(symbol: \(symbol))" )
             for transaction in self.getTransactionsFor(symbol: symbol) where transaction.type == .trade {
@@ -1210,7 +1243,6 @@ class SchwabClient
                         continue
                     }
 
-                    let lastPrice = transferItem.instrument?.closingPrice ?? 0.0
                     let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
                     let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
                     
@@ -1343,7 +1375,7 @@ class SchwabClient
         m_lastFilteredPositionRecords = remainingRecords
         print("! returning \(m_lastFilteredPositionRecords.count) records")
         return m_lastFilteredPositionRecords
-    }
+    } // computeTaxLots
     
     // Add loading state handling to other network methods
     func fetchData<T: Decodable>(from url: URL) async throws -> T {

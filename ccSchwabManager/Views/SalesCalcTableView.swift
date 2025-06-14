@@ -155,16 +155,8 @@ private struct TableContent: View {
                     Divider()
                 }
             }
-//            .frame(minHeight: 100)
-//            .onAppear {
-//                print("TableContent LazyVStack appeared with \(positionsData.count) records.  Was computeTaxLots already called?")
-//                for (index, item) in positionsData.enumerated() {
-//                    print("Record \(index + 1) - Date: \(item.openDate), Quantity: \(item.quantity), Price: \(item.price)")
-//                }
-//            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-//        .border(Color.cyan, width: 2)
         .onAppear {
             print("TableContent ScrollView appeared with \(positionsData.count) records")
         }
