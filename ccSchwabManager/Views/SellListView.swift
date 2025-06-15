@@ -109,7 +109,7 @@ struct SellListView: View {
          *
          */
 
-        for taxLot in taxLots.sorted(by: { $0.openDate > $1.openDate }) {
+        for taxLot in taxLots.sorted(by: { $0.costBasis / $0.quantity > $1.costBasis / $1.quantity }) {
             print( " === processing tax lot: \(taxLot.openDate), \(taxLot.quantity), \(taxLot.costBasis), \(taxLot.price), \(taxLot.gainLossDollar)" )
             totalShares += taxLot.quantity
             totalCost += taxLot.costBasis
