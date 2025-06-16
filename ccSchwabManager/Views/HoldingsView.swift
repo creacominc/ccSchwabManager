@@ -235,7 +235,8 @@ struct HoldingsView: View {
                         selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
                     }
                 )
-                .navigationTitle(selected.position.instrument?.symbol ?? "")
+                #if !os(iOS)
+                //.navigationTitle(selected.position.instrument?.symbol ?? "")
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") {
@@ -243,6 +244,7 @@ struct HoldingsView: View {
                         }
                     }
                 }
+                #endif
                 .task {
                     if let tmpsymbol = selected.position.instrument?.symbol {
                         atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
