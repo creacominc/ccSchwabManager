@@ -123,6 +123,7 @@ class Order: Codable, Identifiable
     public var orderActivityCollection: [OrderActivity]?
     //    replacingOrderCollection    [...]
     //    childOrderStrategies    [...]
+    public var childOrderStrategies: [Order]?
     //    statusDescription    [...]
     public var statusDescription: String?
     
@@ -156,11 +157,12 @@ class Order: Codable, Identifiable
         case accountNumber
         case orderActivityCollection
         //case replacingOrderCollection
+        case childOrderStrategies
         case statusDescription
     }
     
 
-    public init(session: SessionType? = nil, duration: DurationType? = nil, orderType: OrderType? = nil, cancelTime: Date? = nil, complexOrderStrategyType: ComplexOrderStrategyType? = nil, quantity: Double? = nil, filledQuantity: Double? = nil, remainingQuantity: Double? = nil, requestedDestination: RequestedDestinationType? = nil, destinationLinkName: String? = nil, releaseTime: String? = nil, stopPrice: Double? = nil, stopPriceLinkBasis: PriceLinkBasis? = nil, stopPriceLinkType: PriceLinkType? = nil, stopPriceOffset: Double? = nil, stopType: StopType? = nil, priceLinkBasis: PriceLinkBasis? = nil, priceLinkType: PriceLinkType? = nil, price: Double? = nil, taxLotMethod: TaxLotMethod? = nil, orderLegCollection: [OrderLegCollection]? = nil, activationPrice: Double? = nil, specialInstruction: SpecialInstruction? = nil, orderStrategyType: OrderStrategyType? = nil, orderId: Int64? = nil, cancelable: Bool? = nil, editable: Bool? = nil, status: OrderStatus? = nil, enteredTime: String? = nil, closeTime: String? = nil, tag: String? = nil, accountNumber: Int64? = nil, orderActivityCollection: [OrderActivity]? = nil, statusDescription: String? = nil) {
+    public init(session: SessionType? = nil, duration: DurationType? = nil, orderType: OrderType? = nil, cancelTime: Date? = nil, complexOrderStrategyType: ComplexOrderStrategyType? = nil, quantity: Double? = nil, filledQuantity: Double? = nil, remainingQuantity: Double? = nil, requestedDestination: RequestedDestinationType? = nil, destinationLinkName: String? = nil, releaseTime: String? = nil, stopPrice: Double? = nil, stopPriceLinkBasis: PriceLinkBasis? = nil, stopPriceLinkType: PriceLinkType? = nil, stopPriceOffset: Double? = nil, stopType: StopType? = nil, priceLinkBasis: PriceLinkBasis? = nil, priceLinkType: PriceLinkType? = nil, price: Double? = nil, taxLotMethod: TaxLotMethod? = nil, orderLegCollection: [OrderLegCollection]? = nil, activationPrice: Double? = nil, specialInstruction: SpecialInstruction? = nil, orderStrategyType: OrderStrategyType? = nil, orderId: Int64? = nil, cancelable: Bool? = nil, editable: Bool? = nil, status: OrderStatus? = nil, enteredTime: String? = nil, closeTime: String? = nil, tag: String? = nil, accountNumber: Int64? = nil, orderActivityCollection: [OrderActivity]? = nil, childOrderStrategies: [Order]? = nil, statusDescription: String? = nil) {
         self.session = session
         self.duration = duration
         self.orderType = orderType
@@ -194,6 +196,7 @@ class Order: Codable, Identifiable
         self.tag = tag
         self.accountNumber = accountNumber
         self.orderActivityCollection = orderActivityCollection
+        self.childOrderStrategies = childOrderStrategies
         self.statusDescription = statusDescription
     }
     

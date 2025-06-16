@@ -23,12 +23,13 @@ enum SortableColumn: String, CaseIterable, Identifiable {
     case assetType = "Asset Type"
     case account = "Account"
     case lastTradeDate = "Last Trade Date"
+    case orders = "Orders"
 
     var id: String { self.rawValue }
 
     var defaultAscending: Bool {
         switch self {
-        case .symbol, .assetType, .account:
+        case .symbol, .assetType, .account, .orders:
             return true
         case .quantity, .avgPrice, .marketValue, .pl, .plPercent, .lastTradeDate:
             return false
@@ -97,15 +98,15 @@ struct HoldingsView: View {
             let accountInfo = accountPositions.first { $0.0 === position }
             let matchesAccount = selectedAccountNumbers.isEmpty || 
                 (accountInfo?.1).map { selectedAccountNumbers.contains($0) } ?? false
-            
-            return matchesText && matchesAssetType && matchesAccount
+//            let orders = SchwabClient.shared.hasOrders( symbol: position.instrument?.symbol )
+            return matchesText && matchesAssetType && matchesAccount // && orders
         }
     }
 
     var sortedHoldings: [Position] {
         guard let sortConfig = currentSort else { return filteredHoldings }
 
-        return filteredHoldings.sorted { first, second in
+        return filteredHoldings.sorted(by: { first, second in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .symbol:
@@ -152,8 +153,14 @@ struct HoldingsView: View {
                 return ascending ?
                     (firstDate) < (secondDate) :
                     (firstDate) > (secondDate)
+            case .orders:
+                let firstHasOrders: Bool = SchwabClient.shared.hasOrders(symbol: first.instrument?.symbol ?? "")
+                let secondHasOrders: Bool = SchwabClient.shared.hasOrders(symbol: second.instrument?.symbol ?? "")
+                return ascending ?
+                    (!firstHasOrders && secondHasOrders) :
+                    (firstHasOrders && !secondHasOrders)
             }
-        }
+        })
     }
 
     var body: some View {
@@ -261,7 +268,7 @@ struct HoldingsView: View {
         SchwabClient.shared.fetchTransactionHistorySync()
         // fetch three more quarters of transactions by calling fetchTransactionHistory three times asynchronously
         Task {
-//            print( " !!!!!!!!!!!!!!!! using maxQuarterDelta of \(SchwabClient.shared.maxQuarterDelta - 1)" )
+            // print( " !!!!!!!!!!!!!!!! using maxQuarterDelta of \(SchwabClient.shared.maxQuarterDelta - 1)" )
             for _ in 0..<( min(SchwabClient.shared.maxQuarterDelta, 11) ) {
                 // sleep for 250 ms
                 try await Task.sleep(nanoseconds: 250_000_000)
@@ -292,7 +299,7 @@ struct HoldingsTable: View {
     @Binding var currentSort: SortConfig?
     let viewSize: CGSize
 
-    private let columnWidths: [CGFloat] = [0.12, 0.08, 0.08, 0.10, 0.08, 0.08, 0.10, 0.08, 0.10]
+    private let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.07, 0.08, 0.08]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -353,6 +360,7 @@ private struct TableHeader: View {
             columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width)
             columnHeader(title: "Account", column: .account).frame(width: columnWidths[7] * viewSize.width)
             columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
+            columnHeader(title: "Orders", column: .orders ).frame(width: columnWidths[9] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -438,6 +446,7 @@ private struct TableRow: View {
             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
             Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
             Text(SchwabClient.shared.getLatestTradeDate(for: position.instrument?.symbol ?? "")).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
+            Text(SchwabClient.shared.hasOrders(symbol: position.instrument?.symbol ?? "") ? "Yes" : "No" ).frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)

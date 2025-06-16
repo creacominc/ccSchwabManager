@@ -21,7 +21,8 @@ private let accessTokenWeb      : String = "\(oauthWeb)/token"
 private let traderAPI           : String = "\(schwabWeb)/trader/v1"
 private let accountWeb          : String = "\(traderAPI)/accounts"
 private let accountNumbersWeb   : String = "\(accountWeb)/accountNumbers"
-private let ordersWeb           : String = "\(traderAPI)/orders"
+// There is a bug in the ordersWeb end-point /orders.  Use /accounts/{accountNumber}/orders instead.
+// private let ordersWeb           : String = "\(traderAPI)/orders"
 
 // marketAPI
 private let marketdataAPI       : String = "\(schwabWeb)/marketdata/v1"
@@ -84,22 +85,6 @@ class SchwabClient
         self.m_secrets = Secrets()
     }
 
-    func getDateNQuartersAgoStr( quarterDelta : Int ) -> String
-    {
-        // get date one year ago
-        var components = DateComponents()
-        components.month = -quarterDelta * 3
-        components.day = +1
-        // format a string with the date one year ago.
-        return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
-            .year()
-            .month()
-            .day()
-            .timeZone(separator: .omitted)
-            .time(includingFractionalSeconds: true)
-            .timeSeparator(.colon)
-        )
-    }
 
     func configure(with secrets: inout Secrets) {
         print( "=== configure - starting refresh thread. ===" )
@@ -890,7 +875,7 @@ class SchwabClient
         m_latestDateForSymbolLock.lock()
         defer { m_latestDateForSymbolLock.unlock() }
         
-        return m_latestDateForSymbol[symbol]?.dateString() ?? "0000"
+        return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
     }
     
     /**
@@ -1082,109 +1067,136 @@ class SchwabClient
             .time(includingFractionalSeconds: true)
             .timeSeparator(.colon)
         )
-        
-        // get date one year ago
-        var components = DateComponents()
-        components.year = -1
-        // format a string with the date one year ago.
-        let dateOneYearAgoStr : String = Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
-            .year()
-            .month()
-            .day()
-            .timeZone(separator: .omitted)
-            .time(includingFractionalSeconds: true)
-            .timeSeparator(.colon)
-        )
-        
-        // fetch the orders from all accounts
-        var orderHistoryUrl = "\(ordersWeb)"
-        orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
-        orderHistoryUrl += "&toEnteredTime=\(todayStr)"
-        
-        guard let url = URL( string: orderHistoryUrl ) else {
-            print("fetchOrderHistory. Invalid URL")
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "accept")
-        // set a 10 second timeout on this request
-        request.timeoutInterval = self.requestTimeout
 
-        let semaphore = DispatchSemaphore(value: 0)
-        var responseData: Data?
-        var responseError: Error?
-        var httpResponse: HTTPURLResponse?
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            responseData = data
-            responseError = error
-            httpResponse = response as? HTTPURLResponse
-            semaphore.signal()
-        }.resume()
-        
-        semaphore.wait()
-        
-        if let error = responseError {
-            print("fetchOrderHistory Error: \(error.localizedDescription)")
-            return
-        }
-        
-        guard let data = responseData else {
-            print("fetchOrderHistory. No data received")
-            return
-        }
-        
-        if httpResponse?.statusCode != 200 {
-            if httpResponse?.statusCode == 401 && retry {
-                print("=== retrying fetchOrderHistory after refreshing access token ===")
-                refreshAccessToken()
-                fetchOrderHistory(retry: false)
+        m_symbolsWithOrders.removeAll(keepingCapacity: true)
+
+        // get date one year ago
+        let dateOneYearAgoStr : String = getDateNYearsAgoStr( yearDelta: 1 )
+        // fetch the orders from all accounts
+        for accountNumberHash in self.m_secrets.acountNumberHash {
+            print("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash) ===" )
+            
+            //var orderHistoryUrl = "\(ordersWeb)"
+            var orderHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/orders"
+            orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
+            orderHistoryUrl += "&toEnteredTime=\(todayStr)"
+            
+            print( "  === fetchOrderHistory. URL: \(orderHistoryUrl) ===" )
+            
+            guard let url = URL( string: orderHistoryUrl ) else {
+                print("fetchOrderHistory. Invalid URL")
                 return
             }
             
-            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                serviceError.printErrors(prefix: "fetchOrderHistory ")
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "accept")
+            // set a 10 second timeout on this request
+            request.timeoutInterval = self.requestTimeout
+            
+            let semaphore = DispatchSemaphore(value: 0)
+            var responseData: Data?
+            var responseError: Error?
+            var httpResponse: HTTPURLResponse?
+            
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                responseData = data
+                responseError = error
+                httpResponse = response as? HTTPURLResponse
+                semaphore.signal()
+            }.resume()
+            
+            semaphore.wait()
+            
+            if let error = responseError {
+                print("fetchOrderHistory Error: \(error.localizedDescription)")
+                return
             }
-            return
-        }
-        
-        do {
-            let decoder = JSONDecoder()
-            m_orderList.append(contentsOf: try decoder.decode([Order].self, from: data))
-        } catch {
-            print("fetchOrderHistory Error: \(error.localizedDescription)")
-            print("   detail:  \(error)")
-            return
-        }
-        
-        print("Fetched \(m_orderList.count) orders for all accounts")
-        
-        // update the m_symbolHasOrders dictionary with each symbol in the orderList with orders that are in awaiting states
-        m_symbolsWithOrders.removeAll(keepingCapacity: true)
-        for order in m_orderList {
-            if( order.status == OrderStatus.awaitingParentOrder ||
-                order.status == OrderStatus.awaitingCondition ||
-                order.status == OrderStatus.awaitingStopCondition ||
-                order.status == OrderStatus.awaitingManualReview ||
-                order.status == OrderStatus.pendingActivation ||
-                order.status == OrderStatus.accepted ||
-                order.status == OrderStatus.working ||
-                order.status == OrderStatus.new ||
-                order.status == OrderStatus.awaitingReleaseTime
-            ) {
-                for leg in order.orderLegCollection ?? [] {
-                    if( leg.instrument?.symbol != nil ) {
-                        m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+            
+            guard let data = responseData else {
+                print("fetchOrderHistory. No data received")
+                return
+            }
+            
+            if httpResponse?.statusCode != 200 {
+                if httpResponse?.statusCode == 401 && retry {
+                    print("=== retrying fetchOrderHistory after refreshing access token ===")
+                    refreshAccessToken()
+                    fetchOrderHistory(retry: false)
+                    return
+                }
+                
+                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                    serviceError.printErrors(prefix: "fetchOrderHistory ")
+                }
+                return
+            }
+            
+            do {
+                let decoder = JSONDecoder()
+                m_orderList.append(contentsOf: try decoder.decode([Order].self, from: data))
+            } catch {
+                print("fetchOrderHistory Error: \(error.localizedDescription)")
+                print("   detail:  \(error)")
+                return
+            }
+            
+            print("Fetched \(m_orderList.count) orders for all accounts")
+            
+            // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
+            for order in m_orderList {
+                if(
+                    order.status == OrderStatus.awaitingParentOrder ||
+                    order.status == OrderStatus.awaitingCondition ||
+                    order.status == OrderStatus.awaitingStopCondition ||
+                    order.status == OrderStatus.awaitingManualReview ||
+                    order.status == OrderStatus.pendingActivation ||
+                    order.status == OrderStatus.accepted ||
+                    order.status == OrderStatus.working ||
+                    order.status == OrderStatus.new ||
+                    order.status == OrderStatus.awaitingReleaseTime ||
+                    false
+                ) {
+                    if( ( order.orderStrategyType == .SINGLE )
+                        || ( order.orderStrategyType == .TRIGGER ) ) {
+                        for leg in order.orderLegCollection ?? [] {
+                            if( leg.instrument?.symbol != nil ) {
+                                m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+                            }
+                        }
                     }
-                    else {
-                        print( "\(leg.instrument?.symbol ?? "no symbol") has orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
+                    if ( order.orderStrategyType == .OCO ) {
+                        for childOrder in order.childOrderStrategies ?? [] {
+                            if(
+                                childOrder.status == OrderStatus.awaitingParentOrder ||
+                                childOrder.status == OrderStatus.awaitingCondition ||
+                                childOrder.status == OrderStatus.awaitingStopCondition ||
+                                childOrder.status == OrderStatus.awaitingManualReview ||
+                                childOrder.status == OrderStatus.pendingActivation ||
+                                childOrder.status == OrderStatus.accepted ||
+                                childOrder.status == OrderStatus.working ||
+                                childOrder.status == OrderStatus.new ||
+                                childOrder.status == OrderStatus.awaitingReleaseTime ||
+                                false
+                            ) {
+                                for leg in childOrder.orderLegCollection ?? [] {
+                                    if( leg.instrument?.symbol != nil ) {
+                                        m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+                else if ( order.status != OrderStatus.canceled &&
+                          order.status != OrderStatus.filled &&
+                          order.status != OrderStatus.expired &&
+                          order.status != OrderStatus.rejected ){
+                    print( "... orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
+                }
             }
-        }
+        } // for all accounts
         print("\(m_symbolsWithOrders.count) symbols have orders in awaiting states")
     }
 

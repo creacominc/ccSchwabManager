@@ -38,6 +38,40 @@ func getNextTradeDate() -> Date
     return nextDate
 }
 
+func getDateNQuartersAgoStr( quarterDelta : Int ) -> String
+{
+    // get date one year ago
+    var components = DateComponents()
+    components.month = -quarterDelta * 3
+    components.day = +1
+    // format a string with the date one year ago.
+    return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+        .year()
+        .month()
+        .day()
+        .timeZone(separator: .omitted)
+        .time(includingFractionalSeconds: true)
+        .timeSeparator(.colon)
+    )
+}
+
+func getDateNYearsAgoStr( yearDelta : Int ) -> String
+{
+    // get date one year ago
+    var components = DateComponents()
+    components.year = -yearDelta
+    components.day = +1
+    // format a string with the date one year ago.
+    return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+        .year()
+        .month()
+        .day()
+        .timeZone(separator: .omitted)
+        .time(includingFractionalSeconds: true)
+        .timeSeparator(.colon)
+    )
+}
+
 extension DateFormatter
 {
     static let date: DateFormatter =
