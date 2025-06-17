@@ -41,19 +41,20 @@ struct AuthFlowView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 5) {
             if showingCredentialsInput {
                 Text("Enter API Credentials")
                     .font(.title)
                 
                 TextEditor(text: $credentialsText)
+                    .font(.system(.body, design: .monospaced))
                     .frame(height: 150)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                     )
                     .padding()
-                
+
                 Text("Format: appId=your_app_id\nappSecret=your_app_secret\nredirectUrl=your_redirect_url")
                     .font(.caption)
                     .foregroundColor(.gray)
@@ -207,7 +208,13 @@ struct AuthFlowView: View {
                 secretsManager.saveSecrets()
 
                 // Fetch account holdings
-                SchwabClient.shared.fetchAccounts( retry: true )   /** @TODO:   VERIFY - should this be called here or should this rely on fetchHoldings()? */
+                SchwabClient.shared.fetchAccounts( retry: true )
+                
+                // Force view update on main thread
+                await MainActor.run {
+                    secretsManager.objectWillChange.send()
+                    dismiss()
+                }
             }
         } else {
             // Handle invalid URL format

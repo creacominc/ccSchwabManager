@@ -127,9 +127,9 @@ struct PriceHistoryChart: View {
                         .font(.caption)
                         .bold()
                 }
-                .padding(8)
+                .padding(4)
                 .background(tooltipBackgroundColor)
-                .cornerRadius(8)
+                .cornerRadius(4)
                 .shadow(radius: 2)
                 .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
             }
@@ -149,7 +149,7 @@ struct PositionDetailsHeader: View {
     let atrValue: Double
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 // Previous Position Button
                 Button(action: { onNavigate(currentIndex - 1) }) {
@@ -174,10 +174,9 @@ struct PositionDetailsHeader: View {
                 .keyboardShortcut(.rightArrow, modifiers: [])
             }
 
-            HStack(spacing: 20) {
-                LeftColumn(position: position,
-                           atrValue: atrValue
-                )
+            HStack(spacing: 10) {
+                LeftColumn(position: position)
+                MiddleColumn(atrValue: atrValue, position: position)
                 RightColumn(position: position, accountNumber: accountNumber)
             }
         }
@@ -197,16 +196,29 @@ struct PositionDetailsHeader: View {
 
 struct LeftColumn: View {
     let position: Position
-    let atrValue: Double
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
             DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
             DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
             DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
-            DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct MiddleColumn: View {
+    let atrValue: Double
+    let position: Position
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
+            DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
+            DetailRow(label: "P/L %", value: String(format: "%.1f%%",
+                (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -215,14 +227,12 @@ struct RightColumn: View {
     let accountNumber: String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
-            DetailRow(label: "P/L %", value: String(format: "%.1f%%", 
-                (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
+        VStack(alignment: .leading, spacing: 2) {
             DetailRow(label: "Asset Type", value: position.instrument?.assetType?.rawValue ?? "")
             DetailRow(label: "Account", value: accountNumber)
+            DetailRow(label: "TBD", value: "42")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 
@@ -232,7 +242,7 @@ struct PriceHistorySection: View {
     let formatDate: (Int64?) -> String
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
 //            Text("Price History")
 //                .font(.headline)
 //                .padding(.horizontal)
@@ -381,7 +391,7 @@ struct TransactionHistorySection: View {
                     .frame(width: calculatedWidths[4], alignment: .trailing)
             }
             .padding(.horizontal)
-            .padding(.vertical, 5)
+            .padding(.vertical, 3)
             .foregroundColor(isSell ? .red : .primary)
             Divider()
         }
@@ -414,7 +424,7 @@ struct TransactionHistorySection: View {
                     let calculatedWidths = columnProportions.map { $0 * availableWidthForColumns }
 
                     VStack(spacing: 0) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 4) {
                             columnHeader(title: "Date", column: .date).frame(width: calculatedWidths[0])
                             columnHeader(title: "Type", column: .type).frame(width: calculatedWidths[1])
                             // right justify the Quantity column header
@@ -425,7 +435,7 @@ struct TransactionHistorySection: View {
                             columnHeader(title: "Net Amount", column: .netAmount, alignment: .trailing).frame(width: calculatedWidths[4])
                         }
                         .padding(.horizontal)
-                        .padding(.vertical, 5)
+                        .padding(.vertical, 3)
                         .background(Color.gray.opacity(0.1))
                         
                         Divider()
@@ -527,7 +537,7 @@ struct SalesCalcTab: View {
                 symbol: symbol,
                 atrValue: atrValue
             )
-            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.45)
+            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.45)
 //            .padding(.horizontal)
 //            .border(Color.pink)
 
@@ -537,7 +547,7 @@ struct SalesCalcTab: View {
                 symbol: symbol,
                 atrValue: atrValue
                 )
-            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.45)
+            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.45)
 
         }
         .tabItem {
@@ -578,10 +588,10 @@ struct PositionDetailContent: View {
                 symbol: symbol,
                 atrValue: atrValue
             )
-            .padding(.bottom, 8)
+            .padding(.bottom, 4)
             
             Divider()
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
             
             GeometryReader { geometry in
                 TabView {
