@@ -205,7 +205,7 @@ class SchwabClient
         // Access Token Request
         print( "=== getAccessToken ===" )
         let url = URL( string: "\(accessTokenWeb)" )!
-        print( "accessTokenUrl: \(url)" )
+        //print( "accessTokenUrl: \(url)" )
         var accessTokenRequest = URLRequest( url: url )
         // set a 10 second timeout on this request
         accessTokenRequest.timeoutInterval = self.requestTimeout
@@ -393,7 +393,7 @@ class SchwabClient
                 return
             }
             // print( "response: \(response)" )
-            print( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
+            //            print( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
             
             let decoder = JSONDecoder()
             let accountNumberHashes = try decoder.decode([AccountNumberHash].self, from: data)
@@ -534,7 +534,7 @@ class SchwabClient
         priceHistoryUrl += "&period=1"
         priceHistoryUrl += "&frequencyType=daily"
 //        priceHistoryUrl += "&endDate=\(millisecondsSinceEpoch)"
-        print( "     priceHistoryUrl: \(priceHistoryUrl)" )
+        //print( "     priceHistoryUrl: \(priceHistoryUrl)" )
         
         guard let url = URL( string: priceHistoryUrl ) else {
             print("fetchPriceHistory. Invalid URL")
@@ -1081,7 +1081,7 @@ class SchwabClient
             orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
             orderHistoryUrl += "&toEnteredTime=\(todayStr)"
             
-            print( "  === fetchOrderHistory. URL: \(orderHistoryUrl) ===" )
+            //print( "  === fetchOrderHistory. URL: \(orderHistoryUrl) ===" )
             
             guard let url = URL( string: orderHistoryUrl ) else {
                 print("fetchOrderHistory. Invalid URL")
