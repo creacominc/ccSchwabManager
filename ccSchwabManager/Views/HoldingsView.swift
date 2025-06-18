@@ -76,6 +76,7 @@ struct HoldingsView: View {
     @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = HoldingsViewModel()
     @State private var isLoadingAccounts = false
+    @State private var isFilterExpanded = false
 //    @State private var sellOrder: SalesCalcResultsRecord
 //    @State private var copiedValue: String
     @State private var atrValue: Double = 0.0
@@ -167,12 +168,36 @@ struct HoldingsView: View {
         NavigationStack {
             GeometryReader { geometry in
                 VStack {
-                    FilterControls(
-                        selectedAssetTypes: $selectedAssetTypes,
-                        selectedAccountNumbers: $selectedAccountNumbers,
-                        uniqueAssetTypes: viewModel.uniqueAssetTypes,
-                        uniqueAccountNumbers: viewModel.uniqueAccountNumbers
-                    )
+                    // Filter section with disclosure button
+                    VStack(spacing: 0) {
+                        Button(action: {
+                            withAnimation {
+                                isFilterExpanded.toggle()
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
+                                    .foregroundColor(.accentColor)
+                                Text("Filters")
+                                    .foregroundColor(.primary)
+                                Spacer()
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(Color.gray.opacity(0.1))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if isFilterExpanded {
+                            FilterControls(
+                                selectedAssetTypes: $selectedAssetTypes,
+                                selectedAccountNumbers: $selectedAccountNumbers,
+                                uniqueAssetTypes: viewModel.uniqueAssetTypes,
+                                uniqueAccountNumbers: viewModel.uniqueAccountNumbers
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
 
                     if isLoadingAccounts {
                         ProgressView()
@@ -258,8 +283,8 @@ struct HoldingsView: View {
                     }
                 }
             }
-            .frame(width: viewSize.width * 0.9,
-                   height: viewSize.height * 0.9)
+            .frame(width: viewSize.width * 0.97,
+                   height: viewSize.height * 0.92)
         }
     }
     

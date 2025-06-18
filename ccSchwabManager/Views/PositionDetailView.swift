@@ -569,6 +569,7 @@ struct PositionDetailContent: View {
     let isLoadingTransactions: Bool
     let formatDate: (Int64?) -> String
     @Binding var viewSize: CGSize
+    @State private var selectedTab = 0
 //    // current position and tax lots for a given security
 //    let currentCostBasis: Double
 //    let currentShares: Int
@@ -594,19 +595,21 @@ struct PositionDetailContent: View {
                 .padding(.vertical, 4)
             
             GeometryReader { geometry in
-                TabView {
+                TabView(selection: $selectedTab) {
                     PriceHistoryTab(
                         priceHistory: priceHistory,
                         isLoading: isLoadingPriceHistory,
                         formatDate: formatDate,
                         geometry: geometry
                     )
+                    .tag(0)
                     
                     TransactionsTab(
                         isLoading: isLoadingTransactions,
                         symbol: position.instrument?.symbol ?? "",
                         geometry: geometry
                     )
+                    .tag(1)
                     
                     SalesCalcTab(
                         symbol: symbol,
@@ -619,6 +622,7 @@ struct PositionDetailContent: View {
 //                        sellOrder: sellOrder,
 //                        copiedValue: copiedValue
                     )
+                    .tag(2)
                 }
                 .onAppear {
                     viewSize = geometry.size
