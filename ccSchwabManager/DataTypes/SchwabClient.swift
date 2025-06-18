@@ -581,13 +581,13 @@ class SchwabClient
             let decoder = JSONDecoder()
             m_lastFilteredPriceHistory = try decoder.decode(CandleList.self, from: data)
             print("fetchPriceHistory - Fetched \(m_lastFilteredPriceHistory?.candles.count ?? 0) candles for \(symbol)")
-            // print first and last dates in ISO8601 format
-            print( "  date range:  \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.first!.datetime ?? Int64(0.0))/1000.0)) - \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.last!.datetime ?? Int64(0.0))/1000.0))" )
-            // print the last 5 dates and closing prices
-            for i in stride(from: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 1, to: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 6, by: -1) {
-                let candle: Candle = m_lastFilteredPriceHistory?.candles[i] ?? Candle()
-                print( "  \(Date(timeIntervalSince1970: Double(candle.datetime ?? Int64(0.0))/1000.0)):  \(candle.close ?? 0.0)" )
-            }
+//            // print first and last dates in ISO8601 format
+//            print( "  date range:  \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.first!.datetime ?? Int64(0.0))/1000.0)) - \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.last!.datetime ?? Int64(0.0))/1000.0))" )
+//            // print the last 5 dates and closing prices
+//            for i in stride(from: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 1, to: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 6, by: -1) {
+//                let candle: Candle = m_lastFilteredPriceHistory?.candles[i] ?? Candle()
+//                print( "  \(Date(timeIntervalSince1970: Double(candle.datetime ?? Int64(0.0))/1000.0)):  \(candle.close ?? 0.0)" )
+//            }
 
 
             return m_lastFilteredPriceHistory
@@ -1192,6 +1192,7 @@ class SchwabClient
                 else if ( order.status != OrderStatus.canceled &&
                           order.status != OrderStatus.filled &&
                           order.status != OrderStatus.expired &&
+                          order.status != OrderStatus.replaced &&
                           order.status != OrderStatus.rejected ){
                     print( "... orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
                 }

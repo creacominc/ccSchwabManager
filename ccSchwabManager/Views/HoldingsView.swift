@@ -77,9 +77,9 @@ struct HoldingsView: View {
     @StateObject private var viewModel = HoldingsViewModel()
     @State private var isLoadingAccounts = false
     @State private var isFilterExpanded = false
-//    @State private var sellOrder: SalesCalcResultsRecord
-//    @State private var copiedValue: String
     @State private var atrValue: Double = 0.0
+    @State private var selectedTab: Int = 0
+
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -258,7 +258,8 @@ struct HoldingsView: View {
                         let newPosition = sortedHoldings[newIndex]
                         let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
                         selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
-                    }
+                    },
+                    selectedTab: $selectedTab
                 )
                 #if !os(iOS)
                 //.navigationTitle(selected.position.instrument?.symbol ?? "")
@@ -402,13 +403,6 @@ private struct TableContent: View {
     let viewSize: CGSize
     let columnWidths: [CGFloat]
 
-    private func calcPLPercent(position: Position) -> Double {
-        let pl = position.longOpenProfitLoss ?? 0
-        let mv = position.marketValue ?? 0
-        let costBasis = mv - pl
-        return costBasis != 0 ? (pl / costBasis) * 100 : 0
-    }
-
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
     }
@@ -438,17 +432,17 @@ private struct TableRow: View {
     let columnWidths: [CGFloat]
     let onTap: () -> Void
 
-    private func calcPLPercent(position: Position) -> Double {
+    private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
         let mv = position.marketValue ?? 0
         let costBasis = mv - pl
         return costBasis != 0 ? (pl / costBasis) * 100 : 0
     }
 
-    private func plColor(_ percent: Double) -> Color {
-        if percent < 0 {
+    private var plColor: Color {
+        if plPercent < 0 {
             return .red
-        } else if percent < 7 {
+        } else if plPercent < 6 {
             return .orange // Amber-like color
         } else {
             return .primary
@@ -456,7 +450,6 @@ private struct TableRow: View {
     }
 
     var body: some View {
-        let plPercent = calcPLPercent(position: position)
         HStack(spacing: 8) {
             Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
             Text(String(format: "%.2f", position.longQuantity ?? 0.0)).frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
@@ -465,11 +458,11 @@ private struct TableRow: View {
             Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
                 .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
-                .foregroundColor(plColor(plPercent))
+                .foregroundColor(plColor)
             Text(String(format: "%.1f%%", plPercent))
                 .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
-                .foregroundColor(plColor(plPercent))
+                .foregroundColor(plColor)
             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
             Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
             Text(SchwabClient.shared.getLatestTradeDate(for: position.instrument?.symbol ?? "")).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)

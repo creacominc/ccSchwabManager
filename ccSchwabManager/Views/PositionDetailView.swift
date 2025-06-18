@@ -66,18 +66,18 @@ struct PriceHistoryChart: View {
     
     var body: some View {
         chartContent
-            .onAppear {
-                if let firstCandle = candles.first, let lastCandle = candles.last {
-                    let firstDate = Date(timeIntervalSince1970: TimeInterval(firstCandle.datetime ?? 0) / 1000)
-                    let lastDate = Date(timeIntervalSince1970: TimeInterval(lastCandle.datetime ?? 0) / 1000)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                    print("PriceHistoryChart - First date: \(formatter.string(from: firstDate))")
-                    print("PriceHistoryChart - Last date: \(formatter.string(from: lastDate))")
-                    print("PriceHistoryChart - First close: \(firstCandle.close ?? 0)")
-                    print("PriceHistoryChart - Last close: \(lastCandle.close ?? 0)")
-                }
-            }
+//            .onAppear {
+//                if let firstCandle = candles.first, let lastCandle = candles.last {
+//                    let firstDate = Date(timeIntervalSince1970: TimeInterval(firstCandle.datetime ?? 0) / 1000)
+//                    let lastDate = Date(timeIntervalSince1970: TimeInterval(lastCandle.datetime ?? 0) / 1000)
+//                    let formatter = DateFormatter()
+//                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+//                    print("PriceHistoryChart - First date: \(formatter.string(from: firstDate))")
+//                    print("PriceHistoryChart - Last date: \(formatter.string(from: lastDate))")
+//                    print("PriceHistoryChart - First close: \(firstCandle.close ?? 0)")
+//                    print("PriceHistoryChart - Last close: \(lastCandle.close ?? 0)")
+//                }
+//            }
     }
     
     @ViewBuilder
@@ -286,8 +286,8 @@ struct PositionDetailsHeader: View {
 
             if showDetails {
                 HStack(spacing: 10) {
-                    LeftColumn(position: position)
-                    MiddleColumn(atrValue: atrValue, position: position)
+                    LeftColumn(position: position, atrValue: atrValue)
+                    MiddleColumn( position: position)
                     RightColumn(position: position, accountNumber: accountNumber)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -309,27 +309,44 @@ struct PositionDetailsHeader: View {
 
 struct LeftColumn: View {
     let position: Position
+    let atrValue: Double
     
+    private var plPercent: Double {
+        (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100
+    }
+
+    private var plColor: Color {
+        if plPercent < 0 {
+            return .red
+        }
+        let threshold = min(5.0, 2 * atrValue)
+        if plPercent <= threshold {
+            return .orange
+        } else {
+            return .green
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            DetailRow(label: "P/L %", value: String(format: "%.1f%%",
-                (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
+            DetailRow(label: "P/L %", value: String(format: "%.1f%%", plPercent))
+                .foregroundColor(plColor)
             DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
-            DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
+                .foregroundColor(plColor)
+            DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 struct MiddleColumn: View {
-    let atrValue: Double
     let position: Position
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
             DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
             DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
-            DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -356,9 +373,6 @@ struct PriceHistorySection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-//            Text("Price History")
-//                .font(.headline)
-//                .padding(.horizontal)
             
             if isLoading {
                 ProgressView()
@@ -682,7 +696,7 @@ struct PositionDetailContent: View {
     let isLoadingTransactions: Bool
     let formatDate: (Int64?) -> String
     @Binding var viewSize: CGSize
-    @State private var selectedTab = 0
+    @Binding var selectedTab: Int
 //    // current position and tax lots for a given security
 //    let currentCostBasis: Double
 //    let currentShares: Int
@@ -756,6 +770,7 @@ struct PositionDetailView: View {
     let symbol: String
     let atrValue: Double
     let onNavigate: (Int) -> Void
+    @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
     @State private var isLoadingPriceHistory = false
     @State private var isLoadingTransactions = false
@@ -805,7 +820,8 @@ struct PositionDetailView: View {
                 isLoadingPriceHistory: isLoadingPriceHistory,
                 isLoadingTransactions: isLoadingTransactions,
                 formatDate: formatDate,
-                viewSize: $viewSize
+                viewSize: $viewSize,
+                selectedTab: $selectedTab
             )
             .padding(.horizontal)
         }
