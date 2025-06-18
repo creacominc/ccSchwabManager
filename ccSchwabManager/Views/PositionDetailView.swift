@@ -32,6 +32,9 @@ struct PriceHistoryChart: View {
     @State private var selectedDate: Date?
     @State private var selectedPrice: Double?
     @State private var tooltipPosition: CGPoint = .zero
+    @State private var crosshairPosition: CGPoint = .zero
+    @State private var showCrosshair = false
+    @State private var plotFrame: CGRect = .zero
 
     private var tooltipBackgroundColor: Color {
         #if os(iOS)
@@ -51,91 +54,186 @@ struct PriceHistoryChart: View {
         return (minClose - padding)...(maxClose + padding)
     }
     
+    private var xAxisRange: ClosedRange<Date> {
+        guard !candles.isEmpty else { return Date()...Date() }
+        let firstDate = Date(timeIntervalSince1970: TimeInterval(candles.first?.datetime ?? 0) / 1000)
+        let lastDate = Date(timeIntervalSince1970: TimeInterval(candles.last?.datetime ?? 0) / 1000)
+        let calendar = Calendar.current
+        let startDate = calendar.date(byAdding: .day, value: -2, to: firstDate) ?? firstDate
+        let endDate = calendar.date(byAdding: .day, value: 2, to: lastDate) ?? lastDate
+        return startDate...endDate
+    }
+    
     var body: some View {
-            chartContent
+        chartContent
+            .onAppear {
+                if let firstCandle = candles.first, let lastCandle = candles.last {
+                    let firstDate = Date(timeIntervalSince1970: TimeInterval(firstCandle.datetime ?? 0) / 1000)
+                    let lastDate = Date(timeIntervalSince1970: TimeInterval(lastCandle.datetime ?? 0) / 1000)
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                    print("PriceHistoryChart - First date: \(formatter.string(from: firstDate))")
+                    print("PriceHistoryChart - Last date: \(formatter.string(from: lastDate))")
+                    print("PriceHistoryChart - First close: \(firstCandle.close ?? 0)")
+                    print("PriceHistoryChart - Last close: \(lastCandle.close ?? 0)")
+                }
+            }
     }
     
     @ViewBuilder
     private var chartContent: some View {
-        ZStack {
-            Chart {
-                // candles were already sorted when they arrive in getPriceHistory
-                ForEach(candles, id: \.datetime) { candle in
-                    LineMark(
-                        x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
-                        y: .value("Price", candle.close ?? 0)
-                    )
-                    .foregroundStyle(.blue)
-                }
-            }
-            .chartYScale(domain: yAxisRange)
-            .chartXAxis {
-                AxisMarks(values: .stride(by: .day)) { value in
-                    AxisGridLine()
-                    if let date = value.as(Date.self) {
-                        let calendar = Calendar.current
-                        let isFirstDayOfMonth = calendar.component(.day, from: date) == 1
-                        
-                        if isFirstDayOfMonth {
-                            AxisValueLabel(format: .dateTime.month())
-                        }
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks { value in
-                    AxisGridLine()
-                    AxisValueLabel(format: .currency(code: "USD").precision(.fractionLength(2)))
-                }
-            }
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    Rectangle()
-                        .fill(.clear)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    let x: CGFloat
-                                    guard let plotFrame = proxy.plotFrame else { return }
-                                    x = value.location.x - geometry[plotFrame].origin.x
-                                    guard x >= 0, x < geometry[plotFrame].width else { return }
-                                    let date = proxy.value(atX: x) as Date?
-                                    if let date = date,
-                                       let candle = candles.first(where: {
-                                           let candleDate = Date(timeIntervalSince1970: TimeInterval($0.datetime ?? 0) / 1000)
-                                           return Calendar.current.isDate(candleDate, inSameDayAs: date)
-                                       }) {
-                                        selectedDate = date
-                                        selectedPrice = candle.close
-                                        tooltipPosition = CGPoint(x: value.location.x, y: value.location.y)
-                                    }
-                                }
-                                .onEnded { _ in
-                                    selectedDate = nil
-                                    selectedPrice = nil
-                                }
-                        )
-                }
-            }
-            
-            if let date = selectedDate, let price = selectedPrice {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(date, format: .dateTime.month().day().year())
-                        .font(.caption)
-                    Text(String(format: "$%.2f", price))
-                        .font(.caption)
-                        .bold()
-                }
-                .padding(4)
-                .background(tooltipBackgroundColor)
-                .cornerRadius(4)
-                .shadow(radius: 2)
-                .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
+        Chart {
+            ForEach(candles, id: \.datetime) { candle in
+                LineMark(
+                    x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
+                    y: .value("Price", candle.close ?? 0)
+                )
+                .foregroundStyle(.blue)
+                .interpolationMethod(.catmullRom)
             }
         }
+        .chartXScale(domain: xAxisRange)
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .day)) { value in
+                if let date = value.as(Date.self) {
+                    let calendar = Calendar.current
+                    let isFirstDayOfMonth = calendar.component(.day, from: date) == 1
+                    let isFirstOrLastDate = date == xAxisRange.lowerBound || date == xAxisRange.upperBound
+                    
+                    if isFirstOrLastDate {
+                        AxisValueLabel {
+                            Text(date, format: .dateTime.year().month().day())
+                        }
+                    } else if isFirstDayOfMonth {
+                        AxisValueLabel {
+                            Text(date, format: .dateTime.year().month())
+                        }
+                    }
+                    AxisGridLine()
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { value in
+                AxisGridLine()
+                AxisValueLabel(format: .currency(code: "USD").precision(.fractionLength(2)))
+            }
+        }
+        .chartYScale(domain: yAxisRange)
+        .chartPlotStyle { plotArea in
+            plotArea
+                .background(Color.gray.opacity(0.1))
+                .border(Color.gray.opacity(0.2))
+        }
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onAppear {
+                        if let frame = proxy.plotFrame {
+                            plotFrame = geometry[frame]
+                        }
+                    }
+                    .onChange(of: geometry.size) { _, _ in
+                        if let frame = proxy.plotFrame {
+                            plotFrame = geometry[frame]
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChange(value: value, proxy: proxy, geometry: geometry)
+                            }
+                            .onEnded { _ in
+                                selectedDate = nil
+                                selectedPrice = nil
+                                showCrosshair = false
+                            }
+                    )
+            }
+        }
+        .overlay {
+            if showCrosshair {
+                CrosshairView(
+                    crosshairPosition: crosshairPosition,
+                    plotFrame: plotFrame
+                )
+            }
+        }
+        .overlay {
+            TooltipView(
+                selectedDate: selectedDate,
+                selectedPrice: selectedPrice,
+                tooltipPosition: tooltipPosition,
+                tooltipBackgroundColor: tooltipBackgroundColor
+            )
+        }
     }
+    
+    private func handleDragChange(value: DragGesture.Value, proxy: ChartProxy, geometry: GeometryProxy) {
+        let x: CGFloat
+        guard let plotFrame = proxy.plotFrame else { return }
+        x = value.location.x - geometry[plotFrame].origin.x
+        guard x >= 0, x < geometry[plotFrame].width else { return }
+        let date = proxy.value(atX: x) as Date?
+        if let date = date,
+           let candle = candles.first(where: {
+               let candleDate = Date(timeIntervalSince1970: TimeInterval($0.datetime ?? 0) / 1000)
+               return Calendar.current.isDate(candleDate, inSameDayAs: date)
+           }) {
+            selectedDate = date
+            selectedPrice = candle.close
+            tooltipPosition = CGPoint(x: value.location.x, y: value.location.y)
+            crosshairPosition = CGPoint(x: value.location.x, y: value.location.y)
+            showCrosshair = true
+        }
+    }
+}
 
+private struct CrosshairView: View {
+    let crosshairPosition: CGPoint
+    let plotFrame: CGRect
+    
+    var body: some View {
+        // Vertical line
+        Path { path in
+            path.move(to: CGPoint(x: crosshairPosition.x, y: plotFrame.minY))
+            path.addLine(to: CGPoint(x: crosshairPosition.x, y: plotFrame.maxY))
+        }
+        .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+        
+        // Horizontal line
+        Path { path in
+            path.move(to: CGPoint(x: plotFrame.minX, y: crosshairPosition.y))
+            path.addLine(to: CGPoint(x: plotFrame.maxX, y: crosshairPosition.y))
+        }
+        .stroke(Color.gray.opacity(0.5), lineWidth: 1)
+    }
+}
+
+private struct TooltipView: View {
+    let selectedDate: Date?
+    let selectedPrice: Double?
+    let tooltipPosition: CGPoint
+    let tooltipBackgroundColor: Color
+    
+    var body: some View {
+        if let date = selectedDate, let price = selectedPrice {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(date, format: .dateTime.year().month().day())
+                    .font(.caption)
+                Text(String(format: "$%.2f", price))
+                    .font(.caption)
+                    .bold()
+            }
+            .padding(4)
+            .background(tooltipBackgroundColor)
+            .cornerRadius(4)
+            .shadow(radius: 2)
+            .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
+        }
+    }
 }
 
 struct PositionDetailsHeader: View {
@@ -144,9 +242,9 @@ struct PositionDetailsHeader: View {
     let currentIndex: Int
     let totalPositions: Int
     let onNavigate: (Int) -> Void
-    //
     let symbol: String
     let atrValue: Double
+    @State private var showDetails = true
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -166,6 +264,18 @@ struct PositionDetailsHeader: View {
                 
                 Spacer()
                 
+                // Details disclosure button
+                Button(action: {
+                    withAnimation {
+                        showDetails.toggle()
+                    }
+                }) {
+                    Image(systemName: showDetails ? "chevron.down" : "chevron.right")
+                        .foregroundColor(.accentColor)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                
                 // Next Position Button
                 Button(action: { onNavigate(currentIndex + 1) }) {
                     Image(systemName: "chevron.right")
@@ -174,10 +284,13 @@ struct PositionDetailsHeader: View {
                 .keyboardShortcut(.rightArrow, modifiers: [])
             }
 
-            HStack(spacing: 10) {
-                LeftColumn(position: position)
-                MiddleColumn(atrValue: atrValue, position: position)
-                RightColumn(position: position, accountNumber: accountNumber)
+            if showDetails {
+                HStack(spacing: 10) {
+                    LeftColumn(position: position)
+                    MiddleColumn(atrValue: atrValue, position: position)
+                    RightColumn(position: position, accountNumber: accountNumber)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding()
