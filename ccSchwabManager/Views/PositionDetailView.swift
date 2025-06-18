@@ -312,9 +312,10 @@ struct LeftColumn: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            DetailRow(label: "P/L %", value: String(format: "%.1f%%",
+                (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
+            DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
             DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
-            DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
-            DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -326,10 +327,9 @@ struct MiddleColumn: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
+            DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
             DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
-            DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
-            DetailRow(label: "P/L %", value: String(format: "%.1f%%",
-                (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100))
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -343,7 +343,7 @@ struct RightColumn: View {
         VStack(alignment: .leading, spacing: 2) {
             DetailRow(label: "Asset Type", value: position.instrument?.assetType?.rawValue ?? "")
             DetailRow(label: "Account", value: accountNumber)
-            DetailRow(label: "TBD", value: "42")
+            //DetailRow(label: "TBD", value: "42")
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
