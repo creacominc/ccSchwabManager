@@ -257,25 +257,32 @@ struct PositionDetailsHeader: View {
                 .keyboardShortcut(.leftArrow, modifiers: [])
                 
                 Spacer()
-                
+                Spacer()
+
                 Text(position.instrument?.symbol ?? "")
                     .font(.title2)
                     .bold()
                 
                 Spacer()
-                
+
                 // Details disclosure button
                 Button(action: {
                     withAnimation {
                         showDetails.toggle()
                     }
                 }) {
-                    Image(systemName: showDetails ? "chevron.down" : "chevron.right")
-                        .foregroundColor(.accentColor)
+                    HStack {
+                        Image(systemName: showDetails ? "chevron.down" : "chevron.right")
+                            .foregroundColor(.accentColor)
+                        Text("Details")
+                            .foregroundColor(.primary)
+                    }
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
-                
+
+                Spacer()
+
                 // Next Position Button
                 Button(action: { onNavigate(currentIndex + 1) }) {
                     Image(systemName: "chevron.right")
