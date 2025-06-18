@@ -203,7 +203,7 @@ struct HoldingsView: View {
                     }
                 } // VStack
                 .searchable(text: $searchText, prompt: "Search by symbol or description")
-                .navigationTitle("Holdings")
+                //.navigationTitle("Holdings")
                 .task {
                     defer { isLoadingAccounts = false }
                     isLoadingAccounts = true
