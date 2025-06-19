@@ -9,10 +9,10 @@ import SwiftUI
 
 struct ContentView: View
 {
-    @EnvironmentObject var secretsManager: SecretsManager
-    @State private var showingAuthDialog = false
+    @StateObject private var secretsManager = SecretsManager()
     @State private var authCode = ""
     @State private var selectedTab = 0
+    @State private var showingAuthDialog = false
 
     var body: some View
     {
@@ -49,6 +49,7 @@ struct ContentView: View
                     secretsManager.objectWillChange.send()
                 }
         }
+        .environmentObject(secretsManager)
     }
 }
 

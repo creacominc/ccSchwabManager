@@ -1,6 +1,7 @@
 import Foundation
 import AuthenticationServices
 import Compression
+import os.log
 
 // Import the LoadingStateDelegate protocol
 @_exported import struct Foundation.URL
@@ -66,15 +67,18 @@ class SchwabClient
     private var m_lastFilteredPriceHistorySymbol: String = ""
     private let m_quarterDeltaLock = NSLock()  // Add mutex for m_quarterDelta
     
+    // Create a logger for this class
+    private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
+    
     // Add a computed property to track loading delegate changes
     var loadingDelegate: LoadingStateDelegate? {
         get { return _loadingDelegate }
         set { 
             let timestamp = Date().timeIntervalSince1970
             if let newValue = newValue {
-                print("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: \(type(of: newValue))")
+                AppLogger.shared.info("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: \(type(of: newValue))")
             } else {
-                print("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: nil")
+                AppLogger.shared.info("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: nil")
             }
             _loadingDelegate = newValue
         }
@@ -448,7 +452,7 @@ class SchwabClient
     
     // Add method to clear stuck loading states
     func clearLoadingState() {
-        print("🧹 SchwabClient.clearLoadingState - Clearing any stuck loading state")
+        AppLogger.shared.warning("🧹 SchwabClient.clearLoadingState - Clearing any stuck loading state")
         loadingDelegate?.setLoading(false)
         loadingDelegate = nil
     }
