@@ -41,7 +41,6 @@ class SchwabClient
     public let maxQuarterDelta : Int = 12 // 3 years
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
-    weak var loadingDelegate: LoadingStateDelegate?
     @Published var showIncompleteDataWarning = false
     private var m_secrets : Secrets
     private var m_quarterDelta : Int = 0
@@ -66,6 +65,22 @@ class SchwabClient
     private var m_lastFilteredPriceHistory: CandleList?
     private var m_lastFilteredPriceHistorySymbol: String = ""
     private let m_quarterDeltaLock = NSLock()  // Add mutex for m_quarterDelta
+    
+    // Add a computed property to track loading delegate changes
+    var loadingDelegate: LoadingStateDelegate? {
+        get { return _loadingDelegate }
+        set { 
+            let timestamp = Date().timeIntervalSince1970
+            if let newValue = newValue {
+                print("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: \(type(of: newValue))")
+            } else {
+                print("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: nil")
+            }
+            _loadingDelegate = newValue
+        }
+    }
+    private weak var _loadingDelegate: LoadingStateDelegate?
+
     /**
      * dump the contents of this object for debugging.
      */
@@ -206,6 +221,7 @@ class SchwabClient
     {
         // Access Token Request
         print( "=== getAccessToken ===" )
+        print("🔍 getAccessToken - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         
         let url = URL( string: "\(accessTokenWeb)" )!
@@ -228,6 +244,7 @@ class SchwabClient
         { [weak self] data, response, error in
             defer {
                 DispatchQueue.main.async {
+                    print("🔍 getAccessToken - Setting loading to FALSE")
                     self?.loadingDelegate?.setLoading(false)
                 }
             }
@@ -301,8 +318,10 @@ class SchwabClient
      */
     private func refreshAccessToken() {
         print("=== refreshAccessToken: Refreshing access token...")
+        print("🔍 refreshAccessToken - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 refreshAccessToken - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -427,6 +446,13 @@ class SchwabClient
         m_refreshAccessToken_running = false
     }
     
+    // Add method to clear stuck loading states
+    func clearLoadingState() {
+        print("🧹 SchwabClient.clearLoadingState - Clearing any stuck loading state")
+        loadingDelegate?.setLoading(false)
+        loadingDelegate = nil
+    }
+    
     /**
      * fetch account numbers and hashes from schwab
      *
@@ -442,8 +468,10 @@ class SchwabClient
     func fetchAccountNumbers() async
     {
         print(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
+        print("🔍 fetchAccountNumbers - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 fetchAccountNumbers - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -504,8 +532,10 @@ class SchwabClient
     func fetchAccounts( retry : Bool = false )
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
+        print("🔍 fetchAccounts - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 fetchAccounts - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -589,8 +619,10 @@ class SchwabClient
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory \(symbol) ===")
+        print("🔍 fetchPriceHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 fetchPriceHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         m_lastFilteredPriceHistoryLock.lock()
@@ -788,8 +820,10 @@ class SchwabClient
      */
     public func fetchTransactionHistory() async {
         print("=== fetchTransactionHistory -  quarterDelta: \(m_quarterDelta) ===")
+        print("🔍 fetchTransactionHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 fetchTransactionHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -1199,8 +1233,10 @@ class SchwabClient
     public func fetchOrderHistory( retry : Bool = false ) 
     {
         print("=== fetchOrderHistory  ===")
+        print("🔍 fetchOrderHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 fetchOrderHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -1361,8 +1397,10 @@ class SchwabClient
      */
     public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
         // display the busy indicator
+        print("🔍 computeTaxLots - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
+            print("🔍 computeTaxLots - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         

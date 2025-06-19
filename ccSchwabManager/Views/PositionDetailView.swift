@@ -794,10 +794,15 @@ struct PositionDetailView: View {
     }
 
     private func fetchHistoryForSymbol() async {
+        print("🔍 PositionDetailView.fetchHistoryForSymbol - Setting loading to TRUE")
         loadingState.isLoading = true
-        defer { loadingState.isLoading = false }
+        defer { 
+            print("🔍 PositionDetailView.fetchHistoryForSymbol - Setting loading to FALSE")
+            loadingState.isLoading = false 
+        }
         
         // Connect loading state to SchwabClient
+        print("🔗 PositionDetailView - Setting SchwabClient.loadingDelegate")
         SchwabClient.shared.loadingDelegate = loadingState
         
         isLoadingPriceHistory = true
@@ -841,6 +846,10 @@ struct PositionDetailView: View {
                 print( " --- onAppear Fetching history for symbol: \(symbol) ---" )
                 await fetchHistoryForSymbol()
             }
+        }
+        .onDisappear {
+            print("🔗 PositionDetailView - Clearing SchwabClient.loadingDelegate")
+            SchwabClient.shared.loadingDelegate = nil
         }
         .onChange(of: position) { oldValue, newValue in
             loadingState.isLoading = true

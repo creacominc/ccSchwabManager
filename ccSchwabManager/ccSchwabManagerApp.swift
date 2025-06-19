@@ -7,6 +7,12 @@
 
 import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
 @main
 struct ccSchwabManagerApp: App
 {
@@ -19,12 +25,26 @@ struct ccSchwabManagerApp: App
         SchwabClient.shared.configure(with: &initialSecrets)
     }
     
+    var didBecomeActiveNotification: Notification.Name {
+        #if canImport(UIKit)
+        return UIApplication.didBecomeActiveNotification
+        #elseif canImport(AppKit)
+        return NSApplication.didBecomeActiveNotification
+        #else
+        return Notification.Name("UnknownPlatformDidBecomeActive")
+        #endif
+    }
+    
     var body: some Scene
     {
         WindowGroup
         {
             ContentView()
                 .environmentObject(secretsManager)
+                .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
+                    print("📱 App became active - clearing any stuck loading states")
+                    SchwabClient.shared.clearLoadingState()
+                }
         }
     }
 }

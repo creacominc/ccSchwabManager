@@ -233,9 +233,14 @@ struct HoldingsView: View {
                 defer { isLoadingAccounts = false }
                 isLoadingAccounts = true
                 // Connect loading state to SchwabClient
+                print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = loadingState
                 fetchHoldings()
                 selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
+            }
+            .onDisappear {
+                print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")
+                SchwabClient.shared.loadingDelegate = nil
             }
             .onAppear {
                 viewSize = geometry.size
