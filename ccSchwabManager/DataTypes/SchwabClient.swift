@@ -41,13 +41,14 @@ class SchwabClient
     public let maxQuarterDelta : Int = 12 // 3 years
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
-    var loadingDelegate: LoadingStateDelegate?
+    weak var loadingDelegate: LoadingStateDelegate?
     @Published var showIncompleteDataWarning = false
     private var m_secrets : Secrets
     private var m_quarterDelta : Int = 0
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
+    private var m_refreshTokenTask: Task<Void, Never>? = nil  // Add task reference for cancellation
     private var m_latestDateForSymbol : [String:Date] = [:]
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: Set<String> = []
@@ -64,6 +65,7 @@ class SchwabClient
     private let m_lastFilteredPriceHistoryLock = NSLock()
     private var m_lastFilteredPriceHistory: CandleList?
     private var m_lastFilteredPriceHistorySymbol: String = ""
+    private let m_quarterDeltaLock = NSLock()  // Add mutex for m_quarterDelta
     /**
      * dump the contents of this object for debugging.
      */
@@ -204,6 +206,8 @@ class SchwabClient
     {
         // Access Token Request
         print( "=== getAccessToken ===" )
+        loadingDelegate?.setLoading(true)
+        
         let url = URL( string: "\(accessTokenWeb)" )!
         //print( "accessTokenUrl: \(url)" )
         var accessTokenRequest = URLRequest( url: url )
@@ -221,7 +225,13 @@ class SchwabClient
         print( "Posting access token request:  \(accessTokenRequest)" )
         
         URLSession.shared.dataTask(with: accessTokenRequest)
-        { data, response, error in
+        { [weak self] data, response, error in
+            defer {
+                DispatchQueue.main.async {
+                    self?.loadingDelegate?.setLoading(false)
+                }
+            }
+            
             guard let data = data, ( (error == nil) && ( response != nil ) )
             else
             {
@@ -235,9 +245,9 @@ class SchwabClient
             {
                 if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
                 {
-                    self.m_secrets.accessToken = ( tokenDict["access_token"] as? String ?? "" )
-                    self.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
-                    if( !KeychainManager.saveSecrets(secrets: &self.m_secrets) )
+                    self?.m_secrets.accessToken = ( tokenDict["access_token"] as? String ?? "" )
+                    self?.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
+                    if( !KeychainManager.saveSecrets(secrets: &self!.m_secrets) )
                     {
                         print( "Failed to save secrets with access and refresh tokens." )
                         completion(.failure(ErrorCodes.failedToSaveSecrets))
@@ -291,6 +301,11 @@ class SchwabClient
      */
     private func refreshAccessToken() {
         print("=== refreshAccessToken: Refreshing access token...")
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+        
         // Access Token Refresh Request
         guard let url = URL(string: "\(accessTokenWeb)") else {
             print("Invalid URL for refreshing access token")
@@ -312,18 +327,40 @@ class SchwabClient
         refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.refreshToken)".data(using: .utf8)!
         
         let semaphore = DispatchSemaphore(value: 0)
+        var refreshCompleted = false
         
         URLSession.shared.dataTask(with: refreshTokenRequest) { [weak self] data, response, error in
-            defer { semaphore.signal() }
+            defer { 
+                if !refreshCompleted {
+                    refreshCompleted = true
+                    semaphore.signal()
+                }
+            }
+            
+            guard let self = self else {
+                print("SchwabClient deallocated during token refresh")
+                return
+            }
+            
             do {
-                if let data = data {
-                    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, error == nil {
+                if let error = error {
+                    print("Network error during token refresh: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let data = data else {
+                    print("No data received during token refresh")
+                    return
+                }
+                
+                if let httpResponse = response as? HTTPURLResponse {
+                    if httpResponse.statusCode == 200 {
                         // Parse the response
                         if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                            self?.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
-                            self?.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
+                            self.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
+                            self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
                             
-                            if KeychainManager.saveSecrets(secrets: &self!.m_secrets) {
+                            if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
                                 print("Successfully refreshed and saved access token.")
                             } else {
                                 print("Failed to save refreshed tokens.")
@@ -332,28 +369,62 @@ class SchwabClient
                             print("Failed to parse token response.")
                         }
                     } else {
-                        let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
-                        serviceError.printErrors(prefix: "refreshAccessToken ")
+                        print("Token refresh failed with status code: \(httpResponse.statusCode)")
+                        if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                            serviceError.printErrors(prefix: "refreshAccessToken ")
+                        }
                     }
                 }
-                return
-            } catch {
-                print("Error processing response: \(error)")
             }
         }.resume()
+        
+        // Wait for completion with timeout to prevent deadlock
+        let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
+        if timeoutResult == .timedOut {
+            print("Token refresh timed out")
+        }
     }
     
     private func startRefreshAccessTokenThread() {
-        if (!m_refreshAccessToken_running) {
-            m_refreshAccessToken_running = true
+        guard !m_refreshAccessToken_running else {
+            print("Refresh token thread already running")
+            return
+        }
+        
+        m_refreshAccessToken_running = true
+        
+        // Cancel any existing task
+        m_refreshTokenTask?.cancel()
+        
+        // Create new task with proper cancellation support
+        m_refreshTokenTask = Task { [weak self] in
             let interval: TimeInterval = 15 * 60  // 15 minute interval
-            DispatchQueue.global(qos: .background).async {
-                while true {
-                    self.refreshAccessToken()  // Call the updated method for a single refresh
-                    Thread.sleep(forTimeInterval: interval)
+            
+            while !Task.isCancelled {
+                // Perform token refresh
+                self?.refreshAccessToken()
+                
+                // Wait for next interval or cancellation
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                } catch {
+                    // Task was cancelled
+                    break
                 }
             }
+            
+            // Clean up when task ends
+            await MainActor.run { [weak self] in
+                self?.m_refreshAccessToken_running = false
+            }
         }
+    }
+    
+    // Add cleanup method
+    func cleanup() {
+        m_refreshTokenTask?.cancel()
+        m_refreshTokenTask = nil
+        m_refreshAccessToken_running = false
     }
     
     /**
@@ -371,6 +442,11 @@ class SchwabClient
     func fetchAccountNumbers() async
     {
         print(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+        
         guard let url = URL(string: accountNumbersWeb) else {
             print("Invalid URL")
             return
@@ -428,6 +504,11 @@ class SchwabClient
     func fetchAccounts( retry : Bool = false )
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+        
         var accountUrl = accountWeb
         if self.m_selectedAccountName != "All"
         {
@@ -637,22 +718,56 @@ class SchwabClient
 
     /**
      * fetchTransactionHistorySync - synchronous fetch of transaction history
+     * Note: This method should be avoided in favor of async versions
      */
-    public func fetchTransactionHistorySync()
-    {
+    public func fetchTransactionHistorySync() {
         print("=== fetchTransactionHistorySync  ===")
-        // Create a semaphore to wait for the async operation
-        let semaphore = DispatchSemaphore(value: 0)
-        // Create a task to run the async operation
-        Task {
-            await self.fetchTransactionHistory()
-            print( " --- fetchTransactionHistory done, signalling semaphore ---" )
-            semaphore.signal()
+        
+        // Check if we're already at the limit
+        let currentQuarterDelta = m_quarterDeltaLock.withLock {
+            let current = m_quarterDelta
+            if maxQuarterDelta <= current {
+                return current
+            }
+            
+            // if this is year0, remove any and all entries
+            if current == 0 {
+                m_transactionListLock.withLock {
+                    m_transactionList.removeAll(keepingCapacity: true)
+                }
+            }
+            
+            // Increment quarter delta
+            m_quarterDelta += 1
+            return m_quarterDelta
         }
-        // Wait for the async operation to complete
-        print( " --- fetchTransactionHistorySync waiting for semaphore ---" )
-        semaphore.wait()
-        print( " --- fetchTransactionHistorySync done ---" )
+        
+        if maxQuarterDelta <= currentQuarterDelta {
+            print(" --- fetchTransactionHistory -  maxQuarterDelta reached")
+            return
+        }
+
+        // Create a task to run the async operation
+        let task = Task {
+            await self.fetchTransactionHistory()
+        }
+        
+        // Wait for completion with timeout
+        let group = DispatchGroup()
+        group.enter()
+        
+        Task {
+            await task.value
+            group.leave()
+        }
+        
+        let result = group.wait(timeout: .now() + 60.0) // 60 second timeout
+        if result == .timedOut {
+            print("fetchTransactionHistorySync timed out")
+            task.cancel()
+        }
+        
+        print(" --- fetchTransactionHistorySync done ---")
     }
 
     /**
@@ -677,28 +792,38 @@ class SchwabClient
         defer {
             loadingDelegate?.setLoading(false)
         }
-        // if we have already fetched maxMonthDelta, return
-        if( maxQuarterDelta <= m_quarterDelta )
-        {
-            print( " --- fetchTransactionHistory -  maxQuarterDelta reached" )
+        
+        // Check and increment quarter delta atomically
+        let currentQuarterDelta = m_quarterDeltaLock.withLock {
+            let current = m_quarterDelta
+            if maxQuarterDelta <= current {
+                return current
+            }
+            
+            // if this is year0, remove any and all entries
+            if current == 0 {
+                m_transactionListLock.withLock {
+                    m_transactionList.removeAll(keepingCapacity: true)
+                }
+            }
+            
+            // Increment quarter delta
+            m_quarterDelta += 1
+            return m_quarterDelta
+        }
+        
+        if maxQuarterDelta <= currentQuarterDelta {
+            print(" --- fetchTransactionHistory -  maxQuarterDelta reached")
             return
         }
-        // if this is year0, remove any and all entries
-        if ( 0 == m_quarterDelta )
-        {
-            m_transactionListLock.withLock {
-                m_transactionList.removeAll(keepingCapacity: true)
-            }
-        }
-        let initialSize : Int = m_transactionList.count
-        let endDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta)
-        let startDate = getDateNQuartersAgoStr(quarterDelta: m_quarterDelta + 1)
+        
+        let newQuarterDelta = currentQuarterDelta
 
-        // increment m_quarterDelta
-        if( maxQuarterDelta > m_quarterDelta ) {
-            print( "  -- incrementing m_quarterDelta to \(m_quarterDelta+1)" )
-            m_quarterDelta += 1
-        }
+        let initialSize: Int = m_transactionList.count
+        let endDate = getDateNQuartersAgoStr(quarterDelta: newQuarterDelta - 1)
+        let startDate = getDateNQuartersAgoStr(quarterDelta: newQuarterDelta)
+
+        print("  -- processing quarter delta: \(newQuarterDelta)")
 
         // Create a task group to handle multiple account requests concurrently
         await withTaskGroup(of: [Transaction]?.self) { group in
@@ -810,10 +935,25 @@ class SchwabClient
             }
             print("Found \(m_lastFilteredTransactions.count) matching transactions.  \(self.m_quarterDelta) of \(self.maxQuarterDelta)")
 
-            // repeat after fetching more if we are not at the limit
-            while( (self.maxQuarterDelta > self.m_quarterDelta) && (self.m_lastFilteredTransactions.count == 0) ) {
-                print( "   !!! still no records, fetching again" )
-                self.fetchTransactionHistorySync()
+            // Fetch more records if needed, but with proper termination conditions
+            var fetchAttempts = 0
+            let maxFetchAttempts = 3  // Limit the number of fetch attempts
+            
+            while( (self.maxQuarterDelta > self.m_quarterDelta) && 
+                   (self.m_lastFilteredTransactions.count == 0) && 
+                   (fetchAttempts < maxFetchAttempts) ) {
+                print( "   !!! still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
+                fetchAttempts += 1
+                
+                // Use async version instead of sync to avoid blocking
+                Task {
+                    await self.fetchTransactionHistory()
+                }
+                
+                // Wait a bit for the async operation to complete
+                Thread.sleep(forTimeInterval: 1.0)
+                
+                // Re-filter after potential new data
                 m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                     // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
                     let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
@@ -823,6 +963,10 @@ class SchwabClient
                     return matches
                 }
                 print("Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
+            }
+            
+            if fetchAttempts >= maxFetchAttempts && m_lastFilteredTransactions.count == 0 {
+                print("Reached maximum fetch attempts without finding transactions for symbol: \(symbol ?? "nil")")
             }
         }
         else {
@@ -1051,11 +1195,14 @@ class SchwabClient
      Preview order for a specific account. **Coming Soon**.
      
      
-     
      */
     public func fetchOrderHistory( retry : Bool = false ) 
     {
         print("=== fetchOrderHistory  ===")
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
         
         m_orderList.removeAll(keepingCapacity: true)
         // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
@@ -1229,8 +1376,14 @@ class SchwabClient
         m_lastFilteredTaxLotSymbol = symbol
 
         print( " --- computeTaxLots() - seeking zero ---" )
+        
+        var fetchAttempts = 0
+        let maxFetchAttempts = 5  // Limit fetch attempts to prevent infinite loops
+        
         // Process transactions until we find zero shares or reach max quarters
-        while true {
+        while fetchAttempts < maxFetchAttempts {
+            fetchAttempts += 1
+            print("--- computeTaxLots iteration \(fetchAttempts)/\(maxFetchAttempts) ---")
 
             // Clear previous results
             m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
@@ -1312,13 +1465,27 @@ class SchwabClient
                 print( " -- Reached max quarter delta --" )
                 break
             }
+            else if fetchAttempts >= maxFetchAttempts {
+                showIncompleteDataWarning = true
+                print( " -- Reached max fetch attempts --" )
+                break
+            }
             else
             {
-                print( " -- Fetching more records --" )
-                // Fetch more records if needed
-                self.fetchTransactionHistorySync()
+                print( " -- Fetching more records (attempt \(fetchAttempts)) --" )
+                // Fetch more records if needed, but use async version
+                Task {
+                    await self.fetchTransactionHistory()
+                }
+                
+                // Wait a bit for the async operation to complete
+                Thread.sleep(forTimeInterval: 1.0)
             }
             
+        }
+        
+        if fetchAttempts >= maxFetchAttempts {
+            print("Warning: computeTaxLots reached maximum fetch attempts for symbol: \(symbol)")
         }
         
         // Sort records by date (oldest first) and cost (highest first for same date)

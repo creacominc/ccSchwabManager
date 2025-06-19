@@ -79,6 +79,7 @@ struct HoldingsView: View {
     @State private var isFilterExpanded = false
     @State private var atrValue: Double = 0.0
     @State private var selectedTab: Int = 0
+    @StateObject private var loadingState = LoadingState()
 
 
     struct SelectedPosition: Identifiable {
@@ -165,158 +166,154 @@ struct HoldingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                VStack {
-                    // Filter section with disclosure button
-                    VStack(spacing: 0) {
-                        Button(action: {
-                            withAnimation {
-                                isFilterExpanded.toggle()
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
-                                    .foregroundColor(.accentColor)
-                                Text("Filters")
-                                    .foregroundColor(.primary)
-                                Spacer()
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color.gray.opacity(0.1))
+        GeometryReader { geometry in
+            VStack {
+                // Filter section with disclosure button
+                VStack(spacing: 0) {
+                    Button(action: {
+                        withAnimation {
+                            isFilterExpanded.toggle()
                         }
-                        .buttonStyle(.plain)
-                        
-                        if isFilterExpanded {
-                            FilterControls(
-                                selectedAssetTypes: $selectedAssetTypes,
-                                selectedAccountNumbers: $selectedAccountNumbers,
-                                uniqueAssetTypes: viewModel.uniqueAssetTypes,
-                                uniqueAccountNumbers: viewModel.uniqueAccountNumbers
-                            )
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }) {
+                        HStack {
+                            Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
+                                .foregroundColor(.accentColor)
+                            Text("Filters")
+                                .foregroundColor(.primary)
+                            Spacer()
                         }
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.gray.opacity(0.1))
                     }
-
-                    if isLoadingAccounts {
-                        ProgressView()
-                            .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
-                            .scaleEffect(2.0, anchor: .center)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding()
-                    } else {
-                        HoldingsTable(
-                            sortedHoldings: sortedHoldings,
-                            selectedPositionId: Binding(
-                                get: { selectedPosition?.id },
-                                set: { newId in
-                                    if let id = newId,
-                                       let position = sortedHoldings.first(where: { $0.id == id }) {
-                                        let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                                        selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
-                                    } else {
-                                        selectedPosition = nil
-                                    }
-                                }
-                            ),
-                            accountPositions: accountPositions,
-                            currentSort: $currentSort,
-                            viewSize: viewSize
+                    .buttonStyle(.plain)
+                    
+                    if isFilterExpanded {
+                        FilterControls(
+                            selectedAssetTypes: $selectedAssetTypes,
+                            selectedAccountNumbers: $selectedAccountNumbers,
+                            uniqueAssetTypes: viewModel.uniqueAssetTypes,
+                            uniqueAccountNumbers: viewModel.uniqueAccountNumbers
                         )
-                        .padding()
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                } // VStack
-                .searchable(text: $searchText, prompt: "Search by symbol or description")
-                //.navigationTitle("Holdings")
-                .task {
-                    defer { isLoadingAccounts = false }
-                    isLoadingAccounts = true
-                    fetchHoldings()
-                    selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
                 }
-                .onAppear {
-                    viewSize = geometry.size
+
+                if isLoadingAccounts {
+                    ProgressView()
+                        .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
+                        .scaleEffect(2.0, anchor: .center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding()
+                } else {
+                    HoldingsTable(
+                        sortedHoldings: sortedHoldings,
+                        selectedPositionId: Binding(
+                            get: { selectedPosition?.id },
+                            set: { newId in
+                                if let id = newId,
+                                   let position = sortedHoldings.first(where: { $0.id == id }) {
+                                    let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
+                                    selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
+                                } else {
+                                    selectedPosition = nil
+                                }
+                            }
+                        ),
+                        accountPositions: accountPositions,
+                        currentSort: $currentSort,
+                        viewSize: viewSize
+                    )
+                    .padding()
                 }
-                .onChange(of: geometry.size) { oldValue, newValue in
-                    viewSize = newValue
-                }
+            } // VStack
+            .searchable(text: $searchText, prompt: "Search by symbol or description")
+            //.navigationTitle("Holdings")
+            .task {
+                defer { isLoadingAccounts = false }
+                isLoadingAccounts = true
+                // Connect loading state to SchwabClient
+                SchwabClient.shared.loadingDelegate = loadingState
+                fetchHoldings()
+                selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
+            }
+            .onAppear {
+                viewSize = geometry.size
+            }
+            .onChange(of: geometry.size) { _, newValue in
+                viewSize = newValue
             }
         }
         .sheet(item: $selectedPosition) { selected in
             let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
-            NavigationStack {
-                PositionDetailView(
-                    position: selected.position,
-                    accountNumber: selected.accountNumber,
-                    currentIndex: currentIndex,
-                    totalPositions: sortedHoldings.count,
-                    symbol: selected.position.instrument?.symbol ?? "",
-                    atrValue: atrValue,
-                    onNavigate: { newIndex in
-                        guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
-                        let newPosition = sortedHoldings[newIndex]
-                        let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
-                        selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
-                    },
-                    selectedTab: $selectedTab
-                )
-                #if !os(iOS)
-                //.navigationTitle(selected.position.instrument?.symbol ?? "")
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            selectedPosition = nil
-                        }
-                    }
+            PositionDetailView(
+                position: selected.position,
+                accountNumber: selected.accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: sortedHoldings.count,
+                symbol: selected.position.instrument?.symbol ?? "",
+                atrValue: atrValue,
+                onNavigate: { newIndex in
+                    guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
+                    let newPosition = sortedHoldings[newIndex]
+                    let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
+                    selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
+                },
+                selectedTab: $selectedTab
+            )
+            .task {
+                if let tmpsymbol = selected.position.instrument?.symbol {
+                    atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
                 }
-                #endif
-                .task {
-                    if let tmpsymbol = selected.position.instrument?.symbol {
+            }
+            .onChange(of: selected.position.instrument?.symbol) { _, newValue in
+                if let tmpsymbol = newValue {
+                    Task {
                         atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
-                    }
-                }
-                .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
-                    if let tmpsymbol = newValue {
-                        Task {
-                            atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
-                        }
                     }
                 }
             }
             .frame(width: viewSize.width * 0.97,
                    height: viewSize.height * 0.92)
         }
+        .withLoadingState(loadingState)
     }
     
     private func fetchHoldings()  {
         print("=== fetchHoldings ===")
         SchwabClient.shared.fetchAccounts( retry: true )
-        // get the first year of transactions sychronously so that sorting is done correctly
-        SchwabClient.shared.fetchTransactionHistorySync()
-        // fetch three more quarters of transactions by calling fetchTransactionHistory three times asynchronously
+        
+        // Use async approach instead of synchronous calls
         Task {
-            // print( " !!!!!!!!!!!!!!!! using maxQuarterDelta of \(SchwabClient.shared.maxQuarterDelta - 1)" )
-            for _ in 0..<( min(SchwabClient.shared.maxQuarterDelta, 11) ) {
+            // Fetch transaction history asynchronously
+            await SchwabClient.shared.fetchTransactionHistory()
+            
+            // Fetch additional quarters asynchronously
+            for _ in 0..<( min(SchwabClient.shared.maxQuarterDelta - 1, 11) ) {
                 // sleep for 250 ms
                 try await Task.sleep(nanoseconds: 250_000_000)
                 await SchwabClient.shared.fetchTransactionHistory()
             }
+            
+            // Update UI on main thread
+            await MainActor.run {
+                // Extract positions from accounts with their account numbers
+                accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
+                    let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
+                    let lastThreeDigits = String(accountNumber.suffix(3))
+                    return accountContent.securitiesAccount?.positions.map {
+                        ($0, lastThreeDigits
+                         , SchwabClient.shared.getLatestTradeDate( for: $0.instrument?.symbol ?? "" )
+                        ) } ?? []
+                }
+                holdings = accountPositions.map { $0.0 }
+                viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
+                print("count of holding: \(holdings.count)")
+            }
         }
+        
         // get the order history for all accounts and all symbols (there is no per-symbol option)
         SchwabClient.shared.fetchOrderHistory()
-        // Extract positions from accounts with their account numbers
-        accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
-            let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
-            let lastThreeDigits = String(accountNumber.suffix(3))
-            return accountContent.securitiesAccount?.positions.map {
-                ($0, lastThreeDigits
-                 , SchwabClient.shared.getLatestTradeDate( for: $0.instrument?.symbol ?? "" )
-                ) } ?? []
-        }
-        holdings = accountPositions.map { $0.0 }
-        viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
-        print("count of holding: \(holdings.count)")
     }
 }
 

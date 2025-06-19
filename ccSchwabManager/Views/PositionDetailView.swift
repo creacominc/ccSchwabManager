@@ -797,6 +797,9 @@ struct PositionDetailView: View {
         loadingState.isLoading = true
         defer { loadingState.isLoading = false }
         
+        // Connect loading state to SchwabClient
+        SchwabClient.shared.loadingDelegate = loadingState
+        
         isLoadingPriceHistory = true
         isLoadingTransactions = true
         

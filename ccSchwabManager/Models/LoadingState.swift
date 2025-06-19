@@ -1,8 +1,14 @@
 import Foundation
 import SwiftUI
 
-class LoadingState: ObservableObject {
+class LoadingState: ObservableObject, LoadingStateDelegate {
     @Published var isLoading: Bool = false
+    
+    func setLoading(_ isLoading: Bool) {
+        DispatchQueue.main.async {
+            self.isLoading = isLoading
+        }
+    }
 }
 
 extension View {

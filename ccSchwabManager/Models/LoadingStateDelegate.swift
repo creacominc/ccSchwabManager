@@ -1,5 +1,5 @@
 import Foundation
 
-protocol LoadingStateDelegate {
+protocol LoadingStateDelegate: AnyObject {
     func setLoading(_ isLoading: Bool)
 } 

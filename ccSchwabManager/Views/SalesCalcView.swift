@@ -192,6 +192,8 @@ struct SalesCalcView: View {
             .onAppear {
                 // Use DispatchQueue to ensure we're using the latest symbol value
                 DispatchQueue.main.async {
+                    // Connect loading state to SchwabClient
+                    SchwabClient.shared.loadingDelegate = loadingState
                     viewModel.refreshData(symbol: symbol)
                 }
             }
@@ -199,6 +201,8 @@ struct SalesCalcView: View {
                 print("Symbol changed to: \(newValue)")
                 // Use DispatchQueue to ensure we're using the latest symbol value
                 DispatchQueue.main.async {
+                    // Connect loading state to SchwabClient
+                    SchwabClient.shared.loadingDelegate = loadingState
                     viewModel.refreshData(symbol: newValue)
                 }
             }

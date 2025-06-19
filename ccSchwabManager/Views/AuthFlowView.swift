@@ -39,6 +39,7 @@ struct AuthFlowView: View {
     @State private var showingCredentialsInput = false
     @State private var credentialsText = ""
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var loadingState = LoadingState()
     
     var body: some View {
         VStack(spacing: 5) {
@@ -118,6 +119,9 @@ struct AuthFlowView: View {
             Text("Are you sure you want to reset all credentials? This will clear all API credentials and authentication data.")
         }
         .onAppear {
+            // Connect loading state to SchwabClient
+            SchwabClient.shared.loadingDelegate = loadingState
+            
             if secretsManager.secrets.appId.isEmpty || 
                secretsManager.secrets.appSecret.isEmpty || 
                secretsManager.secrets.redirectUrl.isEmpty {
@@ -139,6 +143,7 @@ struct AuthFlowView: View {
                 }
             }
         }
+        .withLoadingState(loadingState)
     }
     
     private func saveCredentials() {
