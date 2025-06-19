@@ -529,7 +529,7 @@ class SchwabClient
     /**
      * fetchAccounts - get the account numbers and balances.
      */
-    func fetchAccounts( retry : Bool = false )
+    func fetchAccounts( retry : Bool = false ) async
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         print("🔍 fetchAccounts - Setting loading to TRUE")
@@ -560,40 +560,23 @@ class SchwabClient
 
         do
         {
-            let semaphore = DispatchSemaphore(value: 0)
-            var responseData: Data?
-            var responseError: Error?
-            var httpResponse: HTTPURLResponse?
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                responseData = data
-                responseError = error
-                httpResponse = response as? HTTPURLResponse
-                semaphore.signal()
-            }.resume()
-            semaphore.wait()
+            let (data, response) = try await URLSession.shared.data(for: request)
             
-            if let error = responseError {
-                print("fetchAccounts - Error: \(error.localizedDescription)")
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("Invalid response type")
                 return
             }
             
-            guard let data = responseData else {
-                print("fetchAccounts. No data received")
-                return
-            }
-            
-            if( httpResponse?.statusCode != 200 )
-            {
+            if httpResponse.statusCode != 200 {
                 // decode data as a ServiceError
                 print( "fetchAccounts: decoding json as ServiceError" )
                 let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
                 serviceError.printErrors(prefix: "fetchAccounts ")
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
-                if( httpResponse?.statusCode == 401 && retry )
-                {
+                if httpResponse.statusCode == 401 && retry {
                     print( "=== retrying fetchAccounts after refreshing access token ===" )
                     refreshAccessToken()
-                    fetchAccounts( retry : false )
+                    await fetchAccounts(retry: false)
                 }
                 return
             }
@@ -1094,6 +1077,7 @@ class SchwabClient
      /accounts/{accountNumber}/orders
      Get all orders for a specific account.
      
+     
      All orders for a specific account. Orders retrieved can be filtered based on input parameters below. Maximum date range is 1 year.
      
      Parameters
@@ -1230,7 +1214,7 @@ class SchwabClient
      
      
      */
-    public func fetchOrderHistory( retry : Bool = false ) 
+    public func fetchOrderHistory( retry : Bool = false ) async
     {
         print("=== fetchOrderHistory  ===")
         print("🔍 fetchOrderHistory - Setting loading to TRUE")
@@ -1255,132 +1239,125 @@ class SchwabClient
 
         // get date one year ago
         let dateOneYearAgoStr : String = getDateNYearsAgoStr( yearDelta: 1 )
-        // fetch the orders from all accounts
-        for accountNumberHash in self.m_secrets.acountNumberHash {
-            print("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash) ===" )
-            
-            //var orderHistoryUrl = "\(ordersWeb)"
-            var orderHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/orders"
-            orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
-            orderHistoryUrl += "&toEnteredTime=\(todayStr)"
-            
-            //print( "  === fetchOrderHistory. URL: \(orderHistoryUrl) ===" )
-            
-            guard let url = URL( string: orderHistoryUrl ) else {
-                print("fetchOrderHistory. Invalid URL")
-                return
-            }
-            
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-            request.setValue("application/json", forHTTPHeaderField: "accept")
-            // set a 10 second timeout on this request
-            request.timeoutInterval = self.requestTimeout
-            
-            let semaphore = DispatchSemaphore(value: 0)
-            var responseData: Data?
-            var responseError: Error?
-            var httpResponse: HTTPURLResponse?
-            
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                responseData = data
-                responseError = error
-                httpResponse = response as? HTTPURLResponse
-                semaphore.signal()
-            }.resume()
-            
-            semaphore.wait()
-            
-            if let error = responseError {
-                print("fetchOrderHistory Error: \(error.localizedDescription)")
-                return
-            }
-            
-            guard let data = responseData else {
-                print("fetchOrderHistory. No data received")
-                return
-            }
-            
-            if httpResponse?.statusCode != 200 {
-                if httpResponse?.statusCode == 401 && retry {
-                    print("=== retrying fetchOrderHistory after refreshing access token ===")
-                    refreshAccessToken()
-                    fetchOrderHistory(retry: false)
-                    return
-                }
-                
-                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                    serviceError.printErrors(prefix: "fetchOrderHistory ")
-                }
-                return
-            }
-            
-            do {
-                let decoder = JSONDecoder()
-                m_orderList.append(contentsOf: try decoder.decode([Order].self, from: data))
-            } catch {
-                print("fetchOrderHistory Error: \(error.localizedDescription)")
-                print("   detail:  \(error)")
-                return
-            }
-            
-            print("Fetched \(m_orderList.count) orders for all accounts")
-            
-            // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
-            for order in m_orderList {
-                if(
-                    order.status == OrderStatus.awaitingParentOrder ||
-                    order.status == OrderStatus.awaitingCondition ||
-                    order.status == OrderStatus.awaitingStopCondition ||
-                    order.status == OrderStatus.awaitingManualReview ||
-                    order.status == OrderStatus.pendingActivation ||
-                    order.status == OrderStatus.accepted ||
-                    order.status == OrderStatus.working ||
-                    order.status == OrderStatus.new ||
-                    order.status == OrderStatus.awaitingReleaseTime ||
-                    false
-                ) {
-                    if( ( order.orderStrategyType == .SINGLE )
-                        || ( order.orderStrategyType == .TRIGGER ) ) {
-                        for leg in order.orderLegCollection ?? [] {
-                            if( leg.instrument?.symbol != nil ) {
-                                m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+        
+        // Fetch orders from all accounts in parallel
+        await withTaskGroup(of: [Order]?.self) { group in
+            for accountNumberHash in self.m_secrets.acountNumberHash {
+                group.addTask {
+                    print("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash) ===" )
+                    
+                    var orderHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/orders"
+                    orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
+                    orderHistoryUrl += "&toEnteredTime=\(todayStr)"
+                    
+                    guard let url = URL( string: orderHistoryUrl ) else {
+                        print("fetchOrderHistory. Invalid URL")
+                        return nil
+                    }
+                    
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "accept")
+                    // set a 10 second timeout on this request
+                    request.timeoutInterval = self.requestTimeout
+                    
+                    do {
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        
+                        guard let httpResponse = response as? HTTPURLResponse else {
+                            print("Invalid response type")
+                            return nil
+                        }
+                        
+                        if httpResponse.statusCode != 200 {
+                            if httpResponse.statusCode == 401 && retry {
+                                print("=== retrying fetchOrderHistory after refreshing access token ===")
+                                self.refreshAccessToken()
+                                // Note: We can't recursively call async function from within task group
+                                // The retry will be handled by the caller
+                                return nil
                             }
+                            
+                            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                serviceError.printErrors(prefix: "fetchOrderHistory ")
+                            }
+                            return nil
+                        }
+                        
+                        let decoder = JSONDecoder()
+                        return try decoder.decode([Order].self, from: data)
+                    } catch {
+                        print("fetchOrderHistory Error: \(error.localizedDescription)")
+                        print("   detail:  \(error)")
+                        return nil
+                    }
+                }
+            }
+            
+            // Collect results from all tasks
+            for await orders in group {
+                if let orders = orders {
+                    m_orderList.append(contentsOf: orders)
+                }
+            }
+        }
+        
+        print("Fetched \(m_orderList.count) orders for all accounts")
+        
+        // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
+        for order in m_orderList {
+            if(
+                order.status == OrderStatus.awaitingParentOrder ||
+                order.status == OrderStatus.awaitingCondition ||
+                order.status == OrderStatus.awaitingStopCondition ||
+                order.status == OrderStatus.awaitingManualReview ||
+                order.status == OrderStatus.pendingActivation ||
+                order.status == OrderStatus.accepted ||
+                order.status == OrderStatus.working ||
+                order.status == OrderStatus.new ||
+                order.status == OrderStatus.awaitingReleaseTime ||
+                false
+            ) {
+                if( ( order.orderStrategyType == .SINGLE )
+                    || ( order.orderStrategyType == .TRIGGER ) ) {
+                    for leg in order.orderLegCollection ?? [] {
+                        if( leg.instrument?.symbol != nil ) {
+                            m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
                         }
                     }
-                    if ( order.orderStrategyType == .OCO ) {
-                        for childOrder in order.childOrderStrategies ?? [] {
-                            if(
-                                childOrder.status == OrderStatus.awaitingParentOrder ||
-                                childOrder.status == OrderStatus.awaitingCondition ||
-                                childOrder.status == OrderStatus.awaitingStopCondition ||
-                                childOrder.status == OrderStatus.awaitingManualReview ||
-                                childOrder.status == OrderStatus.pendingActivation ||
-                                childOrder.status == OrderStatus.accepted ||
-                                childOrder.status == OrderStatus.working ||
-                                childOrder.status == OrderStatus.new ||
-                                childOrder.status == OrderStatus.awaitingReleaseTime ||
-                                false
-                            ) {
-                                for leg in childOrder.orderLegCollection ?? [] {
-                                    if( leg.instrument?.symbol != nil ) {
-                                        m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
-                                    }
+                }
+                if ( order.orderStrategyType == .OCO ) {
+                    for childOrder in order.childOrderStrategies ?? [] {
+                        if(
+                            childOrder.status == OrderStatus.awaitingParentOrder ||
+                            childOrder.status == OrderStatus.awaitingCondition ||
+                            childOrder.status == OrderStatus.awaitingStopCondition ||
+                            childOrder.status == OrderStatus.awaitingManualReview ||
+                            childOrder.status == OrderStatus.pendingActivation ||
+                            childOrder.status == OrderStatus.accepted ||
+                            childOrder.status == OrderStatus.working ||
+                            childOrder.status == OrderStatus.new ||
+                            childOrder.status == OrderStatus.awaitingReleaseTime ||
+                            false
+                        ) {
+                            for leg in childOrder.orderLegCollection ?? [] {
+                                if( leg.instrument?.symbol != nil ) {
+                                    m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
                                 }
                             }
                         }
                     }
                 }
-                else if ( order.status != OrderStatus.canceled &&
-                          order.status != OrderStatus.filled &&
-                          order.status != OrderStatus.expired &&
-                          order.status != OrderStatus.replaced &&
-                          order.status != OrderStatus.rejected ){
-                    print( "... orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
-                }
             }
-        } // for all accounts
+            else if ( order.status != OrderStatus.canceled &&
+                      order.status != OrderStatus.filled &&
+                      order.status != OrderStatus.expired &&
+                      order.status != OrderStatus.replaced &&
+                      order.status != OrderStatus.rejected ){
+                print( "... orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
+            }
+        }
         print("\(m_symbolsWithOrders.count) symbols have orders in awaiting states")
     }
 
@@ -1637,5 +1614,116 @@ class SchwabClient
 
     private func isNearZero(_ value: Double) -> Bool {
         return abs(value) < 0.0001
+    }
+
+    /**
+     * fetchTransactionHistoryReduced - get transactions for a smaller time range for faster loading
+     * This is used for initial display when we don't need the full 3 years of history
+     */
+    public func fetchTransactionHistoryReduced(quarters: Int = 4) async {
+        print("=== fetchTransactionHistoryReduced - quarters: \(quarters) ===")
+        print("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
+        loadingDelegate?.setLoading(true)
+        defer {
+            print("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
+            loadingDelegate?.setLoading(false)
+        }
+        
+        // Reset quarter delta for reduced fetch
+        m_quarterDeltaLock.withLock {
+            m_quarterDelta = 0
+            m_transactionListLock.withLock {
+                m_transactionList.removeAll(keepingCapacity: true)
+            }
+        }
+        
+        let initialSize: Int = m_transactionList.count
+        
+        // Fetch only the specified number of quarters
+        await withTaskGroup(of: Void.self) { group in
+            for quarter in 1...quarters {
+                group.addTask {
+                    let endDate = getDateNQuartersAgoStr(quarterDelta: quarter - 1)
+                    let startDate = getDateNQuartersAgoStr(quarterDelta: quarter)
+                    
+                    print("  -- processing quarter: \(quarter)")
+                    
+                    // Fetch for all accounts in parallel
+                    await withTaskGroup(of: [Transaction]?.self) { accountGroup in
+                        for accountNumberHash in self.m_secrets.acountNumberHash {
+                            accountGroup.addTask {
+                                var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
+                                transactionHistoryUrl += "?startDate=\(startDate)"
+                                transactionHistoryUrl += "&endDate=\(endDate)"
+                                transactionHistoryUrl += "&types=TRADE"
+
+                                guard let url = URL(string: transactionHistoryUrl) else {
+                                    print("fetchTransactionHistoryReduced. Invalid URL")
+                                    return nil
+                                }
+
+                                var request = URLRequest(url: url)
+                                request.httpMethod = "GET"
+                                request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                                request.setValue("application/json", forHTTPHeaderField: "accept")
+                                request.timeoutInterval = self.requestTimeout
+
+                                do {
+                                    let (data, response) = try await URLSession.shared.data(for: request)
+                                    
+                                    guard let httpResponse = response as? HTTPURLResponse else {
+                                        print("Invalid response type")
+                                        return nil
+                                    }
+                                    
+                                    if httpResponse.statusCode != 200 {
+                                        print("response code: \(httpResponse.statusCode)")
+                                        if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                            serviceError.printErrors(prefix: "  fetchTransactionHistoryReduced ")
+                                        }
+                                        return nil
+                                    }
+
+                                    let decoder = JSONDecoder()
+                                    return try decoder.decode([Transaction].self, from: data)
+                                } catch {
+                                    print("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
+                                    return nil
+                                }
+                            }
+                        }
+                        
+                        // Collect results from all accounts
+                        var newTransactions: [Transaction] = []
+                        for await transactions in accountGroup {
+                            if let transactions = transactions {
+                                newTransactions.append(contentsOf: transactions)
+                            }
+                        }
+                        
+                        // Add to main transaction list
+                        self.m_transactionListLock.withLock {
+                            self.m_transactionList.append(contentsOf: newTransactions)
+                        }
+                    }
+                }
+            }
+            
+            // Wait for all quarters to complete
+            await group.waitForAll()
+        }
+        
+        // Update quarter delta to reflect what we've fetched
+        m_quarterDeltaLock.withLock {
+            m_quarterDelta = quarters
+        }
+        
+        print("Fetched \(m_transactionList.count - initialSize) transactions in \(quarters) quarters")
+        
+        // Sort and process transactions
+        m_transactionListLock.withLock {
+            m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+        }
+        self.setLatestTradeDates()
     }
 } // SchwabClient

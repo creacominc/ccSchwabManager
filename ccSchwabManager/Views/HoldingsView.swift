@@ -285,40 +285,95 @@ struct HoldingsView: View {
     }
     
     private func fetchHoldings()  {
-        print("=== fetchHoldings ===")
-        SchwabClient.shared.fetchAccounts( retry: true )
+        print("=== fetchHoldings - Starting optimized data loading ===")
         
-        // Use async approach instead of synchronous calls
+        // PRIORITY 1: Fetch accounts immediately (needed for holdings display)
         Task {
-            // Fetch transaction history asynchronously
-            await SchwabClient.shared.fetchTransactionHistory()
+            print("🚀 PRIORITY 1: Fetching accounts for holdings display")
+            await SchwabClient.shared.fetchAccounts(retry: true)
             
-            // Fetch additional quarters asynchronously
-            for _ in 0..<( min(SchwabClient.shared.maxQuarterDelta - 1, 11) ) {
-                // sleep for 250 ms
-                try await Task.sleep(nanoseconds: 250_000_000)
-                await SchwabClient.shared.fetchTransactionHistory()
-            }
-            
-            // Update UI on main thread
+            // Update UI immediately with holdings data
             await MainActor.run {
                 // Extract positions from accounts with their account numbers
                 accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
                     let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
                     let lastThreeDigits = String(accountNumber.suffix(3))
                     return accountContent.securitiesAccount?.positions.map {
-                        ($0, lastThreeDigits
-                         , SchwabClient.shared.getLatestTradeDate( for: $0.instrument?.symbol ?? "" )
-                        ) } ?? []
+                        ($0, lastThreeDigits, "") // Empty trade date for now
+                    } ?? []
                 }
                 holdings = accountPositions.map { $0.0 }
                 viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
-                print("count of holding: \(holdings.count)")
+                print("✅ Holdings displayed: \(holdings.count) positions")
             }
         }
         
-        // get the order history for all accounts and all symbols (there is no per-symbol option)
-        SchwabClient.shared.fetchOrderHistory()
+        // PRIORITY 2: Fetch order history in parallel (needed for "Orders" column)
+        Task {
+            print("🚀 PRIORITY 2: Fetching order history in parallel")
+            await SchwabClient.shared.fetchOrderHistory()
+            
+            // Update order information in UI
+            await MainActor.run {
+                // Force UI refresh to show order status
+                // The hasOrders() method will now work
+                print("✅ Order history loaded")
+            }
+        }
+        
+        // PRIORITY 3: Fetch transaction history in background (for trade dates and tax lots)
+        Task {
+            print("🚀 PRIORITY 3: Fetching transaction history in background")
+            
+            // Fetch first 4 quarters immediately for trade dates (faster than full 12 quarters)
+            await SchwabClient.shared.fetchTransactionHistoryReduced(quarters: 4)
+            
+            // Update trade dates in UI
+            await MainActor.run {
+                // Update accountPositions with trade dates
+                accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
+                    let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
+                    let lastThreeDigits = String(accountNumber.suffix(3))
+                    return accountContent.securitiesAccount?.positions.map {
+                        ($0, lastThreeDigits, SchwabClient.shared.getLatestTradeDate(for: $0.instrument?.symbol ?? ""))
+                    } ?? []
+                }
+                print("✅ Trade dates updated")
+            }
+            
+            // Fetch remaining quarters in background for complete history
+            let remainingQuarters = min(SchwabClient.shared.maxQuarterDelta - 4, 8)
+            if remainingQuarters > 0 {
+                print("🚀 Fetching remaining \(remainingQuarters) quarters in background")
+                
+                // Process in batches of 3 to avoid overwhelming the API
+                let batchSize = 3
+                for batchStart in stride(from: 0, to: remainingQuarters, by: batchSize) {
+                    let batchEnd = min(batchStart + batchSize, remainingQuarters)
+                    let batchSize = batchEnd - batchStart
+                    
+                    print("📦 Processing background batch \(batchStart/batchSize + 1): quarters \(batchStart+5)-\(batchEnd+4)")
+                    
+                    // Fetch batch in parallel
+                    await withTaskGroup(of: Void.self) { group in
+                        for _ in 0..<batchSize {
+                            group.addTask {
+                                await SchwabClient.shared.fetchTransactionHistory()
+                            }
+                        }
+                        // Wait for all tasks in this batch to complete
+                        await group.waitForAll()
+                    }
+                    
+                    // Small delay between batches to be respectful to the API
+                    if batchEnd < remainingQuarters {
+                        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    }
+                }
+                
+                print("✅ All transaction history loaded")
+            }
+        }
     }
 }
 

@@ -213,7 +213,7 @@ struct AuthFlowView: View {
                 secretsManager.saveSecrets()
 
                 // Fetch account holdings
-                SchwabClient.shared.fetchAccounts( retry: true )
+                await SchwabClient.shared.fetchAccounts( retry: true )
                 
                 // Force view update on main thread
                 await MainActor.run {
