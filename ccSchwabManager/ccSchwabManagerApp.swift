@@ -19,10 +19,7 @@ struct ccSchwabManagerApp: App
     @StateObject private var secretsManager = SecretsManager()
     
     init() {
-        print( "=== ccSchwabManagerApp init getting secrets ===" )
-        // Configure SchwabClient with initial secrets
-        var initialSecrets = KeychainManager.readSecrets(prefix: "ccSchwabManagerApp/init") ?? Secrets()
-        SchwabClient.shared.configure(with: &initialSecrets)
+        print( "=== ccSchwabManagerApp init ===" )
     }
     
     var didBecomeActiveNotification: Notification.Name {
@@ -55,7 +52,10 @@ class SecretsManager: ObservableObject {
     @Published var error: String?
     
     init() {
+        print( "=== SecretsManager init getting secrets ===" )
         self.secrets = KeychainManager.readSecrets(prefix: "SecretsManager/init") ?? Secrets()
+        // Configure SchwabClient with initial secrets
+        SchwabClient.shared.configure(with: &self.secrets)
     }
     
     func saveSecrets() {

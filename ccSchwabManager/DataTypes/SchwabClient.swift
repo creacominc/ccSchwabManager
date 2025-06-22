@@ -70,16 +70,19 @@ class SchwabClient
     // Create a logger for this class
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
     
+    // Add a lock for loadingDelegate synchronization
+    private let loadingDelegateLock = NSLock()
+    
     // Add a computed property to track loading delegate changes
     var loadingDelegate: LoadingStateDelegate? {
-        get { return _loadingDelegate }
+        get { 
+            loadingDelegateLock.lock()
+            defer { loadingDelegateLock.unlock() }
+            return _loadingDelegate 
+        }
         set { 
-            let timestamp = Date().timeIntervalSince1970
-            if let newValue = newValue {
-                AppLogger.shared.info("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: \(type(of: newValue))")
-            } else {
-                AppLogger.shared.info("🔗 [\(timestamp)] SchwabClient.loadingDelegate SET to: nil")
-            }
+            loadingDelegateLock.lock()
+            defer { loadingDelegateLock.unlock() }
             _loadingDelegate = newValue
         }
     }
@@ -225,7 +228,7 @@ class SchwabClient
     {
         // Access Token Request
         print( "=== getAccessToken ===" )
-        print("🔍 getAccessToken - Setting loading to TRUE")
+        //print("🔍 getAccessToken - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         
         let url = URL( string: "\(accessTokenWeb)" )!
@@ -244,20 +247,24 @@ class SchwabClient
         accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.code )&redirect_uri=\( self.m_secrets.redirectUrl )").data(using: .utf8)!
         print( "Posting access token request:  \(accessTokenRequest)" )
         
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: Result<Void, ErrorCodes> = .failure(.notAuthenticated)
+        
         URLSession.shared.dataTask(with: accessTokenRequest)
         { [weak self] data, response, error in
             defer {
                 DispatchQueue.main.async {
-                    print("🔍 getAccessToken - Setting loading to FALSE")
+                    //print("🔍 getAccessToken - Setting loading to FALSE")
                     self?.loadingDelegate?.setLoading(false)
                 }
+                semaphore.signal()
             }
             
             guard let data = data, ( (error == nil) && ( response != nil ) )
             else
             {
                 print( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
-                completion(.failure(ErrorCodes.notAuthenticated))
+                result = .failure(ErrorCodes.notAuthenticated)
                 return
             }
             
@@ -271,23 +278,33 @@ class SchwabClient
                     if( !KeychainManager.saveSecrets(secrets: &self!.m_secrets) )
                     {
                         print( "Failed to save secrets with access and refresh tokens." )
-                        completion(.failure(ErrorCodes.failedToSaveSecrets))
+                        result = .failure(ErrorCodes.failedToSaveSecrets)
                         return
                     }
-                    completion( .success( Void() ) )
+                    result = .success( Void() )
                 }
                 else
                 {
                     print( "Failed to parse token response" )
-                    completion(.failure(ErrorCodes.notAuthenticated))
+                    result = .failure(ErrorCodes.notAuthenticated)
                 }
             }
             else
             {
                 print( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
-                completion(.failure(ErrorCodes.notAuthenticated))
+                result = .failure(ErrorCodes.notAuthenticated)
             }
         }.resume()
+        
+        // Wait for completion with timeout to prevent deadlock
+        let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
+        if timeoutResult == .timedOut {
+            print("getAccessToken timed out")
+            result = .failure(ErrorCodes.notAuthenticated)
+        }
+        
+        // Call completion with the result
+        completion(result)
     }
     
     
@@ -322,24 +339,42 @@ class SchwabClient
      */
     private func refreshAccessToken() {
         print("=== refreshAccessToken: Refreshing access token...")
-        print("🔍 refreshAccessToken - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
-        defer {
-            print("🔍 refreshAccessToken - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+
+        // if the accessToken or refreshToken are empty, call getAccessToken instead
+        if ( self.m_secrets.accessToken == "" ) || ( self.m_secrets.refreshToken == "" ) {
+            print("Access token or refresh token is empty, getting initial access token...")
+            self.getAccessToken{ result in
+                switch result {
+                case .success:
+                    print(" refreshAccessToken - Successfully got access token")
+                case .failure(let error):
+                    print(" refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
+                    // resetting code
+                    self.m_secrets.code = ""
+                }
+            }
+            // Return early since getAccessToken is now synchronous and handles the token acquisition
+            return
         }
         
+        //print("🔍 refreshAccessToken - Setting loading to TRUE")
+        loadingDelegate?.setLoading(true)
+        defer {
+            //print("🔍 refreshAccessToken - Setting loading to FALSE")
+            loadingDelegate?.setLoading(false)
+        }
+
         // Access Token Refresh Request
         guard let url = URL(string: "\(accessTokenWeb)") else {
             print("Invalid URL for refreshing access token")
             return
         }
-        
+
         var refreshTokenRequest = URLRequest(url: url)
         // set a 10 second timeout on this request
         refreshTokenRequest.timeoutInterval = self.requestTimeout
         refreshTokenRequest.httpMethod = "POST"
-        
+
         // Headers
         let authStringUnencoded = "\(self.m_secrets.appId):\(self.m_secrets.appSecret)"
         let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
@@ -472,10 +507,10 @@ class SchwabClient
     func fetchAccountNumbers() async
     {
         print(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
-        print("🔍 fetchAccountNumbers - Setting loading to TRUE")
+        //print("🔍 fetchAccountNumbers - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 fetchAccountNumbers - Setting loading to FALSE")
+            //print("🔍 fetchAccountNumbers - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -536,10 +571,10 @@ class SchwabClient
     func fetchAccounts( retry : Bool = false ) async
     {
         print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
-        print("🔍 fetchAccounts - Setting loading to TRUE")
+        //print("🔍 fetchAccounts - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 fetchAccounts - Setting loading to FALSE")
+            //print("🔍 fetchAccounts - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -606,10 +641,10 @@ class SchwabClient
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory \(symbol) ===")
-        print("🔍 fetchPriceHistory - Setting loading to TRUE")
+        //print("🔍 fetchPriceHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 fetchPriceHistory - Setting loading to FALSE")
+            //print("🔍 fetchPriceHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         m_lastFilteredPriceHistoryLock.lock()
@@ -806,11 +841,15 @@ class SchwabClient
      * types *     string     Specifies that only transactions of this status should be returned.
      */
     public func fetchTransactionHistory() async {
-        print("=== fetchTransactionHistory -  quarterDelta: \(m_quarterDelta) ===")
-        print("🔍 fetchTransactionHistory - Setting loading to TRUE")
+        // Get quarter delta safely for logging
+        let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
+            return m_quarterDelta
+        }
+        print("=== fetchTransactionHistory -  quarterDelta: \(quarterDeltaForLogging) ===")
+        //print("🔍 fetchTransactionHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 fetchTransactionHistory - Setting loading to FALSE")
+            //print("🔍 fetchTransactionHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -920,7 +959,11 @@ class SchwabClient
      */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
-        print( "==== getTransactionsFor \(symbol ?? "nil")  quarters: \(self.m_quarterDelta) ====" )
+        // Get quarter delta safely for logging
+        let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
+            return m_quarterDelta
+        }
+        print( "==== getTransactionsFor \(symbol ?? "nil")  quarters: \(quarterDeltaForLogging) ====" )
         print("Current transaction list size: \(m_transactionList.count)")
         
         if( nil == symbol ) {
@@ -954,13 +997,13 @@ class SchwabClient
 //                }
                 return matches
             }
-            print("Found \(m_lastFilteredTransactions.count) matching transactions.  \(self.m_quarterDelta) of \(self.maxQuarterDelta)")
+            print("Found \(m_lastFilteredTransactions.count) matching transactions.  \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
 
             // Fetch more records if needed, but with proper termination conditions
             var fetchAttempts = 0
             let maxFetchAttempts = 3  // Limit the number of fetch attempts
             
-            while( (self.maxQuarterDelta > self.m_quarterDelta) && 
+            while( (self.maxQuarterDelta > quarterDeltaForLogging) && 
                    (self.m_lastFilteredTransactions.count == 0) && 
                    (fetchAttempts < maxFetchAttempts) ) {
                 print( "   !!! still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
@@ -1005,6 +1048,11 @@ class SchwabClient
         defer { m_latestDateForSymbolLock.unlock() }
         
         m_latestDateForSymbol.removeAll(keepingCapacity: true)
+        
+        // Lock access to m_transactionList to prevent race conditions
+        m_transactionListLock.lock()
+        defer { m_transactionListLock.unlock() }
+        
         // create a map of symbols to the most recent trade date
         for transaction in m_transactionList {
             for transferItem in transaction.transferItems {
@@ -1221,10 +1269,10 @@ class SchwabClient
     public func fetchOrderHistory( retry : Bool = false ) async
     {
         print("=== fetchOrderHistory  ===")
-        print("🔍 fetchOrderHistory - Setting loading to TRUE")
+        //print("🔍 fetchOrderHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 fetchOrderHistory - Setting loading to FALSE")
+            //print("🔍 fetchOrderHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -1378,10 +1426,10 @@ class SchwabClient
      */
     public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
         // display the busy indicator
-        print("🔍 computeTaxLots - Setting loading to TRUE")
+        //print("🔍 computeTaxLots - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 computeTaxLots - Setting loading to FALSE")
+            //print("🔍 computeTaxLots - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -1409,7 +1457,11 @@ class SchwabClient
 
             // Get current share count
             var currentShareCount : Double = getShareCount(symbol: symbol)
-            print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(self.m_quarterDelta) --")
+            // Get quarter delta safely for logging
+            let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
+                return m_quarterDelta
+            }
+            print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
 
             // get last price for this security
             let lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
@@ -1439,7 +1491,7 @@ class SchwabClient
                     
                     // Update share count
                     currentShareCount = ( (currentShareCount - numberOfShares) * 100000 ).rounded()/100000
-                    print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare) --" )
+                    //print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare) --" )
                     
                     // Add position record
                     m_lastFilteredPositionRecords.append(
@@ -1479,7 +1531,7 @@ class SchwabClient
                 print( " -- Negative share count --" )
                 break
             }
-            else if  ( self.maxQuarterDelta <= self.m_quarterDelta )  {
+            else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
                 showIncompleteDataWarning = true
                 print( " -- Reached max quarter delta --" )
                 break
@@ -1513,15 +1565,15 @@ class SchwabClient
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
-        print( " -- removing sold shares -- " )
+        //print( " -- removing sold shares -- " )
         for record in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell record.
             if record.quantity > 0 {
-                print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
+                // print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-                print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
+                //print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
                 // sort the buy queue by high price
                 buyQueue.sort { ($0.costPerShare > $1.costPerShare) }
 
@@ -1534,8 +1586,8 @@ class SchwabClient
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-                    print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
-                    print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+                    //print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
+                    //print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
@@ -1626,10 +1678,10 @@ class SchwabClient
      */
     public func fetchTransactionHistoryReduced(quarters: Int = 4) async {
         print("=== fetchTransactionHistoryReduced - quarters: \(quarters) ===")
-        print("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
+        //print("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            print("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
+            //print("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -1682,6 +1734,8 @@ class SchwabClient
                                     
                                     if httpResponse.statusCode != 200 {
                                         print("response code: \(httpResponse.statusCode)")
+                                        // print data as a string
+                                        print( "response data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
                                         if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                                             serviceError.printErrors(prefix: "  fetchTransactionHistoryReduced ")
                                         }

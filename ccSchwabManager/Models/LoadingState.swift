@@ -11,29 +11,28 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "LoadingState")
     
     func setLoading(_ isLoading: Bool) {
-        let callStack = Thread.callStackSymbols.prefix(5).joined(separator: "\n")
-        let timestamp = Date().timeIntervalSince1970
-        
-        if isLoading {
-            loadingCallStack = callStack
-            AppLogger.shared.info("🔄 [\(timestamp)] LoadingState.setLoading(TRUE) - Call stack:\n\(callStack)")
-            
-            // Set a timeout to automatically clear loading state after 30 seconds
-            loadingTimer?.invalidate()
-            loadingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
-                AppLogger.shared.warning("⏰ LoadingState timeout - automatically clearing stuck loading state")
-                DispatchQueue.main.async {
-                    self?.isLoading = false
-                }
-            }
-        } else {
-            AppLogger.shared.info("✅ [\(timestamp)] LoadingState.setLoading(FALSE) - Previous call stack:\n\(self.loadingCallStack)")
-            self.loadingCallStack = ""
-            self.loadingTimer?.invalidate()
-            self.loadingTimer = nil
-        }
-        
+        // Ensure this runs on the main thread
         DispatchQueue.main.async {
+            let callStack = Thread.callStackSymbols.prefix(5).joined(separator: "\n")            
+            if isLoading {
+                self.loadingCallStack = callStack
+                //AppLogger.shared.info("🔄 [\(timestamp)] LoadingState.setLoading(TRUE)")  //  - Call stack:\n\(callStack)
+                
+                // Set a timeout to automatically clear loading state after 30 seconds
+                self.loadingTimer?.invalidate()
+                self.loadingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
+                    AppLogger.shared.warning("⏰ LoadingState timeout - automatically clearing stuck loading state")
+                    DispatchQueue.main.async {
+                        self?.isLoading = false
+                    }
+                }
+            } else {
+                //AppLogger.shared.info("✅ [\(timestamp)] LoadingState.setLoading(FALSE)") // - Previous call stack:\n\(self.loadingCallStack)
+                self.loadingCallStack = ""
+                self.loadingTimer?.invalidate()
+                self.loadingTimer = nil
+            }
+            
             self.isLoading = isLoading
         }
     }

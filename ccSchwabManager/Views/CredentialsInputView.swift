@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 /**
  * CredentialsInputView
@@ -56,17 +57,28 @@ struct CredentialsInputView: View {
             VStack(alignment: .leading, spacing: 10) {
                 TextField("App ID", text: $appId)
                     .textFieldStyle(.roundedBorder)
-                    .modifier(TextFieldChangeHandler(value: $appId, onChanged: updateJsonPreview))
+                    .onReceive(Just(appId)) { _ in
+                        updateJsonPreview()
+                    }
                 TextField("App Secret", text: $appSecret)
                     .textFieldStyle(.roundedBorder)
-                    .modifier(TextFieldChangeHandler(value: $appSecret, onChanged: updateJsonPreview))
+                    .onReceive(Just(appSecret)) { _ in
+                        updateJsonPreview()
+                    }
                 TextField("Redirect URL", text: $redirectUrl)
                     .textFieldStyle(.roundedBorder)
-                    .modifier(TextFieldChangeHandler(value: $redirectUrl, onChanged: updateJsonPreview))
+                    .onReceive(Just(redirectUrl)) { _ in
+                        updateJsonPreview()
+                    }
             }
             .frame(maxWidth: 500)
             
             HStack {
+                Button("Reset") {
+                    resetCredentials()
+                }
+                .foregroundColor(.red)
+                
                 Button("Cancel") {
                     isPresented = false
                 }
@@ -119,15 +131,16 @@ struct CredentialsInputView: View {
         secretsManager.saveSecrets()
         isPresented = false
     }
-}
-
-struct TextFieldChangeHandler<T: Equatable>: ViewModifier {
-    @Binding var value: T
-    let onChanged: () -> Void
     
-    func body(content: Content) -> some View {
-        content.onChange(of: value) { oldValue, newValue in
-            onChanged()
-        }
+    private func resetCredentials() {
+        // Reset all secrets
+        secretsManager.secrets.code = ""
+        secretsManager.secrets.appId = ""
+        secretsManager.secrets.appSecret = ""
+        secretsManager.secrets.redirectUrl = ""
+        secretsManager.secrets.accessToken = ""
+        secretsManager.secrets.refreshToken = ""
+        secretsManager.saveSecrets()
+        isPresented = false
     }
-} 
+}

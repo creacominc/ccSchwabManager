@@ -193,7 +193,7 @@ struct SalesCalcView: View {
                 // Use DispatchQueue to ensure we're using the latest symbol value
                 DispatchQueue.main.async {
                     // Connect loading state to SchwabClient
-                    print("🔗 SalesCalcView - Setting SchwabClient.loadingDelegate")
+                    //print("🔗 SalesCalcView - Setting SchwabClient.loadingDelegate")
                     SchwabClient.shared.loadingDelegate = loadingState
                     viewModel.refreshData(symbol: symbol)
                 }
@@ -203,7 +203,7 @@ struct SalesCalcView: View {
                 // Use DispatchQueue to ensure we're using the latest symbol value
                 DispatchQueue.main.async {
                     // Connect loading state to SchwabClient
-                    print("🔗 SalesCalcView - Setting SchwabClient.loadingDelegate")
+                    //print("🔗 SalesCalcView - Setting SchwabClient.loadingDelegate")
                     SchwabClient.shared.loadingDelegate = loadingState
                     viewModel.refreshData(symbol: newValue)
                 }
@@ -219,7 +219,7 @@ struct SalesCalcView: View {
                 Text("The information for \(symbol) may be incomplete and inaccurate due to missing historical data.")
             }
             .onDisappear {
-                print("🔗 SalesCalcView - Clearing SchwabClient.loadingDelegate")
+                //print("🔗 SalesCalcView - Clearing SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = nil
             }
         }

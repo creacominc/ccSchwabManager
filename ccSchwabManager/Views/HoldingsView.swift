@@ -80,7 +80,10 @@ struct HoldingsView: View {
     @State private var atrValue: Double = 0.0
     @State private var selectedTab: Int = 0
     @StateObject private var loadingState = LoadingState()
-
+    
+    // Cache for trade dates and order status to prevent loops
+    @State private var tradeDateCache: [String: String] = [:]
+    @State private var orderStatusCache: [String: Bool] = [:]
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -100,8 +103,7 @@ struct HoldingsView: View {
             let accountInfo = accountPositions.first { $0.0 === position }
             let matchesAccount = selectedAccountNumbers.isEmpty || 
                 (accountInfo?.1).map { selectedAccountNumbers.contains($0) } ?? false
-//            let orders = SchwabClient.shared.hasOrders( symbol: position.instrument?.symbol )
-            return matchesText && matchesAssetType && matchesAccount // && orders
+            return matchesText && matchesAssetType && matchesAccount
         }
     }
 
@@ -150,14 +152,16 @@ struct HoldingsView: View {
                 let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
                 return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
             case .lastTradeDate:
-                let firstDate : String   = SchwabClient.shared.getLatestTradeDate( for: first.instrument?.symbol ?? "" )
-                let secondDate : String  = SchwabClient.shared.getLatestTradeDate( for: second.instrument?.symbol ?? "" )
-                return ascending ?
-                    (firstDate) < (secondDate) :
-                    (firstDate) > (secondDate)
+                let firstSymbol = first.instrument?.symbol ?? ""
+                let secondSymbol = second.instrument?.symbol ?? ""
+                let firstDate = tradeDateCache[firstSymbol] ?? "0000"
+                let secondDate = tradeDateCache[secondSymbol] ?? "0000"
+                return ascending ? firstDate < secondDate : firstDate > secondDate
             case .orders:
-                let firstHasOrders: Bool = SchwabClient.shared.hasOrders(symbol: first.instrument?.symbol ?? "")
-                let secondHasOrders: Bool = SchwabClient.shared.hasOrders(symbol: second.instrument?.symbol ?? "")
+                let firstSymbol = first.instrument?.symbol ?? ""
+                let secondSymbol = second.instrument?.symbol ?? ""
+                let firstHasOrders = orderStatusCache[firstSymbol] ?? false
+                let secondHasOrders = orderStatusCache[secondSymbol] ?? false
                 return ascending ?
                     (!firstHasOrders && secondHasOrders) :
                     (firstHasOrders && !secondHasOrders)
@@ -222,7 +226,9 @@ struct HoldingsView: View {
                         ),
                         accountPositions: accountPositions,
                         currentSort: $currentSort,
-                        viewSize: viewSize
+                        viewSize: viewSize,
+                        tradeDateCache: tradeDateCache,
+                        orderStatusCache: orderStatusCache
                     )
                     .padding()
                 }
@@ -233,19 +239,19 @@ struct HoldingsView: View {
                 defer { isLoadingAccounts = false }
                 isLoadingAccounts = true
                 // Connect loading state to SchwabClient
-                print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
+                //print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = loadingState
                 fetchHoldings()
                 selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
             }
             .onDisappear {
-                print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")
+                //print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = nil
             }
             .onAppear {
                 viewSize = geometry.size
             }
-            .onChange(of: geometry.size) { _, newValue in
+            .onChange(of: geometry.size) { oldValue, newValue in
                 viewSize = newValue
             }
         }
@@ -271,7 +277,7 @@ struct HoldingsView: View {
                     atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
                 }
             }
-            .onChange(of: selected.position.instrument?.symbol) { _, newValue in
+            .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
                 if let tmpsymbol = newValue {
                     Task {
                         atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
@@ -313,11 +319,15 @@ struct HoldingsView: View {
             print("🚀 PRIORITY 2: Fetching order history in parallel")
             await SchwabClient.shared.fetchOrderHistory()
             
-            // Update order information in UI
+            // Update order information in UI and populate cache
             await MainActor.run {
-                // Force UI refresh to show order status
-                // The hasOrders() method will now work
-                print("✅ Order history loaded")
+                // Populate order status cache
+                for position in holdings {
+                    if let symbol = position.instrument?.symbol {
+                        orderStatusCache[symbol] = SchwabClient.shared.hasOrders(symbol: symbol)
+                    }
+                }
+                print("✅ Order history loaded and cache populated")
             }
         }
         
@@ -328,21 +338,28 @@ struct HoldingsView: View {
             // Fetch first 4 quarters immediately for trade dates (faster than full 12 quarters)
             await SchwabClient.shared.fetchTransactionHistoryReduced(quarters: 4)
             
-            // Update trade dates in UI
+            // Update trade dates in UI and populate cache
             await MainActor.run {
+                // Populate trade date cache
+                for position in holdings {
+                    if let symbol = position.instrument?.symbol {
+                        tradeDateCache[symbol] = SchwabClient.shared.getLatestTradeDate(for: symbol)
+                    }
+                }
+                
                 // Update accountPositions with trade dates
                 accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
                     let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
                     let lastThreeDigits = String(accountNumber.suffix(3))
                     return accountContent.securitiesAccount?.positions.map {
-                        ($0, lastThreeDigits, SchwabClient.shared.getLatestTradeDate(for: $0.instrument?.symbol ?? ""))
+                        ($0, lastThreeDigits, tradeDateCache[$0.instrument?.symbol ?? ""] ?? "")
                     } ?? []
                 }
-                print("✅ Trade dates updated")
+                print("✅ Trade dates updated and cache populated")
             }
             
             // Fetch remaining quarters in background for complete history
-            let remainingQuarters = min(SchwabClient.shared.maxQuarterDelta - 4, 8)
+            let remainingQuarters = min(SchwabClient.shared.maxQuarterDelta - 4, 8 )
             if remainingQuarters > 0 {
                 print("🚀 Fetching remaining \(remainingQuarters) quarters in background")
                 
@@ -383,6 +400,8 @@ struct HoldingsTable: View {
     let accountPositions: [(Position, String, String)]
     @Binding var currentSort: SortConfig?
     let viewSize: CGSize
+    let tradeDateCache: [String: String]
+    let orderStatusCache: [String: Bool]
 
     private let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.07, 0.08, 0.08]
 
@@ -395,7 +414,9 @@ struct HoldingsTable: View {
                 selectedPositionId: $selectedPositionId,
                 accountPositions: accountPositions,
                 viewSize: viewSize,
-                columnWidths: columnWidths
+                columnWidths: columnWidths,
+                tradeDateCache: tradeDateCache,
+                orderStatusCache: orderStatusCache
             )
         }
     }
@@ -459,6 +480,8 @@ private struct TableContent: View {
     let accountPositions: [(Position, String, String)]
     let viewSize: CGSize
     let columnWidths: [CGFloat]
+    let tradeDateCache: [String: String]
+    let orderStatusCache: [String: Bool]
 
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
@@ -473,7 +496,9 @@ private struct TableContent: View {
                         accountNumber: accountNumberFor(position),
                         viewSize: viewSize,
                         columnWidths: columnWidths,
-                        onTap: { selectedPositionId = position.id }
+                        onTap: { selectedPositionId = position.id },
+                        tradeDate: tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000",
+                        hasOrders: orderStatusCache[position.instrument?.symbol ?? ""] ?? false
                     )
                     Divider()
                 }
@@ -488,6 +513,8 @@ private struct TableRow: View {
     let viewSize: CGSize
     let columnWidths: [CGFloat]
     let onTap: () -> Void
+    let tradeDate: String
+    let hasOrders: Bool
 
     private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
@@ -522,8 +549,8 @@ private struct TableRow: View {
                 .foregroundColor(plColor)
             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
             Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
-            Text(SchwabClient.shared.getLatestTradeDate(for: position.instrument?.symbol ?? "")).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
-            Text(SchwabClient.shared.hasOrders(symbol: position.instrument?.symbol ?? "") ? "Yes" : "No" ).frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
+            Text(tradeDate).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
+            Text(hasOrders ? "Yes" : "No" ).frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
