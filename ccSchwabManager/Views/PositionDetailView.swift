@@ -244,6 +244,7 @@ struct PositionDetailsHeader: View {
     let onNavigate: (Int) -> Void
     let symbol: String
     let atrValue: Double
+    let lastPrice: Double
     @State private var showDetails = true
     
     var body: some View {
@@ -293,9 +294,9 @@ struct PositionDetailsHeader: View {
 
             if showDetails {
                 HStack(spacing: 10) {
-                    LeftColumn(position: position, atrValue: atrValue)
+                    LeftColumn( position: position, atrValue: atrValue )
                     MiddleColumn( position: position)
-                    RightColumn(position: position, accountNumber: accountNumber)
+                    RightColumn( position: position, accountNumber: accountNumber, lastPrice: lastPrice )
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -319,7 +320,10 @@ struct LeftColumn: View {
     let atrValue: Double
     
     private var plPercent: Double {
-        (position.longOpenProfitLoss ?? 0) / (position.marketValue ?? 1) * 100
+        let pl = position.longOpenProfitLoss ?? 0
+        let mv = position.marketValue ?? 0
+        let costBasis = mv - pl
+        return costBasis != 0 ? (pl / costBasis) * 100 : 0
     }
 
     private var plColor: Color {
@@ -336,7 +340,7 @@ struct LeftColumn: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            DetailRow(label: "P/L %", value: String(format: "%.1f%%", plPercent))
+            DetailRow(label: "P/L%", value: String(format: "%.1f%%", plPercent))
                 .foregroundColor(plColor)
             DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
                 .foregroundColor(plColor)
@@ -362,12 +366,13 @@ struct MiddleColumn: View {
 struct RightColumn: View {
     let position: Position
     let accountNumber: String
+    let lastPrice: Double
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             DetailRow(label: "Asset Type", value: position.instrument?.assetType?.rawValue ?? "")
             DetailRow(label: "Account", value: accountNumber)
-            //DetailRow(label: "TBD", value: "42")
+            DetailRow(label: "Last", value: String( format: "%.2f", lastPrice ) )
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -721,7 +726,9 @@ struct PositionDetailContent: View {
                 totalPositions: totalPositions,
                 onNavigate: onNavigate,
                 symbol: symbol,
-                atrValue: atrValue
+                atrValue: atrValue,
+                // get the close from the last candle
+                lastPrice: priceHistory?.candles.last?.close ?? 0.0
             )
             .padding(.bottom, 4)
             

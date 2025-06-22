@@ -641,6 +641,11 @@ class SchwabClient
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory \(symbol) ===")
+        if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
+        {
+            print( "  fetchPriceHistory - returning cached." )
+            return m_lastFilteredPriceHistory
+        }
         //print("🔍 fetchPriceHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
@@ -650,11 +655,6 @@ class SchwabClient
         m_lastFilteredPriceHistoryLock.lock()
         defer {
             m_lastFilteredPriceHistoryLock.unlock()
-        }
-        if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
-        {
-            print( "  fetchPriceHistory - returning cached." )
-            return m_lastFilteredPriceHistory
         }
         m_lastFilteredPriceHistorySymbol = symbol
         m_lastFilteredPriceHistory?.candles.removeAll(keepingCapacity: true)
