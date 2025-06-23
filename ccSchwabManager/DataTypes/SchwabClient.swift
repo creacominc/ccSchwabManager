@@ -742,28 +742,65 @@ class SchwabClient
             print("computeATR Failed to fetch price history.")
             return 0.0
         }
+        
+        // Get a local copy of the candles array to prevent race conditions
+        let candles = priceHistory.candles
+        let candlesCount = candles.count
+        
+        // Need at least 2 candles to compute ATR
+        guard candlesCount > 1 else {
+            print("computeATR: Need at least 2 candles, got \(candlesCount)")
+            return 0.0
+        }
+        
         var close : Double  = priceHistory.previousClose ?? 0.0
         var atr : Double  = 0.0
+        
         /*
          * Compute the ATR as the average of the True Range.
          * The True Range is the maximum of absolute values of the High - Low, High - previous Close, and Low - previous Close
          */
-        if priceHistory.candles.count > 1
-        {
-            let length : Int  =  min( priceHistory.candles.count, 21 )
-            let startIndex : Int = priceHistory.candles.count - length
-            for indx in 0..<length
-            {
-                let position = startIndex + indx
-                let candle : Candle  = priceHistory.candles[position]
-                let prevClose : Double  = if (0 == position) {priceHistory.previousClose ?? 0.0} else {priceHistory.candles[position-1].close ?? 0.0}
-                let high : Double  = candle.high ?? 0.0
-                let low  : Double  = candle.low ?? 0.0
-                let tr : Double = max( abs( high - low ), abs( high - prevClose ), abs( low - prevClose ) )
-                close = priceHistory.candles[position].close ?? 0.0
-                atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
-            }
+        let length : Int  =  min( candlesCount, 21 )
+        let startIndex : Int = candlesCount - length
+        
+        // Additional safety check
+        guard startIndex >= 0 && startIndex < candlesCount else {
+            print("computeATR: Invalid startIndex \(startIndex) for candlesCount \(candlesCount)")
+            return 0.0
         }
+        
+        for indx in 0..<length
+        {
+            let position = startIndex + indx
+            
+            // Bounds check for current position
+            guard position >= 0 && position < candlesCount else {
+                print("computeATR: Position \(position) out of bounds for candlesCount \(candlesCount)")
+                continue
+            }
+            
+            let candle : Candle  = candles[position]
+            
+            // Safe access to previous close
+            let prevClose : Double
+            if position == 0 {
+                prevClose = priceHistory.previousClose ?? 0.0
+            } else {
+                let prevPosition = position - 1
+                guard prevPosition >= 0 && prevPosition < candlesCount else {
+                    print("computeATR: Previous position \(prevPosition) out of bounds")
+                    continue
+                }
+                prevClose = candles[prevPosition].close ?? 0.0
+            }
+            
+            let high : Double  = candle.high ?? 0.0
+            let low  : Double  = candle.low ?? 0.0
+            let tr : Double = max( abs( high - low ), abs( high - prevClose ), abs( low - prevClose ) )
+            close = candle.close ?? 0.0
+            atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
+        }
+        
         // return the ATR as a percent.
         return (atr * 1.08  / close * 100.0)
     }
