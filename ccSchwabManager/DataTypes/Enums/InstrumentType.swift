@@ -54,6 +54,7 @@ public enum InstrumentType: String, Codable, CaseIterable
     case OPEN_END_TAXABLE = "OPEN_END_TAXABLE"
     case NO_LOAD_TAXABLE = "NO_LOAD_TAXABLE"
     case EXCHANGE_TRADED_FUND = "EXCHANGE_TRADED_FUND"
+    case CLOSED_END_FUND = "CLOSED_END_FUND"
     // option
     case VANILLA = "VANILLA"
     case BINARY = "BINARY"

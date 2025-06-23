@@ -22,8 +22,7 @@ private let accessTokenWeb      : String = "\(oauthWeb)/token"
 private let traderAPI           : String = "\(schwabWeb)/trader/v1"
 private let accountWeb          : String = "\(traderAPI)/accounts"
 private let accountNumbersWeb   : String = "\(accountWeb)/accountNumbers"
-// There is a bug in the ordersWeb end-point /orders.  Use /accounts/{accountNumber}/orders instead.
-// private let ordersWeb           : String = "\(traderAPI)/orders"
+private let ordersWeb           : String = "\(traderAPI)/orders"
 
 // marketAPI
 private let marketdataAPI       : String = "\(schwabWeb)/marketdata/v1"
@@ -1294,66 +1293,72 @@ class SchwabClient
         
         // Fetch orders from all accounts in parallel
         await withTaskGroup(of: [Order]?.self) { group in
-            for accountNumberHash in self.m_secrets.acountNumberHash {
-                group.addTask {
-                    print("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash) ===" )
-                    
-                    var orderHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/orders"
-                    orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
-                    orderHistoryUrl += "&toEnteredTime=\(todayStr)"
-                    
-                    guard let url = URL( string: orderHistoryUrl ) else {
-                        print("fetchOrderHistory. Invalid URL")
-                        return nil
-                    }
-                    
-                    var request = URLRequest(url: url)
-                    request.httpMethod = "GET"
-                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-                    request.setValue("application/json", forHTTPHeaderField: "accept")
-                    // set a 10 second timeout on this request
-                    request.timeoutInterval = self.requestTimeout
-                    
-                    do {
-                        let (data, response) = try await URLSession.shared.data(for: request)
-                        
-                        guard let httpResponse = response as? HTTPURLResponse else {
-                            print("Invalid response type")
+            // loop over the OrderStatus types to request the orders for each status
+            for status: OrderStatus in OrderStatus.allCases {
+                // for accountNumberHash in self.m_secrets.acountNumberHash {
+                    group.addTask {
+                        // print("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash),  status: \(status.rawValue) ===" )
+
+                        var orderHistoryUrl = "\(ordersWeb)"
+                        orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
+                        orderHistoryUrl += "&toEnteredTime=\(todayStr)"
+                        orderHistoryUrl += "&status=\(status.rawValue)"
+
+                        guard let url = URL( string: orderHistoryUrl ) else {
+                            print("fetchOrderHistory. Invalid URL")
                             return nil
                         }
+
+                        var request = URLRequest(url: url)
+                        request.httpMethod = "GET"
+                        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                        request.setValue("application/json", forHTTPHeaderField: "accept")
+                        // set a 10 second timeout on this request
+                        request.timeoutInterval = self.requestTimeout
                         
-                        if httpResponse.statusCode != 200 {
-                            if httpResponse.statusCode == 401 && retry {
-                                print("=== retrying fetchOrderHistory after refreshing access token ===")
-                                self.refreshAccessToken()
-                                // Note: We can't recursively call async function from within task group
-                                // The retry will be handled by the caller
+                        do {
+                            let (data, response) = try await URLSession.shared.data(for: request)
+                            
+                            guard let httpResponse = response as? HTTPURLResponse else {
+                                print("Invalid response type")
                                 return nil
                             }
                             
-                            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                serviceError.printErrors(prefix: "fetchOrderHistory ")
+                            if httpResponse.statusCode != 200 {
+                                if httpResponse.statusCode == 401 && retry {
+                                    print("=== retrying fetchOrderHistory after refreshing access token ===")
+                                    self.refreshAccessToken()
+                                    // Note: We can't recursively call async function from within task group
+                                    // The retry will be handled by the caller
+                                    return nil
+                                }
+                                
+                                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                    // print data as string
+                                    print( "  ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
+                                    serviceError.printErrors(prefix: "fetchOrderHistory ")
+                                }
+                                return nil
                             }
+                            
+                            let decoder = JSONDecoder()
+                            return try decoder.decode([Order].self, from: data)
+                        } catch {
+                            print("fetchOrderHistory Error: \(error.localizedDescription)")
+                            print("   detail:  \(error)")
                             return nil
                         }
-                        
-                        let decoder = JSONDecoder()
-                        return try decoder.decode([Order].self, from: data)
-                    } catch {
-                        print("fetchOrderHistory Error: \(error.localizedDescription)")
-                        print("   detail:  \(error)")
-                        return nil
-                    }
-                }
-            }
-            
+                    } // addTask
+                // } // account number hash
+            } // for all orderStatus values
+
             // Collect results from all tasks
             for await orders in group {
                 if let orders = orders {
                     m_orderList.append(contentsOf: orders)
                 }
-            }
-        }
+            } // append orders
+        } // await
         
         print("Fetched \(m_orderList.count) orders for all accounts")
         
