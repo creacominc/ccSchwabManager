@@ -50,7 +50,7 @@ class SchwabClient
     private var m_refreshTokenTask: Task<Void, Never>? = nil  // Add task reference for cancellation
     private var m_latestDateForSymbol : [String:Date] = [:]
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
-    private var m_symbolsWithOrders: Set<String> = []
+    private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
     private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_transactionList : [Transaction] = []
@@ -1364,43 +1364,31 @@ class SchwabClient
         
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
         for order in m_orderList {
-            if(
-                order.status == OrderStatus.awaitingParentOrder ||
-                order.status == OrderStatus.awaitingCondition ||
-                order.status == OrderStatus.awaitingStopCondition ||
-                order.status == OrderStatus.awaitingManualReview ||
-                order.status == OrderStatus.pendingActivation ||
-                order.status == OrderStatus.accepted ||
-                order.status == OrderStatus.working ||
-                order.status == OrderStatus.new ||
-                order.status == OrderStatus.awaitingReleaseTime ||
-                false
-            ) {
+            if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown) {
                 if( ( order.orderStrategyType == .SINGLE )
                     || ( order.orderStrategyType == .TRIGGER ) ) {
                     for leg in order.orderLegCollection ?? [] {
-                        if( leg.instrument?.symbol != nil ) {
-                            m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+                        if let symbol = leg.instrument?.symbol {
+                            if m_symbolsWithOrders[symbol] == nil {
+                                m_symbolsWithOrders[symbol] = []
+                            }
+                            if !m_symbolsWithOrders[symbol]!.contains(activeStatus) {
+                                m_symbolsWithOrders[symbol]!.append(activeStatus)
+                            }
                         }
                     }
                 }
                 if ( order.orderStrategyType == .OCO ) {
                     for childOrder in order.childOrderStrategies ?? [] {
-                        if(
-                            childOrder.status == OrderStatus.awaitingParentOrder ||
-                            childOrder.status == OrderStatus.awaitingCondition ||
-                            childOrder.status == OrderStatus.awaitingStopCondition ||
-                            childOrder.status == OrderStatus.awaitingManualReview ||
-                            childOrder.status == OrderStatus.pendingActivation ||
-                            childOrder.status == OrderStatus.accepted ||
-                            childOrder.status == OrderStatus.working ||
-                            childOrder.status == OrderStatus.new ||
-                            childOrder.status == OrderStatus.awaitingReleaseTime ||
-                            false
-                        ) {
+                        if let childActiveStatus = ActiveOrderStatus(from: childOrder.status ?? .unknown) {
                             for leg in childOrder.orderLegCollection ?? [] {
-                                if( leg.instrument?.symbol != nil ) {
-                                    m_symbolsWithOrders.insert( leg.instrument?.symbol ?? "" )
+                                if let symbol = leg.instrument?.symbol {
+                                    if m_symbolsWithOrders[symbol] == nil {
+                                        m_symbolsWithOrders[symbol] = []
+                                    }
+                                    if !m_symbolsWithOrders[symbol]!.contains(childActiveStatus) {
+                                        m_symbolsWithOrders[symbol]!.append(childActiveStatus)
+                                    }
                                 }
                             }
                         }
@@ -1415,14 +1403,38 @@ class SchwabClient
                 print( "... orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
             }
         }
+        
+        // Sort the order statuses by priority for each symbol
+        for symbol in m_symbolsWithOrders.keys {
+            m_symbolsWithOrders[symbol]?.sort { $0.priority < $1.priority }
+        }
+        
         print("\(m_symbolsWithOrders.count) symbols have orders in awaiting states")
     }
 
     public func hasOrders( symbol: String? = nil ) -> Bool
     {
-        return m_symbolsWithOrders.contains( symbol ?? "" )
+        guard let symbol = symbol else { return false }
+        return m_symbolsWithOrders[symbol]?.isEmpty == false
     }
     
+    /**
+     * getOrderStatuses - return the active order statuses for a given symbol
+     */
+    public func getOrderStatuses( symbol: String? = nil ) -> [ActiveOrderStatus]
+    {
+        guard let symbol = symbol else { return [] }
+        return m_symbolsWithOrders[symbol] ?? []
+    }
+    
+    /**
+     * getPrimaryOrderStatus - return the highest priority order status for a given symbol
+     */
+    public func getPrimaryOrderStatus( symbol: String? = nil ) -> ActiveOrderStatus?
+    {
+        guard let symbol = symbol else { return nil }
+        return m_symbolsWithOrders[symbol]?.first
+    }
     
     /**
      * computeTaxLots - compute a list of tax lots as [SalesCalcPositionsRecord]

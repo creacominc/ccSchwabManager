@@ -23,13 +23,13 @@ enum SortableColumn: String, CaseIterable, Identifiable {
     case assetType = "Asset Type"
     case account = "Account"
     case lastTradeDate = "Last Trade Date"
-    case orders = "Orders"
+    case orderStatus = "Order Status"
 
     var id: String { self.rawValue }
 
     var defaultAscending: Bool {
         switch self {
-        case .symbol, .assetType, .account, .orders:
+        case .symbol, .assetType, .account, .orderStatus:
             return true
         case .quantity, .avgPrice, .marketValue, .pl, .plPercent, .lastTradeDate:
             return false
@@ -83,7 +83,7 @@ struct HoldingsView: View {
     
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
-    @State private var orderStatusCache: [String: Bool] = [:]
+    @State private var orderStatusCache: [String: ActiveOrderStatus?] = [:]
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -157,14 +157,17 @@ struct HoldingsView: View {
                 let firstDate = tradeDateCache[firstSymbol] ?? "0000"
                 let secondDate = tradeDateCache[secondSymbol] ?? "0000"
                 return ascending ? firstDate < secondDate : firstDate > secondDate
-            case .orders:
+            case .orderStatus:
                 let firstSymbol = first.instrument?.symbol ?? ""
                 let secondSymbol = second.instrument?.symbol ?? ""
-                let firstHasOrders = orderStatusCache[firstSymbol] ?? false
-                let secondHasOrders = orderStatusCache[secondSymbol] ?? false
-                return ascending ?
-                    (!firstHasOrders && secondHasOrders) :
-                    (firstHasOrders && !secondHasOrders)
+                let firstOrderStatus = orderStatusCache[firstSymbol] ?? nil
+                let secondOrderStatus = orderStatusCache[secondSymbol] ?? nil
+                
+                // Sort by priority (lower number = higher priority)
+                let firstPriority = firstOrderStatus?.priority ?? Int.max
+                let secondPriority = secondOrderStatus?.priority ?? Int.max
+                
+                return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
             }
         })
     }
@@ -324,7 +327,7 @@ struct HoldingsView: View {
                 // Populate order status cache
                 for position in holdings {
                     if let symbol = position.instrument?.symbol {
-                        orderStatusCache[symbol] = SchwabClient.shared.hasOrders(symbol: symbol)
+                        orderStatusCache[symbol] = SchwabClient.shared.getPrimaryOrderStatus(symbol: symbol)
                     }
                 }
                 print("✅ Order history loaded and cache populated")
@@ -401,7 +404,7 @@ struct HoldingsTable: View {
     @Binding var currentSort: SortConfig?
     let viewSize: CGSize
     let tradeDateCache: [String: String]
-    let orderStatusCache: [String: Bool]
+    let orderStatusCache: [String: ActiveOrderStatus?]
 
     private let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.07, 0.08, 0.08]
 
@@ -466,7 +469,7 @@ private struct TableHeader: View {
             columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width)
             columnHeader(title: "Account", column: .account).frame(width: columnWidths[7] * viewSize.width)
             columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
-            columnHeader(title: "Orders", column: .orders ).frame(width: columnWidths[9] * viewSize.width)
+            columnHeader(title: "Order Status", column: .orderStatus ).frame(width: columnWidths[9] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -481,7 +484,7 @@ private struct TableContent: View {
     let viewSize: CGSize
     let columnWidths: [CGFloat]
     let tradeDateCache: [String: String]
-    let orderStatusCache: [String: Bool]
+    let orderStatusCache: [String: ActiveOrderStatus?]
 
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
@@ -498,7 +501,7 @@ private struct TableContent: View {
                         columnWidths: columnWidths,
                         onTap: { selectedPositionId = position.id },
                         tradeDate: tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000",
-                        hasOrders: orderStatusCache[position.instrument?.symbol ?? ""] ?? false
+                        orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil
                     )
                     Divider()
                 }
@@ -514,7 +517,7 @@ private struct TableRow: View {
     let columnWidths: [CGFloat]
     let onTap: () -> Void
     let tradeDate: String
-    let hasOrders: Bool
+    let orderStatus: ActiveOrderStatus?
 
     private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
@@ -530,6 +533,25 @@ private struct TableRow: View {
             return .orange // Amber-like color
         } else {
             return .primary
+        }
+    }
+    
+    private var orderStatusText: String {
+        return orderStatus?.shortDisplayName ?? "None"
+    }
+    
+    private var orderStatusColor: Color {
+        guard let status = orderStatus else { return .secondary }
+        
+        switch status {
+        case .working:
+            return .green
+        case .awaitingStopCondition, .awaitingCondition:
+            return .orange
+        case .awaitingManualReview:
+            return .red
+        default:
+            return .blue
         }
     }
 
@@ -550,7 +572,10 @@ private struct TableRow: View {
             Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
             Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
             Text(tradeDate).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
-            Text(hasOrders ? "Yes" : "No" ).frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
+            Text(orderStatusText)
+                .frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
+                .foregroundColor(orderStatusColor)
+                .font(.system(.body, design: .monospaced))
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
