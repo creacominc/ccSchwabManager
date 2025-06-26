@@ -37,7 +37,11 @@ struct PriceHistoryChart: View {
     @State private var plotFrame: CGRect = .zero
 
     private var tooltipBackgroundColor: Color {
+        #if os(macOS)
         Color(.windowBackgroundColor)
+        #else
+        Color(.systemBackground)
+        #endif
     }
     
     private var yAxisRange: ClosedRange<Double> {
@@ -315,7 +319,11 @@ struct PositionDetailsHeader: View {
     }
     
     private var backgroundColor: Color {
+        #if os(macOS)
         Color(.windowBackgroundColor)
+        #else
+        Color(.systemBackground)
+        #endif
     }
     
     private func getFieldsForColumn(_ columnIndex: Int) -> [PositionDetailField] {
