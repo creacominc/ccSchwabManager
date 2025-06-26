@@ -7,12 +7,6 @@
 
 import SwiftUI
 
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 @main
 struct ccSchwabManagerApp: App
 {
@@ -23,13 +17,11 @@ struct ccSchwabManagerApp: App
     }
     
     var didBecomeActiveNotification: Notification.Name {
-        #if canImport(UIKit)
+#if os(iOS)
         return UIApplication.didBecomeActiveNotification
-        #elseif canImport(AppKit)
+#else
         return NSApplication.didBecomeActiveNotification
-        #else
-        return Notification.Name("UnknownPlatformDidBecomeActive")
-        #endif
+#endif
     }
     
     var body: some Scene

@@ -37,11 +37,7 @@ struct PriceHistoryChart: View {
     @State private var plotFrame: CGRect = .zero
 
     private var tooltipBackgroundColor: Color {
-        #if os(iOS)
-        return Color(.systemBackground)
-        #else
-        return Color(.windowBackgroundColor)
-        #endif
+        Color(.windowBackgroundColor)
     }
     
     private var yAxisRange: ClosedRange<Double> {
@@ -177,9 +173,8 @@ struct PriceHistoryChart: View {
     }
     
     private func handleDragChange(value: DragGesture.Value, proxy: ChartProxy, geometry: GeometryProxy) {
-        let x: CGFloat
         guard let plotFrame = proxy.plotFrame else { return }
-        x = value.location.x - geometry[plotFrame].origin.x
+        let x = value.location.x - geometry[plotFrame].origin.x
         guard x >= 0, x < geometry[plotFrame].width else { return }
         let date = proxy.value(atX: x) as Date?
         if let date = date,
@@ -320,11 +315,7 @@ struct PositionDetailsHeader: View {
     }
     
     private var backgroundColor: Color {
-        #if os(iOS)
-        return Color(.systemBackground)
-        #else
-        return Color(.windowBackgroundColor)
-        #endif
+        Color(.windowBackgroundColor)
     }
     
     private func getFieldsForColumn(_ columnIndex: Int) -> [PositionDetailField] {
@@ -925,7 +916,7 @@ struct PositionDetailView: View {
         return formatter.string(from: date)
     }
 
-    private func fetchHistoryForSymbol() async {
+    private func fetchHistoryForSymbol() {
         //print("🔍 PositionDetailView.fetchHistoryForSymbol - Setting loading to TRUE")
         loadingState.isLoading = true
         defer { 
@@ -978,10 +969,7 @@ struct PositionDetailView: View {
         }
         .onAppear {
             loadingState.isLoading = true
-            Task {
-                print( " --- onAppear Fetching history for symbol: \(symbol) ---" )
-                await fetchHistoryForSymbol()
-            }
+            fetchHistoryForSymbol()
         }
         .onDisappear {
             //print("🔗 PositionDetailView - Clearing SchwabClient.loadingDelegate")
@@ -989,10 +977,7 @@ struct PositionDetailView: View {
         }
         .onChange(of: position) { oldValue, newValue in
             loadingState.isLoading = true
-            Task {
-                print( " --- onChange Fetching history for symbol: \(symbol) ---" )
-                await fetchHistoryForSymbol()
-            }
+            fetchHistoryForSymbol()
         }
         .withLoadingState(loadingState)
     }

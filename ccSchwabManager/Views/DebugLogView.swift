@@ -29,11 +29,8 @@ struct DebugLogView: View {
                         .textSelection(.enabled)
                 }
                 .navigationTitle("Debug Logs")
-                #if canImport(UIKit)
-                .navigationBarTitleDisplayMode(.inline)
-                #endif
                 .toolbar {
-                    #if canImport(UIKit)
+#if os(iOS)
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button("Done") {
                             showingLogs = false
@@ -44,7 +41,7 @@ struct DebugLogView: View {
                             UIPasteboard.general.string = logContents
                         }
                     }
-                    #elseif canImport(AppKit)
+#else
                     ToolbarItem(placement: .primaryAction) {
                         Button("Done") {
                             showingLogs = false
@@ -56,7 +53,7 @@ struct DebugLogView: View {
                             NSPasteboard.general.setString(logContents, forType: .string)
                         }
                     }
-                    #endif
+#endif
                 }
             }
         }

@@ -272,25 +272,25 @@ private struct TableRow: View {
     
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
-        #if canImport(UIKit)
+#if os(iOS)
         UIPasteboard.general.string = formattedValue
         copiedValue = UIPasteboard.general.string ?? "no value"
-        #elseif canImport(AppKit)
+#else
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(formattedValue, forType: .string)
         copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
-        #endif
+#endif
     }
     
     private func copyToClipboard(text: String) {
-        #if canImport(UIKit)
+#if os(iOS)
         UIPasteboard.general.string = text
         copiedValue = UIPasteboard.general.string ?? "no value"
-        #elseif canImport(AppKit)
+#else
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
-        #endif
+#endif
     }
     
     var body: some View {
