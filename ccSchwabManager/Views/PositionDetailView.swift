@@ -126,32 +126,7 @@ struct PriceHistoryChart: View {
                 .border(Color.gray.opacity(0.2))
         }
         .chartOverlay { proxy in
-            GeometryReader { geometry in
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .onAppear {
-                        if let frame = proxy.plotFrame {
-                            plotFrame = geometry[frame]
-                        }
-                    }
-                    .onChange(of: geometry.size) { _, _ in
-                        if let frame = proxy.plotFrame {
-                            plotFrame = geometry[frame]
-                        }
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                handleDragChange(value: value, proxy: proxy, geometry: geometry)
-                            }
-                            .onEnded { _ in
-                                selectedDate = nil
-                                selectedPrice = nil
-                                showCrosshair = false
-                            }
-                    )
-            }
+            chartOverlayContent(proxy: proxy)
         }
         .overlay {
             if showCrosshair {
@@ -168,6 +143,36 @@ struct PriceHistoryChart: View {
                 tooltipPosition: tooltipPosition,
                 tooltipBackgroundColor: tooltipBackgroundColor
             )
+        }
+    }
+    
+    @ViewBuilder
+    private func chartOverlayContent(proxy: ChartProxy) -> some View {
+        GeometryReader { geometry in
+            Rectangle()
+                .fill(.clear)
+                .contentShape(Rectangle())
+                .onAppear {
+                    if let frame = proxy.plotFrame {
+                        plotFrame = geometry[frame]
+                    }
+                }
+                .onChange(of: geometry.size) { oldValue, newValue in
+                    if let frame = proxy.plotFrame {
+                        plotFrame = geometry[frame]
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            handleDragChange(value: value, proxy: proxy, geometry: geometry)
+                        }
+                        .onEnded { _ in
+                            selectedDate = nil
+                            selectedPrice = nil
+                            showCrosshair = false
+                        }
+                )
         }
     }
     
@@ -245,6 +250,7 @@ struct PositionDetailsHeader: View {
     let symbol: String
     let atrValue: Double
     let lastPrice: Double
+    let quoteData: QuoteData?
     @State private var showDetails = true
     
     var body: some View {
@@ -294,9 +300,16 @@ struct PositionDetailsHeader: View {
 
             if showDetails {
                 HStack(spacing: 10) {
-                    LeftColumn( position: position, atrValue: atrValue )
-                    MiddleColumn( position: position)
-                    RightColumn( position: position, accountNumber: accountNumber, lastPrice: lastPrice )
+                    ForEach(0..<4) { columnIndex in
+                        PositionDetailColumn(
+                            fields: getFieldsForColumn(columnIndex),
+                            position: position,
+                            atrValue: atrValue,
+                            accountNumber: accountNumber,
+                            lastPrice: lastPrice,
+                            quoteData: quoteData
+                        )
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -313,68 +326,177 @@ struct PositionDetailsHeader: View {
         return Color(.windowBackgroundColor)
         #endif
     }
+    
+    private func getFieldsForColumn(_ columnIndex: Int) -> [PositionDetailField] {
+        switch columnIndex {
+        case 0: // Performance & Risk
+            return [
+                .plPercent(atrValue: atrValue),
+                .pl,
+                .atr(atrValue: atrValue)
+            ]
+        case 1: // Position Details
+            return [
+                .quantity,
+                .marketValue,
+                .averagePrice
+            ]
+        case 2: // Market Info
+            return [
+                .assetType,
+                .lastPrice(lastPrice: lastPrice),
+                .dividendYield
+            ]
+        case 3: // Account Info
+            return [
+                .account(accountNumber: accountNumber),
+                .symbol,
+                .empty
+            ]
+        default:
+            return []
+        }
+    }
 }
 
-struct LeftColumn: View {
+// MARK: - Field Definitions
+
+enum PositionDetailField {
+    case plPercent(atrValue: Double)
+    case pl
+    case atr(atrValue: Double)
+    case quantity
+    case marketValue
+    case averagePrice
+    case assetType
+    case lastPrice(lastPrice: Double)
+    case dividendYield
+    case account(accountNumber: String)
+    case symbol
+    case empty
+    
+    var label: String {
+        switch self {
+        case .plPercent: return "P/L%"
+        case .pl: return "P/L"
+        case .atr: return "ATR"
+        case .quantity: return "Quantity"
+        case .marketValue: return "Market Value"
+        case .averagePrice: return "Average Price"
+        case .assetType: return "Asset Type"
+        case .lastPrice: return "Last"
+        case .dividendYield: return "Div Yield"
+        case .account: return "Account"
+        case .symbol: return "Symbol"
+        case .empty: return ""
+        }
+    }
+    
+    func getValue(position: Position, atrValue: Double, accountNumber: String, lastPrice: Double, quoteData: QuoteData?) -> String {
+        switch self {
+        case .plPercent(_):
+            let pl = position.longOpenProfitLoss ?? 0
+            let mv = position.marketValue ?? 0
+            let costBasis = mv - pl
+            let plPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+            return String(format: "%.1f%%", plPercent)
+        case .pl:
+            return String(format: "%.2f", position.longOpenProfitLoss ?? 0)
+        case .atr(let atrValue):
+            return "\(String(format: "%.2f", atrValue)) %"
+        case .quantity:
+            return String(format: "%.2f", position.longQuantity ?? 0)
+        case .marketValue:
+            return String(format: "%.2f", position.marketValue ?? 0)
+        case .averagePrice:
+            return String(format: "%.2f", position.averagePrice ?? 0)
+        case .assetType:
+            return position.instrument?.assetType?.rawValue ?? ""
+        case .lastPrice(let lastPrice):
+            return String(format: "%.2f", lastPrice)
+        case .dividendYield:
+            if let divYield = quoteData?.fundamental?.divYield {
+                let formattedYield = String(format: "%.2f%%", divYield)
+                print("PositionDetailView - Dividend yield for \(position.instrument?.symbol ?? "unknown"):")
+                print("  Raw value: \(divYield)")
+                print("  Formatted: \(formattedYield)")
+                return formattedYield
+            }
+            print("PositionDetailView - No dividend yield data for \(position.instrument?.symbol ?? "unknown")")
+            return "N/A"
+        case .account(let accountNumber):
+            return accountNumber
+        case .symbol:
+            return position.instrument?.symbol ?? ""
+        case .empty:
+            return ""
+        }
+    }
+    
+    func getColor(position: Position, atrValue: Double) -> Color? {
+        switch self {
+        case .plPercent(let atrValue):
+            let pl = position.longOpenProfitLoss ?? 0
+            let mv = position.marketValue ?? 0
+            let costBasis = mv - pl
+            let plPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+            
+            if plPercent < 0 {
+                return .red
+            }
+            let threshold = min(5.0, 2 * atrValue)
+            if plPercent <= threshold {
+                return .orange
+            } else {
+                return .green
+            }
+        case .pl:
+            let pl = position.longOpenProfitLoss ?? 0
+            let mv = position.marketValue ?? 0
+            let costBasis = mv - pl
+            let plPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+            
+            if plPercent < 0 {
+                return .red
+            }
+            let threshold = min(5.0, 2 * atrValue)
+            if plPercent <= threshold {
+                return .orange
+            } else {
+                return .green
+            }
+        default:
+            return nil
+        }
+    }
+}
+
+// MARK: - Column View
+
+struct PositionDetailColumn: View {
+    let fields: [PositionDetailField]
     let position: Position
     let atrValue: Double
-    
-    private var plPercent: Double {
-        let pl = position.longOpenProfitLoss ?? 0
-        let mv = position.marketValue ?? 0
-        let costBasis = mv - pl
-        return costBasis != 0 ? (pl / costBasis) * 100 : 0
-    }
-
-    private var plColor: Color {
-        if plPercent < 0 {
-            return .red
-        }
-        let threshold = min(5.0, 2 * atrValue)
-        if plPercent <= threshold {
-            return .orange
-        } else {
-            return .green
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            DetailRow(label: "P/L%", value: String(format: "%.1f%%", plPercent))
-                .foregroundColor(plColor)
-            DetailRow(label: "P/L", value: String(format: "%.2f", position.longOpenProfitLoss ?? 0))
-                .foregroundColor(plColor)
-            DetailRow(label: "ATR", value: "\(String(format: "%.2f", atrValue)) %" )
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct MiddleColumn: View {
-    let position: Position
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            DetailRow(label: "Quantity", value: String(format: "%.2f", position.longQuantity ?? 0))
-            DetailRow(label: "Market Value", value: String(format: "%.2f", position.marketValue ?? 0))
-            DetailRow(label: "Average Price", value: String(format: "%.2f", position.averagePrice ?? 0))
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-    }
-}
-
-struct RightColumn: View {
-    let position: Position
     let accountNumber: String
     let lastPrice: Double
+    let quoteData: QuoteData?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            DetailRow(label: "Asset Type", value: position.instrument?.assetType?.rawValue ?? "")
-            DetailRow(label: "Account", value: accountNumber)
-            DetailRow(label: "Last", value: String( format: "%.2f", lastPrice ) )
+            ForEach(fields, id: \.label) { field in
+                if field.label.isEmpty {
+                    Spacer()
+                        .frame(height: 20)
+                } else {
+                    DetailRow(
+                        label: field.label,
+                        value: field.getValue(position: position, atrValue: atrValue, accountNumber: accountNumber, lastPrice: lastPrice, quoteData: quoteData)
+                    )
+                    .foregroundColor(field.getColor(position: position, atrValue: atrValue))
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -707,6 +829,7 @@ struct PositionDetailContent: View {
     let isLoadingPriceHistory: Bool
     let isLoadingTransactions: Bool
     let formatDate: (Int64?) -> String
+    let quoteData: QuoteData?
     @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
 //    // current position and tax lots for a given security
@@ -727,8 +850,8 @@ struct PositionDetailContent: View {
                 onNavigate: onNavigate,
                 symbol: symbol,
                 atrValue: atrValue,
-                // get the close from the last candle
-                lastPrice: priceHistory?.candles.last?.close ?? 0.0
+                lastPrice: priceHistory?.candles.last?.close ?? 0.0,
+                quoteData: quoteData
             )
             .padding(.bottom, 4)
             
@@ -788,6 +911,8 @@ struct PositionDetailView: View {
     @State private var priceHistory: CandleList?
     @State private var isLoadingPriceHistory = false
     @State private var isLoadingTransactions = false
+    @State private var quoteData: QuoteData?
+    @State private var isLoadingQuote = false
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
@@ -814,14 +939,17 @@ struct PositionDetailView: View {
         
         isLoadingPriceHistory = true
         isLoadingTransactions = true
+        isLoadingQuote = true
         
         if let symbol = position.instrument?.symbol {
             priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             _ = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
         }
         
         isLoadingPriceHistory = false
         isLoadingTransactions = false
+        isLoadingQuote = false
     }
 
     var body: some View {
@@ -842,6 +970,7 @@ struct PositionDetailView: View {
                 isLoadingPriceHistory: isLoadingPriceHistory,
                 isLoadingTransactions: isLoadingTransactions,
                 formatDate: formatDate,
+                quoteData: quoteData,
                 viewSize: $viewSize,
                 selectedTab: $selectedTab
             )
@@ -868,3 +997,4 @@ struct PositionDetailView: View {
         .withLoadingState(loadingState)
     }
 } 
+

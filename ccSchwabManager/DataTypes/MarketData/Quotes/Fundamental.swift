@@ -29,21 +29,21 @@ class Fundamental : Codable, Identifiable
 {
     public var avg10DaysVolume: Double?
     public var avg1YearVolume: Double?
-    public var declarationDate: Date?
+    public var declarationDate: String?
     public var divAmount: Double?
-    public var divExDate: Date?
+    public var divExDate: String?
     /**
      Dividend frequency 1 – once a year or annually 2 – 2x a year or semi-annualy 3 - 3x a year (ex. ARCO, EBRPF) 4 – 4x a year or quarterly 6 - 6x per yr or every other month 11 – 11x a year (ex. FBND, FCOR) 12 – 12x a year or monthly
      */
     public var divFreq: Int?
     public var divPayAmount: Double?
-    public var divPayDate: Date?
+    public var divPayDate: String?
     public var divYield: Double?
     public var eps: Double?
     public var fundLeverageFactor: Double?
-    public var lastEarningsDate: Date?
-    public var nextDivExDate: Date?
-    public var nextDivPayDate: Date?
+    public var lastEarningsDate: String?
+    public var nextDivExDate: String?
+    public var nextDivPayDate: String?
     public var peRatio: Double?
     
     enum CodingKeys : String, CodingKey
@@ -65,7 +65,7 @@ class Fundamental : Codable, Identifiable
         case peRatio = "peRatio"
     }
 
-    public init(avg10DaysVolume: Double? = nil, avg1YearVolume: Double? = nil, declarationDate: Date? = nil, divAmount: Double? = nil, divExDate: Date? = nil, divFreq: Int? = nil, divPayAmount: Double? = nil, divPayDate: Date? = nil, divYield: Double? = nil, eps: Double? = nil, fundLeverageFactor: Double? = nil, lastEarningsDate: Date? = nil, nextDivExDate: Date? = nil, nextDivPayDate: Date? = nil, peRatio: Double? = nil)
+    public init(avg10DaysVolume: Double? = nil, avg1YearVolume: Double? = nil, declarationDate: String? = nil, divAmount: Double? = nil, divExDate: String? = nil, divFreq: Int? = nil, divPayAmount: Double? = nil, divPayDate: String? = nil, divYield: Double? = nil, eps: Double? = nil, fundLeverageFactor: Double? = nil, lastEarningsDate: String? = nil, nextDivExDate: String? = nil, nextDivPayDate: String? = nil, peRatio: Double? = nil)
     {
         self.avg10DaysVolume = avg10DaysVolume
         self.avg1YearVolume = avg1YearVolume

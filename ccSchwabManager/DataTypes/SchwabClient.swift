@@ -640,21 +640,34 @@ class SchwabClient
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory \(symbol) ===")
+        
+        // Check cache first without holding lock
         if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
         {
             print( "  fetchPriceHistory - returning cached." )
             return m_lastFilteredPriceHistory
         }
+        
         //print("🔍 fetchPriceHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
             //print("🔍 fetchPriceHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
+        
+        // Hold lock for the entire operation to prevent race conditions
         m_lastFilteredPriceHistoryLock.lock()
         defer {
             m_lastFilteredPriceHistoryLock.unlock()
         }
+        
+        // Double-check cache after acquiring lock
+        if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
+        {
+            print( "  fetchPriceHistory - returning cached (after lock)." )
+            return m_lastFilteredPriceHistory
+        }
+        
         m_lastFilteredPriceHistorySymbol = symbol
         m_lastFilteredPriceHistory?.candles.removeAll(keepingCapacity: true)
 
@@ -733,6 +746,92 @@ class SchwabClient
     }
     
     /**
+     * fetchQuote - get quote data including fundamental information for a symbol
+     */
+    func fetchQuote(symbol: String) -> QuoteData? {
+        print("=== fetchQuote \(symbol) ===")
+        
+        let quoteUrl = "\(marketdataAPI)/\(symbol)/quotes"
+        print("     quoteUrl: \(quoteUrl)")
+        
+        guard let url = URL(string: quoteUrl) else {
+            print("fetchQuote. Invalid URL")
+            return nil
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "accept")
+        request.timeoutInterval = self.requestTimeout
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var responseData: Data?
+        var responseError: Error?
+        var httpResponse: HTTPURLResponse?
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            responseData = data
+            responseError = error
+            httpResponse = response as? HTTPURLResponse
+            semaphore.signal()
+        }.resume()
+        
+        semaphore.wait()
+        
+        if let error = responseError {
+            print("fetchQuote - Error: \(error.localizedDescription)")
+            return nil
+        }
+        
+        guard let data = responseData else {
+            print("fetchQuote. No data received")
+            return nil
+        }
+        
+        if httpResponse?.statusCode != 200 {
+            print("fetchQuote - Failed to fetch quote. code = \(httpResponse?.statusCode ?? -1)")
+            return nil
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            let quoteResponse = try decoder.decode(QuoteResponse.self, from: data)
+            
+            // Get the quote data for the requested symbol
+            guard let quoteData = quoteResponse.quotes[symbol] else {
+                print("fetchQuote - No quote data found for symbol \(symbol)")
+                return nil
+            }
+            
+            print("fetchQuote - Successfully fetched quote for \(symbol)")
+            
+            // Log detailed fundamental information
+            if let fundamental = quoteData.fundamental {
+                print("fetchQuote - Fundamental data for \(symbol):")
+                print("  divYield: \(fundamental.divYield ?? 0)")
+                print("  divAmount: \(fundamental.divAmount ?? 0)")
+                print("  divFreq: \(fundamental.divFreq ?? 0)")
+                print("  eps: \(fundamental.eps ?? 0)")
+                print("  peRatio: \(fundamental.peRatio ?? 0)")
+                
+                if let divYield = fundamental.divYield {
+                    print("fetchQuote - Raw dividend yield for \(symbol): \(divYield)%")
+                    print("fetchQuote - Dividend yield is already a percentage value")
+                }
+            } else {
+                print("fetchQuote - No fundamental data available for \(symbol)")
+            }
+            
+            return quoteData
+        } catch {
+            print("fetchQuote - Error: \(error.localizedDescription)")
+            print("   detail: \(error)")
+            return nil
+        }
+    }
+    
+    /**
      * compute ATR for given symbol
      */
     public func computeATR( symbol : String ) async -> Double
@@ -773,9 +872,9 @@ class SchwabClient
         {
             let position = startIndex + indx
             
-            // Bounds check for current position
-            guard position >= 0 && position < candlesCount else {
-                print("computeATR: Position \(position) out of bounds for candlesCount \(candlesCount)")
+            // Bounds check for current position - recheck candlesCount in case array was modified
+            guard position >= 0 && position < candles.count else {
+                print("computeATR: Position \(position) out of bounds for candlesCount \(candles.count)")
                 continue
             }
             
@@ -787,8 +886,8 @@ class SchwabClient
                 prevClose = priceHistory.previousClose ?? 0.0
             } else {
                 let prevPosition = position - 1
-                guard prevPosition >= 0 && prevPosition < candlesCount else {
-                    print("computeATR: Previous position \(prevPosition) out of bounds")
+                guard prevPosition >= 0 && prevPosition < candles.count else {
+                    print("computeATR: Previous position \(prevPosition) out of bounds for candlesCount \(candles.count)")
                     continue
                 }
                 prevClose = candles[prevPosition].close ?? 0.0
