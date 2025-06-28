@@ -111,10 +111,6 @@ class Position: NSObject, Codable, Identifiable, Comparable
 
     func dump() -> String
     {
-//        var retVal : String = "\n\t\t\t\t shortQuantity: \(shortQuantity ?? Double(NOTAVAILABLENUMBER)), averagePrice: \(averagePrice ?? Double(NOTAVAILABLENUMBER)), currentDayProfitLoss: \(currentDayProfitLoss ?? Double(NOTAVAILABLENUMBER)), currentDayProfitLossPercentage: \(currentDayProfitLossPercentage ?? Double(NOTAVAILABLENUMBER)), longQuantity: \(longQuantity ?? Double(NOTAVAILABLENUMBER)), settledLongQuantity: \(settledLongQuantity ?? Double(NOTAVAILABLENUMBER)), settledShortQuantity: \(settledShortQuantity ?? Double(NOTAVAILABLENUMBER))"
-//        retVal += "\n\t\t\t"
-//        retVal += instrument?.dump() ?? NOTAVAILABLE
-
         // Instrument,Qty,Net Liq,Trade Price,Last,ATR,HT_FPL,Account Name,Company Name,P/L %,P/L Open
         var retVal : String = ""
         retVal += "\(instrument?.symbol ?? "UNSET")"

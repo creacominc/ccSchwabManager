@@ -66,18 +66,6 @@ struct PriceHistoryChart: View {
     
     var body: some View {
         chartContent
-//            .onAppear {
-//                if let firstCandle = candles.first, let lastCandle = candles.last {
-//                    let firstDate = Date(timeIntervalSince1970: TimeInterval(firstCandle.datetime ?? 0) / 1000)
-//                    let lastDate = Date(timeIntervalSince1970: TimeInterval(lastCandle.datetime ?? 0) / 1000)
-//                    let formatter = DateFormatter()
-//                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-//                    print("PriceHistoryChart - First date: \(formatter.string(from: firstDate))")
-//                    print("PriceHistoryChart - Last date: \(formatter.string(from: lastDate))")
-//                    print("PriceHistoryChart - First close: \(firstCandle.close ?? 0)")
-//                    print("PriceHistoryChart - Last close: \(lastCandle.close ?? 0)")
-//                }
-//            }
     }
     
     @ViewBuilder
@@ -404,7 +392,7 @@ enum PositionDetailField {
         case .atr(let atrValue):
             return "\(String(format: "%.2f", atrValue)) %"
         case .quantity:
-            return String(format: "%.2f", position.longQuantity ?? 0)
+            return String(format: "%.2f", ((position.longQuantity ?? 0) + (position.shortQuantity ?? 0)))
         case .marketValue:
             return String(format: "%.2f", position.marketValue ?? 0)
         case .averagePrice:
@@ -659,11 +647,6 @@ struct TransactionHistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-//            Text("Transaction History")
-//                .font(.headline)
-//                .padding(.horizontal)
-//                .padding(.bottom, 5)
-
             if isLoading {
                 ProgressView()
                     .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
@@ -713,13 +696,6 @@ struct TransactionHistorySection: View {
                                 }
                             }
                         }
-//                        .frame(height: .infinity)
-//                        .task {
-//                            // print each record of the savedTransactions
-//                            for transaction in sortedTransactions {
-//                                print(transaction.dump())
-//                            }
-//                        }
                     }
                 }
             }
@@ -782,13 +758,6 @@ struct SalesCalcTab: View {
     let symbol: String
     let atrValue: Double
     let geometry: GeometryProxy
-//    // current position and tax lots for a given security
-//    let currentCostBasis: Double
-//    let currentShares: Int
-//    let transactionList : [Transaction]
-
-//    let sellOrder: SalesCalcResultsRecord
-//    let copiedValue: String
 
     var body: some View {
         ScrollView {
@@ -798,8 +767,6 @@ struct SalesCalcTab: View {
                 atrValue: atrValue
             )
             .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.45)
-//            .padding(.horizontal)
-//            .border(Color.pink)
 
             Divider()
 
@@ -831,13 +798,6 @@ struct PositionDetailContent: View {
     let quoteData: QuoteData?
     @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
-//    // current position and tax lots for a given security
-//    let currentCostBasis: Double
-//    let currentShares: Int
-//    let transactionList : [Transaction]
-
-//    let sellOrder: SalesCalcResultsRecord
-//    let copiedValue: String
 
     var body: some View {
         VStack(spacing: 0) {
@@ -878,12 +838,6 @@ struct PositionDetailContent: View {
                         symbol: symbol,
                         atrValue: atrValue,
                         geometry: geometry
-//                        currentCostBasis: currentCostBasis,
-//                        currentShares: currentShares,
-//                        transactionList: transactionList
-                        //,
-//                        sellOrder: sellOrder,
-//                        copiedValue: copiedValue
                     )
                     .tag(2)
                 }

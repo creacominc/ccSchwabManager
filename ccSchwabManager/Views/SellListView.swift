@@ -17,21 +17,7 @@ enum SellListSortableColumn: String, CaseIterable, Identifiable {
     case description = "Description"
     
     var id: String { self.rawValue }
-    
-//    var defaultAscending: Bool {
-//        switch self {
-//        case .breakEven, .entry, .cancel:
-//            return false
-//        case .rollingGainLoss, .trailingStop, .sharesToSell, .gain, .description:
-//            return true
-//        }
-//    }
 }
-
-//struct SellListSortConfig {
-//    var column: SellListSortableColumn
-//    var ascending: Bool
-//}
 
 struct SellListView: View {
     let symbol: String
@@ -39,37 +25,10 @@ struct SellListView: View {
     @State private var copiedValue: String = "TBD"
     @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = SalesCalcViewModel()
-//    @State private var currentSort: SellListSortConfig? = SellListSortConfig(column: .trailingStop, ascending: SellListSortableColumn.trailingStop.defaultAscending)
-    
+
     // Define proportional widths for columns
     private let columnWidths: [CGFloat] = [0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.28]
-    
-//    var sortedData: [SalesCalcResultsRecord] {
-//        //guard let sort = currentSort else { return getResults(taxLots: viewModel.positionsData) }
-//        
-//        return getResults(taxLots: viewModel.positionsData).sorted { t1, t2 in
-//            let ascending = sort.ascending
-//            switch sort.column {
-//            case .rollingGainLoss:
-//                return ascending ? t1.rollingGainLoss < t2.rollingGainLoss : t1.rollingGainLoss > t2.rollingGainLoss
-//            case .breakEven:
-//                return ascending ? t1.breakEven < t2.breakEven : t1.breakEven > t2.breakEven
-//            case .sharesToSell:
-//                return ascending ? t1.sharesToSell < t2.sharesToSell : t1.sharesToSell > t2.sharesToSell
-//            case .gain:
-//                return ascending ? t1.gain < t2.gain : t1.gain > t2.gain
-//            case .trailingStop:
-//                return ascending ? t1.trailingStop < t2.trailingStop : t1.trailingStop > t2.trailingStop
-//            case .entry:
-//                return ascending ? t1.entry < t2.entry : t1.entry > t2.entry
-//            case .cancel:
-//                return ascending ? t1.cancel < t2.cancel : t1.cancel > t2.cancel
-//            case .description:
-//                return ascending ? t1.description < t2.description : t1.description > t2.description
-//            }
-//        }
-//    }
-    
+
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
@@ -163,31 +122,6 @@ private struct TableHeader: View {
                               , alignment: Alignment = .leading
     ) -> some View {
         Text(title)
-//
-//        Button(action: {
-//            if currentSort?.column == column {
-//                currentSort?.ascending.toggle()
-//            } else {
-//                currentSort = SellListSortConfig(column: column, ascending: column.defaultAscending)
-//            }
-//        }) {
-//            HStack {
-//                if alignment == .trailing {
-//                    Spacer()
-//                }
-//                Text(title)
-//                if alignment == .leading {
-//                    Spacer()
-//                }
-//                if currentSort?.column == column {
-//                    Image(systemName: currentSort?.ascending ?? true ? "chevron.up" : "chevron.down")
-//                        .font(.caption)
-//                }
-//            }
-//            .frame(maxWidth: .infinity)
-//            .padding(.vertical, 4)
-//        }
-//        .buttonStyle(.plain)
     }
     
     var body: some View {

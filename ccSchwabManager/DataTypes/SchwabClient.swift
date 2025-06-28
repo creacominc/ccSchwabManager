@@ -148,7 +148,7 @@ class SchwabClient
             if let positions = account.securitiesAccount?.positions {
                 for position in positions {
                     if position.instrument?.symbol == symbol {
-                        shareCount = position.longQuantity ?? 0.0
+                        shareCount = ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0))
                         print("Found position with \(shareCount) shares")
                         return shareCount
                     }

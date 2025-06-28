@@ -109,9 +109,10 @@ struct HoldingsView: View {
 
     var sortedHoldings: [Position] {
         guard let sortConfig = currentSort else { return filteredHoldings }
-
         return filteredHoldings.sorted(by: { first, second in
             let ascending = sortConfig.ascending
+            let firstQuantity: Double = ((first.longQuantity ?? 0) + (first.shortQuantity ?? 0))
+            let secondQuantity: Double = ((second.longQuantity ?? 0) + (second.shortQuantity ?? 0))
             switch sortConfig.column {
             case .symbol:
                 return ascending ?
@@ -119,8 +120,8 @@ struct HoldingsView: View {
                     (first.instrument?.symbol ?? "") > (second.instrument?.symbol ?? "")
             case .quantity:
                 return ascending ?
-                    (first.longQuantity ?? 0) < (second.longQuantity ?? 0) :
-                    (first.longQuantity ?? 0) > (second.longQuantity ?? 0)
+                    firstQuantity < secondQuantity :
+                    firstQuantity > secondQuantity
             case .avgPrice:
                 return ascending ?
                     (first.averagePrice ?? 0) < (second.averagePrice ?? 0) :
@@ -406,7 +407,7 @@ struct HoldingsTable: View {
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
 
-    private let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.07, 0.08, 0.08]
+    private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -461,15 +462,15 @@ private struct TableHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0] * viewSize.width)
-            columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: columnWidths[1] * viewSize.width)
-            columnHeader(title: "Avg Price", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2] * viewSize.width)
-            columnHeader(title: "Market Value", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3] * viewSize.width)
+            columnHeader(title: "Qty", column: .quantity, alignment: .trailing).frame(width: columnWidths[1] * viewSize.width)
+            columnHeader(title: "Avg", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2] * viewSize.width)
+            columnHeader(title: "Market", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3] * viewSize.width)
             columnHeader(title: "P/L", column: .pl, alignment: .trailing).frame(width: columnWidths[4] * viewSize.width)
             columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing).frame(width: columnWidths[5] * viewSize.width)
-            columnHeader(title: "Asset Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width)
-            columnHeader(title: "Account", column: .account).frame(width: columnWidths[7] * viewSize.width)
+            columnHeader(title: "Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width)
+            columnHeader(title: "Acnt", column: .account).frame(width: columnWidths[7] * viewSize.width)
             columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
-            columnHeader(title: "Order Status", column: .orderStatus ).frame(width: columnWidths[9] * viewSize.width)
+            columnHeader(title: "Order", column: .orderStatus ).frame(width: columnWidths[9] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -558,7 +559,7 @@ private struct TableRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
-            Text(String(format: "%.2f", position.longQuantity ?? 0.0)).frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
+            Text(String(format: "%.2f", ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0)))).frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
             Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2] * viewSize.width, alignment: .trailing).monospacedDigit()
             Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3] * viewSize.width, alignment: .trailing).monospacedDigit()
             Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
