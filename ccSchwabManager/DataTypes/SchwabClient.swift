@@ -51,6 +51,7 @@ class SchwabClient
     private var m_latestDateForSymbol : [String:Date] = [:]
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
+    private var m_symbolsWithContracts : [String: [Position]] = [:]
     private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_transactionList : [Transaction] = []
@@ -624,6 +625,41 @@ class SchwabClient
             print( "=== decoding accounts ===" )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
             print( "  decoded \(m_accounts.count) accounts" )
+            // search the positions in the accounts to build a map of symbolsWithContracts
+            // Build map of symbols with option contracts
+            m_symbolsWithContracts.removeAll()
+            
+            for account in m_accounts {
+                if let positions = account.securitiesAccount?.positions {
+                    for position in positions {
+                        if let instrument = position.instrument,
+                           let assetType = instrument.assetType,
+                           assetType == .OPTION,
+                           let underlyingSymbol = instrument.underlyingSymbol {
+                            
+                            // Add underlying symbol to the map if not already present
+                            if m_symbolsWithContracts[underlyingSymbol] == nil {
+                                m_symbolsWithContracts[underlyingSymbol] = []
+                                print("Added underlying symbol to contracts map: \(underlyingSymbol)")
+                            }
+                            
+                            // Add the position to the list for this underlying
+                            if let symbol = instrument.symbol {
+                                // Check if this position is already in the list by comparing symbols
+                                let positionExists = m_symbolsWithContracts[underlyingSymbol]!.contains { existingPosition in
+                                    existingPosition.instrument?.symbol == symbol
+                                }
+                                
+                                if !positionExists {
+                                    m_symbolsWithContracts[underlyingSymbol]!.append(position)
+                                    print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            print("Built contracts map with \(m_symbolsWithContracts.count) underlying symbols")
             return
         }
         catch
@@ -1791,6 +1827,19 @@ class SchwabClient
                 m_lastFilteredTransactionSharesAvailableToTrade = record.quantity + (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)
             }
         }
+        // for debugging, print the number of shares available to trade and the symbol
+        print("********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
+        // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
+        if let contracts = m_symbolsWithContracts[symbol] {
+            for contract in contracts {
+                let totalQuantity = (contract.longQuantity ?? 0.0) + (contract.shortQuantity ?? 0.0)
+                m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
+                // for debugging, print the change in shares available to trade, the symbol, and the result
+                print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
+                print("! result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
+            }
+        }
+        
 
         m_lastFilteredPositionRecords = remainingRecords
         print("! returning \(m_lastFilteredPositionRecords.count) records")

@@ -1,11 +1,11 @@
-// swift-tools-version:5.8
+// swift-tools-version:5.10
 import PackageDescription
 
 let package = Package(
     name: "ccSchwabManager",
     platforms: [
-        .macOS(.v12), // Specify the minimum macOS version or other platforms if needed
-        .iOS(.v15)    // Add iOS if applicable
+        .macOS(.v13), // Latest stable macOS version
+        .iOS(.v16)    // Latest stable iOS version
     ],
     products: [
         .executable(
