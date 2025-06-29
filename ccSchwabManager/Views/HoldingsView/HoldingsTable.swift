@@ -155,7 +155,7 @@ private struct TableRow: View {
         switch status {
         case .working:
             return .green
-        case .awaitingStopCondition, .awaitingCondition:
+        case .awaitingSellStopCondition, .awaitingBuyStopCondition, .awaitingCondition:
             return .orange
         case .awaitingManualReview:
             return .red

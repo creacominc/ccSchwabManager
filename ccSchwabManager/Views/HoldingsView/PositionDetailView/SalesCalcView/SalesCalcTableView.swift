@@ -73,10 +73,10 @@ struct SalesCalcTable: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 //        .border(Color.blue, width: 2) // Add blue border to show the entire table's frame
-        .onAppear {
-            print("SalesCalcTable appeared with \(positionsData.count) records")
-            print("View size: \(viewSize.width) x \(viewSize.height)")
-        }
+//        .onAppear {
+//            print("SalesCalcTable appeared with \(positionsData.count) records")
+//            print("View size: \(viewSize.width) x \(viewSize.height)")
+//        }
     }
 }
 

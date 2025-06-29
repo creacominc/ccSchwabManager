@@ -1712,7 +1712,7 @@ class SchwabClient
         
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
         for order in m_orderList {
-            if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown) {
+            if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
                 if( ( order.orderStrategyType == .SINGLE )
                     || ( order.orderStrategyType == .TRIGGER ) ) {
                     for leg in order.orderLegCollection ?? [] {
@@ -1728,7 +1728,7 @@ class SchwabClient
                 }
                 if ( order.orderStrategyType == .OCO ) {
                     for childOrder in order.childOrderStrategies ?? [] {
-                        if let childActiveStatus = ActiveOrderStatus(from: childOrder.status ?? .unknown) {
+                        if let childActiveStatus = ActiveOrderStatus(from: childOrder.status ?? .unknown, order: childOrder) {
                             for leg in childOrder.orderLegCollection ?? [] {
                                 if let symbol = leg.instrument?.symbol {
                                     if m_symbolsWithOrders[symbol] == nil {
@@ -2190,7 +2190,6 @@ class SchwabClient
         guard let summary = m_symbolsWithContracts[symbol] else {
             return 0.0
         }
-        
         return summary.totalQuantity
     }
 
@@ -2201,7 +2200,6 @@ class SchwabClient
         guard let summary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
             return nil
         }
-        
         return summary.minimumDTE
     }
     
