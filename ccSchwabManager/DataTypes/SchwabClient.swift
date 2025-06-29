@@ -10,6 +10,77 @@ import os.log
 @_exported import class Foundation.NSError
 @_exported import var Foundation.NSLocalizedDescriptionKey
 
+// MARK: - Contract Information Structure
+
+struct ContractInfo {
+    let position: Position
+    let dte: Int?
+    
+    init(position: Position) {
+        self.position = position
+        self.dte = Self.extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description)
+    }
+    
+    // Helper function to extract expiration date from option symbol or description
+    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
+        // Primary method: Extract 6-digit date from option symbol
+        if let symbol = symbol {
+            // Look for 6 consecutive digits after the underlying symbol
+            // Example: "INTC  250516C00025000" -> extract "250516"
+            let pattern = #"(\d{6})"#
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+                
+                // Parse the date (format: YYMMDD)
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyMMdd"
+                formatter.timeZone = TimeZone.current
+                
+                if let date = formatter.date(from: dateString) {
+                    let calendar = Calendar.current
+                    let today = Date()
+                    let components = calendar.dateComponents([.day], from: today, to: date)
+                    return components.day
+                }
+            }
+        }
+        
+        // Secondary method: Extract date from description
+        if let description = description {
+            // Look for date pattern like "05/16/2025" or "2025-01-16"
+            let patterns = [
+                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
+                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
+            ]
+            
+            for pattern in patterns {
+                if let regex = try? NSRegularExpression(pattern: pattern),
+                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+                    
+                    let formatter = DateFormatter()
+                    if pattern.contains("/") {
+                        formatter.dateFormat = "MM/dd/yyyy"
+                    } else {
+                        formatter.dateFormat = "yyyy-MM-dd"
+                    }
+                    formatter.timeZone = TimeZone.current
+                    
+                    let dateString = String(description[Range(match.range, in: description)!])
+                    if let date = formatter.date(from: dateString) {
+                        let calendar = Calendar.current
+                        let today = Date()
+                        let components = calendar.dateComponents([.day], from: today, to: date)
+                        return components.day
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+}
+
 // connection
 private let schwabWeb           : String = "https://api.schwabapi.com"
 
@@ -51,7 +122,7 @@ class SchwabClient
     private var m_latestDateForSymbol : [String:Date] = [:]
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
-    private var m_symbolsWithContracts : [String: [Position]] = [:]
+    private var m_symbolsWithContracts : [String: [ContractInfo]] = [:]
     private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_transactionList : [Transaction] = []
@@ -643,16 +714,17 @@ class SchwabClient
                                 print("Added underlying symbol to contracts map: \(underlyingSymbol)")
                             }
                             
-                            // Add the position to the list for this underlying
+                            // Add the contract info to the list for this underlying
                             if let symbol = instrument.symbol {
                                 // Check if this position is already in the list by comparing symbols
-                                let positionExists = m_symbolsWithContracts[underlyingSymbol]!.contains { existingPosition in
-                                    existingPosition.instrument?.symbol == symbol
+                                let positionExists = m_symbolsWithContracts[underlyingSymbol]!.contains { existingContract in
+                                    existingContract.position.instrument?.symbol == symbol
                                 }
                                 
                                 if !positionExists {
-                                    m_symbolsWithContracts[underlyingSymbol]!.append(position)
-                                    print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
+                                    let contractInfo = ContractInfo(position: position)
+                                    m_symbolsWithContracts[underlyingSymbol]!.append(contractInfo)
+                                    print("  Added option contract: \(symbol) - \(instrument.description ?? "No description") - DTE: \(contractInfo.dte ?? -1)")
                                 }
                             }
                         }
@@ -1832,7 +1904,7 @@ class SchwabClient
         // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
         if let contracts = m_symbolsWithContracts[symbol] {
             for contract in contracts {
-                let totalQuantity = (contract.longQuantity ?? 0.0) + (contract.shortQuantity ?? 0.0)
+                let totalQuantity = (contract.position.longQuantity ?? 0.0) + (contract.position.shortQuantity ?? 0.0)
                 m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
                 // for debugging, print the change in shares available to trade, the symbol, and the result
                 print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
@@ -2011,11 +2083,48 @@ class SchwabClient
         print("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(contracts?.count ?? 0) contracts")
         if let contracts = contracts {
             for contract in contracts {
-                print("  📋 Contract: \(contract.instrument?.symbol ?? "nil") - \(contract.instrument?.description ?? "nil")")
+                print("  📋 Contract: \(contract.position.instrument?.symbol ?? "nil") - \(contract.position.instrument?.description ?? "nil") - DTE: \(contract.dte ?? -1)")
                 // also print the maturityDate and expirationDate
-                // print("         instrument:  \(contract.instrument?.dump() ?? "nil")")
+                // print("         instrument:  \(contract.position.instrument?.dump() ?? "nil")")
             }
         }
-        return contracts
+        return contracts?.map { $0.position }
+    }
+    
+    /**
+     * getMinimumDTEForSymbol - return the minimum DTE for a given underlying symbol
+     */
+    public func getMinimumDTEForSymbol(_ symbol: String) -> Int? {
+        guard let contracts = m_symbolsWithContracts[symbol], !contracts.isEmpty else {
+            return nil
+        }
+        
+        var minDTE: Int?
+        for contract in contracts {
+            if let dte = contract.dte {
+                if minDTE == nil || dte < minDTE! {
+                    minDTE = dte
+                }
+            }
+        }
+        
+        return minDTE
+    }
+    
+    /**
+     * getDTEForPosition - return the DTE for a specific position (for option positions)
+     */
+    public func getDTEForPosition(_ position: Position) -> Int? {
+        // For option positions, calculate DTE directly
+        if position.instrument?.assetType == .OPTION {
+            return ContractInfo(position: position).dte
+        }
+        
+        // For equity positions, return the minimum DTE for that symbol
+        if let symbol = position.instrument?.symbol {
+            return getMinimumDTEForSymbol(symbol)
+        }
+        
+        return nil
     }
 } // SchwabClient

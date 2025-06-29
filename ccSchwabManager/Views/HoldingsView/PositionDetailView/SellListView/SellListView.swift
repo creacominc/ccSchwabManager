@@ -48,7 +48,7 @@ struct SellListView: View {
             .onAppear {
                 viewSize = geometry.size
             }
-            .onChange(of: geometry.size) { _, newValue in
+            .onChange(of: geometry.size) { oldValue, newValue in
                 viewSize = newValue
             }
         }

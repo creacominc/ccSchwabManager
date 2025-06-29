@@ -269,7 +269,7 @@ struct HoldingsView: View {
             .onAppear {
                 viewSize = geometry.size
             }
-            .onChange(of: geometry.size) { _, newValue in
+            .onChange(of: geometry.size) { oldValue, newValue in
                 viewSize = newValue
             }
         }
@@ -295,7 +295,7 @@ struct HoldingsView: View {
                     atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
                 }
             }
-            .onChange(of: selected.position.instrument?.symbol) { _, newValue in
+            .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
                 if let tmpsymbol = newValue {
                     Task {
                         atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
@@ -421,120 +421,7 @@ struct HoldingsView: View {
     
     // Helper function to calculate DTE for a position
     private func calculateDTE(for position: Position) -> Int? {
-        // For option positions, calculate DTE directly from the position
-        // For equity positions, look up contracts using the position's symbol
-        if position.instrument?.assetType == .OPTION {
-            // Calculate DTE directly from the option position
-            let expirationDate = extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description)
-            
-            guard let expirationDate = expirationDate else { 
-                print("⚠️ calculateDTE: Could not extract expiration date for option position: \(position.instrument?.symbol ?? "nil")")
-                return nil 
-            }
-            
-            let calendar = Calendar.current
-            let today = Date()
-            let components = calendar.dateComponents([.day], from: today, to: expirationDate)
-            let dte = components.day ?? 0
-            
-            print("📅 calculateDTE: Option position \(position.instrument?.symbol ?? "nil") has DTE: \(dte)")
-            return dte
-        } else {
-            // For equity positions, look up contracts using the position's symbol
-            let lookupSymbol = position.instrument?.symbol ?? ""
-            
-            print("🔍 calculateDTE: Equity position symbol: \(position.instrument?.symbol ?? "nil"), Lookup symbol: \(lookupSymbol)")
-            
-            guard !lookupSymbol.isEmpty,
-                  let contracts = SchwabClient.shared.getContractsForSymbol(lookupSymbol),
-                  !contracts.isEmpty else {
-                print("❌ calculateDTE: No contracts found for equity symbol: \(lookupSymbol)")
-                return nil
-            }
-            
-            print("✅ calculateDTE: Found \(contracts.count) contracts for equity symbol: \(lookupSymbol)")
-            
-            var minDTE: Int?
-            let calendar = Calendar.current
-            let today = Date()
-            
-            for contract in contracts {
-                // Try to extract expiration date from symbol first, then description
-                let expirationDate = extractExpirationDate(from: contract.instrument?.symbol, description: contract.instrument?.description)
-                
-                guard let expirationDate = expirationDate else { 
-                    print("⚠️ calculateDTE: Could not extract expiration date for contract: \(contract.instrument?.symbol ?? "nil")")
-                    continue 
-                }
-                
-                print("📅 calculateDTE: Processing contract \(contract.instrument?.symbol ?? "nil") with expiration: \(expirationDate)")
-                
-                let components = calendar.dateComponents([.day], from: today, to: expirationDate)
-                let dte = components.day ?? 0
-                
-                print("📊 calculateDTE: Contract \(contract.instrument?.symbol ?? "nil") has DTE: \(dte)")
-                
-                if minDTE == nil || dte < minDTE! {
-                    minDTE = dte
-                    print("🏆 calculateDTE: New minimum DTE: \(dte) for equity symbol: \(lookupSymbol)")
-                }
-            }
-            
-            print("🎯 calculateDTE: Final DTE for equity \(lookupSymbol): \(minDTE ?? -1)")
-            return minDTE
-        }
-    }
-    
-    // Helper function to extract expiration date from option symbol or description
-    private func extractExpirationDate(from symbol: String?, description: String?) -> Date? {
-        // First try to extract from symbol (format: "INTC  250516C00025000")
-        if let symbol = symbol, symbol.count >= 6 {
-            // Look for 6 digits after the underlying symbol
-            let pattern = "\\d{6}"
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
-                let dateString = String(symbol[Range(match.range, in: symbol)!])
-                
-                // Parse the date string (format: YYMMDD)
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyMMdd"
-                formatter.timeZone = TimeZone.current
-                
-                if let date = formatter.date(from: dateString) {
-                    print("📅 extractExpirationDate: Extracted date \(date) from symbol \(symbol)")
-                    return date
-                }
-            }
-        }
-        
-        // If symbol parsing failed, try description (format: "INTEL CORP 05/16/2025 $25 Call")
-        if let description = description {
-            // Look for date pattern MM/DD/YYYY
-            let pattern = "(\\d{1,2})/(\\d{1,2})/(\\d{4})"
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
-                
-                let monthRange = Range(match.range(at: 1), in: description)!
-                let dayRange = Range(match.range(at: 2), in: description)!
-                let yearRange = Range(match.range(at: 3), in: description)!
-                
-                let month = String(description[monthRange])
-                let day = String(description[dayRange])
-                let year = String(description[yearRange])
-                
-                let dateString = "\(month)/\(day)/\(year)"
-                let formatter = DateFormatter()
-                formatter.dateFormat = "M/d/yyyy"
-                formatter.timeZone = TimeZone.current
-                
-                if let date = formatter.date(from: dateString) {
-                    print("📅 extractExpirationDate: Extracted date \(date) from description \(description)")
-                    return date
-                }
-            }
-        }
-        
-        print("❌ extractExpirationDate: Could not extract date from symbol: \(symbol ?? "nil") or description: \(description ?? "nil")")
-        return nil
+        // Use the efficient DTE methods from SchwabClient
+        return SchwabClient.shared.getDTEForPosition(position)
     }
 } 

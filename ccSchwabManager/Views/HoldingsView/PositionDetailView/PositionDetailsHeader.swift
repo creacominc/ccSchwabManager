@@ -109,7 +109,7 @@ struct PositionDetailsHeader: View {
         case 3: // Account Info
             return [
                 .account(accountNumber: accountNumber),
-                .symbol,
+                .dte,
                 .sharesAvailableForTrading
             ]
         default:
