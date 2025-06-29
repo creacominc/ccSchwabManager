@@ -82,7 +82,7 @@ enum PositionDetailField {
         case .lastPrice: return "Last"
         case .dividendYield: return "Div Yield"
         case .account: return "Account"
-        case .dte: return "DTE"
+        case .dte: return "DTE/#"
         case .sharesAvailableForTrading: return "Available"
         }
     }
@@ -112,24 +112,26 @@ enum PositionDetailField {
         case .dividendYield:
             if let divYield = quoteData?.fundamental?.divYield {
                 let formattedYield = String(format: "%.2f%%", divYield)
-                print("PositionDetailField - Dividend yield for \(position.instrument?.symbol ?? "unknown"):")
-                print("  Raw value: \(divYield)")
-                print("  Formatted: \(formattedYield)")
+                // print("PositionDetailField - Dividend yield for \(position.instrument?.symbol ?? "unknown"):")
+                // print("  Raw value: \(divYield)")
+                // print("  Formatted: \(formattedYield)")
                 return formattedYield
             }
-            print("PositionDetailField - No dividend yield data for \(position.instrument?.symbol ?? "unknown")")
+            // print("PositionDetailField - No dividend yield data for \(position.instrument?.symbol ?? "unknown")")
             return "N/A"
         case .account(let accountNumber):
             return accountNumber
         case .dte:
             // Use the efficient DTE methods from SchwabClient
-            let dte = SchwabClient.shared.getDTEForPosition(position)
-            return dte.map { String($0) } ?? ""
+            let dte : Int? = SchwabClient.shared.getDTEForPosition(position)
+            let count : Double = SchwabClient.shared.getContractCountForSymbol(position.instrument?.symbol ?? "")
+            // return the DTE and the number of contracts
+            return (nil == dte) ? "" : String( format: "%d / %.1f", dte ?? 0, count )
         case .sharesAvailableForTrading:
             return String( format: "%.1f", SchwabClient.shared.getSharesAvailableForTrade(for: position.instrument?.symbol ?? "") )
         }
     }
-    
+
     func getColor(position: Position, atrValue: Double) -> Color? {
         switch self {
         case .plPercent(let atrValue):

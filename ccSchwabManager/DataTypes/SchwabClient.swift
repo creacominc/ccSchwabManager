@@ -812,7 +812,7 @@ class SchwabClient
                                 
                                 if !positionExists {
                                     positionsByUnderlying[underlyingSymbol]!.append(position)
-                                    print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
+                                    // print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
                                 }
                             }
                         }
@@ -824,7 +824,7 @@ class SchwabClient
             for (underlyingSymbol, positions) in positionsByUnderlying {
                 let summary = SymbolContractSummary(contracts: positions)
                 m_symbolsWithContracts[underlyingSymbol] = summary
-                print("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
+                // print("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
             }
             
             print("Built contracts map with \(m_symbolsWithContracts.count) underlying symbols")
@@ -1009,24 +1009,24 @@ class SchwabClient
                 return nil
             }
             
-            print("fetchQuote - Successfully fetched quote for \(symbol)")
-            
-            // Log detailed fundamental information
-            if let fundamental = quoteData.fundamental {
-                print("fetchQuote - Fundamental data for \(symbol):")
-                print("  divYield: \(fundamental.divYield ?? 0)")
-                print("  divAmount: \(fundamental.divAmount ?? 0)")
-                print("  divFreq: \(fundamental.divFreq ?? 0)")
-                print("  eps: \(fundamental.eps ?? 0)")
-                print("  peRatio: \(fundamental.peRatio ?? 0)")
-                
-                if let divYield = fundamental.divYield {
-                    print("fetchQuote - Raw dividend yield for \(symbol): \(divYield)%")
-                    print("fetchQuote - Dividend yield is already a percentage value")
-                }
-            } else {
-                print("fetchQuote - No fundamental data available for \(symbol)")
-            }
+            // print("fetchQuote - Successfully fetched quote for \(symbol)")
+            //
+            // // Log detailed fundamental information
+            // if let fundamental = quoteData.fundamental {
+            //     print("fetchQuote - Fundamental data for \(symbol):")
+            //     print("  divYield: \(fundamental.divYield ?? 0)")
+            //     print("  divAmount: \(fundamental.divAmount ?? 0)")
+            //     print("  divFreq: \(fundamental.divFreq ?? 0)")
+            //     print("  eps: \(fundamental.eps ?? 0)")
+            //     print("  peRatio: \(fundamental.peRatio ?? 0)")
+            //
+            //     if let divYield = fundamental.divYield {
+            //         print("fetchQuote - Raw dividend yield for \(symbol): \(divYield)%")
+            //         print("fetchQuote - Dividend yield is already a percentage value")
+            //     }
+            // } else {
+            //     print("fetchQuote - No fundamental data available for \(symbol)")
+            // }
             
             return quoteData
         } catch {
@@ -1996,14 +1996,14 @@ class SchwabClient
             }
         }
         // for debugging, print the number of shares available to trade and the symbol
-        print("********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
+        // print("********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
         // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
         if let summary = m_symbolsWithContracts[symbol] {
             let totalQuantity = summary.totalQuantity
             m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
             // for debugging, print the change in shares available to trade, the symbol, and the result
-            print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
-            print("! result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
+            // print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
+            // print("! result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
         }
         
 
@@ -2182,7 +2182,18 @@ class SchwabClient
         // Since we no longer store individual positions, return nil
         return nil
     }
-    
+
+    /**
+     * get the number of contracts for the given symbol
+     */
+    public func getContractCountForSymbol(_ symbol: String) -> Double {
+        guard let summary = m_symbolsWithContracts[symbol] else {
+            return 0.0
+        }
+        
+        return summary.totalQuantity
+    }
+
     /**
      * getMinimumDTEForSymbol - return the minimum DTE for a given underlying symbol
      */
