@@ -26,12 +26,12 @@ struct SalesCalcView: View {
                 .onAppear {
                     viewSize = geometry.size
                 }
-                .onChange(of: geometry.size) { newValue in
+                .onChange(of: geometry.size) { _, newValue in
                     viewSize = newValue
                 }
                 .padding(.horizontal)
             }
-            .onChange(of: SchwabClient.shared.showIncompleteDataWarning) { newValue in
+            .onChange(of: SchwabClient.shared.showIncompleteDataWarning) { _, newValue in
                 showIncompleteDataWarning = newValue
             }
             .alert("Incomplete Data Warning", isPresented: $showIncompleteDataWarning) {
