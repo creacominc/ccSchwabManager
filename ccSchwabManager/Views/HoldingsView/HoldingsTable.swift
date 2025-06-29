@@ -8,8 +8,9 @@ struct HoldingsTable: View {
     let viewSize: CGSize
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
+    let dteCache: [String: Int?]
 
-    private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05]
+    private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05, 0.05]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,7 +23,8 @@ struct HoldingsTable: View {
                 viewSize: viewSize,
                 columnWidths: columnWidths,
                 tradeDateCache: tradeDateCache,
-                orderStatusCache: orderStatusCache
+                orderStatusCache: orderStatusCache,
+                dteCache: dteCache
             )
         }
     }
@@ -73,6 +75,7 @@ private struct TableHeader: View {
             columnHeader(title: "Acnt", column: .account).frame(width: columnWidths[7] * viewSize.width)
             columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
             columnHeader(title: "Order", column: .orderStatus ).frame(width: columnWidths[9] * viewSize.width)
+            columnHeader(title: "DTE", column: .dte, alignment: .trailing).frame(width: columnWidths[10] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -88,6 +91,7 @@ private struct TableContent: View {
     let columnWidths: [CGFloat]
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
+    let dteCache: [String: Int?]
 
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
@@ -104,7 +108,8 @@ private struct TableContent: View {
                         columnWidths: columnWidths,
                         onTap: { selectedPositionId = position.id },
                         tradeDate: tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000",
-                        orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil
+                        orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil,
+                        dte: dteCache[position.instrument?.symbol ?? ""] ?? nil
                     )
                     Divider()
                 }
@@ -121,6 +126,7 @@ private struct TableRow: View {
     let onTap: () -> Void
     let tradeDate: String
     let orderStatus: ActiveOrderStatus?
+    let dte: Int?
 
     private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
@@ -179,6 +185,7 @@ private struct TableRow: View {
                 .frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
                 .foregroundColor(orderStatusColor)
                 .font(.system(.body, design: .monospaced))
+            Text(dte.map { String($0) } ?? "").frame(width: columnWidths[10] * viewSize.width, alignment: .trailing)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)

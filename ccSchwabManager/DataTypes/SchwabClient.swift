@@ -2002,4 +2002,20 @@ class SchwabClient
         }
         self.setLatestTradeDates()
     }
+
+    /**
+     * getContractsForSymbol - return the option contracts for a given underlying symbol
+     */
+    public func getContractsForSymbol(_ symbol: String) -> [Position]? {
+        let contracts = m_symbolsWithContracts[symbol]
+        print("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(contracts?.count ?? 0) contracts")
+        if let contracts = contracts {
+            for contract in contracts {
+                print("  📋 Contract: \(contract.instrument?.symbol ?? "nil") - \(contract.instrument?.description ?? "nil")")
+                // also print the maturityDate and expirationDate
+                // print("         instrument:  \(contract.instrument?.dump() ?? "nil")")
+            }
+        }
+        return contracts
+    }
 } // SchwabClient
