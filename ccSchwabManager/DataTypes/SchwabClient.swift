@@ -1645,7 +1645,7 @@ class SchwabClient
                     let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
                     
                     // Parse trade date
-                    guard let tradeDate = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
+                    guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                                   strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
                         continue
                     }
@@ -1667,17 +1667,6 @@ class SchwabClient
                             costBasis: costPerShare * numberOfShares
                         )
                     )
-
-                    if( nil == m_lastFilteredTransactionSharesAvailableToTrade )
-                    {
-                        m_lastFilteredTransactionSharesAvailableToTrade = numberOfShares
-                        print( " === computeTaxLots:  initial shares available to trade: \(String( format: "%.2f", m_lastFilteredTransactionSharesAvailableToTrade ?? numberOfShares)) === ")
-                    }
-                    else
-                    {
-                        m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) + numberOfShares
-                        print( " === computeTaxLots:  increased shares available to trade to: \(String( format: "%.2f", m_lastFilteredTransactionSharesAvailableToTrade ?? numberOfShares)) === ")
-                    }
 
                 } // for transferItem
 
@@ -1788,13 +1777,21 @@ class SchwabClient
                 }
             }
         }
-        
+
         // Add any remaining buy records
         remainingRecords.append(contentsOf: buyQueue)
-        
+
         // Sort final records by date
         remainingRecords.sort { $0.openDate < $1.openDate }
-        
+
+        // set the number of shares available to trade based on the number with a trade date more than 30 days ago.
+        m_lastFilteredTransactionSharesAvailableToTrade = 0
+        for record in remainingRecords {
+            if( 30 < daysSinceDateString(dateString: record.openDate) ?? 0 ) {
+                m_lastFilteredTransactionSharesAvailableToTrade = record.quantity + (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)
+            }
+        }
+
         m_lastFilteredPositionRecords = remainingRecords
         print("! returning \(m_lastFilteredPositionRecords.count) records")
         return m_lastFilteredPositionRecords

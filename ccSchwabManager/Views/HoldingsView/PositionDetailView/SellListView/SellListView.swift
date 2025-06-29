@@ -193,7 +193,7 @@ private struct TableRow: View {
     @Binding var copiedValue: String
     
     private func rowStyle() -> Color {
-        if item.trailingStop <= 2.0 || (daysBetweenDates(dateString: item.openDate) ?? 0 < 31) {
+        if item.trailingStop <= 2.0 || (daysSinceDateString(dateString: item.openDate) ?? 0 < 31) {
             return .red
         } else if item.trailingStop < 5.0 {
             return .yellow

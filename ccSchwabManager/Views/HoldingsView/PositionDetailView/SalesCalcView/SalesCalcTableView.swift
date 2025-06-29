@@ -181,7 +181,7 @@ private struct TableRow: View {
         HStack(spacing: 8) {
             Text(item.openDate)
                 .frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
-                .foregroundStyle(daysBetweenDates(dateString: item.openDate) ?? 0 > 30 ? .green : .red)
+                .foregroundStyle(daysSinceDateString(dateString: item.openDate) ?? 0 > 30 ? .green : .red)
             
             Text(String(format: "%.2f", item.quantity))
                 .frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)

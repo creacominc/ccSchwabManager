@@ -115,15 +115,20 @@ extension Date
 
 // Function to calculate the difference in days between today and a given date string
 // This function was suggested by GitHub Copilot
-func daysBetweenDates(dateString: String) -> Int?
+func daysSinceDateString( dateString: String ) -> Int?
 {
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat =  "yyyy-MM-dd HH:mm:ss" // "MM/dd/yyyy" //
     // Convert the date string to a Date object
-    guard let date = dateFormatter.date(from: dateString) else {
+    guard let date : Date = dateFormatter.date(from: dateString) else {
         print("Invalid date format.  date = \(dateString)")
         return nil
     }
+    return( daysSinceDate(date: date))
+}
+
+func daysSinceDate( date: Date ) -> Int?
+{
     // Get today's date
     let today = Date()
     // Calculate the difference in days
@@ -131,5 +136,3 @@ func daysBetweenDates(dateString: String) -> Int?
     let components = calendar.dateComponents([.day], from: date, to: today)
     return components.day
 }
-
-
