@@ -81,6 +81,94 @@ struct ContractInfo {
     }
 }
 
+// MARK: - Symbol Contract Summary Structure
+
+struct SymbolContractSummary {
+    let minimumDTE: Int?
+    let contractCount: Int
+    let totalQuantity: Double
+    
+    init(contracts: [Position]) {
+        var minDTE: Int?
+        var totalQty: Double = 0.0
+        
+        for position in contracts {
+            // Calculate DTE for this contract
+            if let dte = Self.extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description) {
+                if minDTE == nil || dte < minDTE! {
+                    minDTE = dte
+                }
+            }
+            
+            // Sum up quantities
+            totalQty += (position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0)
+        }
+        
+        self.minimumDTE = minDTE
+        self.contractCount = contracts.count
+        self.totalQuantity = totalQty
+    }
+    
+    // Helper function to extract expiration date from option symbol or description
+    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
+        // Primary method: Extract 6-digit date from option symbol
+        if let symbol = symbol {
+            // Look for 6 consecutive digits after the underlying symbol
+            // Example: "INTC  250516C00025000" -> extract "250516"
+            let pattern = #"(\d{6})"#
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+                
+                // Parse the date (format: YYMMDD)
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyMMdd"
+                formatter.timeZone = TimeZone.current
+                
+                if let date = formatter.date(from: dateString) {
+                    let calendar = Calendar.current
+                    let today = Date()
+                    let components = calendar.dateComponents([.day], from: today, to: date)
+                    return components.day
+                }
+            }
+        }
+        
+        // Secondary method: Extract date from description
+        if let description = description {
+            // Look for date pattern like "05/16/2025" or "2025-01-16"
+            let patterns = [
+                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
+                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
+            ]
+            
+            for pattern in patterns {
+                if let regex = try? NSRegularExpression(pattern: pattern),
+                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+                    
+                    let formatter = DateFormatter()
+                    if pattern.contains("/") {
+                        formatter.dateFormat = "MM/dd/yyyy"
+                    } else {
+                        formatter.dateFormat = "yyyy-MM-dd"
+                    }
+                    formatter.timeZone = TimeZone.current
+                    
+                    let dateString = String(description[Range(match.range, in: description)!])
+                    if let date = formatter.date(from: dateString) {
+                        let calendar = Calendar.current
+                        let today = Date()
+                        let components = calendar.dateComponents([.day], from: today, to: date)
+                        return components.day
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+}
+
 // connection
 private let schwabWeb           : String = "https://api.schwabapi.com"
 
@@ -122,7 +210,7 @@ class SchwabClient
     private var m_latestDateForSymbol : [String:Date] = [:]
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
-    private var m_symbolsWithContracts : [String: [ContractInfo]] = [:]
+    private var m_symbolsWithContracts : [String: SymbolContractSummary] = [:]
     private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_transactionList : [Transaction] = []
@@ -700,6 +788,9 @@ class SchwabClient
             // Build map of symbols with option contracts
             m_symbolsWithContracts.removeAll()
             
+            // First, collect all option positions by underlying symbol
+            var positionsByUnderlying: [String: [Position]] = [:]
+            
             for account in m_accounts {
                 if let positions = account.securitiesAccount?.positions {
                     for position in positions {
@@ -708,29 +799,34 @@ class SchwabClient
                            assetType == .OPTION,
                            let underlyingSymbol = instrument.underlyingSymbol {
                             
-                            // Add underlying symbol to the map if not already present
-                            if m_symbolsWithContracts[underlyingSymbol] == nil {
-                                m_symbolsWithContracts[underlyingSymbol] = []
-                                print("Added underlying symbol to contracts map: \(underlyingSymbol)")
+                            // Add to the collection for this underlying symbol
+                            if positionsByUnderlying[underlyingSymbol] == nil {
+                                positionsByUnderlying[underlyingSymbol] = []
                             }
                             
-                            // Add the contract info to the list for this underlying
+                            // Check if this position is already in the list by comparing symbols
                             if let symbol = instrument.symbol {
-                                // Check if this position is already in the list by comparing symbols
-                                let positionExists = m_symbolsWithContracts[underlyingSymbol]!.contains { existingContract in
-                                    existingContract.position.instrument?.symbol == symbol
+                                let positionExists = positionsByUnderlying[underlyingSymbol]!.contains { existingPosition in
+                                    existingPosition.instrument?.symbol == symbol
                                 }
                                 
                                 if !positionExists {
-                                    let contractInfo = ContractInfo(position: position)
-                                    m_symbolsWithContracts[underlyingSymbol]!.append(contractInfo)
-                                    print("  Added option contract: \(symbol) - \(instrument.description ?? "No description") - DTE: \(contractInfo.dte ?? -1)")
+                                    positionsByUnderlying[underlyingSymbol]!.append(position)
+                                    print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
                                 }
                             }
                         }
                     }
                 }
             }
+            
+            // Now create SymbolContractSummary for each underlying symbol
+            for (underlyingSymbol, positions) in positionsByUnderlying {
+                let summary = SymbolContractSummary(contracts: positions)
+                m_symbolsWithContracts[underlyingSymbol] = summary
+                print("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
+            }
+            
             print("Built contracts map with \(m_symbolsWithContracts.count) underlying symbols")
             return
         }
@@ -1902,14 +1998,12 @@ class SchwabClient
         // for debugging, print the number of shares available to trade and the symbol
         print("********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
         // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
-        if let contracts = m_symbolsWithContracts[symbol] {
-            for contract in contracts {
-                let totalQuantity = (contract.position.longQuantity ?? 0.0) + (contract.position.shortQuantity ?? 0.0)
-                m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
-                // for debugging, print the change in shares available to trade, the symbol, and the result
-                print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
-                print("! result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
-            }
+        if let summary = m_symbolsWithContracts[symbol] {
+            let totalQuantity = summary.totalQuantity
+            m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
+            // for debugging, print the change in shares available to trade, the symbol, and the result
+            print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
+            print("! result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
         }
         
 
@@ -2077,38 +2171,27 @@ class SchwabClient
 
     /**
      * getContractsForSymbol - return the option contracts for a given underlying symbol
+     * Note: This method now returns nil since we no longer store individual positions
      */
     public func getContractsForSymbol(_ symbol: String) -> [Position]? {
-        let contracts = m_symbolsWithContracts[symbol]
-        print("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(contracts?.count ?? 0) contracts")
-        if let contracts = contracts {
-            for contract in contracts {
-                print("  📋 Contract: \(contract.position.instrument?.symbol ?? "nil") - \(contract.position.instrument?.description ?? "nil") - DTE: \(contract.dte ?? -1)")
-                // also print the maturityDate and expirationDate
-                // print("         instrument:  \(contract.position.instrument?.dump() ?? "nil")")
-            }
+        let summary = m_symbolsWithContracts[symbol]
+        print("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(summary?.contractCount ?? 0) contracts")
+        if let summary = summary {
+            print("  📋 Summary: \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1), total quantity: \(summary.totalQuantity)")
         }
-        return contracts?.map { $0.position }
+        // Since we no longer store individual positions, return nil
+        return nil
     }
     
     /**
      * getMinimumDTEForSymbol - return the minimum DTE for a given underlying symbol
      */
     public func getMinimumDTEForSymbol(_ symbol: String) -> Int? {
-        guard let contracts = m_symbolsWithContracts[symbol], !contracts.isEmpty else {
+        guard let summary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
             return nil
         }
         
-        var minDTE: Int?
-        for contract in contracts {
-            if let dte = contract.dte {
-                if minDTE == nil || dte < minDTE! {
-                    minDTE = dte
-                }
-            }
-        }
-        
-        return minDTE
+        return summary.minimumDTE
     }
     
     /**
