@@ -22,9 +22,10 @@ enum SellListSortableColumn: String, CaseIterable, Identifiable {
 struct SellListView: View {
     let symbol: String
     let atrValue: Double
+    let taxLotData: [SalesCalcPositionsRecord]
+    let isLoadingTaxLots: Bool
     @State private var copiedValue: String = "TBD"
     @State private var viewSize: CGSize = .zero
-    @StateObject private var viewModel = SalesCalcViewModel()
 
     // Define proportional widths for columns
     private let columnWidths: [CGFloat] = [0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.28]
@@ -37,7 +38,7 @@ struct SellListView: View {
                 Divider()
                 TableContent(
                     // resultsData: sortedData,
-                    resultsData: getResults(taxLots: viewModel.positionsData),
+                    resultsData: getResults(taxLots: taxLotData),
                     viewSize: geometry.size,
                     columnWidths: columnWidths,
                     copiedValue: $copiedValue
@@ -46,13 +47,9 @@ struct SellListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear {
                 viewSize = geometry.size
-                viewModel.refreshData(symbol: symbol)
             }
             .onChange(of: geometry.size) { _, newValue in
                 viewSize = newValue
-            }
-            .onChange(of: symbol) { _, newSymbol in
-                viewModel.refreshData(symbol: newSymbol)
             }
         }
     }

@@ -219,12 +219,10 @@ struct HoldingsView: View {
                         selectedPositionId: Binding(
                             get: { selectedPosition?.id },
                             set: { newId in
-                                if let id = newId,
-                                   let position = sortedHoldings.first(where: { $0.id == id }) {
-                                    let accountNumber = accountPositions.first { $0.0 === position }?.1 ?? ""
-                                    selectedPosition = SelectedPosition(id: id, position: position, accountNumber: accountNumber)
-                                } else {
-                                    selectedPosition = nil
+                                if let newId = newId,
+                                   let position = sortedHoldings.first(where: { $0.id == newId }),
+                                   let accountNumber = accountPositions.first(where: { $0.0.id == newId })?.1 {
+                                    selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
                                 }
                             }
                         ),
@@ -234,7 +232,6 @@ struct HoldingsView: View {
                         tradeDateCache: tradeDateCache,
                         orderStatusCache: orderStatusCache
                     )
-                    .padding()
                 }
             } // VStack
             .searchable(text: $searchText, prompt: "Search by symbol or description")
@@ -255,7 +252,7 @@ struct HoldingsView: View {
             .onAppear {
                 viewSize = geometry.size
             }
-            .onChange(of: geometry.size) { oldValue, newValue in
+            .onChange(of: geometry.size) { _, newValue in
                 viewSize = newValue
             }
         }
@@ -281,7 +278,7 @@ struct HoldingsView: View {
                     atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
                 }
             }
-            .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
+            .onChange(of: selected.position.instrument?.symbol) { _, newValue in
                 if let tmpsymbol = newValue {
                     Task {
                         atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
@@ -395,192 +392,5 @@ struct HoldingsView: View {
                 print("✅ All transaction history loaded")
             }
         }
-    }
-}
-
-struct HoldingsTable: View {
-    let sortedHoldings: [Position]
-    @Binding var selectedPositionId: Position.ID?
-    let accountPositions: [(Position, String, String)]
-    @Binding var currentSort: SortConfig?
-    let viewSize: CGSize
-    let tradeDateCache: [String: String]
-    let orderStatusCache: [String: ActiveOrderStatus?]
-
-    private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05]
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TableHeader(currentSort: $currentSort, viewSize: viewSize, columnWidths: columnWidths)
-            Divider()
-            TableContent(
-                sortedHoldings: sortedHoldings,
-                selectedPositionId: $selectedPositionId,
-                accountPositions: accountPositions,
-                viewSize: viewSize,
-                columnWidths: columnWidths,
-                tradeDateCache: tradeDateCache,
-                orderStatusCache: orderStatusCache
-            )
-        }
-    }
-}
-
-private struct TableHeader: View {
-    @Binding var currentSort: SortConfig?
-    let viewSize: CGSize
-    let columnWidths: [CGFloat]
-
-    @ViewBuilder
-    private func columnHeader(title: String, column: SortableColumn, alignment: Alignment = .leading) -> some View {
-        Button(action: {
-            if currentSort?.column == column {
-                currentSort?.ascending.toggle()
-            } else {
-                currentSort = SortConfig(column: column, ascending: column.defaultAscending)
-            }
-        }) {
-            HStack {
-                if alignment == .trailing {
-                    Spacer()
-                }
-                Text(title)
-                if alignment == .leading {
-                    Spacer()
-                }
-                if currentSort?.column == column {
-                    Image(systemName: currentSort?.ascending ?? true ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0] * viewSize.width)
-            columnHeader(title: "Qty", column: .quantity, alignment: .trailing).frame(width: columnWidths[1] * viewSize.width)
-            columnHeader(title: "Avg", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2] * viewSize.width)
-            columnHeader(title: "Market", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3] * viewSize.width)
-            columnHeader(title: "P/L", column: .pl, alignment: .trailing).frame(width: columnWidths[4] * viewSize.width)
-            columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing).frame(width: columnWidths[5] * viewSize.width)
-            columnHeader(title: "Type", column: .assetType).frame(width: columnWidths[6] * viewSize.width)
-            columnHeader(title: "Acnt", column: .account).frame(width: columnWidths[7] * viewSize.width)
-            columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
-            columnHeader(title: "Order", column: .orderStatus ).frame(width: columnWidths[9] * viewSize.width)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 5)
-        .background(Color.gray.opacity(0.1))
-    }
-}
-
-private struct TableContent: View {
-    let sortedHoldings: [Position]
-    @Binding var selectedPositionId: Position.ID?
-    let accountPositions: [(Position, String, String)]
-    let viewSize: CGSize
-    let columnWidths: [CGFloat]
-    let tradeDateCache: [String: String]
-    let orderStatusCache: [String: ActiveOrderStatus?]
-
-    private func accountNumberFor(_ position: Position) -> String {
-        accountPositions.first { $0.0.id == position.id }?.1 ?? ""
-    }
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(sortedHoldings) { position in
-                    TableRow(
-                        position: position,
-                        accountNumber: accountNumberFor(position),
-                        viewSize: viewSize,
-                        columnWidths: columnWidths,
-                        onTap: { selectedPositionId = position.id },
-                        tradeDate: tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000",
-                        orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil
-                    )
-                    Divider()
-                }
-            }
-        }
-    }
-}
-
-private struct TableRow: View {
-    let position: Position
-    let accountNumber: String
-    let viewSize: CGSize
-    let columnWidths: [CGFloat]
-    let onTap: () -> Void
-    let tradeDate: String
-    let orderStatus: ActiveOrderStatus?
-
-    private var plPercent: Double {
-        let pl = position.longOpenProfitLoss ?? 0
-        let mv = position.marketValue ?? 0
-        let costBasis = mv - pl
-        return costBasis != 0 ? (pl / costBasis) * 100 : 0
-    }
-
-    private var plColor: Color {
-        if plPercent < 0 {
-            return .red
-        } else if plPercent < 6 {
-            return .orange // Amber-like color
-        } else {
-            return .primary
-        }
-    }
-    
-    private var orderStatusText: String {
-        return orderStatus?.shortDisplayName ?? "None"
-    }
-    
-    private var orderStatusColor: Color {
-        guard let status = orderStatus else { return .secondary }
-        
-        switch status {
-        case .working:
-            return .green
-        case .awaitingStopCondition, .awaitingCondition:
-            return .orange
-        case .awaitingManualReview:
-            return .red
-        default:
-            return .blue
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
-            Text(String(format: "%.2f", ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0)))).frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
-            Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2] * viewSize.width, alignment: .trailing).monospacedDigit()
-            Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3] * viewSize.width, alignment: .trailing).monospacedDigit()
-            Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
-                .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundColor(plColor)
-            Text(String(format: "%.1f%%", plPercent))
-                .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundColor(plColor)
-            Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
-            Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
-            Text(tradeDate).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
-            Text(orderStatusText)
-                .frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
-                .foregroundColor(orderStatusColor)
-                .font(.system(.body, design: .monospaced))
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
     }
 } 

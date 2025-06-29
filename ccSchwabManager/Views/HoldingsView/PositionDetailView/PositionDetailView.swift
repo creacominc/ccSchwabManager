@@ -14,6 +14,8 @@ struct PositionDetailView: View {
     @State private var isLoadingTransactions = false
     @State private var quoteData: QuoteData?
     @State private var isLoadingQuote = false
+    @State private var taxLotData: [SalesCalcPositionsRecord] = []
+    @State private var isLoadingTaxLots = false
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
@@ -26,11 +28,11 @@ struct PositionDetailView: View {
         return formatter.string(from: date)
     }
 
-    private func fetchHistoryForSymbol() {
-        //print("🔍 PositionDetailView.fetchHistoryForSymbol - Setting loading to TRUE")
+    private func fetchDataForSymbol() {
+        //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to TRUE")
         loadingState.isLoading = true
         defer { 
-            //print("🔍 PositionDetailView.fetchHistoryForSymbol - Setting loading to FALSE")
+            //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to FALSE")
             loadingState.isLoading = false
         }
         
@@ -41,16 +43,22 @@ struct PositionDetailView: View {
         isLoadingPriceHistory = true
         isLoadingTransactions = true
         isLoadingQuote = true
+        isLoadingTaxLots = true
         
         if let symbol = position.instrument?.symbol {
+            // Fetch all position-related data in parallel
             priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             _ = SchwabClient.shared.getTransactionsFor(symbol: symbol)
             quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
+            
+            // Fetch tax lot data as part of the main data fetch
+            taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol)
         }
         
         isLoadingPriceHistory = false
         isLoadingTransactions = false
         isLoadingQuote = false
+        isLoadingTaxLots = false
     }
 
     var body: some View {
@@ -72,14 +80,16 @@ struct PositionDetailView: View {
                 isLoadingTransactions: isLoadingTransactions,
                 formatDate: formatDate,
                 quoteData: quoteData,
+                taxLotData: taxLotData,
+                isLoadingTaxLots: isLoadingTaxLots,
                 viewSize: $viewSize,
-                selectedTab: $selectedTab
+                selectedTab: $selectedTab,
             )
             .padding(.horizontal)
         }
         .onAppear {
             loadingState.isLoading = true
-            fetchHistoryForSymbol()
+            fetchDataForSymbol()
         }
         .onDisappear {
             //print("🔗 PositionDetailView - Clearing SchwabClient.loadingDelegate")
@@ -87,7 +97,7 @@ struct PositionDetailView: View {
         }
         .onChange(of: position) { oldValue, newValue in
             loadingState.isLoading = true
-            fetchHistoryForSymbol()
+            fetchDataForSymbol()
         }
         .withLoadingState(loadingState)
     }

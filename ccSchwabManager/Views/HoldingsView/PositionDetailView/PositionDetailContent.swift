@@ -13,6 +13,8 @@ struct PositionDetailContent: View {
     let isLoadingTransactions: Bool
     let formatDate: (Int64?) -> String
     let quoteData: QuoteData?
+    let taxLotData: [SalesCalcPositionsRecord]
+    let isLoadingTaxLots: Bool
     @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
 
@@ -27,7 +29,7 @@ struct PositionDetailContent: View {
                 symbol: symbol,
                 atrValue: atrValue,
                 lastPrice: priceHistory?.candles.last?.close ?? 0.0,
-                quoteData: quoteData
+                quoteData: quoteData,
             )
             .padding(.bottom, 4)
             
@@ -54,6 +56,8 @@ struct PositionDetailContent: View {
                     SalesCalcTab(
                         symbol: symbol,
                         atrValue: atrValue,
+                        taxLotData: taxLotData,
+                        isLoadingTaxLots: isLoadingTaxLots,
                         geometry: geometry
                     )
                     .tag(2)

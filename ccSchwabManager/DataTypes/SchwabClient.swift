@@ -58,6 +58,7 @@ class SchwabClient
     private var m_lastFilteredTransactions : [Transaction] = []
     private var m_lastFilteredTransaxtionsSourceCount : Int = 0
     private let m_filteredTransactionsLock = NSLock()  // Add mutex for filtered transactions
+    private var m_lastFilteredTransactionSharesAvailableToTrade : Double? = nil
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
@@ -640,14 +641,14 @@ class SchwabClient
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
         print("=== fetchPriceHistory \(symbol) ===")
-        
+
         // Check cache first without holding lock
         if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
         {
             print( "  fetchPriceHistory - returning cached." )
             return m_lastFilteredPriceHistory
         }
-        
+
         //print("🔍 fetchPriceHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
@@ -1107,13 +1108,13 @@ class SchwabClient
             defer { m_transactionListLock.unlock() }
             return m_transactionList
         }
-        
+
         m_filteredTransactionsLock.lock()
         defer { m_filteredTransactionsLock.unlock() }
-        
+
         m_transactionListLock.lock()
         defer { m_transactionListLock.unlock() }
-        
+
         // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
         // also track the count of the source list.  if it changes, we need to update.
         if ( (m_lastFilteredTransactionSymbol != symbol)
@@ -1122,15 +1123,13 @@ class SchwabClient
             m_lastFilteredTransactionSymbol = symbol
             m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+            m_lastFilteredTransactionSharesAvailableToTrade = 0.0
             print( "  !!!!! cleared filtered transactions" )
             // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
             m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                 // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-//                if matches {
-//                    print("Found matching transaction for \(symbol ?? "nil"): \(transaction.tradeDate ?? "no date")")
-//                }
-                return matches
+                let matches = transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                return matches // return from closure, not from the method
             }
             print("Found \(m_lastFilteredTransactions.count) matching transactions.  \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
 
@@ -1156,9 +1155,6 @@ class SchwabClient
                 m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                     // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
                     let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-//                    if matches {
-//                        print("Found matching transaction for \(symbol ?? "nil"): \(transaction.tradeDate ?? "no date")")
-//                    }
                     return matches
                 }
                 print("Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
@@ -1176,6 +1172,9 @@ class SchwabClient
         return m_lastFilteredTransactions
     } // getTransactionsFor
     
+
+
+
     private func setLatestTradeDates()
     {
         print( "--- setLatestTradeDates ---" )
@@ -1225,7 +1224,16 @@ class SchwabClient
         
         return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
     }
-    
+
+    /**
+     * get number of shares available for trade.  call this after getTransactionsFor
+     */
+    public func getSharesAvailableForTrade( for symbol: String ) -> Double
+    {
+        return m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0
+    }
+
+
     /**
      * fetchOrderHistory
      *
@@ -1585,9 +1593,9 @@ class SchwabClient
             //print("🔍 computeTaxLots - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
-        
+
         print("=== computeTaxLots \(symbol) ===")
-        
+
         // Return cached results if available
         if symbol == m_lastFilteredTaxLotSymbol {
             print("=== computeTaxLots \(symbol) - returning \(m_lastFilteredPositionRecords.count) cached ===")
@@ -1596,7 +1604,7 @@ class SchwabClient
         m_lastFilteredTaxLotSymbol = symbol
 
         print( " --- computeTaxLots() - seeking zero ---" )
-        
+
         var fetchAttempts = 0
         let maxFetchAttempts = 5  // Limit fetch attempts to prevent infinite loops
         
@@ -1659,6 +1667,17 @@ class SchwabClient
                             costBasis: costPerShare * numberOfShares
                         )
                     )
+
+                    if( nil == m_lastFilteredTransactionSharesAvailableToTrade )
+                    {
+                        m_lastFilteredTransactionSharesAvailableToTrade = numberOfShares
+                        print( " === computeTaxLots:  initial shares available to trade: \(String( format: "%.2f", m_lastFilteredTransactionSharesAvailableToTrade ?? numberOfShares)) === ")
+                    }
+                    else
+                    {
+                        m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) + numberOfShares
+                        print( " === computeTaxLots:  increased shares available to trade to: \(String( format: "%.2f", m_lastFilteredTransactionSharesAvailableToTrade ?? numberOfShares)) === ")
+                    }
 
                 } // for transferItem
 

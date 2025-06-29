@@ -14,7 +14,7 @@ enum PositionDetailField {
     case dividendYield
     case account(accountNumber: String)
     case symbol
-    case empty
+    case sharesAvailableForTrading
     
     var label: String {
         switch self {
@@ -29,7 +29,7 @@ enum PositionDetailField {
         case .dividendYield: return "Div Yield"
         case .account: return "Account"
         case .symbol: return "Symbol"
-        case .empty: return "Available"
+        case .sharesAvailableForTrading: return "Available"
         }
     }
     
@@ -58,19 +58,19 @@ enum PositionDetailField {
         case .dividendYield:
             if let divYield = quoteData?.fundamental?.divYield {
                 let formattedYield = String(format: "%.2f%%", divYield)
-                print("PositionDetailView - Dividend yield for \(position.instrument?.symbol ?? "unknown"):")
+                print("PositionDetailField - Dividend yield for \(position.instrument?.symbol ?? "unknown"):")
                 print("  Raw value: \(divYield)")
                 print("  Formatted: \(formattedYield)")
                 return formattedYield
             }
-            print("PositionDetailView - No dividend yield data for \(position.instrument?.symbol ?? "unknown")")
+            print("PositionDetailField - No dividend yield data for \(position.instrument?.symbol ?? "unknown")")
             return "N/A"
         case .account(let accountNumber):
             return accountNumber
         case .symbol:
             return position.instrument?.symbol ?? ""
-        case .empty:
-            return ""
+        case .sharesAvailableForTrading:
+            return String( format: "%.1f", SchwabClient.shared.getSharesAvailableForTrade(for: position.instrument?.symbol ?? "") )
         }
     }
     

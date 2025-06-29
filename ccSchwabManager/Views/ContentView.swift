@@ -51,7 +51,3 @@ struct ContentView: View
         }
     }
 }
-
-// Remove all other view definitions as they are now in separate files
-
-
