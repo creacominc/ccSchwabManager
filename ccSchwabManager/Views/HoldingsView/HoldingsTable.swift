@@ -8,7 +8,7 @@ struct HoldingsTable: View {
     let viewSize: CGSize
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
-    let dteCache: [String: Int?]
+//    let dteCache: [String: Int?]
 
     private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05, 0.05]
 
@@ -24,7 +24,7 @@ struct HoldingsTable: View {
                 columnWidths: columnWidths,
                 tradeDateCache: tradeDateCache,
                 orderStatusCache: orderStatusCache,
-                dteCache: dteCache
+//                dteCache: dteCache
             )
         }
     }
@@ -75,7 +75,7 @@ private struct TableHeader: View {
             columnHeader(title: "Acnt", column: .account).frame(width: columnWidths[7] * viewSize.width)
             columnHeader(title: "Last Trade", column: .lastTradeDate).frame(width: columnWidths[8] * viewSize.width)
             columnHeader(title: "Order", column: .orderStatus ).frame(width: columnWidths[9] * viewSize.width)
-            columnHeader(title: "DTE", column: .dte, alignment: .trailing).frame(width: columnWidths[10] * viewSize.width)
+            columnHeader(title: "DTE/#", column: .dte, alignment: .trailing).frame(width: columnWidths[10] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -91,7 +91,7 @@ private struct TableContent: View {
     let columnWidths: [CGFloat]
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
-    let dteCache: [String: Int?]
+//    let dteCache: [String: Int?]
 
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
@@ -101,6 +101,8 @@ private struct TableContent: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(sortedHoldings) { position in
+                    let dte : Int? =  ( position.instrument?.assetType == .OPTION) ?  extractExpirationDate( from: position.instrument?.symbol ?? "", description: position.instrument?.description ?? "" )   : SchwabClient.shared.getMinimumDTEForSymbol(position.instrument?.symbol ?? "")
+                    let count : Double = SchwabClient.shared.getContractCountForSymbol(position.instrument?.symbol ?? "")
                     TableRow(
                         position: position,
                         accountNumber: accountNumberFor(position),
@@ -109,7 +111,7 @@ private struct TableContent: View {
                         onTap: { selectedPositionId = position.id },
                         tradeDate: tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000",
                         orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil,
-                        dte: dteCache[position.instrument?.symbol ?? ""] ?? nil
+                        dte: (nil == dte) ? "" : String( format: "%d / %.0f", dte ?? 0, count )
                     )
                     Divider()
                 }
@@ -126,15 +128,15 @@ private struct TableRow: View {
     let onTap: () -> Void
     let tradeDate: String
     let orderStatus: ActiveOrderStatus?
-    let dte: Int?
-
+    let dte: String
+    
     private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
         let mv = position.marketValue ?? 0
         let costBasis = mv - pl
         return costBasis != 0 ? (pl / costBasis) * 100 : 0
     }
-
+    
     private var plColor: Color {
         if plPercent < 0 {
             return .red
@@ -163,7 +165,7 @@ private struct TableRow: View {
             return .blue
         }
     }
-
+    
     var body: some View {
         HStack(spacing: 8) {
             Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
@@ -185,11 +187,13 @@ private struct TableRow: View {
                 .frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
                 .foregroundColor(orderStatusColor)
                 .font(.system(.body, design: .monospaced))
-            Text(dte.map { String($0) } ?? "").frame(width: columnWidths[10] * viewSize.width, alignment: .trailing)
+            Text(dte).frame(width: columnWidths[10] * viewSize.width, alignment: .trailing)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
     }
-} 
+    
+
+}

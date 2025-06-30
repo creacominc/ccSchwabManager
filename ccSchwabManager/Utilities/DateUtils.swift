@@ -136,3 +136,116 @@ func daysSinceDate( date: Date ) -> Int?
     let components = calendar.dateComponents([.day], from: date, to: today)
     return components.day
 }
+
+//
+//func extractExpirationDate(from symbol: String?, description: String?) -> Date? {
+//    // Primary method: Extract 6-digit date from option symbol
+//    if let symbol = symbol {
+//        // Look for 6 consecutive digits after the underlying symbol
+//        // Example: "INTC  250516C00025000" -> extract "250516"
+//        let pattern = #"(\d{6})"#
+//        if let regex = try? NSRegularExpression(pattern: pattern),
+//           let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+//            let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+//
+//            // Parse the date (format: YYMMDD)
+//            let formatter = DateFormatter()
+//            formatter.dateFormat = "yyMMdd"
+//            formatter.timeZone = TimeZone.current
+//
+//            if let date = formatter.date(from: dateString) {
+//                return date
+//            }
+//        }
+//    }
+//
+//    // Secondary method: Extract date from description
+//    if let description = description {
+//        // Look for date pattern like "05/16/2025" or "2025-01-16"
+//        let patterns = [
+//            #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
+//            #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
+//        ]
+//
+//        for pattern in patterns {
+//            if let regex = try? NSRegularExpression(pattern: pattern),
+//               let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+//
+//                let formatter = DateFormatter()
+//                if pattern.contains("/") {
+//                    formatter.dateFormat = "MM/dd/yyyy"
+//                } else {
+//                    formatter.dateFormat = "yyyy-MM-dd"
+//                }
+//                formatter.timeZone = TimeZone.current
+//
+//                let dateString = String(description[Range(match.range, in: description)!])
+//                if let date = formatter.date(from: dateString) {
+//                    return date
+//                }
+//            }
+//        }
+//    }
+//
+//    return nil
+//}
+
+
+// Helper function to extract expiration date from option symbol or description
+func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
+    // Primary method: Extract 6-digit date from option symbol
+    if let symbol = symbol {
+        // Look for 6 consecutive digits after the underlying symbol
+        // Example: "INTC  250516C00025000" -> extract "250516"
+        let pattern = #"(\d{6})"#
+        if let regex = try? NSRegularExpression(pattern: pattern),
+           let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+            let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+            
+            // Parse the date (format: YYMMDD)
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyMMdd"
+            formatter.timeZone = TimeZone.current
+            
+            if let date = formatter.date(from: dateString) {
+                let calendar = Calendar.current
+                let today = Date()
+                let components = calendar.dateComponents([.day], from: today, to: date)
+                return components.day
+            }
+        }
+    }
+    
+    // Secondary method: Extract date from description
+    if let description = description {
+        // Look for date pattern like "05/16/2025" or "2025-01-16"
+        let patterns = [
+            #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
+            #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
+        ]
+        
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+                
+                let formatter = DateFormatter()
+                if pattern.contains("/") {
+                    formatter.dateFormat = "MM/dd/yyyy"
+                } else {
+                    formatter.dateFormat = "yyyy-MM-dd"
+                }
+                formatter.timeZone = TimeZone.current
+                
+                let dateString = String(description[Range(match.range, in: description)!])
+                if let date = formatter.date(from: dateString) {
+                    let calendar = Calendar.current
+                    let today = Date()
+                    let components = calendar.dateComponents([.day], from: today, to: date)
+                    return components.day
+                }
+            }
+        }
+    }
+    
+    return nil
+}

@@ -85,7 +85,7 @@ struct HoldingsView: View {
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
     @State private var orderStatusCache: [String: ActiveOrderStatus?] = [:]
-    @State private var dteCache: [String: Int?] = [:]
+//    @State private var dteCache: [String: Int?] = [:]
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -172,18 +172,22 @@ struct HoldingsView: View {
                 
                 return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
             case .dte:
-                let firstDTE = calculateDTE(for: first)
-                let secondDTE = calculateDTE(for: second)
+                let firstDTE : Int? = SchwabClient.shared.getMinimumDTEForSymbol(first.instrument?.symbol ?? "")
+                let secondDTE : Int? = SchwabClient.shared.getMinimumDTEForSymbol(second.instrument?.symbol ?? "")
+                let firstContracts : Double = SchwabClient.shared.getContractCountForSymbol(first.instrument?.symbol ?? "")
+                let secondContracts : Double = SchwabClient.shared.getContractCountForSymbol(second.instrument?.symbol ?? "")
                 
                 // Handle nil values - positions without contracts go to the end
                 if firstDTE == nil && secondDTE == nil {
-                    return false // Keep original order
+                    return ascending ? firstContracts > secondContracts : firstContracts < secondContracts // Keep original order
                 } else if firstDTE == nil {
                     return false // First goes after second
                 } else if secondDTE == nil {
                     return true // Second goes after first
+                } else if firstDTE! == secondDTE! {
+                    return ascending ? (firstContracts > secondContracts) : (firstContracts < secondContracts)
                 } else {
-                    return ascending ? firstDTE! < secondDTE! : firstDTE! > secondDTE!
+                    return ascending ? (firstDTE! < secondDTE!) : (firstDTE! > secondDTE!)
                 }
             }
         })
@@ -247,7 +251,7 @@ struct HoldingsView: View {
                         viewSize: viewSize,
                         tradeDateCache: tradeDateCache,
                         orderStatusCache: orderStatusCache,
-                        dteCache: dteCache
+//                        dteCache: dteCache
                     )
                 }
             } // VStack
@@ -329,13 +333,13 @@ struct HoldingsView: View {
                 holdings = accountPositions.map { $0.0 }
                 viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
                 
-                // Populate DTE cache
-                for position in holdings {
-                    if let symbol = position.instrument?.symbol {
-                        dteCache[symbol] = calculateDTE(for: position)
-                    }
-                }
-                
+//                // Populate DTE cache
+//                for position in holdings {
+//                    if let symbol = position.instrument?.symbol {
+//                        dteCache[symbol] = calculateDTE(for: position)
+//                    }
+//                }
+//                
                 print("✅ Holdings displayed: \(holdings.count) positions")
             }
         }
@@ -419,9 +423,9 @@ struct HoldingsView: View {
         }
     }
     
-    // Helper function to calculate DTE for a position
-    private func calculateDTE(for position: Position) -> Int? {
-        // Use the efficient DTE methods from SchwabClient
-        return SchwabClient.shared.getDTEForPosition(position)
-    }
+//    // Helper function to calculate DTE for a position
+//    private func calculateDTE(for position: Position) -> Int? {
+//        // Use the efficient DTE methods from SchwabClient
+//        return SchwabClient.shared.getDTEForPosition(position)
+//    }
 } 

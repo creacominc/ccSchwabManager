@@ -11,75 +11,75 @@ import os.log
 @_exported import var Foundation.NSLocalizedDescriptionKey
 
 // MARK: - Contract Information Structure
-
-struct ContractInfo {
-    let position: Position
-    let dte: Int?
-    
-    init(position: Position) {
-        self.position = position
-        self.dte = Self.extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description)
-    }
-    
-    // Helper function to extract expiration date from option symbol or description
-    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
-        // Primary method: Extract 6-digit date from option symbol
-        if let symbol = symbol {
-            // Look for 6 consecutive digits after the underlying symbol
-            // Example: "INTC  250516C00025000" -> extract "250516"
-            let pattern = #"(\d{6})"#
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
-                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
-                
-                // Parse the date (format: YYMMDD)
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyMMdd"
-                formatter.timeZone = TimeZone.current
-                
-                if let date = formatter.date(from: dateString) {
-                    let calendar = Calendar.current
-                    let today = Date()
-                    let components = calendar.dateComponents([.day], from: today, to: date)
-                    return components.day
-                }
-            }
-        }
-        
-        // Secondary method: Extract date from description
-        if let description = description {
-            // Look for date pattern like "05/16/2025" or "2025-01-16"
-            let patterns = [
-                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
-                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
-            ]
-            
-            for pattern in patterns {
-                if let regex = try? NSRegularExpression(pattern: pattern),
-                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
-                    
-                    let formatter = DateFormatter()
-                    if pattern.contains("/") {
-                        formatter.dateFormat = "MM/dd/yyyy"
-                    } else {
-                        formatter.dateFormat = "yyyy-MM-dd"
-                    }
-                    formatter.timeZone = TimeZone.current
-                    
-                    let dateString = String(description[Range(match.range, in: description)!])
-                    if let date = formatter.date(from: dateString) {
-                        let calendar = Calendar.current
-                        let today = Date()
-                        let components = calendar.dateComponents([.day], from: today, to: date)
-                        return components.day
-                    }
-                }
-            }
-        }
-        
-        return nil
-    }
-}
+//
+//struct ContractInfo {
+//    let position: Position
+//    let dte: Int?
+//    
+//    init(position: Position) {
+//        self.position = position
+//        self.dte = Self.extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description)
+//    }
+//    
+//    // Helper function to extract expiration date from option symbol or description
+//    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
+//        // Primary method: Extract 6-digit date from option symbol
+//        if let symbol = symbol {
+//            // Look for 6 consecutive digits after the underlying symbol
+//            // Example: "INTC  250516C00025000" -> extract "250516"
+//            let pattern = #"(\d{6})"#
+//            if let regex = try? NSRegularExpression(pattern: pattern),
+//               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+//                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+//                
+//                // Parse the date (format: YYMMDD)
+//                let formatter = DateFormatter()
+//                formatter.dateFormat = "yyMMdd"
+//                formatter.timeZone = TimeZone.current
+//                
+//                if let date = formatter.date(from: dateString) {
+//                    let calendar = Calendar.current
+//                    let today = Date()
+//                    let components = calendar.dateComponents([.day], from: today, to: date)
+//                    return components.day
+//                }
+//            }
+//        }
+//        
+//        // Secondary method: Extract date from description
+//        if let description = description {
+//            // Look for date pattern like "05/16/2025" or "2025-01-16"
+//            let patterns = [
+//                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
+//                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
+//            ]
+//            
+//            for pattern in patterns {
+//                if let regex = try? NSRegularExpression(pattern: pattern),
+//                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+//                    
+//                    let formatter = DateFormatter()
+//                    if pattern.contains("/") {
+//                        formatter.dateFormat = "MM/dd/yyyy"
+//                    } else {
+//                        formatter.dateFormat = "yyyy-MM-dd"
+//                    }
+//                    formatter.timeZone = TimeZone.current
+//                    
+//                    let dateString = String(description[Range(match.range, in: description)!])
+//                    if let date = formatter.date(from: dateString) {
+//                        let calendar = Calendar.current
+//                        let today = Date()
+//                        let components = calendar.dateComponents([.day], from: today, to: date)
+//                        return components.day
+//                    }
+//                }
+//            }
+//        }
+//        
+//        return nil
+//    }
+//}
 
 // MARK: - Symbol Contract Summary Structure
 
@@ -94,7 +94,7 @@ struct SymbolContractSummary {
         
         for position in contracts {
             // Calculate DTE for this contract
-            if let dte = Self.extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description) {
+            if let dte = extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description) {
                 if minDTE == nil || dte < minDTE! {
                     minDTE = dte
                 }
@@ -108,65 +108,65 @@ struct SymbolContractSummary {
         self.contractCount = contracts.count
         self.totalQuantity = totalQty
     }
-    
-    // Helper function to extract expiration date from option symbol or description
-    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
-        // Primary method: Extract 6-digit date from option symbol
-        if let symbol = symbol {
-            // Look for 6 consecutive digits after the underlying symbol
-            // Example: "INTC  250516C00025000" -> extract "250516"
-            let pattern = #"(\d{6})"#
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
-                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
-                
-                // Parse the date (format: YYMMDD)
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyMMdd"
-                formatter.timeZone = TimeZone.current
-                
-                if let date = formatter.date(from: dateString) {
-                    let calendar = Calendar.current
-                    let today = Date()
-                    let components = calendar.dateComponents([.day], from: today, to: date)
-                    return components.day
-                }
-            }
-        }
-        
-        // Secondary method: Extract date from description
-        if let description = description {
-            // Look for date pattern like "05/16/2025" or "2025-01-16"
-            let patterns = [
-                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
-                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
-            ]
-            
-            for pattern in patterns {
-                if let regex = try? NSRegularExpression(pattern: pattern),
-                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
-                    
-                    let formatter = DateFormatter()
-                    if pattern.contains("/") {
-                        formatter.dateFormat = "MM/dd/yyyy"
-                    } else {
-                        formatter.dateFormat = "yyyy-MM-dd"
-                    }
-                    formatter.timeZone = TimeZone.current
-                    
-                    let dateString = String(description[Range(match.range, in: description)!])
-                    if let date = formatter.date(from: dateString) {
-                        let calendar = Calendar.current
-                        let today = Date()
-                        let components = calendar.dateComponents([.day], from: today, to: date)
-                        return components.day
-                    }
-                }
-            }
-        }
-        
-        return nil
-    }
+
+//    // Helper function to extract expiration date from option symbol or description
+//    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
+//        // Primary method: Extract 6-digit date from option symbol
+//        if let symbol = symbol {
+//            // Look for 6 consecutive digits after the underlying symbol
+//            // Example: "INTC  250516C00025000" -> extract "250516"
+//            let pattern = #"(\d{6})"#
+//            if let regex = try? NSRegularExpression(pattern: pattern),
+//               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+//                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+//                
+//                // Parse the date (format: YYMMDD)
+//                let formatter = DateFormatter()
+//                formatter.dateFormat = "yyMMdd"
+//                formatter.timeZone = TimeZone.current
+//                
+//                if let date = formatter.date(from: dateString) {
+//                    let calendar = Calendar.current
+//                    let today = Date()
+//                    let components = calendar.dateComponents([.day], from: today, to: date)
+//                    return components.day
+//                }
+//            }
+//        }
+//        
+//        // Secondary method: Extract date from description
+//        if let description = description {
+//            // Look for date pattern like "05/16/2025" or "2025-01-16"
+//            let patterns = [
+//                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
+//                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
+//            ]
+//            
+//            for pattern in patterns {
+//                if let regex = try? NSRegularExpression(pattern: pattern),
+//                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+//                    
+//                    let formatter = DateFormatter()
+//                    if pattern.contains("/") {
+//                        formatter.dateFormat = "MM/dd/yyyy"
+//                    } else {
+//                        formatter.dateFormat = "yyyy-MM-dd"
+//                    }
+//                    formatter.timeZone = TimeZone.current
+//                    
+//                    let dateString = String(description[Range(match.range, in: description)!])
+//                    if let date = formatter.date(from: dateString) {
+//                        let calendar = Calendar.current
+//                        let today = Date()
+//                        let components = calendar.dateComponents([.day], from: today, to: date)
+//                        return components.day
+//                    }
+//                }
+//            }
+//        }
+//        
+//        return nil
+//    }
 }
 
 // connection
@@ -794,27 +794,25 @@ class SchwabClient
             for account in m_accounts {
                 if let positions = account.securitiesAccount?.positions {
                     for position in positions {
+                        // for every position, look for an option assetType
                         if let instrument = position.instrument,
                            let assetType = instrument.assetType,
                            assetType == .OPTION,
                            let underlyingSymbol = instrument.underlyingSymbol {
-                            
-                            // Add to the collection for this underlying symbol
-                            if positionsByUnderlying[underlyingSymbol] == nil {
-                                positionsByUnderlying[underlyingSymbol] = []
-                            }
-                            
-                            // Check if this position is already in the list by comparing symbols
-                            if let symbol = instrument.symbol {
-                                let positionExists = positionsByUnderlying[underlyingSymbol]!.contains { existingPosition in
-                                    existingPosition.instrument?.symbol == symbol
+                                // Add to the collection for this underlying symbol
+                                if positionsByUnderlying[underlyingSymbol] == nil {
+                                    positionsByUnderlying[underlyingSymbol] = []
                                 }
-                                
-                                if !positionExists {
-                                    positionsByUnderlying[underlyingSymbol]!.append(position)
-                                    // print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
+                                // Check if this position is already in the list by comparing symbols
+                                if let symbol = instrument.symbol {
+                                    let positionExists = positionsByUnderlying[underlyingSymbol]!.contains { existingPosition in
+                                        existingPosition.instrument?.symbol == symbol
+                                    }
+                                    if !positionExists {
+                                        positionsByUnderlying[underlyingSymbol]!.append(position)
+                                        // print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
+                                    }
                                 }
-                            }
                         }
                     }
                 }
@@ -2202,21 +2200,21 @@ class SchwabClient
         }
         return summary.minimumDTE
     }
-    
-    /**
-     * getDTEForPosition - return the DTE for a specific position (for option positions)
-     */
-    public func getDTEForPosition(_ position: Position) -> Int? {
-        // For option positions, calculate DTE directly
-        if position.instrument?.assetType == .OPTION {
-            return ContractInfo(position: position).dte
-        }
-        
-        // For equity positions, return the minimum DTE for that symbol
-        if let symbol = position.instrument?.symbol {
-            return getMinimumDTEForSymbol(symbol)
-        }
-        
-        return nil
-    }
+//    
+//    /**
+//     * getDTEForPosition - return the DTE for a specific position (for option positions)
+//     */
+//    public func getDTEForPosition(_ position: Position) -> Int? {
+//        // For option positions, calculate DTE directly
+//        if position.instrument?.assetType == .OPTION {
+//            return ContractInfo(position: position).dte
+//        }
+//        
+//        // For equity positions, return the minimum DTE for that symbol
+//        if let symbol = position.instrument?.symbol {
+//            return getMinimumDTEForSymbol(symbol)
+//        }
+//        
+//        return nil
+//    }
 } // SchwabClient
