@@ -30,7 +30,6 @@ struct TransactionHistorySection: View {
     let symbol: String
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
 
-    /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
     private var sortedTransactions: [Transaction] {
         guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
         print( "=== Sorting transactions ===  \(symbol)" )
@@ -180,7 +179,6 @@ struct TransactionHistorySection: View {
 
                         ScrollView {
                             LazyVStack(spacing: 0) {
-                                /** @TODO:  change fetchTransactionHistory to not return an array after adding sort logic to the client*/
                                 ForEach(sortedTransactions) { transaction in
                                     TransactionRow(
                                         transaction: transaction,

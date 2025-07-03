@@ -157,9 +157,9 @@ private struct TableContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            print("TableContent ScrollView appeared with \(positionsData.count) records")
-        }
+//        .onAppear {
+//            print("TableContent ScrollView appeared with \(positionsData.count) records")
+//        }
     }
 }
 

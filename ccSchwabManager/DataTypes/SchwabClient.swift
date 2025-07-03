@@ -10,76 +10,6 @@ import os.log
 @_exported import class Foundation.NSError
 @_exported import var Foundation.NSLocalizedDescriptionKey
 
-// MARK: - Contract Information Structure
-//
-//struct ContractInfo {
-//    let position: Position
-//    let dte: Int?
-//    
-//    init(position: Position) {
-//        self.position = position
-//        self.dte = Self.extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description)
-//    }
-//    
-//    // Helper function to extract expiration date from option symbol or description
-//    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
-//        // Primary method: Extract 6-digit date from option symbol
-//        if let symbol = symbol {
-//            // Look for 6 consecutive digits after the underlying symbol
-//            // Example: "INTC  250516C00025000" -> extract "250516"
-//            let pattern = #"(\d{6})"#
-//            if let regex = try? NSRegularExpression(pattern: pattern),
-//               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
-//                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
-//                
-//                // Parse the date (format: YYMMDD)
-//                let formatter = DateFormatter()
-//                formatter.dateFormat = "yyMMdd"
-//                formatter.timeZone = TimeZone.current
-//                
-//                if let date = formatter.date(from: dateString) {
-//                    let calendar = Calendar.current
-//                    let today = Date()
-//                    let components = calendar.dateComponents([.day], from: today, to: date)
-//                    return components.day
-//                }
-//            }
-//        }
-//        
-//        // Secondary method: Extract date from description
-//        if let description = description {
-//            // Look for date pattern like "05/16/2025" or "2025-01-16"
-//            let patterns = [
-//                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
-//                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
-//            ]
-//            
-//            for pattern in patterns {
-//                if let regex = try? NSRegularExpression(pattern: pattern),
-//                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
-//                    
-//                    let formatter = DateFormatter()
-//                    if pattern.contains("/") {
-//                        formatter.dateFormat = "MM/dd/yyyy"
-//                    } else {
-//                        formatter.dateFormat = "yyyy-MM-dd"
-//                    }
-//                    formatter.timeZone = TimeZone.current
-//                    
-//                    let dateString = String(description[Range(match.range, in: description)!])
-//                    if let date = formatter.date(from: dateString) {
-//                        let calendar = Calendar.current
-//                        let today = Date()
-//                        let components = calendar.dateComponents([.day], from: today, to: date)
-//                        return components.day
-//                    }
-//                }
-//            }
-//        }
-//        
-//        return nil
-//    }
-//}
 
 // MARK: - Symbol Contract Summary Structure
 
@@ -109,64 +39,6 @@ struct SymbolContractSummary {
         self.totalQuantity = totalQty
     }
 
-//    // Helper function to extract expiration date from option symbol or description
-//    private static func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
-//        // Primary method: Extract 6-digit date from option symbol
-//        if let symbol = symbol {
-//            // Look for 6 consecutive digits after the underlying symbol
-//            // Example: "INTC  250516C00025000" -> extract "250516"
-//            let pattern = #"(\d{6})"#
-//            if let regex = try? NSRegularExpression(pattern: pattern),
-//               let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
-//                let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
-//                
-//                // Parse the date (format: YYMMDD)
-//                let formatter = DateFormatter()
-//                formatter.dateFormat = "yyMMdd"
-//                formatter.timeZone = TimeZone.current
-//                
-//                if let date = formatter.date(from: dateString) {
-//                    let calendar = Calendar.current
-//                    let today = Date()
-//                    let components = calendar.dateComponents([.day], from: today, to: date)
-//                    return components.day
-//                }
-//            }
-//        }
-//        
-//        // Secondary method: Extract date from description
-//        if let description = description {
-//            // Look for date pattern like "05/16/2025" or "2025-01-16"
-//            let patterns = [
-//                #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
-//                #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
-//            ]
-//            
-//            for pattern in patterns {
-//                if let regex = try? NSRegularExpression(pattern: pattern),
-//                   let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
-//                    
-//                    let formatter = DateFormatter()
-//                    if pattern.contains("/") {
-//                        formatter.dateFormat = "MM/dd/yyyy"
-//                    } else {
-//                        formatter.dateFormat = "yyyy-MM-dd"
-//                    }
-//                    formatter.timeZone = TimeZone.current
-//                    
-//                    let dateString = String(description[Range(match.range, in: description)!])
-//                    if let date = formatter.date(from: dateString) {
-//                        let calendar = Calendar.current
-//                        let today = Date()
-//                        let components = calendar.dateComponents([.day], from: today, to: date)
-//                        return components.day
-//                    }
-//                }
-//            }
-//        }
-//        
-//        return nil
-//    }
 }
 
 // connection
@@ -1135,7 +1007,7 @@ class SchwabClient
         }
         
         if maxQuarterDelta <= currentQuarterDelta {
-            print(" --- fetchTransactionHistory -  maxQuarterDelta reached")
+            print(" --- fetchTransactionHistorySync -  maxQuarterDelta reached")
             return
         }
 
@@ -1227,49 +1099,68 @@ class SchwabClient
         await withTaskGroup(of: [Transaction]?.self) { group in
             // Add a task for each account
             for accountNumberHash in self.m_secrets.acountNumberHash {
-                group.addTask {
-                    var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-                    transactionHistoryUrl += "?startDate=\(startDate)"
-                    transactionHistoryUrl += "&endDate=\(endDate)"
-                    transactionHistoryUrl += "&types=TRADE"
-
-                    guard let url = URL(string: transactionHistoryUrl) else {
-                        print("fetchTransactionHistory. Invalid URL")
-                        return nil
-                    }
-
-                    var request = URLRequest(url: url)
-                    request.httpMethod = "GET"
-                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-                    request.setValue("application/json", forHTTPHeaderField: "accept")
-                    // set a 10 second timeout on this request
-                    request.timeoutInterval = self.requestTimeout
-
-                    do {
-                        let (data, response) = try await URLSession.shared.data(for: request)
+                for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
+                            group.addTask {
+                                var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
+                                transactionHistoryUrl += "?startDate=\(startDate)"
+                                transactionHistoryUrl += "&endDate=\(endDate)"
+                                transactionHistoryUrl += "&types=\(transactionType.rawValue)"
                         
-                        guard let httpResponse = response as? HTTPURLResponse else {
-                            print("Invalid response type")
+                        guard let url = URL(string: transactionHistoryUrl) else {
+                            print("fetchTransactionHistory. Invalid URL")
                             return nil
                         }
                         
-                        if httpResponse.statusCode != 200 {
-                            print("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
-                            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                serviceError.printErrors(prefix: "  fetchTransactionHistory ")
+                        var request = URLRequest(url: url)
+                        request.httpMethod = "GET"
+                        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                        request.setValue("application/json", forHTTPHeaderField: "accept")
+                        // set a 10 second timeout on this request
+                        request.timeoutInterval = self.requestTimeout
+                        
+                        do {
+                            let (data, response) = try await URLSession.shared.data(for: request)
+                            
+                            guard let httpResponse = response as? HTTPURLResponse else {
+                                print("Invalid response type")
+                                return nil
                             }
+                            
+                            if httpResponse.statusCode != 200 {
+                                print("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
+                                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                    serviceError.printErrors(prefix: "  fetchTransactionHistory ")
+                                }
+                                return nil
+                            }
+
+                            let decoder = JSONDecoder()
+                            let transactions = try decoder.decode([Transaction].self, from: data)
+
+//                            /** @TODO:  REMOVE */
+//                            if true { // if TransactionType.receiveAndDeliver == transactionType {
+//                                // Check if any transaction contains "FAST" as a symbol
+//                                for transaction in transactions {
+//                                    for transferItem in transaction.transferItems {
+//                                        if transferItem.instrument?.symbol  == "FAST" { // != "MMDA1" { //
+//                                            // print the data for debugging
+//                                            print(" ***** fetchTransactionHistory: Found \(transactionType.rawValue)  \(transferItem.instrument?.symbol ?? "n/a") transaction: ")
+//                                            print("       \(transaction.dump())")
+//                                            //break
+//                                        }
+//                                    }
+//                                }
+//                            }
+
+                            return transactions
+                        } catch {
+                            print("fetchTransactionHistory Error: \(error.localizedDescription)")
+                            print("   detail:  \(error)")
                             return nil
                         }
-
-                        let decoder = JSONDecoder()
-                        return try decoder.decode([Transaction].self, from: data)
-                    } catch {
-                        print("fetchTransactionHistory Error: \(error.localizedDescription)")
-                        print("   detail:  \(error)")
-                        return nil
-                    }
+                    } // group.addTask
                 }
-            }
+            } // for accountNumberHash
 
             // Collect results from all tasks
             var newTransactions: [Transaction] = []
@@ -1281,7 +1172,7 @@ class SchwabClient
             m_transactionListLock.withLock {
                 m_transactionList.append(contentsOf: newTransactions)
             }
-        }
+        } // await withTaskGroup
 
         print("Fetched \(m_transactionList.count - initialSize) transactions")
         /** @TODO:  check for efficiency here.  I think we can avoid sorting and calling setLatestTradeDate for most threads. */
@@ -1301,11 +1192,11 @@ class SchwabClient
         let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
             return m_quarterDelta
         }
-        print( "==== getTransactionsFor \(symbol ?? "nil")  quarters: \(quarterDeltaForLogging) ====" )
-        print("Current transaction list size: \(m_transactionList.count)")
+//        print( "    ==== getTransactionsFor \(symbol ?? "nil")  quarters: \(quarterDeltaForLogging) ====" )
+//        print("    ==== getTransactionsFor Current transaction list size: \(m_transactionList.count)")
         
         if( nil == symbol ) {
-            print( "  !!!!! No symbol provided" )
+            print( "    ==== getTransactionsFor   !!!!! No symbol provided" )
             m_transactionListLock.lock()
             defer { m_transactionListLock.unlock() }
             return m_transactionList
@@ -1326,14 +1217,14 @@ class SchwabClient
             m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
             m_lastFilteredTransactionSharesAvailableToTrade = 0.0
-            print( "  !!!!! cleared filtered transactions" )
+//            print( "    ==== getTransactionsFor   !!!!! cleared filtered transactions" )
             // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
             m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                 // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
                 let matches = transaction.transferItems.contains { $0.instrument?.symbol == symbol }
                 return matches // return from closure, not from the method
             }
-            print("Found \(m_lastFilteredTransactions.count) matching transactions.  \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
+//            print("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
 
             // Fetch more records if needed, but with proper termination conditions
             var fetchAttempts = 0
@@ -1440,176 +1331,6 @@ class SchwabClient
      * fetchOrderHistory
      *
      * /orders
-     *
-     *Parameters
-     Name    Description
-     maxResults
-     integer($int64)
-     (query)
-     The max number of orders to retrieve. Default is 3000.
-     
-     
-     fromEnteredTime *
-     string
-     (query)
-     Specifies that no orders entered before this time should be returned. Valid ISO-8601 formats are- yyyy-MM-dd'T'HH:mm:ss.SSSZ Date must be within 60 days from today's date. 'toEnteredTime' must also be set.
-     
-     
-     toEnteredTime *
-     string
-     (query)
-     Specifies that no orders entered after this time should be returned.Valid ISO-8601 formats are - yyyy-MM-dd'T'HH:mm:ss.SSSZ. 'fromEnteredTime' must also be set.
-     
-     
-     status
-     string
-     (query)
-     Specifies that only orders of this status should be returned.
-     
-     Available values : AWAITING_PARENT_ORDER, AWAITING_CONDITION, AWAITING_STOP_CONDITION, AWAITING_MANUAL_REVIEW, ACCEPTED, AWAITING_UR_OUT, PENDING_ACTIVATION, QUEUED, WORKING, REJECTED, PENDING_CANCEL, CANCELED, PENDING_REPLACE, REPLACED, FILLED, EXPIRED, NEW, AWAITING_RELEASE_TIME, PENDING_ACKNOWLEDGEMENT, PENDING_RECALL, UNKNOWN
-     
-     
-     * alternate:  get orders for account:
-     *    GET
-     /accounts/{accountNumber}/orders
-     Get all orders for a specific account.
-     
-     
-     All orders for a specific account. Orders retrieved can be filtered based on input parameters below. Maximum date range is 1 year.
-     
-     Parameters
-     Name    Description
-     accountNumber *
-     string
-     (path)
-     The encrypted ID of the account
-     
-     
-     *
-     *
-     *
-     * example response
-     *[
-     {
-     "session": "NORMAL",
-     "duration": "DAY",
-     "orderType": "MARKET",
-     "cancelTime": "2025-05-21T11:15:04.856Z",
-     "complexOrderStrategyType": "NONE",
-     "quantity": 0,
-     "filledQuantity": 0,
-     "remainingQuantity": 0,
-     "requestedDestination": "INET",
-     "destinationLinkName": "string",
-     "releaseTime": "2025-05-21T11:15:04.856Z",
-     "stopPrice": 0,
-     "stopPriceLinkBasis": "MANUAL",
-     "stopPriceLinkType": "VALUE",
-     "stopPriceOffset": 0,
-     "stopType": "STANDARD",
-     "priceLinkBasis": "MANUAL",
-     "priceLinkType": "VALUE",
-     "price": 0,
-     "taxLotMethod": "FIFO",
-     "orderLegCollection": [
-     {
-     "orderLegType": "EQUITY",
-     "legId": 0,
-     "instrument": {
-     "cusip": "string",
-     "symbol": "string",
-     "description": "string",
-     "instrumentId": 0,
-     "netChange": 0,
-     "type": "SWEEP_VEHICLE"
-     },
-     "instruction": "BUY",
-     "positionEffect": "OPENING",
-     "quantity": 0,
-     "quantityType": "ALL_SHARES",
-     "divCapGains": "REINVEST",
-     "toSymbol": "string"
-     }
-     ],
-     "activationPrice": 0,
-     "specialInstruction": "ALL_OR_NONE",
-     "orderStrategyType": "SINGLE",
-     "orderId": 0,
-     "cancelable": false,
-     "editable": false,
-     "status": "AWAITING_PARENT_ORDER",
-     "enteredTime": "2025-05-21T11:15:04.856Z",
-     "closeTime": "2025-05-21T11:15:04.856Z",
-     "tag": "string",
-     "accountNumber": 0,
-     "orderActivityCollection": [
-     {
-     "activityType": "EXECUTION",
-     "executionType": "FILL",
-     "quantity": 0,
-     "orderRemainingQuantity": 0,
-     "executionLegs": [
-     {
-     "legId": 0,
-     "price": 0,
-     "quantity": 0,
-     "mismarkedQuantity": 0,
-     "instrumentId": 0,
-     "time": "2025-05-21T11:15:04.856Z"
-     }
-     ]
-     }
-     ],
-     "replacingOrderCollection": [
-     "string"
-     ],
-     "childOrderStrategies": [
-     "string"
-     ],
-     "statusDescription": "string"
-     }
-     ]
-     
-     
-     
-     Orders
-     
-     
-     GET
-     /accounts/{accountNumber}/orders
-     Get all orders for a specific account.
-     
-     
-     POST
-     /accounts/{accountNumber}/orders
-     Place order for a specific account.
-     
-     
-     GET
-     /accounts/{accountNumber}/orders/{orderId}
-     Get a specific order by its ID, for a specific account
-     
-     
-     DELETE
-     /accounts/{accountNumber}/orders/{orderId}
-     Cancel an order for a specific account
-     
-     
-     PUT
-     /accounts/{accountNumber}/orders/{orderId}
-     Replace order for a specific account
-     
-     
-     GET
-     /orders
-     Get all orders for all accounts
-     
-     
-     POST
-     /accounts/{accountNumber}/previewOrder
-     Preview order for a specific account. **Coming Soon**.
-     
-     
      */
     public func fetchOrderHistory( retry : Bool = false ) async
     {
@@ -1813,7 +1534,7 @@ class SchwabClient
         // Process transactions until we find zero shares or reach max quarters
         while fetchAttempts < maxFetchAttempts {
             fetchAttempts += 1
-            print("--- computeTaxLots iteration \(fetchAttempts)/\(maxFetchAttempts) ---")
+            print("  --- computeTaxLots iteration \(fetchAttempts)/\(maxFetchAttempts) ---")
 
             // Clear previous results
             m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
@@ -1824,22 +1545,29 @@ class SchwabClient
             let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
                 return m_quarterDelta
             }
-            print("-- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
+            print("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
 
             // get last price for this security
             let lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
 
             // Process all trade transactions - only process again if the number of transactions changes
-            print( " -- computeTaxLots() - calling getTransactionsFor(symbol: \(symbol))" )
-            for transaction in self.getTransactionsFor(symbol: symbol) where transaction.type == .trade {
+            print( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )
+            for transaction in self.getTransactionsFor(symbol: symbol)
+            where ( (transaction.type == .trade) || (transaction.type == .receiveAndDeliver))
+            {
+//                print( " ***** " )
                 for transferItem in transaction.transferItems {
                     // find transferItems where the shares, value, and cost are not 0
                     guard let numberOfShares = transferItem.amount,
                           let marketValue = transferItem.cost,
                           let costPerShare = transferItem.price,
-                          numberOfShares != 0.0,
-                          marketValue != 0.0,
-                          costPerShare != 0.0 else {
+                          numberOfShares != 0.0
+                            // ,
+//                          marketValue != 0.0,
+//                          costPerShare != 0.0
+                    else {
+                        // log the values that caused this record to be skipped.
+                        // print( "  -- computeTaxLots() -  Skipping transferItem in transaction: \(transaction.dump())" )
                         continue
                     }
 
@@ -1865,7 +1593,7 @@ class SchwabClient
                             quantity: numberOfShares,
                             price: lastPrice,
                             costPerShare: costPerShare,
-                            marketValue: lastPrice * numberOfShares,
+                            marketValue: marketValue,
                             costBasis: costPerShare * numberOfShares
                         )
                     )
@@ -1878,7 +1606,7 @@ class SchwabClient
                     break
                 }
                 else if ( 0 > currentShareCount ) {
-                    print( " -- Negative share count --" )
+//                    print( " -- Negative share count --" )
                     break
                 }
 
@@ -1891,7 +1619,7 @@ class SchwabClient
             }
             else if ( 0 > currentShareCount ) {
                 showIncompleteDataWarning = true
-                print( " -- Negative share count --" )
+//                print( " -- Negative share count --" )
                 break
             }
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
@@ -1929,28 +1657,35 @@ class SchwabClient
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
         //print( " -- removing sold shares -- " )
-        for record in m_lastFilteredPositionRecords {
-            // collect buy records until you find a sell record.
+        for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
+            // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
                 // print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-                //print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
-                // sort the buy queue by high price
-                buyQueue.sort { ($0.costPerShare > $1.costPerShare) }
+//                print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" )
+                // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
+                if( 0.0 != record.costPerShare )
+                {
+                    buyQueue.sort { ($0.costPerShare > $1.costPerShare) }
+                }
+                else
+                { // for .receiveAndDeliver, sort by the most recent date first.
+                    buyQueue.sort { ($0.openDate > $1.openDate) }
+                }
 
                 // Process sell record
                 var remainingSellQuantity = abs(record.quantity)
                 //var matchedBuys: [SalesCalcPositionsRecord] = []
-                
+
                 // Match sell with buys
                 while remainingSellQuantity > 0 && !buyQueue.isEmpty {
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-                    //print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
-                    //print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+//                    print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
+//                    print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
@@ -2089,50 +1824,68 @@ class SchwabClient
                     // Fetch for all accounts in parallel
                     await withTaskGroup(of: [Transaction]?.self) { accountGroup in
                         for accountNumberHash in self.m_secrets.acountNumberHash {
-                            accountGroup.addTask {
-                                var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-                                transactionHistoryUrl += "?startDate=\(startDate)"
-                                transactionHistoryUrl += "&endDate=\(endDate)"
-                                transactionHistoryUrl += "&types=TRADE"
-
-                                guard let url = URL(string: transactionHistoryUrl) else {
-                                    print("fetchTransactionHistoryReduced. Invalid URL")
-                                    return nil
-                                }
-
-                                var request = URLRequest(url: url)
-                                request.httpMethod = "GET"
-                                request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-                                request.setValue("application/json", forHTTPHeaderField: "accept")
-                                request.timeoutInterval = self.requestTimeout
-
-                                do {
-                                    let (data, response) = try await URLSession.shared.data(for: request)
+                            for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
+                                accountGroup.addTask {
+                                    var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
+                                    transactionHistoryUrl += "?startDate=\(startDate)"
+                                    transactionHistoryUrl += "&endDate=\(endDate)"
+                                    transactionHistoryUrl += "&types=\(transactionType.rawValue)"
                                     
-                                    guard let httpResponse = response as? HTTPURLResponse else {
-                                        print("Invalid response type")
+                                    guard let url = URL(string: transactionHistoryUrl) else {
+                                        print("fetchTransactionHistoryReduced. Invalid URL")
                                         return nil
                                     }
                                     
-                                    if httpResponse.statusCode != 200 {
-                                        print("response code: \(httpResponse.statusCode)")
-                                        // print data as a string
-                                        print( "response data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
-                                        if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                            serviceError.printErrors(prefix: "  fetchTransactionHistoryReduced ")
+                                    var request = URLRequest(url: url)
+                                    request.httpMethod = "GET"
+                                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                                    request.setValue("application/json", forHTTPHeaderField: "accept")
+                                    request.timeoutInterval = self.requestTimeout
+                                    
+                                    do {
+                                        let (data, response) = try await URLSession.shared.data(for: request)
+                                        
+                                        guard let httpResponse = response as? HTTPURLResponse else {
+                                            print("Invalid response type")
+                                            return nil
                                         }
+                                        
+                                        if httpResponse.statusCode != 200 {
+                                            print("response code: \(httpResponse.statusCode)")
+                                            // print data as a string
+                                            print( "response data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
+                                            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                                serviceError.printErrors(prefix: "  fetchTransactionHistoryReduced ")
+                                            }
+                                            return nil
+                                        }
+                                        
+                                        let decoder = JSONDecoder()
+                                        let transactions = try decoder.decode([Transaction].self, from: data)
+
+//                                        /** @TODO:  REMOVE */
+//                                        if true { // if TransactionType.receiveAndDeliver == transactionType {
+//                                            // Check if any transaction contains "FAST" as a symbol
+//                                            for transaction in transactions {
+//                                                for transferItem in transaction.transferItems {
+//                                                    if transferItem.instrument?.symbol  == "FAST" { // != "MMDA1" { //
+//                                                        // print the data for debugging
+//                                                        print(" ***** fetchTransactionHistoryReduced: Found \(transactionType.rawValue)  \(transferItem.instrument?.symbol ?? "n/a") transaction: ")
+//                                                        print("       \(transaction.dump())")
+//                                                        //break
+//                                                    }
+//                                                }
+//                                            }
+//                                        }
+                                        
+                                        return transactions
+                                    } catch {
+                                        print("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
                                         return nil
                                     }
-
-                                    let decoder = JSONDecoder()
-                                    return try decoder.decode([Transaction].self, from: data)
-                                } catch {
-                                    print("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
-                                    return nil
                                 }
                             }
                         }
-                        
                         // Collect results from all accounts
                         var newTransactions: [Transaction] = []
                         for await transactions in accountGroup {
