@@ -194,6 +194,7 @@ private struct TableRow: View {
             Text(String(format: "%.2f", item.costPerShare))
                 .frame(width: columnWidths[3] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
+                .foregroundStyle(item.costPerShare > item.price ? .red : .primary)
             
             Text(String(format: "%.2f", item.marketValue))
                 .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
