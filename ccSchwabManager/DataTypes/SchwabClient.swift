@@ -1660,11 +1660,11 @@ class SchwabClient
         for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
-                print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
+                // print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-                print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" )
+                // print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" )
                 // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
                 buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
 
@@ -1677,8 +1677,8 @@ class SchwabClient
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-                    print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
-                    print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+                    // print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
+                    // print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
