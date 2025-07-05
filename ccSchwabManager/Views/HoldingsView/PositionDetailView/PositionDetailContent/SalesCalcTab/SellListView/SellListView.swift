@@ -69,28 +69,39 @@ struct SellListView: View {
          */
 
         for taxLot in taxLots.sorted(by: { $0.costBasis / $0.quantity > $1.costBasis / $1.quantity }) {
-            // print( " === processing tax lot: \(taxLot.openDate), \(taxLot.quantity), \(taxLot.costBasis), \(taxLot.price), \(taxLot.gainLossDollar)" )
+//            print( " === processing tax lot: \(taxLot.openDate), \(taxLot.quantity), \(taxLot.costBasis), \(taxLot.price), \(taxLot.gainLossDollar)" )
             totalShares += taxLot.quantity
             totalCost += taxLot.costBasis
             rollingGain += taxLot.gainLossDollar
-            // pricer per share at which we would break even
+            // price per share at which we would break even
             let costPerShare: Double = totalCost / totalShares
-            // the sale exit (lowest we want to sell at) at 1 ATR + 3.5% above the costPerShare
-            let exitPrice: Double = costPerShare * ( 1.035 + (atrValue / 100.00) )
-            // skip this for tax lots that are not at least 1 ATR profitable
-            if( taxLot.price < exitPrice ) {
+            // the sale exit (cancel sale) at 3% above the costPerShare
+            let hardExitPrice: Double = costPerShare * ( 1.03 )
+            // set the target sell price to be 2% of the cost above the exit.
+            let targetSellPrice: Double = hardExitPrice + (costPerShare * (0.02 + (atrValue/200)) )
+
+//            print( "     --- rolling gain: \(rollingGain), shares: \(totalShares), cost: \(totalCost), atr: \(atrValue), cost/shares: \(costPerShare), exit: \(hardExitPrice), minimumEntry: \(targetSellPrice)" )
+            // if the current price (taxLot.price) is less than 1 ATR above the exit, skip this
+            if( taxLot.price < targetSellPrice ) {
+//                print( "    --- skipping for tax lot under 1 atr: current price: \(taxLot.price), exit price: \(hardExitPrice), cost per share:\(costPerShare), atr: \(atrValue), minimumEntry: \(targetSellPrice)")
                 continue
             }
-            // the target sell price would be 1.5% above the exitPrice
-            let targetSellPrice: Double = exitPrice * 1.015
-            // sell entry is half way between the target price and the exit price
+
+            // sell entry is half way between the target price and the current price
             let entryPrice = (taxLot.price + targetSellPrice) / 2.0
             // trailing stop % is the amount between the entry and target over the entry price
             let trailingStopPercent: Double = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
             // percent gain at target sell price compared to cost
-            let gain: Double = ((targetSellPrice - costPerShare) / costPerShare)
-            //
-            // print( "                  totalShares = \(totalShares), rollingGain = \(rollingGain), costPerShare = \(costPerShare), gain = \(gain), trailingStopPercent = \(trailingStopPercent), entryPrice = \(entryPrice), exitPrice = \(exitPrice),  ATR = \(atrValue)")
+            let gain: Double = ((targetSellPrice - costPerShare) / costPerShare)*100.0
+
+//             print( "                  totalShares = \(totalShares), rollingGain = \(rollingGain), costPerShare = \(costPerShare), gain = \(gain), trailingStopPercent = \(trailingStopPercent), entryPrice = \(entryPrice), targetSellPrice = \(targetSellPrice),  hardExitPrice = \(hardExitPrice),  ATR = \(atrValue)")
+
+
+            // skip if the trailing stop is less than 1%
+            if( trailingStopPercent < 1.0 ) {
+//                print( "    --- skipping for trailing stop less than 1%")
+                continue
+            }
 
             let result: SalesCalcResultsRecord = SalesCalcResultsRecord(
                 shares: totalShares,
@@ -100,9 +111,9 @@ struct SellListView: View {
                 sharesToSell: totalShares,
                 trailingStop: trailingStopPercent,
                 entry: entryPrice,
-                cancel: exitPrice,
+                cancel: hardExitPrice,
                 description: String(format: "Sell %.0f shares TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f"
-                                    , totalShares, trailingStopPercent, entryPrice, exitPrice),
+                                    , totalShares, trailingStopPercent, entryPrice, hardExitPrice),
                 openDate: taxLot.openDate
             )
             results.append(result)

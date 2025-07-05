@@ -69,7 +69,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
-    public let maxQuarterDelta : Int = 12 // 3 years
+    public let maxQuarterDelta : Int = 20 // 5 years
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     @Published var showIncompleteDataWarning = false
@@ -101,6 +101,9 @@ class SchwabClient
     private var m_lastFilteredATRSymbol : String = ""
     private var m_lastFilteredATR : Double = 0.0
     private var m_lastFilteredATRLock: NSLock = NSLock()  // mutex for ATR
+    private var m_lastShareCountSymbol: String = ""
+    private var m_lastShareCount: Double = 0.0
+    private var m_lastShareCountLock: NSLock = NSLock()
     
     // Create a logger for this class
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
@@ -179,6 +182,17 @@ class SchwabClient
 
     private func getShareCount(symbol: String) -> Double {
         print("=== getShareCount \(symbol) ===")
+
+        // lock last share count
+        m_lastShareCountLock.lock()
+        defer {
+            m_lastShareCountLock.unlock()
+        }
+        
+        if m_lastShareCountSymbol == symbol {
+            return m_lastShareCount
+        }
+
         var shareCount: Double = 0.0
         
         // Find the position for this symbol
@@ -832,7 +846,7 @@ class SchwabClient
         print("=== fetchQuote \(symbol) ===")
         
         let quoteUrl = "\(marketdataAPI)/\(symbol)/quotes"
-        print("     quoteUrl: \(quoteUrl)")
+//        print("     quoteUrl: \(quoteUrl)")
         
         guard let url = URL(string: quoteUrl) else {
             print("fetchQuote. Invalid URL")
@@ -1531,12 +1545,12 @@ class SchwabClient
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
      */
     public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
-        let debug : Bool = false
+//        let debug : Bool = true
         // display the busy indicator
-        if debug { print("🔍 computeTaxLots - Setting loading to TRUE") }
+//        if debug { print("🔍 computeTaxLots - Setting loading to TRUE") }
         loadingDelegate?.setLoading(true)
         defer {
-            if debug { print("🔍 computeTaxLots - Setting loading to FALSE") }
+//            if debug { print("🔍 computeTaxLots - Setting loading to FALSE") }
             loadingDelegate?.setLoading(false)
         }
 
@@ -1578,7 +1592,7 @@ class SchwabClient
             for transaction in self.getTransactionsFor(symbol: symbol)
             where ( (transaction.type == .trade) || (transaction.type == .receiveAndDeliver))
             {
-                if debug { print( " ***** " ) }
+//                if debug { print( " ***** " ) }
                 for transferItem in transaction.transferItems {
                     // find transferItems where the shares, value, and cost are not 0
                     guard let numberOfShares = transferItem.amount,
@@ -1587,11 +1601,11 @@ class SchwabClient
                           transferItem.instrument?.symbol == symbol
                     else {
                         // log the values that caused this record to be skipped.
-                        if debug {  print( "  -- computeTaxLots() -  Skipping transferItem in transaction: \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), \(transferItem.cost ?? 0), \(transferItem.price ?? 0)" ) }
+//                        if debug {  print( "  -- computeTaxLots() -  Skipping transferItem with symbol: \(transferItem.instrument?.symbol ?? "n/a"),  \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), \(transferItem.cost ?? 0), \(transferItem.price ?? 0)" ) }
                         continue
                     }
-                    if debug {  print( "  -- computeTaxLots() -  Processing transferItem in transaction: \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), \(transferItem.cost ?? 0), \(transferItem.price ?? 0)" ) }
-                    if debug /*&& transferItem.amount ?? 0 > 0 && transferItem.amount ?? 0 <= 0.1*/ { transaction.dump() }
+//                    if debug {  print( "  -- computeTaxLots() -  Processing transferItem in transaction: \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), net: \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), cost: \(transferItem.cost ?? 0), price: \(transferItem.price ?? 0)" ) }
+//                    if debug /*&& transferItem.amount ?? 0 > 0 && transferItem.amount ?? 0 <= 0.1*/ { transaction.dump() }
 
                     let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
                     let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
@@ -1599,12 +1613,13 @@ class SchwabClient
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                                   strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
+                        print( " -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
                         continue
                     }
                     
                     // Update share count
                     currentShareCount = ( (currentShareCount - numberOfShares) * 100000 ).rounded()/100000
-                    if debug { print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare), gainLossPct: \(gainLossPct), gainLossDollar: \(gainLossDollar) --" ) }
+//                    if debug { print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare), gainLossPct: \(gainLossPct), gainLossDollar: \(gainLossDollar) --" ) }
                     
                     // Add position record
                     m_lastFilteredPositionRecords.append(
@@ -1686,17 +1701,28 @@ class SchwabClient
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
-        if debug {  print( "  -- computeTaxLots:  -- removing sold shares -- " ) }
+//        if debug {  print( "  -- computeTaxLots:  -- removing sold shares -- " ) }
         for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
-                if debug {  print( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" ) }
+//                if debug {  print( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" ) }
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-                if debug {  print( "  -- computeTaxLots:     ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" ) }
+//                if debug {  print( "  -- computeTaxLots:     ----   processing sell.  buy queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" ) }
                 // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
                 buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
+
+//                // print the buy queue for debugging
+//                if debug
+//                {
+//                    // print each record in the buy queue
+//                    for buyRecord in buyQueue
+//                    {
+//                        print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+//                    }
+//                }
+
 
                 // Process sell record
                 var remainingSellQuantity = abs(record.quantity)
@@ -1706,8 +1732,8 @@ class SchwabClient
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-                    if debug {  print( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" ) }
-                    if debug {  print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)") }
+//                    if debug {  print( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" ) }
+//                    if debug {  print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)") }
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
@@ -1751,19 +1777,21 @@ class SchwabClient
             }
         }
         // for debugging, print the number of shares available to trade and the symbol
-        if debug { print("  -- computeTaxLots: ********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)") }
-        // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
+//        if debug { print("  -- computeTaxLots: ********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)") }
+        // if this symbol has contracts in the m_symbolsWithContracts map, the shares available is the minimum of those over 30 days old and the difference between the total shares and the shares held in contract.
         if let summary = m_symbolsWithContracts[symbol] {
             let totalQuantity = summary.totalQuantity
-            m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
+            m_lastFilteredTransactionSharesAvailableToTrade = min(
+                m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0,
+                (getShareCount(symbol: symbol) - (totalQuantity * 100.0)) )
             // for debugging, print the change in shares available to trade, the symbol, and the result
-            if debug { print("  -- computeTaxLots:  change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)") }
-            if debug { print("  -- computeTaxLots:  result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)") }
+//            if debug { print("  -- computeTaxLots:  change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)") }
+//            if debug { print("  -- computeTaxLots:  result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)") }
         }
         
 
         m_lastFilteredPositionRecords = remainingRecords
-        if debug { print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
+//        if debug { print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
         return m_lastFilteredPositionRecords
     } // computeTaxLots
     
