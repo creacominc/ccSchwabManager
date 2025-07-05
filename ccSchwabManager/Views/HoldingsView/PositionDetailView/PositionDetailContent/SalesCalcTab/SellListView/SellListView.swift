@@ -26,6 +26,7 @@ struct SellListView: View {
     let isLoadingTaxLots: Bool
     @State private var copiedValue: String = "TBD"
     @State private var viewSize: CGSize = .zero
+    let sharesAvailableForTrading: Double
 
     // Define proportional widths for columns
     private let columnWidths: [CGFloat] = [0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.28]
@@ -41,7 +42,9 @@ struct SellListView: View {
                     resultsData: getResults(taxLots: taxLotData),
                     viewSize: geometry.size,
                     columnWidths: columnWidths,
-                    copiedValue: $copiedValue
+                    copiedValue: $copiedValue,
+                    atrValue: atrValue,
+                    sharesAvailableForTrading: sharesAvailableForTrading
                 )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -66,7 +69,7 @@ struct SellListView: View {
          */
 
         for taxLot in taxLots.sorted(by: { $0.costBasis / $0.quantity > $1.costBasis / $1.quantity }) {
-//            print( " === processing tax lot: \(taxLot.openDate), \(taxLot.quantity), \(taxLot.costBasis), \(taxLot.price), \(taxLot.gainLossDollar)" )
+            // print( " === processing tax lot: \(taxLot.openDate), \(taxLot.quantity), \(taxLot.costBasis), \(taxLot.price), \(taxLot.gainLossDollar)" )
             totalShares += taxLot.quantity
             totalCost += taxLot.costBasis
             rollingGain += taxLot.gainLossDollar
@@ -87,7 +90,7 @@ struct SellListView: View {
             // percent gain at target sell price compared to cost
             let gain: Double = ((targetSellPrice - costPerShare) / costPerShare)
             //
-//            print( "                  totalShares = \(totalShares), rollingGain = \(rollingGain), costPerShare = \(costPerShare), gain = \(gain), trailingStopPercent = \(trailingStopPercent), entryPrice = \(entryPrice), exitPrice = \(exitPrice),  ATR = \(atrValue)")
+            // print( "                  totalShares = \(totalShares), rollingGain = \(rollingGain), costPerShare = \(costPerShare), gain = \(gain), trailingStopPercent = \(trailingStopPercent), entryPrice = \(entryPrice), exitPrice = \(exitPrice),  ATR = \(atrValue)")
 
             let result: SalesCalcResultsRecord = SalesCalcResultsRecord(
                 shares: totalShares,
@@ -167,7 +170,9 @@ private struct TableContent: View {
     let viewSize: CGSize
     let columnWidths: [CGFloat]
     @Binding var copiedValue: String
-    
+    let atrValue: Double
+    let sharesAvailableForTrading: Double
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
@@ -176,7 +181,9 @@ private struct TableContent: View {
                         item: item,
                         viewSize: viewSize,
                         columnWidths: columnWidths,
-                        copiedValue: $copiedValue
+                        copiedValue: $copiedValue,
+                        atrValue: atrValue,
+                        sharesAvailableForTrading: sharesAvailableForTrading
                     )
                     Divider()
                 }
@@ -191,12 +198,22 @@ private struct TableRow: View {
     let viewSize: CGSize
     let columnWidths: [CGFloat]
     @Binding var copiedValue: String
-    
+    let atrValue: Double
+    let sharesAvailableForTrading: Double
+
     private func rowStyle() -> Color {
-        if item.trailingStop <= 2.0 || (daysSinceDateString(dateString: item.openDate) ?? 0 < 31) {
+        // if the number of available shares is too low, show as orange
+        if ( item.sharesToSell > sharesAvailableForTrading )
+        {
             return .red
-        } else if item.trailingStop < 5.0 {
+        }
+        // if the trailing stop is too low (less than 1 atr), show as yellow
+        else if item.trailingStop <= atrValue
+        {
             return .yellow
+        }
+        else if item.trailingStop < 5.0 {
+            return .white
         }
         return .green
     }

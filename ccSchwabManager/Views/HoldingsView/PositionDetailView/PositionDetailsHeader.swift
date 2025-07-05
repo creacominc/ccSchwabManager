@@ -8,6 +8,7 @@ struct PositionDetailsHeader: View {
     let onNavigate: (Int) -> Void
     let symbol: String
     let atrValue: Double
+    let sharesAvailableForTrading: Double
     let lastPrice: Double
     let quoteData: QuoteData?
     @State private var showDetails = true
@@ -64,6 +65,7 @@ struct PositionDetailsHeader: View {
                             fields: getFieldsForColumn(columnIndex),
                             position: position,
                             atrValue: atrValue,
+                            sharesAvailableForTrading: sharesAvailableForTrading,
                             accountNumber: accountNumber,
                             lastPrice: lastPrice,
                             quoteData: quoteData
@@ -110,7 +112,7 @@ struct PositionDetailsHeader: View {
             return [
                 .account(accountNumber: accountNumber),
                 .dte,
-                .sharesAvailableForTrading
+                .sharesAvailableForTrading(sharesAvailableForTrading: sharesAvailableForTrading)
             ]
         default:
             return []

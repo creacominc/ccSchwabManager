@@ -79,6 +79,7 @@ struct HoldingsView: View {
     @State private var isLoadingAccounts = false
     @State private var isFilterExpanded = false
     @State private var atrValue: Double = 0.0
+    @State private var sharesAvailableForTrading: Double = 0.0
     @State private var selectedTab: Int = 0
     @StateObject private var loadingState = LoadingState()
     
@@ -251,7 +252,6 @@ struct HoldingsView: View {
                         viewSize: viewSize,
                         tradeDateCache: tradeDateCache,
                         orderStatusCache: orderStatusCache,
-//                        dteCache: dteCache
                     )
                 }
             } // VStack
@@ -286,23 +286,26 @@ struct HoldingsView: View {
                 totalPositions: sortedHoldings.count,
                 symbol: selected.position.instrument?.symbol ?? "",
                 atrValue: atrValue,
+                sharesAvailableForTrading: sharesAvailableForTrading,
                 onNavigate: { newIndex in
                     guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
                     let newPosition = sortedHoldings[newIndex]
                     let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
                     selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
                 },
-                selectedTab: $selectedTab
+                selectedTab: $selectedTab,
             )
             .task {
                 if let tmpsymbol = selected.position.instrument?.symbol {
-                    atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
+                    atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
+                    sharesAvailableForTrading = SchwabClient.shared.getSharesAvailableForTrade(for: tmpsymbol)
                 }
             }
             .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
                 if let tmpsymbol = newValue {
                     Task {
-                        atrValue = await SchwabClient.shared.computeATR(symbol: tmpsymbol)
+                        atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
+                        sharesAvailableForTrading = SchwabClient.shared.getSharesAvailableForTrade(for: tmpsymbol)
                     }
                 }
             }

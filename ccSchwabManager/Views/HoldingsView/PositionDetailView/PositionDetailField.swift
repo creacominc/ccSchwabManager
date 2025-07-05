@@ -15,7 +15,7 @@ enum PositionDetailField {
     case dividendYield
     case account(accountNumber: String)
     case dte
-    case sharesAvailableForTrading
+    case sharesAvailableForTrading(sharesAvailableForTrading: Double)
     
     var label: String {
         switch self {
@@ -34,7 +34,7 @@ enum PositionDetailField {
         }
     }
     
-    func getValue(position: Position, atrValue: Double, accountNumber: String, lastPrice: Double, quoteData: QuoteData?) -> String {
+    func getValue(position: Position, atrValue: Double, sharesAvailableForTrading: Double, accountNumber: String, lastPrice: Double, quoteData: QuoteData?) -> String {
         switch self {
         case .plPercent(_):
             let pl = position.longOpenProfitLoss ?? 0
@@ -46,6 +46,8 @@ enum PositionDetailField {
             return String(format: "%.2f", position.longOpenProfitLoss ?? 0)
         case .atr(let atrValue):
             return "\(String(format: "%.2f", atrValue)) %"
+        case .sharesAvailableForTrading(let sharesAvailableForTrading):
+            return "\(String(format: "%.2f", sharesAvailableForTrading))"
         case .quantity:
             return String(format: "%.2f", ((position.longQuantity ?? 0) + (position.shortQuantity ?? 0)))
         case .marketValue:
@@ -74,8 +76,6 @@ enum PositionDetailField {
             let count : Double = SchwabClient.shared.getContractCountForSymbol(position.instrument?.symbol ?? "")
             // return the DTE and the number of contracts
             return (nil == dte) ? "" : String( format: "%d / %.0f", dte ?? 0, count )
-        case .sharesAvailableForTrading:
-            return String( format: "%.1f", SchwabClient.shared.getSharesAvailableForTrade(for: position.instrument?.symbol ?? "") )
         }
     }
 
@@ -123,6 +123,7 @@ struct PositionDetailColumn: View {
     let fields: [PositionDetailField]
     let position: Position
     let atrValue: Double
+    let sharesAvailableForTrading: Double
     let accountNumber: String
     let lastPrice: Double
     let quoteData: QuoteData?
@@ -136,7 +137,7 @@ struct PositionDetailColumn: View {
                 } else {
                     DetailRow(
                         label: field.label,
-                        value: field.getValue(position: position, atrValue: atrValue, accountNumber: accountNumber, lastPrice: lastPrice, quoteData: quoteData)
+                        value: field.getValue(position: position, atrValue: atrValue, sharesAvailableForTrading: sharesAvailableForTrading, accountNumber: accountNumber, lastPrice: lastPrice, quoteData: quoteData)
                     )
                     .foregroundColor(field.getColor(position: position, atrValue: atrValue))
                 }

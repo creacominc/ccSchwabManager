@@ -72,11 +72,6 @@ struct SalesCalcTable: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-//        .border(Color.blue, width: 2) // Add blue border to show the entire table's frame
-//        .onAppear {
-//            print("SalesCalcTable appeared with \(positionsData.count) records")
-//            print("View size: \(viewSize.width) x \(viewSize.height)")
-//        }
     }
 }
 
@@ -157,9 +152,6 @@ private struct TableContent: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-//        .onAppear {
-//            print("TableContent ScrollView appeared with \(positionsData.count) records")
-//        }
     }
 }
 
@@ -217,8 +209,5 @@ private struct TableRow: View {
         .padding(.horizontal)
         .padding(.vertical, 5)
         .background(Color.gray.opacity(0.05))
-//        .onAppear {
-//            print("Rendering row for date: \(item.openDate)")
-//        }
     }
 } 

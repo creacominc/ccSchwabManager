@@ -7,6 +7,7 @@ struct PositionDetailView: View {
     let totalPositions: Int
     let symbol: String
     let atrValue: Double
+    let sharesAvailableForTrading: Double
     let onNavigate: (Int) -> Void
     @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
@@ -19,6 +20,7 @@ struct PositionDetailView: View {
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
+
 
     private func formatDate(_ timestamp: Int64?) -> String {
         guard let timestamp = timestamp else { return "" }
@@ -71,6 +73,7 @@ struct PositionDetailView: View {
                 totalPositions: totalPositions,
                 symbol: symbol,
                 atrValue: atrValue,
+                sharesAvailableForTrading: sharesAvailableForTrading,
                 onNavigate: { newIndex in
                     guard newIndex >= 0 && newIndex < totalPositions else { return }
                     loadingState.isLoading = true

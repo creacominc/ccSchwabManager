@@ -7,6 +7,7 @@ struct PositionDetailContent: View {
     let totalPositions: Int
     let symbol: String
     let atrValue: Double
+    let sharesAvailableForTrading: Double
     let onNavigate: (Int) -> Void
     let priceHistory: CandleList?
     let isLoadingPriceHistory: Bool
@@ -28,6 +29,7 @@ struct PositionDetailContent: View {
                 onNavigate: onNavigate,
                 symbol: symbol,
                 atrValue: atrValue,
+                sharesAvailableForTrading: sharesAvailableForTrading,
                 lastPrice: priceHistory?.candles.last?.close ?? 0.0,
                 quoteData: quoteData,
             )
@@ -56,9 +58,10 @@ struct PositionDetailContent: View {
                     SalesCalcTab(
                         symbol: symbol,
                         atrValue: atrValue,
+                        sharesAvailableForTrading: sharesAvailableForTrading,
                         taxLotData: taxLotData,
                         isLoadingTaxLots: isLoadingTaxLots,
-                        geometry: geometry
+                        geometry: geometry,
                     )
                     .tag(2)
                 }

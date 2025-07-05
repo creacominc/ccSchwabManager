@@ -89,22 +89,27 @@ class SchwabClient
     private let m_transactionListLock = NSLock()  // Add mutex for m_transactionList
     private var m_lastFilteredTransactions : [Transaction] = []
     private var m_lastFilteredTransaxtionsSourceCount : Int = 0
-    private let m_filteredTransactionsLock = NSLock()  // Add mutex for filtered transactions
+    private let m_filteredTransactionsLock: NSLock = NSLock()  // Add mutex for filtered transactions
     private var m_lastFilteredTransactionSharesAvailableToTrade : Double? = nil
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
-    private let m_lastFilteredPriceHistoryLock = NSLock()
+    private let m_lastFilteredPriceHistoryLock: NSLock = NSLock()
     private var m_lastFilteredPriceHistory: CandleList?
     private var m_lastFilteredPriceHistorySymbol: String = ""
-    private let m_quarterDeltaLock = NSLock()  // Add mutex for m_quarterDelta
+    private let m_quarterDeltaLock: NSLock = NSLock()  // Add mutex for m_quarterDelta
+    private var m_lastFilteredATRSymbol : String = ""
+    private var m_lastFilteredATR : Double = 0.0
+    private var m_lastFilteredATRLock: NSLock = NSLock()  // mutex for ATR
     
     // Create a logger for this class
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
     
     // Add a lock for loadingDelegate synchronization
     private let loadingDelegateLock = NSLock()
-    
+
+    private let m_fetchTimeout: TimeInterval = 5.0  // 5 second timeout for each fetch attempt
+
     // Add a computed property to track loading delegate changes
     var loadingDelegate: LoadingStateDelegate? {
         get { 
@@ -909,14 +914,31 @@ class SchwabClient
     /**
      * compute ATR for given symbol
      */
-    public func computeATR( symbol : String ) async -> Double
+    public func computeATR( symbol : String )  -> Double
     {
         print("=== computeATR  ===")
+
+        // Check cache first without holding lock
+        if( symbol == m_lastFilteredATRSymbol )
+        {
+            print( "  computeATR - returning cached." )
+            return m_lastFilteredATR
+        }
+ 
+        // Hold lock for the entire operation to prevent race conditions
+        m_lastFilteredATRLock.lock()
+        defer {
+            m_lastFilteredATRLock.unlock()
+        }
+        m_lastFilteredATRSymbol = symbol
+
         guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
             print("computeATR Failed to fetch price history.")
+            m_lastFilteredATR = 0.0
+            m_lastFilteredATRSymbol = ""
             return 0.0
         }
-        
+
         // Get a local copy of the candles array to prevent race conditions
         let candles = priceHistory.candles
         let candlesCount = candles.count
@@ -924,11 +946,13 @@ class SchwabClient
         // Need at least 2 candles to compute ATR
         guard candlesCount > 1 else {
             print("computeATR: Need at least 2 candles, got \(candlesCount)")
+            m_lastFilteredATR = 0.0
+            m_lastFilteredATRSymbol = ""
             return 0.0
         }
         
         var close : Double  = priceHistory.previousClose ?? 0.0
-        var atr : Double  = 0.0
+        var m_lastFilteredATR : Double  = 0.0
         
         /*
          * Compute the ATR as the average of the True Range.
@@ -972,11 +996,11 @@ class SchwabClient
             let low  : Double  = candle.low ?? 0.0
             let tr : Double = max( abs( high - low ), abs( high - prevClose ), abs( low - prevClose ) )
             close = candle.close ?? 0.0
-            atr = ( (atr * Double(indx)) + tr ) / Double(indx+1)
+            m_lastFilteredATR = ( (m_lastFilteredATR * Double(indx)) + tr ) / Double(indx+1)
         }
         
         // return the ATR as a percent.
-        return (atr * 1.08  / close * 100.0)
+        return (m_lastFilteredATR * 1.08  / close * 100.0)
     }
     
 
@@ -1137,21 +1161,6 @@ class SchwabClient
                             let decoder = JSONDecoder()
                             let transactions = try decoder.decode([Transaction].self, from: data)
 
-//                            /** @TODO:  REMOVE */
-//                            if true { // if TransactionType.receiveAndDeliver == transactionType {
-//                                // Check if any transaction contains "FAST" as a symbol
-//                                for transaction in transactions {
-//                                    for transferItem in transaction.transferItems {
-//                                        if transferItem.instrument?.symbol  == "FAST" { // != "MMDA1" { //
-//                                            // print the data for debugging
-//                                            print(" ***** fetchTransactionHistory: Found \(transactionType.rawValue)  \(transferItem.instrument?.symbol ?? "n/a") transaction: ")
-//                                            print("       \(transaction.dump())")
-//                                            //break
-//                                        }
-//                                    }
-//                                }
-//                            }
-
                             return transactions
                         } catch {
                             print("fetchTransactionHistory Error: \(error.localizedDescription)")
@@ -1200,7 +1209,7 @@ class SchwabClient
 //        print("    ==== getTransactionsFor Current transaction list size: \(m_transactionList.count)")
         
         if( nil == symbol ) {
-            print( "    ==== getTransactionsFor   !!!!! No symbol provided" )
+            print( "getTransactionsFor \(symbol ?? "nil")  -  No symbol provided" )
             m_transactionListLock.lock()
             defer { m_transactionListLock.unlock() }
             return m_transactionList
@@ -1237,24 +1246,33 @@ class SchwabClient
             while( (self.maxQuarterDelta > quarterDeltaForLogging) && 
                    (self.m_lastFilteredTransactions.count == 0) && 
                    (fetchAttempts < maxFetchAttempts) ) {
-                print( "   !!! still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
+                print( "     -- getTransactionsFor \(symbol ?? "nil")  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
                 fetchAttempts += 1
                 
-                // Use async version instead of sync to avoid blocking
+                // Use DispatchGroup to wait for the async operation with timeout
+                let group = DispatchGroup()
+                group.enter()
+                
+                // Start the fetch operation
                 Task {
                     await self.fetchTransactionHistory()
+                    group.leave()
                 }
                 
-                // Wait a bit for the async operation to complete
-                Thread.sleep(forTimeInterval: 1.0)
-                
-                // Re-filter after potential new data
-                m_lastFilteredTransactions =  m_transactionList.filter { transaction in
-                    // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                    let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-                    return matches
+                // Wait for completion or timeout
+                let result = group.wait(timeout: .now() + m_fetchTimeout)
+                if result == .timedOut {
+                    print("     -- getTransactionsFor \(symbol ?? "nil")  - fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds for  \(symbol ?? "nil")")
                 }
-                print("Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
+                else {
+                    // Re-filter after potential new data
+                    m_lastFilteredTransactions =  m_transactionList.filter { transaction in
+                        // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
+                        let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+                        return matches
+                    }
+                    print("  -- getTransactionsFor \(symbol ?? "nil")  - Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
+                }
             }
             
             if fetchAttempts >= maxFetchAttempts && m_lastFilteredTransactions.count == 0 {
@@ -1262,10 +1280,10 @@ class SchwabClient
             }
         }
         else {
-            print( "  !!!! getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
+            print( "  -- getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
         }
         // return the transactionlist where the symbol matches what is provided
-        print( " --- getTransactionsFor returning \(m_lastFilteredTransactions.count) transactions -- " )
+        print( " --- getTransactionsFor \(symbol ?? "nil")  returning \(m_lastFilteredTransactions.count) transactions -- " )
         return m_lastFilteredTransactions
     } // getTransactionsFor
     
@@ -1513,11 +1531,12 @@ class SchwabClient
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
      */
     public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
+        let debug : Bool = false
         // display the busy indicator
-        //print("🔍 computeTaxLots - Setting loading to TRUE")
+        if debug { print("🔍 computeTaxLots - Setting loading to TRUE") }
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 computeTaxLots - Setting loading to FALSE")
+            if debug { print("🔍 computeTaxLots - Setting loading to FALSE") }
             loadingDelegate?.setLoading(false)
         }
 
@@ -1559,21 +1578,20 @@ class SchwabClient
             for transaction in self.getTransactionsFor(symbol: symbol)
             where ( (transaction.type == .trade) || (transaction.type == .receiveAndDeliver))
             {
-//                print( " ***** " )
+                if debug { print( " ***** " ) }
                 for transferItem in transaction.transferItems {
                     // find transferItems where the shares, value, and cost are not 0
                     guard let numberOfShares = transferItem.amount,
-                          let marketValue = transferItem.cost,
                           let costPerShare = transferItem.price,
-                          numberOfShares != 0.0
-                            // ,
-//                          marketValue != 0.0,
-//                          costPerShare != 0.0
+                          numberOfShares != 0.0,
+                          transferItem.instrument?.symbol == symbol
                     else {
                         // log the values that caused this record to be skipped.
-                        // print( "  -- computeTaxLots() -  Skipping transferItem in transaction: \(transaction.dump())" )
+                        if debug {  print( "  -- computeTaxLots() -  Skipping transferItem in transaction: \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), \(transferItem.cost ?? 0), \(transferItem.price ?? 0)" ) }
                         continue
                     }
+                    if debug {  print( "  -- computeTaxLots() -  Processing transferItem in transaction: \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), \(transferItem.cost ?? 0), \(transferItem.price ?? 0)" ) }
+                    if debug /*&& transferItem.amount ?? 0 > 0 && transferItem.amount ?? 0 <= 0.1*/ { transaction.dump() }
 
                     let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
                     let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
@@ -1586,7 +1604,7 @@ class SchwabClient
                     
                     // Update share count
                     currentShareCount = ( (currentShareCount - numberOfShares) * 100000 ).rounded()/100000
-                    //print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare) --" )
+                    if debug { print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare), gainLossPct: \(gainLossPct), gainLossDollar: \(gainLossDollar) --" ) }
                     
                     // Add position record
                     m_lastFilteredPositionRecords.append(
@@ -1597,8 +1615,8 @@ class SchwabClient
                             quantity: numberOfShares,
                             price: lastPrice,
                             costPerShare: costPerShare,
-                            marketValue: marketValue,
-                            costBasis: costPerShare * numberOfShares
+                            marketValue: numberOfShares * lastPrice,
+                            costBasis: costPerShare * numberOfShares,
                         )
                     )
 
@@ -1639,13 +1657,21 @@ class SchwabClient
             else
             {
                 print( " -- Fetching more records (attempt \(fetchAttempts)) --" )
-                // Fetch more records if needed, but use async version
+                // Use DispatchGroup to wait for the async operation with timeout
+                let group = DispatchGroup()
+                group.enter()
+                
+                // Start the fetch operation
                 Task {
                     await self.fetchTransactionHistory()
+                    group.leave()
                 }
                 
-                // Wait a bit for the async operation to complete
-                Thread.sleep(forTimeInterval: 1.0)
+                // Wait for completion or timeout
+                let result = group.wait(timeout: .now() + m_fetchTimeout)
+                if result == .timedOut {
+                    print("   !!! fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
+                }
             }
             
         }
@@ -1660,29 +1686,28 @@ class SchwabClient
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
-        // print( "  -- computeTaxLots:  -- removing sold shares -- " )
+        if debug {  print( "  -- computeTaxLots:  -- removing sold shares -- " ) }
         for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
-                 // print( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
+                if debug {  print( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" ) }
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-                 // print( "  -- computeTaxLots:     ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" )
+                if debug {  print( "  -- computeTaxLots:     ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" ) }
                 // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
                 buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
 
                 // Process sell record
                 var remainingSellQuantity = abs(record.quantity)
-                //var matchedBuys: [SalesCalcPositionsRecord] = []
 
                 // Match sell with buys
                 while remainingSellQuantity > 0 && !buyQueue.isEmpty {
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-                     // print( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
-                     // print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+                    if debug {  print( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" ) }
+                    if debug {  print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)") }
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
@@ -1726,19 +1751,19 @@ class SchwabClient
             }
         }
         // for debugging, print the number of shares available to trade and the symbol
-         // print("  -- computeTaxLots: ********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
+        if debug { print("  -- computeTaxLots: ********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)") }
         // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
         if let summary = m_symbolsWithContracts[symbol] {
             let totalQuantity = summary.totalQuantity
             m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
             // for debugging, print the change in shares available to trade, the symbol, and the result
-             // print("  -- computeTaxLots:  change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
-             // print("  -- computeTaxLots:  result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
+            if debug { print("  -- computeTaxLots:  change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)") }
+            if debug { print("  -- computeTaxLots:  result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)") }
         }
         
 
         m_lastFilteredPositionRecords = remainingRecords
-        // print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)")
+        if debug { print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
         return m_lastFilteredPositionRecords
     } // computeTaxLots
     
@@ -1953,23 +1978,7 @@ class SchwabClient
         }
         return summary.minimumDTE
     }
-//    
-//    /**
-//     * getDTEForPosition - return the DTE for a specific position (for option positions)
-//     */
-//    public func getDTEForPosition(_ position: Position) -> Int? {
-//        // For option positions, calculate DTE directly
-//        if position.instrument?.assetType == .OPTION {
-//            return ContractInfo(position: position).dte
-//        }
-//        
-//        // For equity positions, return the minimum DTE for that symbol
-//        if let symbol = position.instrument?.symbol {
-//            return getMinimumDTEForSymbol(symbol)
-//        }
-//        
-//        return nil
-//    }
+
 
     /**
      * Calculate total shares for a transaction

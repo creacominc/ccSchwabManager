@@ -3,6 +3,7 @@ import SwiftUI
 struct SalesCalcTab: View {
     let symbol: String
     let atrValue: Double
+    let sharesAvailableForTrading: Double
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
     let geometry: GeometryProxy
@@ -24,7 +25,8 @@ struct SalesCalcTab: View {
                 symbol: symbol,
                 atrValue: atrValue,
                 taxLotData: taxLotData,
-                isLoadingTaxLots: isLoadingTaxLots
+                isLoadingTaxLots: isLoadingTaxLots,
+                sharesAvailableForTrading: sharesAvailableForTrading
                 )
             .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.45)
 
