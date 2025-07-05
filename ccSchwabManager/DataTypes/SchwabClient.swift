@@ -1177,7 +1177,25 @@ class SchwabClient
         print("Fetched \(m_transactionList.count - initialSize) transactions")
         /** @TODO:  check for efficiency here.  I think we can avoid sorting and calling setLatestTradeDate for most threads. */
         m_transactionListLock.withLock {
-            m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+            m_transactionList.sort { 
+                // First sort by newest date
+                let date1 = $0.tradeDate ?? "0000"
+                let date2 = $1.tradeDate ?? "0000"
+                
+                if date1 != date2 {
+                    return date1 > date2
+                }
+                
+                // If dates are equal, sort by total shares from least to greatest
+                let totalShares1 = $0.transferItems.reduce(0.0) { sum, item in
+                    sum + (item.amount ?? 0.0)
+                }
+                let totalShares2 = $1.transferItems.reduce(0.0) { sum, item in
+                    sum + (item.amount ?? 0.0)
+                }
+                
+                return totalShares1 < totalShares2
+            }
         }
         self.setLatestTradeDates()
     }
@@ -1908,7 +1926,25 @@ class SchwabClient
         
         // Sort and process transactions
         m_transactionListLock.withLock {
-            m_transactionList.sort { $0.tradeDate ?? "0000" > $1.tradeDate ?? "0000" }
+            m_transactionList.sort {
+                // First sort by newest date
+                let date1 = $0.tradeDate ?? "0000"
+                let date2 = $1.tradeDate ?? "0000"
+                
+                if date1 != date2 {
+                    return date1 > date2
+                }
+                
+                // If dates are equal, sort by total shares from least to greatest
+                let totalShares1 = $0.transferItems.reduce(0.0) { sum, item in
+                    sum + (item.amount ?? 0.0)
+                }
+                let totalShares2 = $1.transferItems.reduce(0.0) { sum, item in
+                    sum + (item.amount ?? 0.0)
+                }
+                
+                return totalShares1 < totalShares2
+            }
         }
         self.setLatestTradeDates()
     }
