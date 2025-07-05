@@ -1170,32 +1170,18 @@ class SchwabClient
                 }
             }
             m_transactionListLock.withLock {
-                m_transactionList.append(contentsOf: newTransactions)
+                addTransactionsWithoutSorting(newTransactions)
             }
         } // await withTaskGroup
 
         print("Fetched \(m_transactionList.count - initialSize) transactions")
-        /** @TODO:  check for efficiency here.  I think we can avoid sorting and calling setLatestTradeDate for most threads. */
+        
+        // Sort all transactions once at the end for better efficiency
+        // This is much more efficient than sorting after each batch:
+        // - Single O(n log n) sort instead of multiple sorts
+        // - Better performance for large datasets
         m_transactionListLock.withLock {
-            m_transactionList.sort { 
-                // First sort by newest date
-                let date1 = $0.tradeDate ?? "0000"
-                let date2 = $1.tradeDate ?? "0000"
-                
-                if date1 != date2 {
-                    return date1 > date2
-                }
-                
-                // If dates are equal, sort by total shares from least to greatest
-                let totalShares1 = $0.transferItems.reduce(0.0) { sum, item in
-                    sum + (item.amount ?? 0.0)
-                }
-                let totalShares2 = $1.transferItems.reduce(0.0) { sum, item in
-                    sum + (item.amount ?? 0.0)
-                }
-                
-                return totalShares1 < totalShares2
-            }
+            sortTransactions()
         }
         self.setLatestTradeDates()
     }
@@ -1907,7 +1893,7 @@ class SchwabClient
                         
                         // Add to main transaction list
                         self.m_transactionListLock.withLock {
-                            self.m_transactionList.append(contentsOf: newTransactions)
+                            self.addTransactionsWithoutSorting(newTransactions)
                         }
                     }
                 }
@@ -1924,27 +1910,12 @@ class SchwabClient
         
         print("Fetched \(m_transactionList.count - initialSize) transactions in \(quarters) quarters")
         
-        // Sort and process transactions
+        // Sort all transactions once at the end for better efficiency
+        // This is much more efficient than sorting after each batch:
+        // - Single O(n log n) sort instead of multiple sorts
+        // - Better performance for large datasets
         m_transactionListLock.withLock {
-            m_transactionList.sort {
-                // First sort by newest date
-                let date1 = $0.tradeDate ?? "0000"
-                let date2 = $1.tradeDate ?? "0000"
-                
-                if date1 != date2 {
-                    return date1 > date2
-                }
-                
-                // If dates are equal, sort by total shares from least to greatest
-                let totalShares1 = $0.transferItems.reduce(0.0) { sum, item in
-                    sum + (item.amount ?? 0.0)
-                }
-                let totalShares2 = $1.transferItems.reduce(0.0) { sum, item in
-                    sum + (item.amount ?? 0.0)
-                }
-                
-                return totalShares1 < totalShares2
-            }
+            sortTransactions()
         }
         self.setLatestTradeDates()
     }
@@ -1999,4 +1970,51 @@ class SchwabClient
 //        
 //        return nil
 //    }
+
+    /**
+     * Calculate total shares for a transaction
+     */
+    private func totalShares(for transaction: Transaction) -> Double {
+        return transaction.transferItems.lazy.reduce(0.0) { sum, item in
+            sum + (item.amount ?? 0.0)
+        }
+    }
+
+    /**
+     * Sort transactions by date (newest first) and then by total shares (least to greatest)
+     * This method should be called within a lock on m_transactionListLock
+     */
+    private func sortTransactions() {
+        // Early exit if no transactions to sort
+        guard !m_transactionList.isEmpty else { return }
+        
+        m_transactionList.sort { 
+            // First sort by newest date
+            let date1 = $0.tradeDate ?? "0000"
+            let date2 = $1.tradeDate ?? "0000"
+            
+            if date1 != date2 {
+                return date1 > date2
+            }
+            
+            // If dates are equal, sort by total shares from least to greatest
+            let totalShares1 = totalShares(for: $0)
+            let totalShares2 = totalShares(for: $1)
+            
+            return totalShares1 < totalShares2
+        }
+    }
+
+    /**
+     * Add new transactions to the list without sorting
+     * This method should be called within a lock on m_transactionListLock
+     * Use this for bulk additions where sorting will be done at the end
+     */
+    private func addTransactionsWithoutSorting(_ newTransactions: [Transaction]) {
+        guard !newTransactions.isEmpty else { return }
+        m_transactionList.append(contentsOf: newTransactions)
+    }
+
+
+
 } // SchwabClient
