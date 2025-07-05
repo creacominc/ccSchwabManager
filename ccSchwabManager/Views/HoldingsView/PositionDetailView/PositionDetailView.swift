@@ -53,6 +53,7 @@ struct PositionDetailView: View {
             
             // Fetch tax lot data as part of the main data fetch
             taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol)
+            // print( "   ---- fetched \(taxLotData.count) tax lots for symbol \(symbol)" )
         }
         
         isLoadingPriceHistory = false

@@ -181,14 +181,14 @@ class SchwabClient
             if let positions = account.securitiesAccount?.positions {
                 for position in positions {
                     if position.instrument?.symbol == symbol {
-                        shareCount = ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0))
-                        print("Found position with \(shareCount) shares")
-                        return shareCount
+                        shareCount += ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0))
+                        // break out of the inner loop and continue with accounts.
+                        break
                     }
                 }
             }
         }
-        print("No position found for \(symbol)")
+        // print( "  -- getShareCount: returning \(shareCount) shares for symbol \(symbol)" )
         return shareCount
     }
 
@@ -1217,14 +1217,14 @@ class SchwabClient
             m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
             m_lastFilteredTransactionSharesAvailableToTrade = 0.0
-//            print( "    ==== getTransactionsFor   !!!!! cleared filtered transactions" )
+            // print( "    ==== getTransactionsFor   !!!!! cleared filtered transactions" )
             // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
             m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                 // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
                 let matches = transaction.transferItems.contains { $0.instrument?.symbol == symbol }
                 return matches // return from closure, not from the method
             }
-//            print("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
+            // print("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  Quarter: \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
 
             // Fetch more records if needed, but with proper termination conditions
             var fetchAttempts = 0
@@ -1602,11 +1602,11 @@ class SchwabClient
 
                 // break if we find zero
                 if isNearZero( currentShareCount ) {
-                    print( " -- Found zero -- " )
+                    print( "  -- computeTaxLots:  -- Found zero -- " )
                     break
                 }
                 else if ( 0 > currentShareCount ) {
-//                    print( " -- Negative share count --" )
+                    print( "  -- computeTaxLots:  -- Negative share count --" )
                     break
                 }
 
@@ -1614,12 +1614,12 @@ class SchwabClient
             
             // Break if we've found zero shares or reached max quarters
             if ( isNearZero(currentShareCount) ) {
-                print( " -- found near zero --  currentShareCount = \(currentShareCount)" )
+                print( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
                 break
             }
             else if ( 0 > currentShareCount ) {
                 showIncompleteDataWarning = true
-//                print( " -- Negative share count --" )
+                print( "  -- computeTaxLots:  -- Negative share count --" )
                 break
             }
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
@@ -1656,15 +1656,15 @@ class SchwabClient
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
-        //print( " -- removing sold shares -- " )
+        // print( "  -- computeTaxLots:  -- removing sold shares -- " )
         for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
-                // print( "    ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
+                 // print( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" )
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-                // print( "    ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" )
+                 // print( "  -- computeTaxLots:     ----   processing sell.  queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" )
                 // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
                 buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
 
@@ -1677,8 +1677,8 @@ class SchwabClient
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-                    // print( "        remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
-                    // print( "        !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+                     // print( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" )
+                     // print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
@@ -1722,19 +1722,19 @@ class SchwabClient
             }
         }
         // for debugging, print the number of shares available to trade and the symbol
-        // print("********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
+         // print("  -- computeTaxLots: ********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)")
         // if this symbol has contracts in the m_symbolsWithContracts map, subtract 100 * the number of contracts from the shares availabe to trade.
         if let summary = m_symbolsWithContracts[symbol] {
             let totalQuantity = summary.totalQuantity
             m_lastFilteredTransactionSharesAvailableToTrade = (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) - (totalQuantity * 100.0)
             // for debugging, print the change in shares available to trade, the symbol, and the result
-            // print("! change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
-            // print("! result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
+             // print("  -- computeTaxLots:  change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)")
+             // print("  -- computeTaxLots:  result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)")
         }
         
 
         m_lastFilteredPositionRecords = remainingRecords
-        print("! returning \(m_lastFilteredPositionRecords.count) records")
+        // print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)")
         return m_lastFilteredPositionRecords
     } // computeTaxLots
     
