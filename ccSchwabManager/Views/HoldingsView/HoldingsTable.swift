@@ -148,7 +148,9 @@ private struct TableRow: View {
     }
     
     private var orderStatusText: String {
-        return orderStatus?.shortDisplayName ?? "None"
+        let text = orderStatus?.shortDisplayName ?? "None"
+        print("[HoldingsTable] Symbol: \(position.instrument?.symbol ?? "") shows order status: \(text) (\(orderStatus?.rawValue ?? "nil"))")
+        return text
     }
     
     private var orderStatusColor: Color {

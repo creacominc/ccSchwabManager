@@ -64,6 +64,15 @@ struct PositionDetailContent: View {
                         geometry: geometry,
                     )
                     .tag(2)
+                    
+                    OrderTab(
+                        symbol: symbol,
+                        atrValue: atrValue,
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        taxLotData: taxLotData,
+                        geometry: geometry
+                    )
+                    .tag(3)
                 }
                 .onAppear {
                     viewSize = geometry.size

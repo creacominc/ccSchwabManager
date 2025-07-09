@@ -91,6 +91,8 @@ class Order: Codable, Identifiable
     public var priceLinkBasis: PriceLinkBasis?
     //    priceLinkType    priceLinkType[...]
     public var priceLinkType: PriceLinkType?
+    //    priceOffset    [...]
+    public var priceOffset: Double?
     //    price    [...]
     public var price: Double?
     //    taxLotMethod    taxLotMethod[...]
@@ -141,6 +143,7 @@ class Order: Codable, Identifiable
         case stopType
         case priceLinkBasis
         case priceLinkType
+        case priceOffset
         case price
         case taxLotMethod
         case orderLegCollection
@@ -162,7 +165,7 @@ class Order: Codable, Identifiable
     }
     
 
-    public init(session: SessionType? = nil, duration: DurationType? = nil, orderType: OrderType? = nil, cancelTime: Date? = nil, complexOrderStrategyType: ComplexOrderStrategyType? = nil, quantity: Double? = nil, filledQuantity: Double? = nil, remainingQuantity: Double? = nil, requestedDestination: RequestedDestinationType? = nil, destinationLinkName: String? = nil, releaseTime: String? = nil, stopPrice: Double? = nil, stopPriceLinkBasis: PriceLinkBasis? = nil, stopPriceLinkType: PriceLinkType? = nil, stopPriceOffset: Double? = nil, stopType: StopType? = nil, priceLinkBasis: PriceLinkBasis? = nil, priceLinkType: PriceLinkType? = nil, price: Double? = nil, taxLotMethod: TaxLotMethod? = nil, orderLegCollection: [OrderLegCollection]? = nil, activationPrice: Double? = nil, specialInstruction: SpecialInstruction? = nil, orderStrategyType: OrderStrategyType? = nil, orderId: Int64? = nil, cancelable: Bool? = nil, editable: Bool? = nil, status: OrderStatus? = nil, enteredTime: String? = nil, closeTime: String? = nil, tag: String? = nil, accountNumber: Int64? = nil, orderActivityCollection: [OrderActivity]? = nil, childOrderStrategies: [Order]? = nil, statusDescription: String? = nil) {
+    public init(session: SessionType? = nil, duration: DurationType? = nil, orderType: OrderType? = nil, cancelTime: Date? = nil, complexOrderStrategyType: ComplexOrderStrategyType? = nil, quantity: Double? = nil, filledQuantity: Double? = nil, remainingQuantity: Double? = nil, requestedDestination: RequestedDestinationType? = nil, destinationLinkName: String? = nil, releaseTime: String? = nil, stopPrice: Double? = nil, stopPriceLinkBasis: PriceLinkBasis? = nil, stopPriceLinkType: PriceLinkType? = nil, stopPriceOffset: Double? = nil, stopType: StopType? = nil, priceLinkBasis: PriceLinkBasis? = nil, priceLinkType: PriceLinkType? = nil, priceOffset: Double? = nil, price: Double? = nil, taxLotMethod: TaxLotMethod? = nil, orderLegCollection: [OrderLegCollection]? = nil, activationPrice: Double? = nil, specialInstruction: SpecialInstruction? = nil, orderStrategyType: OrderStrategyType? = nil, orderId: Int64? = nil, cancelable: Bool? = nil, editable: Bool? = nil, status: OrderStatus? = nil, enteredTime: String? = nil, closeTime: String? = nil, tag: String? = nil, accountNumber: Int64? = nil, orderActivityCollection: [OrderActivity]? = nil, childOrderStrategies: [Order]? = nil, statusDescription: String? = nil) {
         self.session = session
         self.duration = duration
         self.orderType = orderType
@@ -181,6 +184,7 @@ class Order: Codable, Identifiable
         self.stopType = stopType
         self.priceLinkBasis = priceLinkBasis
         self.priceLinkType = priceLinkType
+        self.priceOffset = priceOffset
         self.price = price
         self.taxLotMethod = taxLotMethod
         self.orderLegCollection = orderLegCollection

@@ -1445,7 +1445,96 @@ class SchwabClient
                             }
                             
                             let decoder = JSONDecoder()
-                            return try decoder.decode([Order].self, from: data)
+                            let orders = try decoder.decode([Order].self, from: data)
+                            
+                            // Add detailed logging for PH symbol orders
+                            for order in orders {
+                                // Check if this order contains PH symbol
+                                var hasPHSymbol = false
+                                var phSymbolDetails: [String] = []
+                                
+                                // Check main order legs
+                                if let orderLegs = order.orderLegCollection {
+                                    for leg in orderLegs {
+                                        if let symbol = leg.instrument?.symbol, symbol == "PH" {
+                                            hasPHSymbol = true
+                                            phSymbolDetails.append("Main leg: \(symbol) - \(leg.instrument?.description ?? "No description")")
+                                        }
+                                    }
+                                }
+                                
+                                // Check child order strategies
+                                if let childOrders = order.childOrderStrategies {
+                                    for childOrder in childOrders {
+                                        if let childLegs = childOrder.orderLegCollection {
+                                            for leg in childLegs {
+                                                if let symbol = leg.instrument?.symbol, symbol == "PH" {
+                                                    hasPHSymbol = true
+                                                    phSymbolDetails.append("Child leg: \(symbol) - \(leg.instrument?.description ?? "No description")")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if hasPHSymbol {
+                                    print("🔍 PH ORDER FOUND:")
+                                    print("  Order ID: \(order.orderId ?? -1)")
+                                    print("  Status: \(order.status?.rawValue ?? "unknown")")
+                                    print("  Status Description: \(order.statusDescription ?? "none")")
+                                    print("  Order Type: \(order.orderType?.rawValue ?? "unknown")")
+                                    print("  Strategy Type: \(order.orderStrategyType?.rawValue ?? "unknown")")
+                                    print("  Quantity: \(order.quantity ?? 0)")
+                                    print("  Filled Quantity: \(order.filledQuantity ?? 0)")
+                                    print("  Remaining Quantity: \(order.remainingQuantity ?? 0)")
+                                    print("  Price: \(order.price ?? 0)")
+                                    print("  Release Time: \(order.releaseTime ?? "none")")
+                                    print("  Entered Time: \(order.enteredTime ?? "none")")
+                                    print("  Close Time: \(order.closeTime ?? "none")")
+                                    print("  Cancelable: \(order.cancelable ?? false)")
+                                    print("  Editable: \(order.editable ?? false)")
+                                    print("  Account Number: \(order.accountNumber ?? -1)")
+                                    print("  PH Symbol Details:")
+                                    for detail in phSymbolDetails {
+                                        print("    \(detail)")
+                                    }
+                                    
+                                    // Log order leg details for PH
+                                    if let orderLegs = order.orderLegCollection {
+                                        print("  Order Legs:")
+                                        for (index, leg) in orderLegs.enumerated() {
+                                            print("    Leg \(index):")
+                                            print("      Type: \(leg.orderLegType?.rawValue ?? "unknown")")
+                                            print("      Instruction: \(leg.instruction?.rawValue ?? "unknown")")
+                                            print("      Quantity: \(leg.quantity ?? 0)")
+                                            print("      Symbol: \(leg.instrument?.symbol ?? "none")")
+                                            print("      Description: \(leg.instrument?.description ?? "none")")
+                                            print("      Asset Type: \(leg.instrument?.assetType?.rawValue ?? "unknown")")
+                                        }
+                                    }
+                                    
+                                    // Log child order details
+                                    if let childOrders = order.childOrderStrategies {
+                                        print("  Child Orders:")
+                                        for (index, childOrder) in childOrders.enumerated() {
+                                            print("    Child \(index):")
+                                            print("      Status: \(childOrder.status?.rawValue ?? "unknown")")
+                                            print("      Order Type: \(childOrder.orderType?.rawValue ?? "unknown")")
+                                            print("      Quantity: \(childOrder.quantity ?? 0)")
+                                            print("      Price: \(childOrder.price ?? 0)")
+                                            if let childLegs = childOrder.orderLegCollection {
+                                                for (legIndex, leg) in childLegs.enumerated() {
+                                                    print("        Leg \(legIndex): \(leg.instrument?.symbol ?? "none") - \(leg.quantity ?? 0)")
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    print("  --- END PH ORDER ---")
+                                }
+                            }
+
+                            return orders
                         } catch {
                             print("fetchOrderHistory Error: \(error.localizedDescription)")
                             print("   detail:  \(error)")
@@ -1458,12 +1547,31 @@ class SchwabClient
             // Collect results from all tasks
             for await orders in group {
                 if let orders = orders {
+                    print("Adding \(orders.count) orders from status query")
+                    for order in orders {
+                        if let orderId = order.orderId {
+                            print("  Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
+                        }
+                    }
                     m_orderList.append(contentsOf: orders)
                 }
             } // append orders
         } // await
         
         print("Fetched \(m_orderList.count) orders for all accounts")
+        
+        // Deduplicate orders by orderId to ensure uniqueness
+        let uniqueOrders = Dictionary(grouping: m_orderList, by: { $0.orderId })
+            .compactMap { (orderId, orders) in
+                // If there are multiple orders with the same ID, take the first one
+                // This could happen if the same order appears in multiple status queries
+                guard let orderId = orderId else { return orders.first }
+                print("Found \(orders.count) orders with ID \(orderId), keeping first one")
+                return orders.first
+            }
+        
+        m_orderList = uniqueOrders
+        print("After deduplication: \(m_orderList.count) unique orders")
         
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
         for order in m_orderList {
@@ -1537,6 +1645,29 @@ class SchwabClient
     {
         guard let symbol = symbol else { return nil }
         return m_symbolsWithOrders[symbol]?.first
+    }
+    
+    /**
+     * getOrderList - return all orders
+     */
+    public func getOrderList() -> [Order]
+    {
+        print("[SchwabClient] getOrderList() called, returning \(m_orderList.count) orders")
+        
+        // Debug: Print all order IDs to check for duplicates
+        let orderIds = m_orderList.compactMap { $0.orderId }
+        let uniqueOrderIds = Set(orderIds)
+        print("[SchwabClient] Total order IDs: \(orderIds.count), Unique order IDs: \(uniqueOrderIds.count)")
+        
+        if orderIds.count != uniqueOrderIds.count {
+            print("[SchwabClient] WARNING: Found duplicate order IDs!")
+            let duplicates = Dictionary(grouping: orderIds, by: { $0 })
+                .filter { $0.value.count > 1 }
+                .map { $0.key }
+            print("[SchwabClient] Duplicate order IDs: \(duplicates)")
+        }
+        
+        return m_orderList
     }
     
     /**
