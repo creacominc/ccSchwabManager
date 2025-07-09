@@ -35,7 +35,8 @@ public class OrderStatusFormatter {
             }
             
             if !openChildDescriptions.isEmpty {
-                return openChildDescriptions.joined(separator: " OR ")
+                // Return the first open child order description (individual orders will be handled separately)
+                return openChildDescriptions.first ?? "OCO Order - No open child orders"
             } else {
                 return "OCO Order - All child orders closed"
             }

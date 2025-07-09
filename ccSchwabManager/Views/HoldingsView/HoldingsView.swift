@@ -168,8 +168,9 @@ struct HoldingsView: View {
                 let secondOrderStatus = orderStatusCache[secondSymbol] ?? nil
                 
                 // Sort by priority (lower number = higher priority)
-                let firstPriority = firstOrderStatus?.priority ?? Int.max
-                let secondPriority = secondOrderStatus?.priority ?? Int.max
+                // None (nil) gets priority 0 (highest), Stop/S gets priority 2
+                let firstPriority = firstOrderStatus?.priority ?? 0
+                let secondPriority = secondOrderStatus?.priority ?? 0
                 
                 return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
             case .dte:
