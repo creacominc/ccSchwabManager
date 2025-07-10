@@ -171,9 +171,16 @@ struct OrderGroupView: View {
         var orders: [Order] = []
         
         func collectOrdersRecursively(_ order: Order) {
-            // Add the current order if it's open
+            // Add the current order if it's open and has order legs (or is not an OCO parent)
             if let status = order.status, openStatuses.contains(status) {
-                orders.append(order)
+                // For OCO parent orders, only add if they have order legs
+                if order.orderStrategyType == .OCO {
+                    if let orderLegs = order.orderLegCollection, !orderLegs.isEmpty {
+                        orders.append(order)
+                    }
+                } else {
+                    orders.append(order)
+                }
             }
             // Recursively add child orders for TRIGGER and OCO
             if let childStrategies = order.childOrderStrategies, !childStrategies.isEmpty {
@@ -367,9 +374,7 @@ struct OrderDetailRow: View {
         }
         
         // 10. Cancel Time
-        if let cancelTime = order.cancelTime as? String {
-            description += " CANCEL AT \(formatReleaseTime(cancelTime))"
-        } else if let cancelTimeDate = order.cancelTime {
+        if let cancelTimeDate = order.cancelTime {
             let formatter = ISO8601DateFormatter()
             let cancelTimeString = formatter.string(from: cancelTimeDate)
             description += " CANCEL AT \(formatReleaseTime(cancelTimeString))"

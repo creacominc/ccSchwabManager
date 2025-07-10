@@ -31,6 +31,7 @@ struct OrderTab: View {
                 RecommendedBuyOrdersSection()
                     .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.25)
             }
+            .padding(.vertical, 16)
         }
         .tabItem {
             Label("Orders", systemImage: "list.clipboard")
