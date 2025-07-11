@@ -4,8 +4,8 @@ import PackageDescription
 let package = Package(
     name: "ccSchwabManager",
     platforms: [
-        .macOS(.v13), // Latest stable macOS version
-        .iOS(.v16)    // Latest stable iOS version
+        .macOS(.v14), // Latest supported macOS version in SPM
+        .iOS(.v17)    // Latest supported iOS version in SPM
     ],
     products: [
         .executable(
