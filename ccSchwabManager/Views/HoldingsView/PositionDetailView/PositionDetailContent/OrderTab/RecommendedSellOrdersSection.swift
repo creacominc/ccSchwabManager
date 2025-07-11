@@ -80,51 +80,135 @@ struct RecommendedSellOrdersSection: View {
         var rollingGain: Double = 0.0
         var totalShares: Double = 0.0
         var totalCost: Double = 0.0
-
-        for taxLot in taxLots.sorted(by: { $0.costBasis / $0.quantity > $1.costBasis / $1.quantity }) {
-            totalShares += taxLot.quantity
-            totalCost += taxLot.costBasis
-            rollingGain += taxLot.gainLossDollar
-            // price per share at which we would break even
-            let costPerShare: Double = totalCost / totalShares
-            // the sale exit (cancel sale) at 3% above the costPerShare
-            let hardExitPrice: Double = costPerShare * ( 1.03 )
-            // set the target sell price to be 2% of the cost above the exit.
-            let targetSellPrice: Double = hardExitPrice + (costPerShare * (0.02 + (atrValue/200)) )
-
-            // if the current price (taxLot.price) is less than 1 ATR above the exit, skip this
-            if( taxLot.price < targetSellPrice ) {
+        
+        // Sort tax lots by cost per share (highest first)
+        let sortedTaxLots = taxLots.sorted(by: { $0.costBasis / $0.quantity > $1.costBasis / $1.quantity })
+        
+        // Process each tax lot, checking if we need to split at the break-even point
+        for (index, taxLot) in sortedTaxLots.enumerated() {
+            let potentialTotalShares = totalShares + taxLot.quantity
+            let potentialTotalCost = totalCost + taxLot.costBasis
+            let potentialCostPerShare = potentialTotalCost / potentialTotalShares
+            
+            // Target price for 5% profit
+            let targetPrice = potentialCostPerShare * 1.05
+            
+            // Check if current price meets the 5% profit target
+            if taxLot.price >= targetPrice {
+                // Add full tax lot
+                totalShares = potentialTotalShares
+                totalCost = potentialTotalCost
+                rollingGain += taxLot.gainLossDollar
+                
+                // Calculate sale parameters with the full lot
+                let costPerShare = totalCost / totalShares
+                let hardExitPrice = costPerShare * 1.03
+                let targetSellPrice = hardExitPrice + (costPerShare * (0.02 + (atrValue/200)))
+                
+                if taxLot.price >= targetSellPrice {
+                    let entryPrice = (taxLot.price + targetSellPrice) / 2.0
+                    let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
+                    let gain = ((targetSellPrice - costPerShare) / costPerShare) * 100.0
+                    
+                    if trailingStopPercent >= 1.0 {
+                        let result = SalesCalcResultsRecord(
+                            shares: totalShares,
+                            rollingGainLoss: rollingGain,
+                            breakEven: costPerShare,
+                            gain: gain,
+                            sharesToSell: totalShares,
+                            trailingStop: trailingStopPercent,
+                            entry: entryPrice,
+                            cancel: hardExitPrice,
+                            description: String(format: "Sell %.0f shares TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f", totalShares, trailingStopPercent, entryPrice, hardExitPrice),
+                            openDate: taxLot.openDate
+                        )
+                        results.append(result)
+                    }
+                }
+            } else {
+                // This tax lot would bring us below the 5% profit target
+                // Calculate how many shares we need from this lot to achieve exactly 5% profit
+                let sharesNeededForBreakeven = calculateSharesForBreakeven(
+                    existingShares: totalShares,
+                    existingCost: totalCost,
+                    newLotCostPerShare: taxLot.costPerShare,
+                    targetProfitPercent: 0.05,
+                    currentPrice: taxLot.price
+                )
+                
+                if sharesNeededForBreakeven > 0 && sharesNeededForBreakeven <= taxLot.quantity {
+                    // Split the tax lot
+                    let splitShares = sharesNeededForBreakeven
+                    let splitCost = splitShares * taxLot.costPerShare
+                    let splitGainLoss = (taxLot.price - taxLot.costPerShare) * splitShares
+                    
+                    let finalTotalShares = totalShares + splitShares
+                    let finalTotalCost = totalCost + splitCost
+                    let finalRollingGain = rollingGain + splitGainLoss
+                    
+                    // Calculate sale parameters for the split
+                    let costPerShare = finalTotalCost / finalTotalShares
+                    let hardExitPrice = costPerShare * 1.03
+                    let targetSellPrice = hardExitPrice + (costPerShare * (0.02 + (atrValue/200)))
+                    
+                    if taxLot.price >= targetSellPrice {
+                        let entryPrice = (taxLot.price + targetSellPrice) / 2.0
+                        let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
+                        let gain = ((targetSellPrice - costPerShare) / costPerShare) * 100.0
+                        
+                        if trailingStopPercent >= 1.0 {
+                            let result = SalesCalcResultsRecord(
+                                shares: finalTotalShares,
+                                rollingGainLoss: finalRollingGain,
+                                breakEven: costPerShare,
+                                gain: gain,
+                                sharesToSell: finalTotalShares,
+                                trailingStop: trailingStopPercent,
+                                entry: entryPrice,
+                                cancel: hardExitPrice,
+                                description: String(format: "Sell %.0f shares (%.0f split from lot) TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f", finalTotalShares, splitShares, trailingStopPercent, entryPrice, hardExitPrice),
+                                openDate: taxLot.openDate
+                            )
+                            results.append(result)
+                        }
+                    }
+                    
+                    // Update running totals with the split portion
+                    totalShares = finalTotalShares
+                    totalCost = finalTotalCost
+                    rollingGain = finalRollingGain
+                }
+                
+                // Continue to next tax lot without adding this one fully
                 continue
             }
-
-            // sell entry is half way between the target price and the current price
-            let entryPrice = (taxLot.price + targetSellPrice) / 2.0
-            // trailing stop % is the amount between the entry and target over the entry price
-            let trailingStopPercent: Double = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
-            // percent gain at target sell price compared to cost
-            let gain: Double = ((targetSellPrice - costPerShare) / costPerShare)*100.0
-
-            // skip if the trailing stop is less than 1%
-            if( trailingStopPercent < 1.0 ) {
-                continue
-            }
-
-            let result: SalesCalcResultsRecord = SalesCalcResultsRecord(
-                shares: totalShares,
-                rollingGainLoss: rollingGain,
-                breakEven: costPerShare,
-                gain: gain,
-                sharesToSell: totalShares,
-                trailingStop: trailingStopPercent,
-                entry: entryPrice,
-                cancel: hardExitPrice,
-                description: String(format: "Sell %.0f shares TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f"
-                                    , totalShares, trailingStopPercent, entryPrice, hardExitPrice),
-                openDate: taxLot.openDate
-            )
-            results.append(result)
         }
+        
         return results
+    }
+    
+    // Helper method to calculate shares needed for break-even
+    private func calculateSharesForBreakeven(existingShares: Double, existingCost: Double, newLotCostPerShare: Double, targetProfitPercent: Double, currentPrice: Double) -> Double {
+        // We want to find n such that:
+        // (existingCost + n * newLotCostPerShare) / (existingShares + n) = currentPrice / (1 + targetProfitPercent)
+        
+        let targetCostPerShare = currentPrice / (1 + targetProfitPercent)
+        
+        // Solve: (existingCost + n * newLotCostPerShare) = targetCostPerShare * (existingShares + n)
+        // existingCost + n * newLotCostPerShare = targetCostPerShare * existingShares + targetCostPerShare * n
+        // existingCost - targetCostPerShare * existingShares = targetCostPerShare * n - n * newLotCostPerShare
+        // existingCost - targetCostPerShare * existingShares = n * (targetCostPerShare - newLotCostPerShare)
+        
+        let numerator = existingCost - (targetCostPerShare * existingShares)
+        let denominator = targetCostPerShare - newLotCostPerShare
+        
+        if abs(denominator) < 0.001 {
+            return 0 // Avoid division by zero
+        }
+        
+        let sharesNeeded = numerator / denominator
+        return max(0, sharesNeeded) // Return 0 if negative
     }
     
     private func getOrderColor(for result: SalesCalcResultsRecord) -> Color {
