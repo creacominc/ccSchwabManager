@@ -10,26 +10,13 @@ struct SalesCalcTab: View {
 
     var body: some View {
         ScrollView {
-
             SalesCalcView(
                 symbol: symbol,
                 atrValue: atrValue,
                 taxLotData: taxLotData,
                 isLoadingTaxLots: isLoadingTaxLots
             )
-            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.45)
-
-            Divider()
-
-            SellListView(
-                symbol: symbol,
-                atrValue: atrValue,
-                taxLotData: taxLotData,
-                isLoadingTaxLots: isLoadingTaxLots,
-                sharesAvailableForTrading: sharesAvailableForTrading
-                )
-            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.45)
-
+            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.9)
         }
         .tabItem {
             Label("Sales Calc", systemImage: "calculator")

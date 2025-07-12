@@ -23,56 +23,11 @@ struct RecommendedSellOrdersSection: View {
     }
     
     private func calculateRecommendedSellOrders() -> [SalesCalcResultsRecord] {
-        let results = getResults(taxLots: taxLotData)
-        
-        // Find the first green (trailing stop >= 5.0), first white (trailing stop < 5.0 but > atrValue), and last yellow (trailing stop <= atrValue)
-        var greenOrders: [SalesCalcResultsRecord] = []
-        var whiteOrders: [SalesCalcResultsRecord] = []
-        var yellowOrders: [SalesCalcResultsRecord] = []
-        
-        for result in results {
-            if result.sharesToSell > sharesAvailableForTrading {
-                // Red orders (insufficient shares) - skip
-                continue
-            } else if result.trailingStop >= 5.0 {
-                greenOrders.append(result)
-            } else if result.trailingStop > atrValue {
-                whiteOrders.append(result)
-            } else {
-                yellowOrders.append(result)
-            }
-        }
-        
         var recommended: [SalesCalcResultsRecord] = []
-        
-        // Add first green order
-        if let firstGreen = greenOrders.first {
-            recommended.append(firstGreen)
-        }
-        
-        // Add first white order
-        if let firstWhite = whiteOrders.first {
-            recommended.append(firstWhite)
-        }
-        
-        // Add last yellow order
-        if let lastYellow = yellowOrders.last {
-            recommended.append(lastYellow)
-        }
-        
-        // Add new special orders
-        let specialOrders = calculateSpecialOrders()
-        recommended.append(contentsOf: specialOrders)
-        
-        return recommended
-    }
-    
-    private func calculateSpecialOrders() -> [SalesCalcResultsRecord] {
-        var specialOrders: [SalesCalcResultsRecord] = []
         
         // Get current price from the first tax lot (they all have the same current price)
         guard let currentPrice = taxLotData.first?.price, currentPrice > 0 else {
-            return specialOrders
+            return recommended
         }
         
         // Sort tax lots by cost per share (highest first)
@@ -81,16 +36,29 @@ struct RecommendedSellOrdersSection: View {
         // Order 0: Sell top 100 most expensive shares if profitable
         let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
         if let order = top100Order {
-            specialOrders.append(order)
+            recommended.append(order)
         }
         
         // Order 1: Minimum shares needed for 5% profit
         let minSharesOrder = calculateMinSharesFor5PercentProfit(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
         if let order = minSharesOrder {
-            specialOrders.append(order)
+            recommended.append(order)
         }
         
-        return specialOrders
+        return recommended
+    }
+    
+    private func formatReleaseTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = 9
+        components.minute = 40
+        components.second = 0
+        
+        let targetDate = calendar.date(from: components) ?? date
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d/yy HH:mm:ss"
+        return formatter.string(from: targetDate)
     }
     
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
@@ -184,6 +152,16 @@ struct RecommendedSellOrdersSection: View {
         
         print("✅ Top 100 shares order created successfully")
         
+        // Format the description to match the standard sell order format
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let formattedDescription = String(format: "(100) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
+                                        sharesToConsider,
+                                        symbol,
+                                        trailingStopPercent,
+                                        entryPrice,
+                                        hardExitPrice,
+                                        formatReleaseTime(tomorrow))
+        
         return SalesCalcResultsRecord(
             shares: sharesToConsider,
             rollingGainLoss: (currentPrice - costPerShare) * sharesToConsider,
@@ -193,8 +171,7 @@ struct RecommendedSellOrdersSection: View {
             trailingStop: trailingStopPercent,
             entry: entryPrice,
             cancel: hardExitPrice,
-            description: String(format: "🔵 Sell %.0f shares (Top 100) - Target: %.2f, Cost: %.2f, Profit: %.1f%%", 
-                              sharesToConsider, targetSellPrice, costPerShare, gain),
+            description: formattedDescription,
             openDate: "Special"
         )
     }
@@ -286,23 +263,15 @@ struct RecommendedSellOrdersSection: View {
                             print("   Entry price: $\(entryPrice), Cancel price: $\(hardExitPrice)")
                             print("   Trailing stop: \(trailingStopPercent)% (meets 2 * ATR requirement)")
                             
-                            return SalesCalcResultsRecord(
-                                shares: roundedShares,
-                                rollingGainLoss: totalGain,
-                                breakEven: costPerShare,
-                                gain: gainPercent,
-                                sharesToSell: roundedShares,
-                                trailingStop: trailingStopPercent,
-                                entry: entryPrice,
-                                cancel: hardExitPrice,
-                                description: "🔵 Min shares for 5% profit: \(Int(roundedShares)) shares @ $\(String(format: "%.2f", costPerShare)) = \(String(format: "%.1f", gainPercent))% gain",
-                                openDate: "2025-01-01"
-                            )
-                        } else if isLastLot {
-                            // This is the last lot and it's profitable but doesn't meet ATR requirement
-                            let roundedShares = ceil(sharesUsed)  // Round up to whole shares
-                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
-                            print("   Showing order in orange color")
+                            // Format the description to match the standard sell order format
+                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
+                                                            roundedShares,
+                                                            symbol,
+                                                            trailingStopPercent,
+                                                            entryPrice,
+                                                            hardExitPrice,
+                                                            formatReleaseTime(tomorrow))
                             
                             return SalesCalcResultsRecord(
                                 shares: roundedShares,
@@ -313,7 +282,35 @@ struct RecommendedSellOrdersSection: View {
                                 trailingStop: trailingStopPercent,
                                 entry: entryPrice,
                                 cancel: hardExitPrice,
-                                description: "🟠 Min shares for 5% profit (low TS): \(Int(roundedShares)) shares @ $\(String(format: "%.2f", costPerShare)) = \(String(format: "%.1f", gainPercent))% gain",
+                                description: formattedDescription,
+                                openDate: "2025-01-01"
+                            )
+                        } else if isLastLot {
+                            // This is the last lot and it's profitable but doesn't meet ATR requirement
+                            let roundedShares = ceil(sharesUsed)  // Round up to whole shares
+                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
+                            print("   Showing order in orange color")
+                            
+                            // Format the description to match the standard sell order format
+                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
+                                                            roundedShares,
+                                                            symbol,
+                                                            trailingStopPercent,
+                                                            entryPrice,
+                                                            hardExitPrice,
+                                                            formatReleaseTime(tomorrow))
+                            
+                            return SalesCalcResultsRecord(
+                                shares: roundedShares,
+                                rollingGainLoss: totalGain,
+                                breakEven: costPerShare,
+                                gain: gainPercent,
+                                sharesToSell: roundedShares,
+                                trailingStop: trailingStopPercent,
+                                entry: entryPrice,
+                                cancel: hardExitPrice,
+                                description: formattedDescription,
                                 openDate: "2025-01-01"
                             )
                         } else {
@@ -356,6 +353,16 @@ struct RecommendedSellOrdersSection: View {
                             print("   Entry price: $\(entryPrice), Cancel price: $\(hardExitPrice)")
                             print("   Trailing stop: \(trailingStopPercent)% (meets 2 * ATR requirement)")
                             
+                            // Format the description to match the standard sell order format
+                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
+                                                            roundedShares,
+                                                            symbol,
+                                                            trailingStopPercent,
+                                                            entryPrice,
+                                                            hardExitPrice,
+                                                            formatReleaseTime(tomorrow))
+                            
                             return SalesCalcResultsRecord(
                                 shares: roundedShares,
                                 rollingGainLoss: totalGain,
@@ -365,13 +372,23 @@ struct RecommendedSellOrdersSection: View {
                                 trailingStop: trailingStopPercent,
                                 entry: entryPrice,
                                 cancel: hardExitPrice,
-                                description: "🔵 Min shares for 5% profit: \(Int(roundedShares)) shares @ $\(String(format: "%.2f", costPerShare)) = \(String(format: "%.1f", gainPercent))% gain",
+                                description: formattedDescription,
                                 openDate: "2025-01-01"
                             )
                         } else if isLastLot {
                             // This is the last lot and it's profitable but doesn't meet ATR requirement
                             print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
                             print("   Showing order in orange color")
+                            
+                            // Format the description to match the standard sell order format
+                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
+                                                            sharesUsed,
+                                                            symbol,
+                                                            trailingStopPercent,
+                                                            entryPrice,
+                                                            hardExitPrice,
+                                                            formatReleaseTime(tomorrow))
                             
                             return SalesCalcResultsRecord(
                                 shares: sharesUsed,
@@ -382,7 +399,7 @@ struct RecommendedSellOrdersSection: View {
                                 trailingStop: trailingStopPercent,
                                 entry: entryPrice,
                                 cancel: hardExitPrice,
-                                description: "🟠 Min shares for 5% profit (low TS): \(sharesUsed) shares @ $\(String(format: "%.2f", costPerShare)) = \(String(format: "%.1f", gainPercent))% gain",
+                                description: formattedDescription,
                                 openDate: "2025-01-01"
                             )
                         } else {
@@ -405,250 +422,10 @@ struct RecommendedSellOrdersSection: View {
     private func checkAndUpdateSymbol() {
         if symbol != lastSymbol {
             print("Symbol changed from \(lastSymbol) to \(symbol)")
-            selectedOrderIndex = nil
             lastSymbol = symbol
+            updateRecommendedOrders()
         }
     }
-    
-    private func getResults(taxLots: [SalesCalcPositionsRecord]) -> [SalesCalcResultsRecord] {
-        var results: [SalesCalcResultsRecord] = []
-        var rollingGain: Double = 0.0
-        var totalShares: Double = 0.0
-        var totalCost: Double = 0.0
-
-        for taxLot in taxLots.sorted(by: { $0.costBasis / $0.quantity > $1.costBasis / $1.quantity }) {
-            totalShares += taxLot.quantity
-            totalCost += taxLot.costBasis
-            rollingGain += taxLot.gainLossDollar
-            // price per share at which we would break even
-            let costPerShare: Double = totalCost / totalShares
-            // the sale exit (cancel sale) at 3% above the costPerShare
-            let hardExitPrice: Double = costPerShare * ( 1.03 )
-            // set the target sell price to be 2% of the cost above the exit.
-            let targetSellPrice: Double = hardExitPrice + (costPerShare * (0.02 + (atrValue/200)) )
-
-            // if the current price (taxLot.price) is less than 1 ATR above the exit, skip this
-            if( taxLot.price < targetSellPrice ) {
-                continue
-            }
-
-            // sell entry is half way between the target price and the current price
-            let entryPrice = (taxLot.price + targetSellPrice) / 2.0
-            // trailing stop % is the amount between the entry and target over the entry price
-            let trailingStopPercent: Double = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
-            // percent gain at target sell price compared to cost
-            let gain: Double = ((targetSellPrice - costPerShare) / costPerShare)*100.0
-
-            // skip if the trailing stop is less than 1%
-            if( trailingStopPercent < 1.0 ) {
-                continue
-            }
-
-            let result: SalesCalcResultsRecord = SalesCalcResultsRecord(
-                shares: totalShares,
-                rollingGainLoss: rollingGain,
-                breakEven: costPerShare,
-                gain: gain,
-                sharesToSell: totalShares,
-                trailingStop: trailingStopPercent,
-                entry: entryPrice,
-                cancel: hardExitPrice,
-                description: String(format: "Sell %.0f shares TS=%.1f, Entry Ask < %.2f, Cancel Ask < %.2f"
-                                    , totalShares, trailingStopPercent, entryPrice, hardExitPrice),
-                openDate: taxLot.openDate
-            )
-            results.append(result)
-        }
-        return results
-    }
-    
-    private func getOrderColor(for result: SalesCalcResultsRecord) -> Color {
-        // Special handling for blue orders (top 100 shares)
-        if result.description.contains("🔵") {
-            return .blue
-        }
-        
-        // Special handling for orange orders (profitable but low trailing stop)
-        if result.description.contains("🟠") {
-            return .orange
-        }
-        
-        if result.sharesToSell > sharesAvailableForTrading {
-            return .red
-        } else if result.trailingStop <= atrValue {
-            return .yellow
-        } else if result.trailingStop < 5.0 {
-            return .white
-        } else {
-            return .green
-        }
-    }
-    
-    private func submitSelectedOrder() {
-        guard let selectedIndex = selectedOrderIndex else {
-            print("No order selected for submission")
-            return
-        }
-        
-        guard selectedIndex < currentRecommendedSellOrders.count else {
-            print("Selected order index out of bounds")
-            return
-        }
-        
-        let selectedOrder = currentRecommendedSellOrders[selectedIndex]
-        
-        // TODO: Implement order submission logic
-        print("Submitting sell order: \(selectedOrder.description)")
-    }
-    
-        var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            headerView
-            
-            if currentRecommendedSellOrders.isEmpty {
-                emptyStateView
-            } else {
-                ordersContentView
-            }
-        }
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(8)
-        .onAppear {
-            print("RecommendedSellOrdersSection appeared for symbol: \(symbol)")
-            checkAndUpdateSymbol()
-        }
-    }
-    
-    private var headerView: some View {
-        Text("Recommended Sell Orders")
-            .font(.headline)
-            .padding(.horizontal)
-            .onAppear {
-                print("RecommendedSellOrdersSection appeared, selectedOrderIndex: \(selectedOrderIndex?.description ?? "nil")")
-                updateRecommendedOrders()
-            }
-    }
-    
-    private var emptyStateView: some View {
-        Text("No recommended sell orders for \(symbol)")
-            .foregroundColor(.secondary)
-            .padding()
-    }
-    
-    private var ordersContentView: some View {
-        HStack(alignment: .top, spacing: 16) {
-            ordersListView
-            submitButtonView
-        }
-    }
-    
-    private var ordersListView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            headerRowView
-            ordersScrollView
-        }
-        .frame(maxWidth: .infinity)
-    }
-    
-    private var headerRowView: some View {
-        HStack(spacing: 8) {
-            Text("Select")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 50, alignment: .center)
-            
-            Text("Rolling Gain/Loss")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 80, alignment: .trailing)
-            
-            Text("Breakeven")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 70, alignment: .trailing)
-            
-            Text("Shares to Sell")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 80, alignment: .trailing)
-            
-            Text("Gain")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 60, alignment: .trailing)
-            
-            Text("TS")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 50, alignment: .trailing)
-            
-            Text("Entry")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 60, alignment: .trailing)
-            
-            Text("Cancel")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 60, alignment: .trailing)
-            
-            Text("Description")
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 200, alignment: .leading)
-            
-            Spacer()
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 4)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(4)
-    }
-    
-    private var ordersScrollView: some View {
-        ScrollView {
-            LazyVStack(spacing: 4) {
-                ForEach(Array(currentRecommendedSellOrders.enumerated()), id: \.element.id) { index, order in
-                    let isSelected = selectedOrderIndex == index
-                    RecommendedSellOrderRow(
-                        order: order, 
-                        color: getOrderColor(for: order),
-                        isSelected: isSelected,
-                        onSelectionChanged: { selectedIndex in
-                            print("Selection changed to index: \(selectedIndex?.description ?? "nil")")
-                            selectedOrderIndex = selectedIndex
-                        },
-                        orderIndex: index,
-                        copiedValue: $copiedValue
-                    )
-                }
-            }
-            .padding(.horizontal)
-        }
-    }
-    
-    @ViewBuilder
-    private var submitButtonView: some View {
-        if selectedOrderIndex != nil {
-            VStack {
-                Button(action: submitSelectedOrder) {
-                    VStack {
-                        Image(systemName: "paperplane.circle.fill")
-                            .font(.title2)
-                        Text("Submit\nOrder")
-                            .font(.caption)
-                            .multilineTextAlignment(.center)
-                    }
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(8)
-                }
-                Spacer()
-            }
-            .padding(.trailing, 8)
-        }
-    }
-}
-
-struct RecommendedSellOrderRow: View {
-    let order: SalesCalcResultsRecord
-    let color: Color
-    let isSelected: Bool
-    let onSelectionChanged: (Int?) -> Void
-    let orderIndex: Int
-    @Binding var copiedValue: String
     
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
@@ -673,80 +450,140 @@ struct RecommendedSellOrderRow: View {
 #endif
     }
     
-    var body: some View {
-        HStack(spacing: 8) {
-            // Radio button
-            Button(action: {
-                print("Radio button tapped for order index: \(orderIndex), currently selected: \(isSelected)")
-                onSelectionChanged(isSelected ? nil : orderIndex)
-            }) {
-                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(isSelected ? .blue : .gray)
-                    .font(.system(size: 20))
-            }
-            .buttonStyle(PlainButtonStyle())
-            .frame(width: 50, alignment: .center)
-            
-            Text(String(format: "%.2f", order.rollingGainLoss))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 80, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.rollingGainLoss, format: "%.2f") }
-                .foregroundColor(color)
-            
-            Text(String(format: "%.2f", order.breakEven))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 70, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.breakEven, format: "%.2f") }
-                .foregroundColor(color)
-            
-            Text(String(format: "%.0f", order.sharesToSell))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 80, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.sharesToSell, format: "%.0f") }
-                .foregroundColor(color)
-            
-            Text(String(format: "%.2f%%", order.gain))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 60, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.gain, format: "%.2f") }
-                .foregroundColor(color)
-            
-            Text(String(format: "%.1f%%", order.trailingStop))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 50, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.trailingStop, format: "%.1f") }
-                .foregroundColor(color)
-            
-            Text(String(format: "%.2f", order.entry))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 60, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.entry, format: "%.2f") }
-                .foregroundColor(color)
-            
-            Text(String(format: "%.2f", order.cancel))
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 60, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture { copyToClipboard(value: order.cancel, format: "%.2f") }
-                .foregroundColor(color)
-            
-            Text(order.description)
-                .font(.system(.caption, design: .monospaced))
-                .frame(width: 200, alignment: .leading)
-                .onTapGesture { copyToClipboard(text: order.description) }
-                .foregroundColor(color)
-            
-            Spacer()
+    private func rowStyle(for item: SalesCalcResultsRecord) -> Color {
+        if item.sharesToSell > sharesAvailableForTrading {
+            return .red
+        } else if item.trailingStop <= atrValue {
+            return .orange
+        } else {
+            return .green
         }
-        .padding(.vertical, 2)
-        .padding(.horizontal, 8)
-        .background(Color.gray.opacity(0.03))
-        .cornerRadius(4)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recommended Sell Orders")
+                .font(.headline)
+                .padding(.horizontal)
+            
+            if currentRecommendedSellOrders.isEmpty {
+                Text("No recommended sell orders available")
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header row
+                        HStack {
+                            Text("Description")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            
+                            Text("Shares")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 80, alignment: .trailing)
+                            
+                            Text("Trailing Stop")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 100, alignment: .trailing)
+                            
+                            Text("Entry")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 80, alignment: .trailing)
+                            
+                            Text("Cancel")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 80, alignment: .trailing)
+                            
+                            Text("Gain %")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 80, alignment: .trailing)
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.gray.opacity(0.1))
+                        
+                        // Data rows
+                        ForEach(Array(currentRecommendedSellOrders.enumerated()), id: \.element.id) { index, item in
+                            HStack {
+                                Text(item.description)
+                                    .font(.caption)
+                                    .foregroundColor(rowStyle(for: item))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .lineLimit(2)
+                                
+                                Button(action: {
+                                    copyToClipboard(value: item.sharesToSell, format: "%.0f")
+                                }) {
+                                    Text(String(format: "%.0f", item.sharesToSell))
+                                        .font(.caption)
+                                        .foregroundColor(rowStyle(for: item))
+                                        .frame(width: 80, alignment: .trailing)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Button(action: {
+                                    copyToClipboard(value: item.trailingStop, format: "%.2f")
+                                }) {
+                                    Text(String(format: "%.2f", item.trailingStop))
+                                        .font(.caption)
+                                        .foregroundColor(rowStyle(for: item))
+                                        .frame(width: 100, alignment: .trailing)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Button(action: {
+                                    copyToClipboard(value: item.entry, format: "%.2f")
+                                }) {
+                                    Text(String(format: "%.2f", item.entry))
+                                        .font(.caption)
+                                        .foregroundColor(rowStyle(for: item))
+                                        .frame(width: 80, alignment: .trailing)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Button(action: {
+                                    copyToClipboard(value: item.cancel, format: "%.2f")
+                                }) {
+                                    Text(String(format: "%.2f", item.cancel))
+                                        .font(.caption)
+                                        .foregroundColor(rowStyle(for: item))
+                                        .frame(width: 80, alignment: .trailing)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Button(action: {
+                                    copyToClipboard(value: item.gain, format: "%.1f")
+                                }) {
+                                    Text(String(format: "%.1f", item.gain))
+                                        .font(.caption)
+                                        .foregroundColor(rowStyle(for: item))
+                                        .frame(width: 80, alignment: .trailing)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 4)
+                            .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
+                        }
+                    }
+                }
+            }
+            
+            if copiedValue != "TBD" {
+                Text("Copied: \(copiedValue)")
+                    .font(.caption)
+                    .foregroundColor(.green)
+                    .padding(.horizontal)
+            }
+        }
+        .background(Color.gray.opacity(0.05))
+        .cornerRadius(8)
     }
 } 
