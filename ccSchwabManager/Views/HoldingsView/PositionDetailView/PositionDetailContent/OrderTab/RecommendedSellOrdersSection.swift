@@ -24,28 +24,47 @@ struct RecommendedSellOrdersSection: View {
     }
     
     private func calculateRecommendedSellOrders() -> [SalesCalcResultsRecord] {
+        print("=== calculateRecommendedSellOrders ===")
+        print("Symbol: \(symbol)")
+        print("ATR: \(atrValue)%")
+        print("Tax lots count: \(taxLotData.count)")
+        print("Shares available for trading: \(sharesAvailableForTrading)")
+        
         var recommended: [SalesCalcResultsRecord] = []
         
         // Get current price from the first tax lot (they all have the same current price)
         guard let currentPrice = taxLotData.first?.price, currentPrice > 0 else {
+            print("❌ No valid current price found")
             return recommended
         }
         
+        print("Current price: $\(currentPrice)")
+        
         // Sort tax lots by cost per share (highest first)
         let sortedTaxLots = taxLotData.sorted { $0.costPerShare > $1.costPerShare }
+        print("Sorted tax lots by cost per share (highest first): \(sortedTaxLots.count) lots")
         
         // Order 0: Sell top 100 most expensive shares if profitable
+        print("--- Calculating Top 100 Order ---")
         let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
         if let order = top100Order {
+            print("✅ Top 100 order created: \(order.description)")
             recommended.append(order)
+        } else {
+            print("❌ Top 100 order not created")
         }
         
         // Order 1: Minimum shares needed for 5% profit
+        print("--- Calculating Min Shares Order ---")
         let minSharesOrder = calculateMinSharesFor5PercentProfit(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
         if let order = minSharesOrder {
+            print("✅ Min shares order created: \(order.description)")
             recommended.append(order)
+        } else {
+            print("❌ Min shares order not created")
         }
         
+        print("=== Final result: \(recommended.count) recommended orders ===")
         return recommended
     }
     
@@ -65,13 +84,23 @@ struct RecommendedSellOrdersSection: View {
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         print("=== calculateTop100Order ===")
         print("Current price: $\(currentPrice)")
+        print("ATR value: \(atrValue)%")
+        print("Total tax lots: \(sortedTaxLots.count)")
+        
+        // Log all tax lots for debugging
+        print("All tax lots:")
+        for (index, lot) in sortedTaxLots.enumerated() {
+            let daysHeld = daysSinceDateString(dateString: lot.openDate) ?? 0
+            print("  Lot \(index): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(lot.costBasis) total, held for \(daysHeld) days")
+        }
         
         // Check if we have at least 100 shares not under contract
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
-        let sharesNotUnderContract = totalShares - (SchwabClient.shared.getContractCountForSymbol(symbol) * 100.0)
+        let sharesUnderContract = SchwabClient.shared.getContractCountForSymbol(symbol) * 100.0
+        let sharesNotUnderContract = totalShares - sharesUnderContract
         
         print("Total shares: \(totalShares)")
-        print("Shares under contract: \(SchwabClient.shared.getContractCountForSymbol(symbol) * 100.0)")
+        print("Shares under contract: \(sharesUnderContract)")
         print("Shares not under contract: \(sharesNotUnderContract)")
         
         guard sharesNotUnderContract >= 100.0 else {
@@ -97,7 +126,7 @@ struct RecommendedSellOrdersSection: View {
         var sharesUsed: Double = 0.0
         
         print("Calculating cost of 100 most expensive shares:")
-        for taxLot in sortedTaxLots {
+        for (index, taxLot) in sortedTaxLots.enumerated() {
             let remainingSharesNeeded = 100.0 - sharesUsed
             let sharesFromThisLot = min(taxLot.quantity, remainingSharesNeeded)
             
@@ -105,7 +134,7 @@ struct RecommendedSellOrdersSection: View {
             totalCost += sharesFromThisLot * taxLot.costPerShare
             sharesUsed += sharesFromThisLot
             
-            print("  Lot: \(sharesFromThisLot) shares @ $\(taxLot.costPerShare) = $\(sharesFromThisLot * taxLot.costPerShare)")
+            print("  Lot \(index): \(sharesFromThisLot) shares @ $\(taxLot.costPerShare) = $\(sharesFromThisLot * taxLot.costPerShare)")
             
             if sharesUsed >= 100.0 {
                 break
@@ -144,10 +173,11 @@ struct RecommendedSellOrdersSection: View {
         print("  Entry price: $\(entryPrice)")
         print("  Cancel price: $\(hardExitPrice)")
         print("  Trailing stop: \(trailingStopPercent)%")
+        print("  ATR requirement: \(2.0 * atrValue)%")
         
-        // Skip if trailing stop is less than 1%
-        guard trailingStopPercent >= 1.0 else {
-            print("❌ Trailing stop too low: \(trailingStopPercent)%")
+        // Skip if trailing stop is less than 2 * ATR
+        guard trailingStopPercent >= (2.0 * atrValue) else {
+            print("❌ Trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
             return nil
         }
         
