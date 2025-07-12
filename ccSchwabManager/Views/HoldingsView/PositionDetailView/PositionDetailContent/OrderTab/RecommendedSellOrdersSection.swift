@@ -81,10 +81,15 @@ struct RecommendedSellOrdersSection: View {
         return formatter.string(from: targetDate)
     }
     
+    private func getLimitedATR() -> Double {
+        return min(atrValue, 5.0)
+    }
+    
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         print("=== calculateTop100Order ===")
         print("Current price: $\(currentPrice)")
         print("ATR value: \(atrValue)%")
+        print("Limited ATR value: \(getLimitedATR())%")
         print("Total tax lots: \(sortedTaxLots.count)")
         
         // Log all tax lots for debugging
@@ -164,7 +169,7 @@ struct RecommendedSellOrdersSection: View {
         
         // Calculate entry and cancel prices using the same logic as other orders
         let hardExitPrice = costPerShare * 1.03
-        let atrDollarAmount = currentPrice * (atrValue / 100.0)  // Convert ATR percentage to dollar amount
+        let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
         let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
         let entryPrice = max((currentPrice + targetSellPrice) / 2.0, minEntryPrice)
         let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
@@ -173,11 +178,11 @@ struct RecommendedSellOrdersSection: View {
         print("  Entry price: $\(entryPrice)")
         print("  Cancel price: $\(hardExitPrice)")
         print("  Trailing stop: \(trailingStopPercent)%")
-        print("  ATR requirement: \(2.0 * atrValue)%")
+        print("  ATR requirement: \(2.0 * getLimitedATR())%")
         
         // Skip if trailing stop is less than 2 * ATR
-        guard trailingStopPercent >= (2.0 * atrValue) else {
-            print("❌ Trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
+        guard trailingStopPercent >= (2.0 * getLimitedATR()) else {
+            print("❌ Trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR)")
             return nil
         }
         
@@ -278,14 +283,14 @@ struct RecommendedSellOrdersSection: View {
                         
                         let targetSellPrice = costPerShare * 1.05
                         let hardExitPrice = costPerShare * 1.03
-                        let atrDollarAmount = currentPrice * (atrValue / 100.0)  // Convert ATR percentage to dollar amount
+                        let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
                         let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
                         let entryPrice = min(currentPrice, minEntryPrice)  // Use current price as entry, but ensure it's at least 1 ATR below
                         let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
                         
                         // Check if trailing stop meets the 2 * ATR requirement
                         let isLastLot = lotIndex == sortedTaxLots.count - 1
-                        let meetsATRRequirement = trailingStopPercent >= (2.0 * atrValue)
+                        let meetsATRRequirement = trailingStopPercent >= (2.0 * getLimitedATR())
                         
                         if meetsATRRequirement {
                             let roundedShares = ceil(sharesUsed)  // Round up to whole shares
@@ -319,7 +324,7 @@ struct RecommendedSellOrdersSection: View {
                         } else if isLastLot {
                             // This is the last lot and it's profitable but doesn't meet ATR requirement
                             let roundedShares = ceil(sharesUsed)  // Round up to whole shares
-                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
+                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR)")
                             print("   Showing order in orange color")
                             
                             // Format the description to match the standard sell order format
@@ -346,7 +351,7 @@ struct RecommendedSellOrdersSection: View {
                             )
                         } else {
                             // Not the last lot, continue to next lot
-                            print("    Trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR), continuing to next lot")
+                            print("    Trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR), continuing to next lot")
                         }
                     }
                 } else {
@@ -368,14 +373,14 @@ struct RecommendedSellOrdersSection: View {
                         
                         let targetSellPrice = costPerShare * 1.05
                         let hardExitPrice = costPerShare * 1.03
-                        let atrDollarAmount = currentPrice * (atrValue / 100.0)  // Convert ATR percentage to dollar amount
+                        let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
                         let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
                         let entryPrice = min(currentPrice, minEntryPrice)  // Use current price as entry, but ensure it's at least 1 ATR below
                         let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
                         
                         // Check if trailing stop meets the 2 * ATR requirement
                         let isLastLot = lotIndex == sortedTaxLots.count - 1
-                        let meetsATRRequirement = trailingStopPercent >= (2.0 * atrValue)
+                        let meetsATRRequirement = trailingStopPercent >= (2.0 * getLimitedATR())
                         
                         if meetsATRRequirement {
                             let roundedShares = ceil(sharesUsed)  // Round up to whole shares
@@ -408,7 +413,7 @@ struct RecommendedSellOrdersSection: View {
                             )
                         } else if isLastLot {
                             // This is the last lot and it's profitable but doesn't meet ATR requirement
-                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR)")
+                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR)")
                             print("   Showing order in orange color")
                             
                             // Format the description to match the standard sell order format
@@ -435,7 +440,7 @@ struct RecommendedSellOrdersSection: View {
                             )
                         } else {
                             // Not the last lot, continue to next lot
-                            print("    Trailing stop too low: \(trailingStopPercent)% < \(2.0 * atrValue)% (2 * ATR), continuing to next lot")
+                            print("    Trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR), continuing to next lot")
                         }
                     }
                 }
@@ -484,7 +489,7 @@ struct RecommendedSellOrdersSection: View {
     private func rowStyle(for item: SalesCalcResultsRecord) -> Color {
         if item.sharesToSell > sharesAvailableForTrading {
             return .red
-        } else if item.trailingStop <= atrValue {
+        } else if item.trailingStop < (2.0 * getLimitedATR()) {
             return .orange
         } else {
             return .green
@@ -541,7 +546,7 @@ struct RecommendedSellOrdersSection: View {
                     if let selectedIndex = selectedOrderIndex,
                        selectedIndex < currentRecommendedSellOrders.count {
                         let selectedOrder = currentRecommendedSellOrders[selectedIndex]
-                        copiedValue = selectedOrder.description
+                        copyToClipboard(text: selectedOrder.description)
                         print("Submitted order: \(selectedOrder.description)")
                     }
                 }
@@ -617,7 +622,7 @@ struct RecommendedSellOrdersSection: View {
                 .font(.caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onTapGesture {
-                    copiedValue = order.description
+                    copyToClipboard(text: order.description)
                     selectedOrderIndex = index
                 }
             
@@ -625,7 +630,7 @@ struct RecommendedSellOrdersSection: View {
                 .font(.caption)
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
-                    copiedValue = "\(Int(order.sharesToSell))"
+                    copyToClipboard(value: Double(order.sharesToSell), format: "%.0f")
                     selectedOrderIndex = index
                 }
             
@@ -633,7 +638,7 @@ struct RecommendedSellOrdersSection: View {
                 .font(.caption)
                 .frame(width: 100, alignment: .trailing)
                 .onTapGesture {
-                    copiedValue = String(format: "%.2f", order.trailingStop)
+                    copyToClipboard(value: order.trailingStop, format: "%.2f")
                     selectedOrderIndex = index
                 }
             
@@ -641,7 +646,7 @@ struct RecommendedSellOrdersSection: View {
                 .font(.caption)
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
-                    copiedValue = String(format: "%.2f", order.entry)
+                    copyToClipboard(value: order.entry, format: "%.2f")
                     selectedOrderIndex = index
                 }
             
@@ -649,7 +654,7 @@ struct RecommendedSellOrdersSection: View {
                 .font(.caption)
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
-                    copiedValue = String(format: "%.2f", order.cancel)
+                    copyToClipboard(value: order.cancel, format: "%.2f")
                     selectedOrderIndex = index
                 }
             
@@ -657,13 +662,13 @@ struct RecommendedSellOrdersSection: View {
                 .font(.caption)
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
-                    copiedValue = String(format: "%.1f", order.gain)
+                    copyToClipboard(value: order.gain, format: "%.1f")
                     selectedOrderIndex = index
                 }
         }
         .padding(.horizontal)
         .padding(.vertical, 4)
-        .background(selectedOrderIndex == index ? Color.blue.opacity(0.1) : Color.clear)
+        .background(selectedOrderIndex == index ? Color.blue.opacity(0.1) : rowStyle(for: order).opacity(0.1))
         .cornerRadius(4)
     }
 } 
