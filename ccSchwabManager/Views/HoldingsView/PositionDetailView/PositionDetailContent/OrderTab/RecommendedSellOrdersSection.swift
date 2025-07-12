@@ -9,6 +9,7 @@ struct RecommendedSellOrdersSection: View {
     @State private var recommendedSellOrders: [SalesCalcResultsRecord] = []
     @State private var lastSymbol: String = ""
     @State private var copiedValue: String = "TBD"
+    @State private var isRadioButtonSelected: Bool = false
     
     private var currentRecommendedSellOrders: [SalesCalcResultsRecord] {
         // This computed property will recalculate whenever symbol, atrValue, taxLotData, or sharesAvailableForTrading changes
@@ -462,120 +463,8 @@ struct RecommendedSellOrdersSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recommended Sell Orders")
-                .font(.headline)
-                .padding(.horizontal)
-            
-            if currentRecommendedSellOrders.isEmpty {
-                Text("No recommended sell orders available")
-                    .foregroundColor(.secondary)
-                    .padding()
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Header row
-                        HStack {
-                            Text("Description")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            
-                            Text("Shares")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(width: 80, alignment: .trailing)
-                            
-                            Text("Trailing Stop")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(width: 100, alignment: .trailing)
-                            
-                            Text("Entry")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(width: 80, alignment: .trailing)
-                            
-                            Text("Cancel")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(width: 80, alignment: .trailing)
-                            
-                            Text("Gain %")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(width: 80, alignment: .trailing)
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(Color.gray.opacity(0.1))
-                        
-                        // Data rows
-                        ForEach(Array(currentRecommendedSellOrders.enumerated()), id: \.element.id) { index, item in
-                            HStack {
-                                Text(item.description)
-                                    .font(.caption)
-                                    .foregroundColor(rowStyle(for: item))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .lineLimit(2)
-                                
-                                Button(action: {
-                                    copyToClipboard(value: item.sharesToSell, format: "%.0f")
-                                }) {
-                                    Text(String(format: "%.0f", item.sharesToSell))
-                                        .font(.caption)
-                                        .foregroundColor(rowStyle(for: item))
-                                        .frame(width: 80, alignment: .trailing)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                Button(action: {
-                                    copyToClipboard(value: item.trailingStop, format: "%.2f")
-                                }) {
-                                    Text(String(format: "%.2f", item.trailingStop))
-                                        .font(.caption)
-                                        .foregroundColor(rowStyle(for: item))
-                                        .frame(width: 100, alignment: .trailing)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                Button(action: {
-                                    copyToClipboard(value: item.entry, format: "%.2f")
-                                }) {
-                                    Text(String(format: "%.2f", item.entry))
-                                        .font(.caption)
-                                        .foregroundColor(rowStyle(for: item))
-                                        .frame(width: 80, alignment: .trailing)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                Button(action: {
-                                    copyToClipboard(value: item.cancel, format: "%.2f")
-                                }) {
-                                    Text(String(format: "%.2f", item.cancel))
-                                        .font(.caption)
-                                        .foregroundColor(rowStyle(for: item))
-                                        .frame(width: 80, alignment: .trailing)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                Button(action: {
-                                    copyToClipboard(value: item.gain, format: "%.1f")
-                                }) {
-                                    Text(String(format: "%.1f", item.gain))
-                                        .font(.caption)
-                                        .foregroundColor(rowStyle(for: item))
-                                        .frame(width: 80, alignment: .trailing)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 4)
-                            .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
-                        }
-                    }
-                }
-            }
-            
+            headerView
+            contentView
             if copiedValue != "TBD" {
                 Text("Copied: \(copiedValue)")
                     .font(.caption)
@@ -583,7 +472,168 @@ struct RecommendedSellOrdersSection: View {
                     .padding(.horizontal)
             }
         }
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(8)
+    }
+    
+    private var headerView: some View {
+        HStack {
+            Text("Recommended Sell Orders")
+                .font(.headline)
+            
+            Spacer()
+        }
+        .padding(.horizontal)
+    }
+    
+    private var contentView: some View {
+        Group {
+            if currentRecommendedSellOrders.isEmpty {
+                Text("No recommended sell orders available")
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                orderTableView
+            }
+        }
+    }
+    
+    private var orderTableView: some View {
+        HStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    headerRow
+                    orderRows
+                }
+            }
+            
+            VStack {
+                Spacer()
+                Button("Submit") {
+                    if let selectedIndex = selectedOrderIndex,
+                       selectedIndex < currentRecommendedSellOrders.count {
+                        let selectedOrder = currentRecommendedSellOrders[selectedIndex]
+                        copiedValue = selectedOrder.description
+                        print("Submitted order: \(selectedOrder.description)")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(selectedOrderIndex == nil)
+                .padding(.trailing)
+                Spacer()
+            }
+        }
+    }
+    
+    private var headerRow: some View {
+        HStack {
+            Text("")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 30, alignment: .center)
+            
+            Text("Description")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Text("Shares")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+            
+            Text("Trailing Stop")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 100, alignment: .trailing)
+            
+            Text("Entry")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+            
+            Text("Cancel")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+            
+            Text("Gain %")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.gray.opacity(0.1))
+    }
+    
+    private var orderRows: some View {
+        ForEach(Array(currentRecommendedSellOrders.enumerated()), id: \.offset) { index, order in
+            orderRow(index: index, order: order)
+        }
+    }
+    
+    private func orderRow(index: Int, order: SalesCalcResultsRecord) -> some View {
+        HStack {
+            Button(action: {
+                selectedOrderIndex = index
+            }) {
+                Image(systemName: selectedOrderIndex == index ? "largecircle.fill.circle" : "circle")
+                    .foregroundColor(.blue)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .frame(width: 30, alignment: .center)
+            
+            Text(order.description)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onTapGesture {
+                    copiedValue = order.description
+                    selectedOrderIndex = index
+                }
+            
+            Text("\(Int(order.sharesToSell))")
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copiedValue = "\(Int(order.sharesToSell))"
+                    selectedOrderIndex = index
+                }
+            
+            Text(String(format: "%.2f%%", order.trailingStop))
+                .font(.caption)
+                .frame(width: 100, alignment: .trailing)
+                .onTapGesture {
+                    copiedValue = String(format: "%.2f", order.trailingStop)
+                    selectedOrderIndex = index
+                }
+            
+            Text(String(format: "%.2f", order.entry))
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copiedValue = String(format: "%.2f", order.entry)
+                    selectedOrderIndex = index
+                }
+            
+            Text(String(format: "%.2f", order.cancel))
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copiedValue = String(format: "%.2f", order.cancel)
+                    selectedOrderIndex = index
+                }
+            
+            Text(String(format: "%.1f%%", order.gain))
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copiedValue = String(format: "%.1f", order.gain)
+                    selectedOrderIndex = index
+                }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+        .background(selectedOrderIndex == index ? Color.blue.opacity(0.1) : Color.clear)
+        .cornerRadius(4)
     }
 } 
