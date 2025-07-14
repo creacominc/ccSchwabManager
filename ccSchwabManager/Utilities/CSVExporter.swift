@@ -49,7 +49,7 @@ class CSVExporter {
     }
     
     static func generateTaxLotCSV(_ taxLots: [SalesCalcPositionsRecord]) -> String {
-        var csv = "Open Date,Quantity,Price,Cost/Share,Market Value,Cost Basis,Gain/Loss $,Gain/Loss %\n"
+        var csv = "Open Date,Quantity,Price,Cost/Share,Market Value,Cost Basis,Gain/Loss $,Gain/Loss %,Split Multiple\n"
         
         for taxLot in taxLots {
             let openDate = taxLot.openDate
@@ -60,8 +60,9 @@ class CSVExporter {
             let costBasis = String(format: "%.2f", taxLot.costBasis)
             let gainLossDollar = String(format: "%.2f", taxLot.gainLossDollar)
             let gainLossPct = String(format: "%.2f", taxLot.gainLossPct)
+            let splitMultiple = String(format: "%.2f", taxLot.splitMultiple)
             
-            csv += "\(openDate),\(quantity),\(price),\(costPerShare),\(marketValue),\(costBasis),\(gainLossDollar),\(gainLossPct)\n"
+            csv += "\(openDate),\(quantity),\(price),\(costPerShare),\(marketValue),\(costBasis),\(gainLossDollar),\(gainLossPct),\(splitMultiple)\n"
         }
         
         return csv

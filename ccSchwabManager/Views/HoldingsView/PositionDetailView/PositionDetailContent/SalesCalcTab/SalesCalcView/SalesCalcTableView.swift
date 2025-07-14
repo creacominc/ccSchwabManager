@@ -9,12 +9,13 @@ enum SalesCalcSortableColumn: String, CaseIterable, Identifiable {
     case costBasis = "Cost Basis"
     case gainLossDollar = "Gain/Loss $"
     case gainLossPct = "Gain/Loss %"
+    case splitMultiple = "Split"
 
     var id: String { self.rawValue }
 
     var defaultAscending: Bool {
         switch self {
-        case .costPerShare, .openDate, .quantity, .price, .marketValue, .costBasis, .gainLossDollar, .gainLossPct:
+        case .costPerShare, .openDate, .quantity, .price, .marketValue, .costBasis, .gainLossDollar, .gainLossPct, .splitMultiple:
             return false
         }
     }
@@ -33,7 +34,7 @@ struct SalesCalcTable: View {
     let symbol: String
     
     // Define proportional widths for columns
-    private let columnWidths: [CGFloat] = [0.15, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.15]
+    private let columnWidths: [CGFloat] = [0.15, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.06, 0.16]
     
     var sortedData: [SalesCalcPositionsRecord] {
         print("SalesCalcTable - Received \(positionsData.count) records")
@@ -58,6 +59,8 @@ struct SalesCalcTable: View {
                 return ascending ? t1.gainLossDollar < t2.gainLossDollar : t1.gainLossDollar > t2.gainLossDollar
             case .gainLossPct:
                 return ascending ? t1.gainLossPct < t2.gainLossPct : t1.gainLossPct > t2.gainLossPct
+            case .splitMultiple:
+                return ascending ? t1.splitMultiple < t2.splitMultiple : t1.splitMultiple > t2.splitMultiple
             }
         }
     }
@@ -140,6 +143,8 @@ private struct TableHeader: View {
                 .frame(width: columnWidths[6] * viewSize.width)
             columnHeader(title: "Gain/Loss %", column: .gainLossPct, alignment: .trailing)
                 .frame(width: columnWidths[7] * viewSize.width)
+            columnHeader(title: "Split", column: .splitMultiple, alignment: .trailing)
+                .frame(width: columnWidths[8] * viewSize.width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -219,6 +224,11 @@ private struct TableRow: View {
                 .frame(width: columnWidths[7] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .foregroundStyle(item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red)
+            
+            Text(String(format: "%.0f", item.splitMultiple))
+                .frame(width: columnWidths[8] * viewSize.width, alignment: .trailing)
+                .monospacedDigit()
+                .foregroundStyle(item.splitMultiple > 1.0 ? .blue : .secondary)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)

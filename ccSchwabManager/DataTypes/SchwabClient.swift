@@ -1675,6 +1675,77 @@ class SchwabClient
     }
     
     /**
+     * adjustForStockSplits - adjust tax lots for stock splits
+     * 
+     * When a security experiences a stock split, the additional shares are added to the account
+     * and show as a transaction (buy) with a zero price. This function adjusts the prior holdings
+     * by the split ratio and removes the zero-cost split transaction.
+     */
+    private func adjustForStockSplits(_ taxLots: [SalesCalcPositionsRecord]) -> [SalesCalcPositionsRecord] {
+        print("=== adjustForStockSplits - processing \(taxLots.count) tax lots ===")
+        
+        // Sort by date (oldest first)
+        let sortedLots = taxLots.sorted { $0.openDate < $1.openDate }
+        var adjustedLots: [SalesCalcPositionsRecord] = []
+        var i = 0
+        
+        while i < sortedLots.count {
+            let currentLot = sortedLots[i]
+            
+            // Check if this is a zero-cost transaction (potential split)
+            if currentLot.costPerShare == 0.0 && currentLot.quantity > 0 {
+                print("  --- Found potential split transaction: \(currentLot.openDate), shares: \(currentLot.quantity), cost: \(currentLot.costPerShare)")
+                
+                // Calculate total shares before this split
+                let sharesBeforeSplit = adjustedLots.reduce(0.0) { $0 + $1.quantity }
+                let sharesFromSplit = currentLot.quantity
+                let totalSharesAfterSplit = sharesBeforeSplit + sharesFromSplit
+                
+                if sharesBeforeSplit > 0 {
+                    // Calculate split ratio
+                    let splitRatio = totalSharesAfterSplit / sharesBeforeSplit
+                    print("  --- Split calculation:")
+                    print("    Shares before split: \(sharesBeforeSplit)")
+                    print("    Shares from split: \(sharesFromSplit)")
+                    print("    Total shares after split: \(totalSharesAfterSplit)")
+                    print("    Split ratio: \(splitRatio)")
+                    
+                    // Adjust all prior holdings by the split ratio
+                    for j in 0..<adjustedLots.count {
+                        adjustedLots[j].quantity *= splitRatio
+                        adjustedLots[j].costPerShare /= splitRatio
+                        adjustedLots[j].marketValue = adjustedLots[j].quantity * adjustedLots[j].price
+                        adjustedLots[j].costBasis = adjustedLots[j].quantity * adjustedLots[j].costPerShare
+                        adjustedLots[j].gainLossDollar = (adjustedLots[j].price - adjustedLots[j].costPerShare) * adjustedLots[j].quantity
+                        adjustedLots[j].gainLossPct = ((adjustedLots[j].price - adjustedLots[j].costPerShare) / adjustedLots[j].costPerShare) * 100.0
+                        adjustedLots[j].splitMultiple *= splitRatio
+                        
+                        print("    Adjusted lot \(j): \(adjustedLots[j].openDate), shares: \(adjustedLots[j].quantity), cost: \(adjustedLots[j].costPerShare), basis: \(adjustedLots[j].costBasis), multiple: \(adjustedLots[j].splitMultiple)")
+                    }
+                    
+                    print("  --- Removed split transaction and adjusted \(adjustedLots.count) prior lots")
+                } else {
+                    print("  --- No prior shares to adjust, skipping split transaction")
+                }
+                
+                // Skip this zero-cost transaction (don't add it to adjustedLots)
+                i += 1
+                continue
+            }
+            
+            // Add non-split transactions to adjusted lots
+            adjustedLots.append(currentLot)
+            i += 1
+        }
+        
+        // Sort by highest cost basis (descending)
+        adjustedLots.sort { $0.costBasis > $1.costBasis }
+        
+        print("=== adjustForStockSplits - returning \(adjustedLots.count) adjusted lots ===")
+        return adjustedLots
+    }
+
+    /**
      * computeTaxLots - compute a list of tax lots as [SalesCalcPositionsRecord]
      *
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
@@ -1767,6 +1838,7 @@ class SchwabClient
                             costPerShare: costPerShare,
                             marketValue: numberOfShares * lastPrice,
                             costBasis: costPerShare * numberOfShares,
+                            splitMultiple: 1.0  // Initial value, will be adjusted by splits if needed
                         )
                     )
 
@@ -1926,6 +1998,10 @@ class SchwabClient
         
 
         m_lastFilteredPositionRecords = remainingRecords
+        
+        // Apply stock split adjustments
+        m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords)
+        
 //        if debug { print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
         return m_lastFilteredPositionRecords
     } // computeTaxLots

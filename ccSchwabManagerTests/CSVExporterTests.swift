@@ -67,7 +67,8 @@ class CSVExporterTests: XCTestCase {
                 price: 105.0,
                 costPerShare: 100.0,
                 marketValue: 10500.0,
-                costBasis: 10000.0
+                costBasis: 10000.0,
+                splitMultiple: 1.0
             ),
             SalesCalcPositionsRecord(
                 openDate: "2025-02-20",
@@ -77,7 +78,8 @@ class CSVExporterTests: XCTestCase {
                 price: 98.0,
                 costPerShare: 100.0,
                 marketValue: 4900.0,
-                costBasis: 5000.0
+                costBasis: 5000.0,
+                splitMultiple: 2.0
             )
         ]
         
@@ -85,7 +87,7 @@ class CSVExporterTests: XCTestCase {
         let csvContent = CSVExporter.generateTaxLotCSV(testTaxLots)
         
         // Verify CSV format
-        XCTAssertTrue(csvContent.contains("Open Date,Quantity,Price,Cost/Share,Market Value,Cost Basis,Gain/Loss $,Gain/Loss %"))
+        XCTAssertTrue(csvContent.contains("Open Date,Quantity,Price,Cost/Share,Market Value,Cost Basis,Gain/Loss $,Gain/Loss %,Split Multiple"))
         XCTAssertTrue(csvContent.contains("2025-01-15"))
         XCTAssertTrue(csvContent.contains("2025-02-20"))
         XCTAssertTrue(csvContent.contains("100.00"))
@@ -101,6 +103,8 @@ class CSVExporterTests: XCTestCase {
         XCTAssertTrue(csvContent.contains("-21.00"))
         XCTAssertTrue(csvContent.contains("5.20"))
         XCTAssertTrue(csvContent.contains("-2.10"))
+        XCTAssertTrue(csvContent.contains("1.00"))  // First record has splitMultiple = 1.0
+        XCTAssertTrue(csvContent.contains("2.00"))  // Second record has splitMultiple = 2.0
     }
     
     func testFormatTransactionDate() {

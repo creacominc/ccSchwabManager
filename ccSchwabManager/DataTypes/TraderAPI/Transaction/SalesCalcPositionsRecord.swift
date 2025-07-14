@@ -18,8 +18,9 @@ struct SalesCalcPositionsRecord: Identifiable
     var costPerShare: Double = 0.0
     var marketValue: Double = 0.0
     var costBasis: Double = 0.0
+    var splitMultiple: Double = 1.0  // Cumulative split multiple (1.0 = no splits)
 
-    init(openDate: String, gainLossPct: Double, gainLossDollar: Double, quantity: Double, price: Double, costPerShare: Double, marketValue: Double, costBasis: Double
+    init(openDate: String, gainLossPct: Double, gainLossDollar: Double, quantity: Double, price: Double, costPerShare: Double, marketValue: Double, costBasis: Double, splitMultiple: Double = 1.0
     ) {
         self.openDate = openDate
         self.gainLossPct = gainLossPct
@@ -29,6 +30,7 @@ struct SalesCalcPositionsRecord: Identifiable
         self.costPerShare = costPerShare
         self.marketValue = marketValue
         self.costBasis = costBasis
+        self.splitMultiple = splitMultiple
     }
     
 }
