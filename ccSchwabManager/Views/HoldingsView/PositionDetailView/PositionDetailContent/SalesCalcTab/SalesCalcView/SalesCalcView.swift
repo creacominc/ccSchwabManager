@@ -21,7 +21,8 @@ struct SalesCalcView: View {
                 SalesCalcTable(
                     positionsData: taxLotData,
                     currentSort: $currentSort,
-                    viewSize: geometry.size
+                    viewSize: geometry.size,
+                    symbol: symbol
                 )
                 .onAppear {
                     viewSize = geometry.size

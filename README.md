@@ -1,6 +1,48 @@
 # ccSchwabManager
 
-This project is a Swift-based application. It is designed to demonstrate the capabilities of Swift programming language in building efficient and robust applications.
+A macOS application for managing Charles Schwab trading accounts and positions.
+
+## Features
+
+### CSV Export Functionality
+
+The application now supports exporting transaction history and tax lot data to CSV files:
+
+- **Transaction History Export**: Click the export button (📤) in the Date column header of the transaction history table to export all transactions for a specific symbol
+- **Tax Lots Export**: Click the export button (📤) in the Open Date column header of the sales calc table to export all tax lot data for a specific symbol
+
+#### Export File Naming Convention
+
+Files are automatically named using the following format:
+- `Transactions_<Symbol>_<Date>.csv` for transaction history exports
+- `TaxLots_<Symbol>_<Date>.csv` for tax lot exports
+
+Where:
+- `<Symbol>` is the stock/security symbol (e.g., AAPL, MSFT)
+- `<Date>` is the export date in YYYYMMDD format (e.g., 20250713)
+
+#### Default Export Location
+
+Files are saved to the user's Downloads folder by default, with a file dialog allowing users to choose a different location if desired.
+
+#### CSV Format
+
+**Transaction History CSV includes:**
+- Date (formatted as YYYY-MM-DD HH:MM:SS)
+- Type (Buy/Sell)
+- Quantity
+- Price
+- Net Amount
+
+**Tax Lots CSV includes:**
+- Open Date
+- Quantity
+- Price
+- Cost/Share
+- Market Value
+- Cost Basis
+- Gain/Loss $
+- Gain/Loss %
 
 ## Project Structure
 

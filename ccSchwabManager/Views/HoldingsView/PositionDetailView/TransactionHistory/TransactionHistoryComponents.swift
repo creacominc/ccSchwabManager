@@ -162,7 +162,19 @@ struct TransactionHistorySection: View {
 
                     VStack(spacing: 0) {
                         HStack(spacing: 4) {
-                            columnHeader(title: "Date", column: .date).frame(width: calculatedWidths[0])
+                            HStack {
+                                columnHeader(title: "Date", column: .date)
+                                Button(action: {
+                                    CSVExporter.exportTransactions(sortedTransactions, symbol: symbol)
+                                }) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(width: calculatedWidths[0])
+                            
                             columnHeader(title: "Type", column: .type).frame(width: calculatedWidths[1])
                             // right justify the Quantity column header
                             columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: calculatedWidths[2])

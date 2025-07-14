@@ -30,6 +30,7 @@ struct SalesCalcTable: View {
     let positionsData: [SalesCalcPositionsRecord]
     @Binding var currentSort: SalesCalcSortConfig?
     let viewSize: CGSize
+    let symbol: String
     
     // Define proportional widths for columns
     private let columnWidths: [CGFloat] = [0.15, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.15]
@@ -63,7 +64,7 @@ struct SalesCalcTable: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            TableHeader(currentSort: $currentSort, viewSize: viewSize, columnWidths: columnWidths)
+            TableHeader(currentSort: $currentSort, viewSize: viewSize, columnWidths: columnWidths, symbol: symbol, sortedData: sortedData)
             Divider()
             TableContent(
                 positionsData: sortedData,
@@ -79,6 +80,8 @@ private struct TableHeader: View {
     @Binding var currentSort: SalesCalcSortConfig?
     let viewSize: CGSize
     let columnWidths: [CGFloat]
+    let symbol: String
+    let sortedData: [SalesCalcPositionsRecord]
     
     @ViewBuilder
     private func columnHeader(title: String, column: SalesCalcSortableColumn, alignment: Alignment = .leading) -> some View {
@@ -110,8 +113,19 @@ private struct TableHeader: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            columnHeader(title: "Open Date", column: .openDate)
-                .frame(width: columnWidths[0] * viewSize.width)
+            HStack {
+                columnHeader(title: "Open Date", column: .openDate)
+                Button(action: {
+                    CSVExporter.exportTaxLots(sortedData, symbol: symbol)
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(width: columnWidths[0] * viewSize.width)
+            
             columnHeader(title: "Quantity", column: .quantity, alignment: .trailing)
                 .frame(width: columnWidths[1] * viewSize.width)
             columnHeader(title: "Price", column: .price, alignment: .trailing)
