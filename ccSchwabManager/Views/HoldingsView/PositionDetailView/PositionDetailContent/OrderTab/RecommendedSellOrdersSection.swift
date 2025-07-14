@@ -213,242 +213,94 @@ struct RecommendedSellOrdersSection: View {
     }
     
     private func calculateMinSharesFor5PercentProfit(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        print("=== calculateMinSharesFor5PercentProfit ===")
+        print("=== calculateMinSharesForATRLogic ===")
         print("Current price: $\(currentPrice)")
+        print("ATR: \(atrValue)%")
         print("Tax lots (sorted by cost per share, highest first):")
         for (index, lot) in sortedTaxLots.enumerated() {
             print("  Lot \(index): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(lot.costBasis) total")
         }
-        
-        var totalLoss: Double = 0.0
-        var totalGain: Double = 0.0
+
+        // 1. Calculate entry, target, and exit prices using ATR, rounded down to the penny
+        let entryRaw = currentPrice / (1.0 + (2.0 * atrValue / 100.0))
+        let entry = floor(entryRaw * 100) / 100
+        let targetRaw = entry / (1.0 + (atrValue / 100.0))
+        let target = floor(targetRaw * 100) / 100
+        let exitRaw = target / (1.0 + (atrValue / 100.0))
+        let exit = floor(exitRaw * 100) / 100
+        let costPerShareThresholdRaw = target / 1.05
+        let costPerShareThreshold = floor(costPerShareThresholdRaw * 100) / 100
+        print("Entry: $\(entry), Target: $\(target), Exit: $\(exit), Cost/share threshold: $\(costPerShareThreshold)")
+
+        // 2. Find minimum shares such that cost-per-share <= costPerShareThreshold, allowing partial lots
         var sharesUsed: Double = 0.0
         var totalCost: Double = 0.0
-        
-        // First pass: Calculate total loss from high-cost lots (lots with cost > current price)
+        var lotsUsed: [(Double, Double)] = [] // (shares, costPerShare)
+        var found = false
+
         for lot in sortedTaxLots {
-            if lot.costPerShare > currentPrice {
-                let loss = (lot.costPerShare - currentPrice) * lot.quantity
-                totalLoss += loss
-                sharesUsed += lot.quantity
-                totalCost += lot.costBasis
-                print("  High-cost lot: \(lot.quantity) shares @ $\(lot.costPerShare) = $\(loss) loss")
-            }
-        }
-        
-        print("Total loss from high-cost lots: $\(totalLoss)")
-        print("Shares used from high-cost lots: \(sharesUsed)")
-        
-        if totalLoss > 0 {
-            print("Need to offset $\(totalLoss) in losses")
-        } else {
-            print("No losses to offset, starting with profitable lots")
-        }
-        
-        // Second pass: Find minimum shares needed to achieve 5% profit
-        // Continue through all tax lots to find the best combination
-        for (lotIndex, lot) in sortedTaxLots.enumerated() {
-            if lot.costPerShare <= currentPrice {
-                // This is a profitable lot
-                let gainPerShare = currentPrice - lot.costPerShare
-                let totalGainFromThisLot = gainPerShare * lot.quantity
-                
-                print("  Profitable lot \(lotIndex): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(totalGainFromThisLot) gain")
-                
-                // Calculate how much additional gain we need
-                let targetGain = (totalCost + lot.costBasis) * 0.05  // 5% of total cost
-                let additionalGainNeeded = targetGain - totalGain
-                
-                if additionalGainNeeded > 0 {
-                    // Calculate how many shares we need from this lot
-                    let sharesNeeded = additionalGainNeeded / gainPerShare
-                    let sharesToUse = min(ceil(sharesNeeded), lot.quantity)  // Round up to whole shares
-                    
-                    print("    Need \(sharesNeeded) shares for 5% profit (additional gain needed: $\(additionalGainNeeded))")
-                    print("    Using \(sharesToUse) shares from this lot (rounded up from \(sharesNeeded))")
-                    
-                    sharesUsed += sharesToUse
-                    totalCost += sharesToUse * lot.costPerShare
-                    totalGain += sharesToUse * gainPerShare
-                    
-                    let costPerShare = totalCost / sharesUsed
-                    let gainPercent = (totalGain / totalCost) * 100.0
-                    
-                    print("    Running totals: \(sharesUsed) shares, $\(totalCost) cost, $\(totalGain) gain")
-                    print("    Current cost per share: $\(costPerShare)")
-                    print("    Current gain percent: \(gainPercent)%")
-                    
-                    if gainPercent >= 5.0 {
-                        print("    ✅ Achieved 5% profit with \(sharesUsed) shares!")
-                        
-                        let targetSellPrice = costPerShare * 1.05
-                        let hardExitPrice = costPerShare * 1.03
-                        let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
-                        let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
-                        let entryPrice = min(currentPrice, minEntryPrice)  // Use current price as entry, but ensure it's at least 1 ATR below
-                        let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
-                        
-                        // Check if trailing stop meets the 2 * ATR requirement
-                        let isLastLot = lotIndex == sortedTaxLots.count - 1
-                        let meetsATRRequirement = trailingStopPercent >= (2.0 * getLimitedATR())
-                        
-                        if meetsATRRequirement {
-                            let roundedShares = ceil(sharesUsed)  // Round up to whole shares
-                            print("✅ Final result: \(roundedShares) shares needed for \(gainPercent)% profit")
-                            print("   Target price: $\(targetSellPrice), Cost per share: $\(costPerShare)")
-                            print("   Entry price: $\(entryPrice), Cancel price: $\(hardExitPrice)")
-                            print("   Trailing stop: \(trailingStopPercent)% (meets 2 * ATR requirement)")
-                            
-                            // Format the description to match the standard sell order format
-                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
-                                                            roundedShares,
-                                                            symbol,
-                                                            trailingStopPercent,
-                                                            entryPrice,
-                                                            hardExitPrice,
-                                                            formatReleaseTime(tomorrow))
-                            
-                            return SalesCalcResultsRecord(
-                                shares: roundedShares,
-                                rollingGainLoss: totalGain,
-                                breakEven: costPerShare,
-                                gain: gainPercent,
-                                sharesToSell: roundedShares,
-                                trailingStop: trailingStopPercent,
-                                entry: entryPrice,
-                                cancel: hardExitPrice,
-                                description: formattedDescription,
-                                openDate: "2025-01-01"
-                            )
-                        } else if isLastLot {
-                            // This is the last lot and it's profitable but doesn't meet ATR requirement
-                            let roundedShares = ceil(sharesUsed)  // Round up to whole shares
-                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR)")
-                            print("   Showing order in orange color")
-                            
-                            // Format the description to match the standard sell order format
-                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
-                                                            roundedShares,
-                                                            symbol,
-                                                            trailingStopPercent,
-                                                            entryPrice,
-                                                            hardExitPrice,
-                                                            formatReleaseTime(tomorrow))
-                            
-                            return SalesCalcResultsRecord(
-                                shares: roundedShares,
-                                rollingGainLoss: totalGain,
-                                breakEven: costPerShare,
-                                gain: gainPercent,
-                                sharesToSell: roundedShares,
-                                trailingStop: trailingStopPercent,
-                                entry: entryPrice,
-                                cancel: hardExitPrice,
-                                description: formattedDescription,
-                                openDate: "2025-01-01"
-                            )
-                        } else {
-                            // Not the last lot, continue to next lot
-                            print("    Trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR), continuing to next lot")
-                        }
-                    }
-                } else {
-                    // We already have enough gain, but let's add this lot to improve the average
-                    print("    Already have sufficient gain, adding this lot to improve average")
-                    sharesUsed += lot.quantity
-                    totalCost += lot.costBasis
-                    totalGain += totalGainFromThisLot
-                    
-                    let costPerShare = totalCost / sharesUsed
-                    let gainPercent = (totalGain / totalCost) * 100.0
-                    
-                    print("    Running totals: \(sharesUsed) shares, $\(totalCost) cost, $\(totalGain) gain")
-                    print("    Current cost per share: $\(costPerShare)")
-                    print("    Current gain percent: \(gainPercent)%")
-                    
-                    if gainPercent >= 5.0 {
-                        print("    ✅ Achieved 5% profit with \(sharesUsed) shares!")
-                        
-                        let targetSellPrice = costPerShare * 1.05
-                        let hardExitPrice = costPerShare * 1.03
-                        let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
-                        let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
-                        let entryPrice = min(currentPrice, minEntryPrice)  // Use current price as entry, but ensure it's at least 1 ATR below
-                        let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
-                        
-                        // Check if trailing stop meets the 2 * ATR requirement
-                        let isLastLot = lotIndex == sortedTaxLots.count - 1
-                        let meetsATRRequirement = trailingStopPercent >= (2.0 * getLimitedATR())
-                        
-                        if meetsATRRequirement {
-                            let roundedShares = ceil(sharesUsed)  // Round up to whole shares
-                            print("✅ Final result: \(roundedShares) shares needed for \(gainPercent)% profit")
-                            print("   Target price: $\(targetSellPrice), Cost per share: $\(costPerShare)")
-                            print("   Entry price: $\(entryPrice), Cancel price: $\(hardExitPrice)")
-                            print("   Trailing stop: \(trailingStopPercent)% (meets 2 * ATR requirement)")
-                            
-                            // Format the description to match the standard sell order format
-                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
-                                                            roundedShares,
-                                                            symbol,
-                                                            trailingStopPercent,
-                                                            entryPrice,
-                                                            hardExitPrice,
-                                                            formatReleaseTime(tomorrow))
-                            
-                            return SalesCalcResultsRecord(
-                                shares: roundedShares,
-                                rollingGainLoss: totalGain,
-                                breakEven: costPerShare,
-                                gain: gainPercent,
-                                sharesToSell: roundedShares,
-                                trailingStop: trailingStopPercent,
-                                entry: entryPrice,
-                                cancel: hardExitPrice,
-                                description: formattedDescription,
-                                openDate: "2025-01-01"
-                            )
-                        } else if isLastLot {
-                            // This is the last lot and it's profitable but doesn't meet ATR requirement
-                            print("⚠️ Last lot reached - profitable but trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR)")
-                            print("   Showing order in orange color")
-                            
-                            // Format the description to match the standard sell order format
-                            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-                            let formattedDescription = String(format: "(Min) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
-                                                            sharesUsed,
-                                                            symbol,
-                                                            trailingStopPercent,
-                                                            entryPrice,
-                                                            hardExitPrice,
-                                                            formatReleaseTime(tomorrow))
-                            
-                            return SalesCalcResultsRecord(
-                                shares: sharesUsed,
-                                rollingGainLoss: totalGain,
-                                breakEven: costPerShare,
-                                gain: gainPercent,
-                                sharesToSell: sharesUsed,
-                                trailingStop: trailingStopPercent,
-                                entry: entryPrice,
-                                cancel: hardExitPrice,
-                                description: formattedDescription,
-                                openDate: "2025-01-01"
-                            )
-                        } else {
-                            // Not the last lot, continue to next lot
-                            print("    Trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR), continuing to next lot")
-                        }
-                    }
+            let sharesToUse = lot.quantity
+            let newSharesUsed = sharesUsed + sharesToUse
+            let newTotalCost = totalCost + sharesToUse * lot.costPerShare
+            let avgCostPerShare = newTotalCost / newSharesUsed
+            if avgCostPerShare <= costPerShareThreshold {
+                // Only take the minimum number of shares from this lot to reach the threshold
+                let numerator = costPerShareThreshold * sharesUsed - totalCost
+                let denominator = lot.costPerShare - costPerShareThreshold
+                var partialShares: Double = 0.0
+                if denominator != 0 {
+                    partialShares = numerator / denominator
                 }
+                // Clamp to [0, lot.quantity]
+                partialShares = max(0.0, min(partialShares, lot.quantity))
+                sharesUsed += partialShares
+                totalCost += partialShares * lot.costPerShare
+                lotsUsed.append((partialShares, lot.costPerShare))
+                found = true
+                break
+            } else {
+                sharesUsed = newSharesUsed
+                totalCost = newTotalCost
+                lotsUsed.append((sharesToUse, lot.costPerShare))
             }
         }
-        
-        print("❌ Could not achieve 5% profit with available shares")
-        return nil
+
+        if sharesUsed == 0 || !found {
+            print("❌ Could not find enough shares to meet cost-per-share threshold with partial lots")
+            return nil
+        }
+
+        // Round up shares to next whole number
+        let roundedShares = ceil(sharesUsed)
+        // Recalculate total cost for the rounded number of shares
+        var runningShares: Double = 0.0
+        var runningCost: Double = 0.0
+        for (qty, cps) in lotsUsed {
+            let sharesToAdd = min(qty, max(0, roundedShares - runningShares))
+            runningCost += sharesToAdd * cps
+            runningShares += sharesToAdd
+            if runningShares >= roundedShares { break }
+        }
+        let avgCostPerShare = runningCost / roundedShares
+        let gain = ((target - avgCostPerShare) / avgCostPerShare) * 100.0
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+
+        // Set trailing stop to ATR value (1 ATR)
+        let trailingStopATR = atrValue
+
+        return SalesCalcResultsRecord(
+            shares: roundedShares,
+            rollingGainLoss: (target - avgCostPerShare) * roundedShares,
+            breakEven: avgCostPerShare,
+            gain: gain,
+            sharesToSell: roundedShares,
+            trailingStop: trailingStopATR, // Set to ATR value
+            entry: entry,
+            cancel: exit,
+            description: formattedDescription,
+            openDate: "ATR"
+        )
     }
     
     private func updateRecommendedOrders() {
