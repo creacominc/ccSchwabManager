@@ -247,9 +247,8 @@ struct RecommendedSellOrdersSection: View {
         let minEntryPrice = currentPrice * 0.99
         let finalEntry = max(entry, minEntryPrice)
         
-        // Target should be below current price, not above it
-        let maxTargetPrice = currentPrice * 0.99 // Target must be at least 1% below current price
-        let targetRaw = min(finalEntry * (1.0 + (limitedATR / 100.0)), maxTargetPrice)
+        // Target should be BELOW entry price for sell orders
+        let targetRaw = finalEntry * (1.0 - (limitedATR / 100.0))
         let target = floor(targetRaw * 100) / 100
         // Exit should be below target
         let exitRaw = target * (1.0 - (limitedATR / 100.0))
@@ -257,7 +256,7 @@ struct RecommendedSellOrdersSection: View {
         let costPerShareThresholdRaw = target / 1.05
         let costPerShareThreshold = floor(costPerShareThresholdRaw * 100) / 100
         print("Entry: $\(finalEntry), Target: $\(target), Exit: $\(exit), Cost/share threshold: $\(costPerShareThreshold)")
-        print("Max allowed target: $\(maxTargetPrice), Current price: $\(currentPrice)")
+        print("Current price: $\(currentPrice)")
 
         // 2. Find minimum shares such that cost-per-share <= costPerShareThreshold, allowing partial lots
         var sharesUsed: Double = 0.0
@@ -346,30 +345,27 @@ struct RecommendedSellOrdersSection: View {
         let avgCostPerShare = runningCost / roundedShares
         let gain = ((target - avgCostPerShare) / avgCostPerShare) * 100.0
         
-        // Ensure the target price is at least 1% above the cost per share AND below current price
-        let maxAllowedTarget = currentPrice * 0.99
+        // Ensure the target price is at least 1% above the cost per share
         let minRequiredTarget = avgCostPerShare * 1.01
         
-        if gain < 1.0 || target > maxAllowedTarget {
-            print("❌ Target price $\(target) results in gain of \(gain)% which is less than 1% OR above max allowed")
+        if gain < 1.0 {
+            print("❌ Target price $\(target) results in gain of \(gain)% which is less than 1%")
             print("  Cost per share: $\(avgCostPerShare)")
-            print("  Max allowed target: $\(maxAllowedTarget)")
             print("  Min required target: $\(minRequiredTarget)")
             
             // Check if we can achieve a valid target
-            if minRequiredTarget > maxAllowedTarget {
-                print("❌ Cannot achieve 1% gain while keeping target below current price")
+            if minRequiredTarget > target {
+                print("❌ Cannot achieve 1% gain with current target")
                 print("  Need more shares to lower cost per share")
                 return nil
             }
             
-            // Recalculate target price to ensure at least 1% gain but below current price
-            let newTarget = min(minRequiredTarget, maxAllowedTarget)
-            let adjustedTarget = floor(newTarget * 100) / 100
+            // Recalculate target price to ensure at least 1% gain
+            let adjustedTarget = floor(minRequiredTarget * 100) / 100
             
             // Recalculate entry price to maintain the same ATR-based spacing
             let limitedATR = getLimitedATR()
-            let adjustedEntry = adjustedTarget * (1.0 - (limitedATR / 100.0))
+            let adjustedEntry = adjustedTarget * (1.0 + (limitedATR / 100.0))
             let adjustedEntryRounded = floor(adjustedEntry * 100) / 100
             
             print("  Adjusted target: $\(adjustedTarget), adjusted entry: $\(adjustedEntryRounded)")
