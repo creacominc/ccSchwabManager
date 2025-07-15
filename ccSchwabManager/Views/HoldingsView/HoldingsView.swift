@@ -355,6 +355,10 @@ struct HoldingsView: View {
             )
             .task {
                 if let tmpsymbol = selected.position.instrument?.symbol {
+                    // Clear caches to ensure fresh data
+                    SchwabClient.shared.clearATRCache()
+                    SchwabClient.shared.clearPriceHistoryCache()
+                    
                     atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
                     sharesAvailableForTrading = SchwabClient.shared.getSharesAvailableForTrade(for: tmpsymbol)
                 }
@@ -362,6 +366,10 @@ struct HoldingsView: View {
             .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
                 if let tmpsymbol = newValue {
                     Task {
+                        // Clear caches to ensure fresh data when symbol changes
+                        SchwabClient.shared.clearATRCache()
+                        SchwabClient.shared.clearPriceHistoryCache()
+                        
                         atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
                         sharesAvailableForTrading = SchwabClient.shared.getSharesAvailableForTrade(for: tmpsymbol)
                     }

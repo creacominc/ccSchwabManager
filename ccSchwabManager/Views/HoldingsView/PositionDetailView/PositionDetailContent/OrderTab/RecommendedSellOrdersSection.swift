@@ -255,7 +255,36 @@ struct RecommendedSellOrdersSection: View {
             let newSharesUsed = sharesUsed + sharesToUse
             let newTotalCost = totalCost + sharesToUse * lot.costPerShare
             let avgCostPerShare = newTotalCost / newSharesUsed
-            if avgCostPerShare <= costPerShareThreshold {
+            
+            print("  Checking lot: \(sharesToUse) shares @ $\(lot.costPerShare)")
+            print("    Cumulative: \(newSharesUsed) shares, avg cost: $\(avgCostPerShare), threshold: $\(costPerShareThreshold)")
+            
+            // Check if this individual lot is already below the threshold
+            if lot.costPerShare <= costPerShareThreshold {
+                // If this is the first lot and it's already below threshold, take all shares
+                if sharesUsed == 0 {
+                    sharesUsed = sharesToUse
+                    totalCost = sharesToUse * lot.costPerShare
+                    lotsUsed.append((sharesToUse, lot.costPerShare))
+                    print("    ✅ First lot already below threshold, taking all \(sharesToUse) shares")
+                } else {
+                    // Only take the minimum number of shares from this lot to reach the threshold
+                    let numerator = costPerShareThreshold * sharesUsed - totalCost
+                    let denominator = lot.costPerShare - costPerShareThreshold
+                    var partialShares: Double = 0.0
+                    if denominator != 0 {
+                        partialShares = numerator / denominator
+                    }
+                    // Clamp to [0, lot.quantity]
+                    partialShares = max(0.0, min(partialShares, lot.quantity))
+                    sharesUsed += partialShares
+                    totalCost += partialShares * lot.costPerShare
+                    lotsUsed.append((partialShares, lot.costPerShare))
+                    print("    ✅ Found threshold with \(partialShares) shares from this lot")
+                }
+                found = true
+                break
+            } else if avgCostPerShare <= costPerShareThreshold {
                 // Only take the minimum number of shares from this lot to reach the threshold
                 let numerator = costPerShareThreshold * sharesUsed - totalCost
                 let denominator = lot.costPerShare - costPerShareThreshold
@@ -268,12 +297,14 @@ struct RecommendedSellOrdersSection: View {
                 sharesUsed += partialShares
                 totalCost += partialShares * lot.costPerShare
                 lotsUsed.append((partialShares, lot.costPerShare))
+                print("    ✅ Found threshold with \(partialShares) shares from this lot")
                 found = true
                 break
             } else {
                 sharesUsed = newSharesUsed
                 totalCost = newTotalCost
                 lotsUsed.append((sharesToUse, lot.costPerShare))
+                print("    ➡️ Added full lot, continuing...")
             }
         }
 
@@ -295,6 +326,46 @@ struct RecommendedSellOrdersSection: View {
         }
         let avgCostPerShare = runningCost / roundedShares
         let gain = ((target - avgCostPerShare) / avgCostPerShare) * 100.0
+        
+        // Ensure the target price is at least 1% above the cost per share
+        if gain < 1.0 {
+            print("❌ Target price $\(target) results in gain of \(gain)% which is less than 1%")
+            print("  Cost per share: $\(avgCostPerShare)")
+            print("  Need target price of at least $\(avgCostPerShare * 1.01)")
+            
+            // Recalculate target price to ensure at least 1% gain
+            let newTarget = avgCostPerShare * 1.01
+            let adjustedTarget = floor(newTarget * 100) / 100
+            
+            // Recalculate entry price to maintain the same ATR-based spacing
+            let limitedATR = getLimitedATR()
+            let adjustedEntry = adjustedTarget * (1.0 + (limitedATR / 100.0))
+            let adjustedEntryRounded = floor(adjustedEntry * 100) / 100
+            
+            print("  Adjusted target: $\(adjustedTarget), adjusted entry: $\(adjustedEntryRounded)")
+            
+            // Use the adjusted prices
+            let adjustedGain = ((adjustedTarget - avgCostPerShare) / avgCostPerShare) * 100.0
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, adjustedEntryRounded, adjustedTarget, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+
+            // Set trailing stop to ATR value (1 ATR)
+            let trailingStopATR = limitedATR
+
+            return SalesCalcResultsRecord(
+                shares: roundedShares,
+                rollingGainLoss: (adjustedTarget - avgCostPerShare) * roundedShares,
+                breakEven: avgCostPerShare,
+                gain: adjustedGain,
+                sharesToSell: roundedShares,
+                trailingStop: trailingStopATR, // Set to ATR value
+                entry: adjustedEntryRounded,
+                cancel: exit,
+                description: formattedDescription,
+                openDate: "ATR"
+            )
+        }
+        
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
 
@@ -335,7 +406,36 @@ struct RecommendedSellOrdersSection: View {
             let newSharesUsed = sharesUsed + sharesToUse
             let newTotalCost = totalCost + sharesToUse * lot.costPerShare
             let avgCostPerShare = newTotalCost / newSharesUsed
-            if avgCostPerShare <= costPerShareThreshold {
+            
+            print("  Checking lot: \(sharesToUse) shares @ $\(lot.costPerShare)")
+            print("    Cumulative: \(newSharesUsed) shares, avg cost: $\(avgCostPerShare), threshold: $\(costPerShareThreshold)")
+            
+            // Check if this individual lot is already below the threshold
+            if lot.costPerShare <= costPerShareThreshold {
+                // If this is the first lot and it's already below threshold, take all shares
+                if sharesUsed == 0 {
+                    sharesUsed = sharesToUse
+                    totalCost = sharesToUse * lot.costPerShare
+                    lotsUsed.append((sharesToUse, lot.costPerShare))
+                    print("    ✅ First lot already below threshold, taking all \(sharesToUse) shares")
+                } else {
+                    // Only take the minimum number of shares from this lot to reach the threshold
+                    let numerator = costPerShareThreshold * sharesUsed - totalCost
+                    let denominator = lot.costPerShare - costPerShareThreshold
+                    var partialShares: Double = 0.0
+                    if denominator != 0 {
+                        partialShares = numerator / denominator
+                    }
+                    // Clamp to [0, lot.quantity]
+                    partialShares = max(0.0, min(partialShares, lot.quantity))
+                    sharesUsed += partialShares
+                    totalCost += partialShares * lot.costPerShare
+                    lotsUsed.append((partialShares, lot.costPerShare))
+                    print("    ✅ Found threshold with \(partialShares) shares from this lot")
+                }
+                found = true
+                break
+            } else if avgCostPerShare <= costPerShareThreshold {
                 // Only take the minimum number of shares from this lot to reach the threshold
                 let numerator = costPerShareThreshold * sharesUsed - totalCost
                 let denominator = lot.costPerShare - costPerShareThreshold
@@ -348,12 +448,14 @@ struct RecommendedSellOrdersSection: View {
                 sharesUsed += partialShares
                 totalCost += partialShares * lot.costPerShare
                 lotsUsed.append((partialShares, lot.costPerShare))
+                print("    ✅ Found threshold with \(partialShares) shares from this lot")
                 found = true
                 break
             } else {
                 sharesUsed = newSharesUsed
                 totalCost = newTotalCost
                 lotsUsed.append((sharesToUse, lot.costPerShare))
+                print("    ➡️ Added full lot, continuing...")
             }
         }
 
@@ -379,6 +481,9 @@ struct RecommendedSellOrdersSection: View {
             print("❌ Gain is less than 1%: \(gain)%")
             return nil
         }
+        
+        print("✅ Final result: \(roundedShares) shares @ $\(avgCostPerShare) (gain: \(gain)%)")
+        
         // Exit: 0.25% above cost-per-share
         let exit = floor((avgCostPerShare * 1.0025) * 100) / 100
         // Entry: 0.5% below current price

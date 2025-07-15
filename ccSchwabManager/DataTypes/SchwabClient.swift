@@ -778,7 +778,7 @@ class SchwabClient
         //print( "     priceHistoryUrl: \(priceHistoryUrl)" )
         
         guard let url = URL( string: priceHistoryUrl ) else {
-            print("fetchPriceHistory. Invalid URL")
+            print("fetchPriceHistory. Invalid URL for \(symbol)")
             return nil
         }
         
@@ -804,36 +804,51 @@ class SchwabClient
         semaphore.wait()
         
         if let error = responseError {
-            print("fetchPriceHistory - Error: \(error.localizedDescription)")
+            print("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
             return nil
         }
         
         guard let data = responseData else {
-            print("fetchPriceHistory. No data received")
+            print("fetchPriceHistory. No data received for \(symbol)")
             return nil
         }
         
         if httpResponse?.statusCode != 200 {
-            print("fetchPriceHistory - Failed to fetch price history.  code = \(httpResponse?.statusCode ?? -1)")
+            print("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(httpResponse?.statusCode ?? -1)")
+            // Try to decode error response for debugging
+            if let errorString = String(data: data, encoding: .utf8) {
+                print("fetchPriceHistory - Error response for \(symbol): \(errorString)")
+            }
             return nil
         }
         
         do {
             let decoder = JSONDecoder()
             m_lastFilteredPriceHistory = try decoder.decode(CandleList.self, from: data)
-            print("fetchPriceHistory - Fetched \(m_lastFilteredPriceHistory?.candles.count ?? 0) candles for \(symbol)")
-//            // print first and last dates in ISO8601 format
-//            print( "  date range:  \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.first!.datetime ?? Int64(0.0))/1000.0)) - \(Date(timeIntervalSince1970: Double(m_lastFilteredPriceHistory?.candles.last!.datetime ?? Int64(0.0))/1000.0))" )
-//            // print the last 5 dates and closing prices
-//            for i in stride(from: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 1, to: (m_lastFilteredPriceHistory?.candles.count ?? 0) - 6, by: -1) {
-//                let candle: Candle = m_lastFilteredPriceHistory?.candles[i] ?? Candle()
-//                print( "  \(Date(timeIntervalSince1970: Double(candle.datetime ?? Int64(0.0))/1000.0)):  \(candle.close ?? 0.0)" )
-//            }
-
-
+            
+            // Validate the returned data
+            guard let candleList = m_lastFilteredPriceHistory else {
+                print("fetchPriceHistory - Failed to decode CandleList for \(symbol)")
+                return nil
+            }
+            
+            // Check if we have valid candles
+            let validCandles = candleList.candles.filter { candle in
+                guard let high = candle.high, let low = candle.low, let close = candle.close else {
+                    return false
+                }
+                return high > 0 && low > 0 && close > 0 && high >= low
+            }
+            
+            print("fetchPriceHistory - Fetched \(candleList.candles.count) total candles, \(validCandles.count) valid candles for \(symbol)")
+            
+            if validCandles.count < 2 {
+                print("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
+            }
+            
             return m_lastFilteredPriceHistory
         } catch {
-            print("fetchPriceHistory - Error: \(error.localizedDescription)")
+            print("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
             print("   detail:  \(error)")
             return nil
         }
@@ -930,7 +945,7 @@ class SchwabClient
      */
     public func computeATR( symbol : String )  -> Double
     {
-        print("=== computeATR  ===")
+        print("=== computeATR \(symbol) ===")
 
         // Check cache first without holding lock
         if( symbol == m_lastFilteredATRSymbol )
@@ -944,12 +959,17 @@ class SchwabClient
         defer {
             m_lastFilteredATRLock.unlock()
         }
-        m_lastFilteredATRSymbol = symbol
+        
+        // Double-check cache after acquiring lock
+        if( symbol == m_lastFilteredATRSymbol )
+        {
+            print( "  computeATR - returning cached (after lock)." )
+            return m_lastFilteredATR
+        }
 
         guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
-            print("computeATR Failed to fetch price history.")
-            m_lastFilteredATR = 0.0
-            m_lastFilteredATRSymbol = ""
+            print("computeATR Failed to fetch price history for \(symbol).")
+            // Don't set the symbol if we failed to get data
             return 0.0
         }
 
@@ -959,9 +979,22 @@ class SchwabClient
         
         // Need at least 2 candles to compute ATR
         guard candlesCount > 1 else {
-            print("computeATR: Need at least 2 candles, got \(candlesCount)")
-            m_lastFilteredATR = 0.0
-            m_lastFilteredATRSymbol = ""
+            print("computeATR: Need at least 2 candles, got \(candlesCount) for \(symbol)")
+            // Don't set the symbol if we don't have enough data
+            return 0.0
+        }
+        
+        // Validate that we have valid price data
+        let validCandles = candles.filter { candle in
+            guard let high = candle.high, let low = candle.low, let close = candle.close else {
+                return false
+            }
+            return high > 0 && low > 0 && close > 0 && high >= low
+        }
+        
+        guard validCandles.count > 1 else {
+            print("computeATR: Need at least 2 valid candles, got \(validCandles.count) for \(symbol)")
+            // Don't set the symbol if we don't have valid data
             return 0.0
         }
         
@@ -972,12 +1005,12 @@ class SchwabClient
          * Compute the ATR as the average of the True Range.
          * The True Range is the maximum of absolute values of the High - Low, High - previous Close, and Low - previous Close
          */
-        let length : Int  =  min( candlesCount, 21 )
-        let startIndex : Int = candlesCount - length
+        let length : Int  =  min( validCandles.count, 21 )
+        let startIndex : Int = validCandles.count - length
         
         // Additional safety check
-        guard startIndex >= 0 && startIndex < candlesCount else {
-            print("computeATR: Invalid startIndex \(startIndex) for candlesCount \(candlesCount)")
+        guard startIndex >= 0 && startIndex < validCandles.count else {
+            print("computeATR: Invalid startIndex \(startIndex) for validCandlesCount \(validCandles.count) for \(symbol)")
             return 0.0
         }
         
@@ -985,13 +1018,13 @@ class SchwabClient
         {
             let position = startIndex + indx
             
-            // Bounds check for current position - recheck candlesCount in case array was modified
-            guard position >= 0 && position < candles.count else {
-                print("computeATR: Position \(position) out of bounds for candlesCount \(candles.count)")
+            // Bounds check for current position - recheck validCandles.count in case array was modified
+            guard position >= 0 && position < validCandles.count else {
+                print("computeATR: Position \(position) out of bounds for validCandlesCount \(validCandles.count) for \(symbol)")
                 continue
             }
             
-            let candle : Candle  = candles[position]
+            let candle : Candle  = validCandles[position]
             
             // Safe access to previous close
             let prevClose : Double
@@ -999,11 +1032,11 @@ class SchwabClient
                 prevClose = priceHistory.previousClose ?? 0.0
             } else {
                 let prevPosition = position - 1
-                guard prevPosition >= 0 && prevPosition < candles.count else {
-                    print("computeATR: Previous position \(prevPosition) out of bounds for candlesCount \(candles.count)")
+                guard prevPosition >= 0 && prevPosition < validCandles.count else {
+                    print("computeATR: Previous position \(prevPosition) out of bounds for validCandlesCount \(validCandles.count) for \(symbol)")
                     continue
                 }
-                prevClose = candles[prevPosition].close ?? 0.0
+                prevClose = validCandles[prevPosition].close ?? 0.0
             }
             
             let high : Double  = candle.high ?? 0.0
@@ -1013,11 +1046,89 @@ class SchwabClient
             m_lastFilteredATR = ( (m_lastFilteredATR * Double(indx)) + tr ) / Double(indx+1)
         }
         
+        // Validate final values before returning
+        guard close > 0 && m_lastFilteredATR > 0 else {
+            print("computeATR: Invalid final values - close: \(close), ATR: \(m_lastFilteredATR) for \(symbol)")
+            return 0.0
+        }
+        
+        // Set the symbol and ATR only if we successfully calculated a valid value
+        m_lastFilteredATRSymbol = symbol
+        m_lastFilteredATR = (m_lastFilteredATR * 1.08 / close * 100.0)
+        
+        print("computeATR: Successfully calculated ATR: \(m_lastFilteredATR)% for \(symbol)")
+        
         // return the ATR as a percent.
-        return (m_lastFilteredATR * 1.08  / close * 100.0)
+        return m_lastFilteredATR
     }
     
-
+    /**
+     * clearATRCache - clear the ATR cache to force fresh calculation
+     */
+    public func clearATRCache() {
+        m_lastFilteredATRLock.lock()
+        defer { m_lastFilteredATRLock.unlock() }
+        
+        m_lastFilteredATRSymbol = ""
+        m_lastFilteredATR = 0.0
+        print("computeATR: Cleared ATR cache")
+    }
+    
+    /**
+     * clearPriceHistoryCache - clear the price history cache to force fresh data fetch
+     */
+    public func clearPriceHistoryCache() {
+        m_lastFilteredPriceHistoryLock.lock()
+        defer { m_lastFilteredPriceHistoryLock.unlock() }
+        
+        m_lastFilteredPriceHistorySymbol = ""
+        m_lastFilteredPriceHistory = nil
+        print("fetchPriceHistory: Cleared price history cache")
+    }
+    
+    /**
+     * clearAllCaches - clear all caches for debugging purposes
+     */
+    public func clearAllCaches() {
+        clearATRCache()
+        clearPriceHistoryCache()
+        print("SchwabClient: Cleared all caches")
+    }
+    
+    /**
+     * testATRCalculation - test ATR calculation with sample data
+     */
+    public func testATRCalculation() {
+        print("=== testATRCalculation ===")
+        
+        // Create sample candle data
+        let sampleCandles = [
+            Candle(close: 100.0, high: 105.0, low: 98.0),
+            Candle(close: 102.0, high: 107.0, low: 99.0),
+            Candle(close: 101.0, high: 103.0, low: 100.0),
+            Candle(close: 104.0, high: 106.0, low: 101.0),
+            Candle(close: 103.0, high: 105.0, low: 102.0)
+        ]
+        
+        let sampleCandleList = CandleList(
+            candles: sampleCandles,
+            previousClose: 99.0
+        )
+        
+        // Temporarily set the price history cache
+        m_lastFilteredPriceHistoryLock.lock()
+        m_lastFilteredPriceHistory = sampleCandleList
+        m_lastFilteredPriceHistorySymbol = "TEST"
+        m_lastFilteredPriceHistoryLock.unlock()
+        
+        // Test ATR calculation
+        let atrValue = computeATR(symbol: "TEST")
+        print("Test ATR value: \(atrValue)%")
+        
+        // Clear test data
+        clearAllCaches()
+    }
+    
     /**
      * fetchTransactionHistorySync - synchronous fetch of transaction history
      * Note: This method should be avoided in favor of async versions
