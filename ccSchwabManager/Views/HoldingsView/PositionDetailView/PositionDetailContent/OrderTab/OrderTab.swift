@@ -12,24 +12,18 @@ struct OrderTab: View {
             VStack(spacing: 16) {
                 // Section 1: Current Orders
                 CurrentOrdersSection(symbol: symbol)
-                    .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.25)
+                    .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.30)
                 
                 Divider()
                 
-                // Section 2: Recommended Sell Orders
+                // Section 2: Recommended OCO Orders
                 RecommendedSellOrdersSection(
                     symbol: symbol,
                     atrValue: atrValue,
                     taxLotData: taxLotData,
                     sharesAvailableForTrading: sharesAvailableForTrading
                 )
-                .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.25)
-                
-                Divider()
-                
-                // Section 3: Recommended Buy Orders (Placeholder)
-                RecommendedBuyOrdersSection()
-                    .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.25)
+                .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.55)
             }
         }
         .tabItem {

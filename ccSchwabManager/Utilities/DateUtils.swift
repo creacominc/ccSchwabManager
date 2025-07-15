@@ -208,10 +208,27 @@ func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
             formatter.timeZone = TimeZone.current
             
             if let date = formatter.date(from: dateString) {
-                let calendar = Calendar.current
+                // Set the expiration time to 23:59:59 (end of day) in Eastern Time
+                let easternTimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+                
+                // Convert the date to Eastern Time and set to 23:59:59
+                var easternCalendar = Calendar.current
+                easternCalendar.timeZone = easternTimeZone
+                
+                guard let expirationDate = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: date) else {
+                    return nil
+                }
+                
                 let today = Date()
-                let components = calendar.dateComponents([.day], from: today, to: date)
-                return components.day
+                let timeInterval = expirationDate.timeIntervalSince(today)
+                let daysDifference = timeInterval / (24 * 60 * 60)
+                
+                // Round to nearest day, but be more conservative
+                // If we're more than halfway through a day, round up
+                let fractionalPart = daysDifference - floor(daysDifference)
+                let roundedDays = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
+                
+                return roundedDays
             }
         }
     }
@@ -238,14 +255,80 @@ func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
                 
                 let dateString = String(description[Range(match.range, in: description)!])
                 if let date = formatter.date(from: dateString) {
-                    let calendar = Calendar.current
+                    // Set the expiration time to 23:59:59 (end of day) in Eastern Time
+                    let easternTimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+                    
+                    // Convert the date to Eastern Time and set to 23:59:59
+                    var easternCalendar = Calendar.current
+                    easternCalendar.timeZone = easternTimeZone
+                    
+                    guard let expirationDate = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: date) else {
+                        return nil
+                    }
+                    
                     let today = Date()
-                    let components = calendar.dateComponents([.day], from: today, to: date)
-                    return components.day
+                    let timeInterval = expirationDate.timeIntervalSince(today)
+                    let daysDifference = timeInterval / (24 * 60 * 60)
+                    
+                    // Round to nearest day, but be more conservative
+                    // If we're more than halfway through a day, round up
+                    let fractionalPart = daysDifference - floor(daysDifference)
+                    let roundedDays = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
+                    
+                    return roundedDays
                 }
             }
         }
     }
     
     return nil
+}
+
+// Test function to verify DTE calculation behavior
+func testDTECalculation() {
+    print("=== Testing DTE Calculation ===")
+    
+    // Test case: Monday evening to Friday expiration
+    // Create a test date for Monday evening (e.g., 6 PM)
+    let calendar = Calendar.current
+    let today = Date()
+    
+    // Create a test expiration date for Friday
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd"
+    formatter.timeZone = TimeZone.current
+    
+    // Get next Friday
+    var fridayDate = today
+    while calendar.component(.weekday, from: fridayDate) != 6 { // 6 = Friday
+        fridayDate = calendar.date(byAdding: .day, value: 1, to: fridayDate) ?? fridayDate
+    }
+    
+    // Set expiration to 23:59:59 on Friday in Eastern Time
+    let easternTimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+    var easternCalendar = Calendar.current
+    easternCalendar.timeZone = easternTimeZone
+    
+    guard let expirationDate = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: fridayDate) else {
+        print("Failed to create expiration date")
+        return
+    }
+    
+    let timeInterval = expirationDate.timeIntervalSince(today)
+    let daysDifference = timeInterval / (24 * 60 * 60)
+    
+    // Round to nearest day, but be more conservative
+    // If we're more than halfway through a day, round up
+    let fractionalPart = daysDifference - floor(daysDifference)
+    let roundedDays = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
+    
+    print("Today: \(today)")
+    print("Expiration: \(expirationDate)")
+    print("Raw days difference: \(daysDifference)")
+    print("Fractional part: \(fractionalPart)")
+    print("Rounded days: \(roundedDays)")
+    
+    // Expected: Should show appropriate days based on actual time difference
+    print("Expected behavior: Should show accurate days based on time difference")
+    print("Actual result: \(roundedDays) days")
 }

@@ -102,9 +102,27 @@ struct CurrentOrdersSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Current Orders")
-                .font(.headline)
-                .padding(.horizontal)
+            HStack {
+                Text("Current Orders")
+                    .font(.headline)
+                
+                Spacer()
+                
+                Button(selectedOrderGroups.count == currentOrders.count ? "Deselect All" : "Select All") {
+                    if selectedOrderGroups.count == currentOrders.count {
+                        // Deselect all
+                        selectedOrderGroups.removeAll()
+                    } else {
+                        // Select all
+                        let allOrderIds = currentOrders.compactMap { $0.orderId }
+                        selectedOrderGroups = Set(allOrderIds)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(currentOrders.isEmpty)
+            }
+            .padding(.horizontal)
             
             if currentOrders.isEmpty {
                 Text("No open orders for \(symbol)")

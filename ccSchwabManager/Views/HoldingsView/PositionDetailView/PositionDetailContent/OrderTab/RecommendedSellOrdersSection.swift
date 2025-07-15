@@ -5,7 +5,7 @@ struct RecommendedSellOrdersSection: View {
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
     let sharesAvailableForTrading: Double
-    @State private var selectedOrderIndex: Int? = nil
+    @State private var selectedOrderIndices: Set<Int> = []
     @State private var recommendedSellOrders: [SalesCalcResultsRecord] = []
     @State private var lastSymbol: String = ""
     @State private var copiedValue: String = "TBD"
@@ -183,10 +183,15 @@ struct RecommendedSellOrdersSection: View {
         let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
         let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
         let entryPrice = max((currentPrice + targetSellPrice) / 2.0, minEntryPrice)
-        let trailingStopPercent = ((entryPrice - targetSellPrice) / entryPrice) * 100.0
+        
+        // Ensure entry price is at least 1% below current price
+        let minEntryPrice1Percent = currentPrice * 0.99
+        let finalEntryPrice = min(entryPrice, minEntryPrice1Percent)
+        
+        let trailingStopPercent = ((finalEntryPrice - targetSellPrice) / finalEntryPrice) * 100.0
         
         print("Order parameters:")
-        print("  Entry price: $\(entryPrice)")
+        print("  Entry price: $\(finalEntryPrice)")
         print("  Cancel price: $\(hardExitPrice)")
         print("  Trailing stop: \(trailingStopPercent)%")
         print("  ATR requirement: \(2.0 * getLimitedATR())%")
@@ -205,7 +210,7 @@ struct RecommendedSellOrdersSection: View {
                                         sharesToConsider,
                                         symbol,
                                         trailingStopPercent,
-                                        entryPrice,
+                                        finalEntryPrice,
                                         hardExitPrice,
                                         formatReleaseTime(tomorrow))
         
@@ -216,7 +221,7 @@ struct RecommendedSellOrdersSection: View {
             gain: gain,
             sharesToSell: sharesToConsider,
             trailingStop: trailingStopPercent,
-            entry: entryPrice,
+            entry: finalEntryPrice,
             cancel: hardExitPrice,
             description: formattedDescription,
             openDate: "Special"
@@ -236,13 +241,18 @@ struct RecommendedSellOrdersSection: View {
         let limitedATR = getLimitedATR()
         let entryRaw = currentPrice / (1.0 + (2.0 * limitedATR / 100.0))
         let entry = floor(entryRaw * 100) / 100
-        let targetRaw = entry / (1.0 + (limitedATR / 100.0))
+        
+        // Ensure entry price is at least 1% below current price
+        let minEntryPrice = currentPrice * 0.99
+        let finalEntry = min(entry, minEntryPrice)
+        
+        let targetRaw = finalEntry / (1.0 + (limitedATR / 100.0))
         let target = floor(targetRaw * 100) / 100
         let exitRaw = target / (1.0 + (limitedATR / 100.0))
         let exit = floor(exitRaw * 100) / 100
         let costPerShareThresholdRaw = target / 1.05
         let costPerShareThreshold = floor(costPerShareThresholdRaw * 100) / 100
-        print("Entry: $\(entry), Target: $\(target), Exit: $\(exit), Cost/share threshold: $\(costPerShareThreshold)")
+        print("Entry: $\(finalEntry), Target: $\(target), Exit: $\(exit), Cost/share threshold: $\(costPerShareThreshold)")
 
         // 2. Find minimum shares such that cost-per-share <= costPerShareThreshold, allowing partial lots
         var sharesUsed: Double = 0.0
@@ -367,7 +377,7 @@ struct RecommendedSellOrdersSection: View {
         }
         
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, finalEntry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
 
         // Set trailing stop to ATR value (1 ATR)
         let trailingStopATR = limitedATR
@@ -379,7 +389,7 @@ struct RecommendedSellOrdersSection: View {
             gain: gain,
             sharesToSell: roundedShares,
             trailingStop: trailingStopATR, // Set to ATR value
-            entry: entry,
+            entry: finalEntry,
             cancel: exit,
             description: formattedDescription,
             openDate: "ATR"
@@ -488,6 +498,11 @@ struct RecommendedSellOrdersSection: View {
         let exit = floor((avgCostPerShare * 1.0025) * 100) / 100
         // Entry: 0.5% below current price
         var entry = floor((currentPrice * 0.995) * 100) / 100
+        
+        // Ensure entry price is at least 1% below current price
+        let minEntryPrice = currentPrice * 0.99
+        entry = min(entry, minEntryPrice)
+        
         // Target sell: midway between entry and exit
         var target = floor(((entry + exit) / 2.0) * 100) / 100
         // Trailing stop: percent from entry to target sell
@@ -528,7 +543,7 @@ struct RecommendedSellOrdersSection: View {
             print("Symbol changed from \(lastSymbol) to \(symbol)")
             lastSymbol = symbol
             copiedValue = "TBD"
-            selectedOrderIndex = nil
+            selectedOrderIndices.removeAll()
             updateRecommendedOrders()
         }
     }
@@ -581,10 +596,23 @@ struct RecommendedSellOrdersSection: View {
     
     private var headerView: some View {
         HStack {
-            Text("Recommended Sell Orders")
+            Text("Recommended OCO")
                 .font(.headline)
             
             Spacer()
+            
+            Button(selectedOrderIndices.count == currentRecommendedSellOrders.count ? "Deselect All" : "Select All") {
+                if selectedOrderIndices.count == currentRecommendedSellOrders.count {
+                    // Deselect all
+                    selectedOrderIndices.removeAll()
+                } else {
+                    // Select all
+                    selectedOrderIndices = Set(0..<currentRecommendedSellOrders.count)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(currentRecommendedSellOrders.isEmpty)
         }
         .padding(.horizontal)
     }
@@ -612,21 +640,54 @@ struct RecommendedSellOrdersSection: View {
             
             VStack {
                 Spacer()
-                Button("Submit") {
-                    if let selectedIndex = selectedOrderIndex,
-                       selectedIndex < currentRecommendedSellOrders.count {
-                        let selectedOrder = currentRecommendedSellOrders[selectedIndex]
-                        copyToClipboard(text: selectedOrder.description)
-                        print("Submitted order: \(selectedOrder.description)")
+                if !selectedOrderIndices.isEmpty {
+                    Button(action: submitOCOOrders) {
+                        VStack {
+                            Image(systemName: "paperplane.circle.fill")
+                                .font(.title2)
+                            Text("Submit\nOCO")
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
+                        }
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(8)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(selectedOrderIndex == nil)
-                .padding(.trailing)
                 Spacer()
             }
+            .padding(.trailing, 8)
         }
+    }
+    
+    private func submitOCOOrders() {
+        guard !selectedOrderIndices.isEmpty else { return }
+        
+        let selectedOrders = selectedOrderIndices.compactMap { index in
+            index < currentRecommendedSellOrders.count ? currentRecommendedSellOrders[index] : nil
+        }
+        
+        // Create OCO order description
+        let ocoDescription = createOCOOrderDescription(orders: selectedOrders)
+        copyToClipboard(text: ocoDescription)
+        print("Submitted OCO order: \(ocoDescription)")
+    }
+    
+    private func createOCOOrderDescription(orders: [SalesCalcResultsRecord]) -> String {
+        guard !orders.isEmpty else { return "" }
+        
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let releaseTime = formatReleaseTime(tomorrow)
+        
+        var description = "OCO Order Group for \(symbol):\n"
+        
+        for (index, order) in orders.enumerated() {
+            description += "Order \(index + 1): \(order.description)\n"
+        }
+        
+        description += "Submit at: \(releaseTime)"
+        return description
     }
     
     private var headerRow: some View {
@@ -680,9 +741,13 @@ struct RecommendedSellOrdersSection: View {
     private func orderRow(index: Int, order: SalesCalcResultsRecord) -> some View {
         HStack {
             Button(action: {
-                selectedOrderIndex = index
+                if selectedOrderIndices.contains(index) {
+                    selectedOrderIndices.remove(index)
+                } else {
+                    selectedOrderIndices.insert(index)
+                }
             }) {
-                Image(systemName: selectedOrderIndex == index ? "largecircle.fill.circle" : "circle")
+                Image(systemName: selectedOrderIndices.contains(index) ? "checkmark.square.fill" : "square")
                     .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
@@ -693,7 +758,11 @@ struct RecommendedSellOrdersSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onTapGesture {
                     copyToClipboard(text: order.description)
-                    selectedOrderIndex = index
+                    if selectedOrderIndices.contains(index) {
+                        selectedOrderIndices.remove(index)
+                    } else {
+                        selectedOrderIndices.insert(index)
+                    }
                 }
             
             Text("\(Int(order.sharesToSell))")
@@ -701,7 +770,11 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: Double(order.sharesToSell), format: "%.0f")
-                    selectedOrderIndex = index
+                    if selectedOrderIndices.contains(index) {
+                        selectedOrderIndices.remove(index)
+                    } else {
+                        selectedOrderIndices.insert(index)
+                    }
                 }
             
             Text(String(format: "%.2f%%", order.trailingStop))
@@ -709,7 +782,11 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 100, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.trailingStop, format: "%.2f")
-                    selectedOrderIndex = index
+                    if selectedOrderIndices.contains(index) {
+                        selectedOrderIndices.remove(index)
+                    } else {
+                        selectedOrderIndices.insert(index)
+                    }
                 }
             
             Text(String(format: "%.2f", order.entry))
@@ -717,7 +794,11 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.entry, format: "%.2f")
-                    selectedOrderIndex = index
+                    if selectedOrderIndices.contains(index) {
+                        selectedOrderIndices.remove(index)
+                    } else {
+                        selectedOrderIndices.insert(index)
+                    }
                 }
             
             Text(String(format: "%.2f", order.cancel))
@@ -725,7 +806,11 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.cancel, format: "%.2f")
-                    selectedOrderIndex = index
+                    if selectedOrderIndices.contains(index) {
+                        selectedOrderIndices.remove(index)
+                    } else {
+                        selectedOrderIndices.insert(index)
+                    }
                 }
             
             Text(String(format: "%.1f%%", order.gain))
@@ -733,12 +818,16 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.gain, format: "%.1f")
-                    selectedOrderIndex = index
+                    if selectedOrderIndices.contains(index) {
+                        selectedOrderIndices.remove(index)
+                    } else {
+                        selectedOrderIndices.insert(index)
+                    }
                 }
         }
         .padding(.horizontal)
         .padding(.vertical, 4)
-        .background(selectedOrderIndex == index ? Color.blue.opacity(0.1) : rowStyle(for: order).opacity(0.1))
+        .background(selectedOrderIndices.contains(index) ? Color.blue.opacity(0.2) : rowStyle(for: order).opacity(0.1))
         .cornerRadius(4)
     }
 } 
