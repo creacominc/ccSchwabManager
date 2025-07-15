@@ -88,6 +88,10 @@ struct HoldingsView: View {
     @State private var orderStatusCache: [String: ActiveOrderStatus?] = [:]
 //    @State private var dteCache: [String: Int?] = [:]
 
+    // Add state to track ongoing refresh operations
+    @State private var isRefreshing = false
+    @State private var currentFetchTask: Task<Void, Never>? = nil
+
     struct SelectedPosition: Identifiable {
         let id: Position.ID
         let position: Position
@@ -200,23 +204,73 @@ struct HoldingsView: View {
             VStack {
                 // Filter section with disclosure button
                 VStack(spacing: 0) {
-                    Button(action: {
-                        withAnimation {
-                            isFilterExpanded.toggle()
+                    HStack {
+                        Button(action: {
+                            withAnimation {
+                                isFilterExpanded.toggle()
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
+                                    .foregroundColor(.accentColor)
+                                Text("Filters")
+                                    .foregroundColor(.primary)
+                            }
                         }
-                    }) {
-                        HStack {
-                            Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
-                                .foregroundColor(.accentColor)
-                            Text("Filters")
-                                .foregroundColor(.primary)
-                            Spacer()
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            // Trigger refresh of securities data
+                            Task {
+                                // Prevent concurrent refresh operations
+                                guard !isRefreshing else { return }
+                                
+                                isRefreshing = true
+                                isLoadingAccounts = true
+                                
+                                // Cancel any existing fetch task
+                                currentFetchTask?.cancel()
+                                
+                                // Clear caches to force fresh data
+                                tradeDateCache.removeAll()
+                                orderStatusCache.removeAll()
+                                
+                                // Create new fetch task
+                                currentFetchTask = Task {
+                                    await fetchHoldingsAsync()
+                                }
+                                
+                                // Wait for completion
+                                await currentFetchTask?.value
+                                
+                                // Reset states
+                                await MainActor.run {
+                                    isRefreshing = false
+                                    isLoadingAccounts = false
+                                }
+                            }
+                        }) {
+                            HStack {
+                                if isRefreshing {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                        .foregroundColor(.accentColor)
+                                }
+                                Text(isRefreshing ? "Refreshing..." : "Refresh")
+                                    .foregroundColor(.primary)
+                            }
                         }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(Color.gray.opacity(0.1))
+                        .buttonStyle(.plain)
+                        .disabled(isRefreshing || isLoadingAccounts)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.gray.opacity(0.1))
                     
                     if isFilterExpanded {
                         FilterControls(
@@ -264,12 +318,15 @@ struct HoldingsView: View {
                 // Connect loading state to SchwabClient
                 //print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = loadingState
-                fetchHoldings()
+                await fetchHoldingsAsync()
                 selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
             }
             .onDisappear {
                 //print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = nil
+                // Cancel any ongoing fetch task
+                currentFetchTask?.cancel()
+                currentFetchTask = nil
             }
             .onAppear {
                 viewSize = geometry.size
@@ -317,12 +374,28 @@ struct HoldingsView: View {
     }
     
     private func fetchHoldings()  {
-        print("=== fetchHoldings - Starting optimized data loading ===")
+        Task {
+            await fetchHoldingsAsync()
+        }
+    }
+    
+    private func fetchHoldingsAsync() async {
+        print("=== fetchHoldingsAsync - Starting optimized data loading ===")
+        
+        // Check for cancellation at the start
+        try? await Task.sleep(nanoseconds: 1) // Allow cancellation to be checked
+        guard !Task.isCancelled else {
+            print("=== fetchHoldingsAsync - Cancelled before starting ===")
+            return
+        }
         
         // PRIORITY 1: Fetch accounts immediately (needed for holdings display)
         Task {
             print("🚀 PRIORITY 1: Fetching accounts for holdings display")
             await SchwabClient.shared.fetchAccounts(retry: true)
+            
+            // Check for cancellation before updating UI
+            guard !Task.isCancelled else { return }
             
             // Update UI immediately with holdings data
             await MainActor.run {
@@ -353,6 +426,9 @@ struct HoldingsView: View {
             print("🚀 PRIORITY 2: Fetching order history in parallel")
             await SchwabClient.shared.fetchOrderHistory()
             
+            // Check for cancellation before updating UI
+            guard !Task.isCancelled else { return }
+            
             // Update order information in UI and populate cache
             await MainActor.run {
                 // Populate order status cache
@@ -371,6 +447,9 @@ struct HoldingsView: View {
             
             // Fetch first 4 quarters immediately for trade dates (faster than full 12 quarters)
             await SchwabClient.shared.fetchTransactionHistoryReduced(quarters: 4)
+            
+            // Check for cancellation before updating UI
+            guard !Task.isCancelled else { return }
             
             // Update trade dates in UI and populate cache
             await MainActor.run {
@@ -400,6 +479,12 @@ struct HoldingsView: View {
                 // Process in batches of 3 to avoid overwhelming the API
                 let batchSize = 3
                 for batchStart in stride(from: 0, to: remainingQuarters, by: batchSize) {
+                    // Check for cancellation before each batch
+                    guard !Task.isCancelled else {
+                        print("=== fetchHoldingsAsync - Cancelled during background processing ===")
+                        return
+                    }
+                    
                     let batchEnd = min(batchStart + batchSize, remainingQuarters)
                     let batchSize = batchEnd - batchStart
                     

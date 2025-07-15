@@ -63,6 +63,16 @@ struct RecommendedSellOrdersSection: View {
         } else {
             print("❌ Min shares order not created")
         }
+
+        // Order 2: Minimum break even order (>1% gain)
+        print("--- Calculating Min Break Even Order ---")
+        let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
+        if let order = minBreakEvenOrder {
+            print("✅ Min break even order created: \(order.description)")
+            recommended.append(order)
+        } else {
+            print("❌ Min break even order not created")
+        }
         
         print("=== Final result: \(recommended.count) recommended orders ===")
         return recommended
@@ -82,7 +92,8 @@ struct RecommendedSellOrdersSection: View {
     }
     
     private func getLimitedATR() -> Double {
-        return min(atrValue, 5.0)
+        // Clamp ATR to the range [1, 7] percent
+        return max(1.0, min(atrValue, 7.0))
     }
     
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
@@ -222,11 +233,12 @@ struct RecommendedSellOrdersSection: View {
         }
 
         // 1. Calculate entry, target, and exit prices using ATR, rounded down to the penny
-        let entryRaw = currentPrice / (1.0 + (2.0 * atrValue / 100.0))
+        let limitedATR = getLimitedATR()
+        let entryRaw = currentPrice / (1.0 + (2.0 * limitedATR / 100.0))
         let entry = floor(entryRaw * 100) / 100
-        let targetRaw = entry / (1.0 + (atrValue / 100.0))
+        let targetRaw = entry / (1.0 + (limitedATR / 100.0))
         let target = floor(targetRaw * 100) / 100
-        let exitRaw = target / (1.0 + (atrValue / 100.0))
+        let exitRaw = target / (1.0 + (limitedATR / 100.0))
         let exit = floor(exitRaw * 100) / 100
         let costPerShareThresholdRaw = target / 1.05
         let costPerShareThreshold = floor(costPerShareThresholdRaw * 100) / 100
@@ -287,7 +299,7 @@ struct RecommendedSellOrdersSection: View {
         let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
 
         // Set trailing stop to ATR value (1 ATR)
-        let trailingStopATR = atrValue
+        let trailingStopATR = limitedATR
 
         return SalesCalcResultsRecord(
             shares: roundedShares,
@@ -300,6 +312,105 @@ struct RecommendedSellOrdersSection: View {
             cancel: exit,
             description: formattedDescription,
             openDate: "ATR"
+        )
+    }
+    
+    private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
+        print("=== calculateMinBreakEvenOrder ===")
+        print("Current price: $\(currentPrice)")
+        print("Tax lots (sorted by cost per share, highest first):")
+        for (index, lot) in sortedTaxLots.enumerated() {
+            print("  Lot \(index): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(lot.costBasis) total")
+        }
+
+        // 1. Find minimum shares such that cost-per-share is at least 1% below current price (>1% gain)
+        let costPerShareThreshold = currentPrice / 1.01 // must be at least 1% gain
+        var sharesUsed: Double = 0.0
+        var totalCost: Double = 0.0
+        var lotsUsed: [(Double, Double)] = [] // (shares, costPerShare)
+        var found = false
+
+        for lot in sortedTaxLots {
+            let sharesToUse = lot.quantity
+            let newSharesUsed = sharesUsed + sharesToUse
+            let newTotalCost = totalCost + sharesToUse * lot.costPerShare
+            let avgCostPerShare = newTotalCost / newSharesUsed
+            if avgCostPerShare <= costPerShareThreshold {
+                // Only take the minimum number of shares from this lot to reach the threshold
+                let numerator = costPerShareThreshold * sharesUsed - totalCost
+                let denominator = lot.costPerShare - costPerShareThreshold
+                var partialShares: Double = 0.0
+                if denominator != 0 {
+                    partialShares = numerator / denominator
+                }
+                // Clamp to [0, lot.quantity]
+                partialShares = max(0.0, min(partialShares, lot.quantity))
+                sharesUsed += partialShares
+                totalCost += partialShares * lot.costPerShare
+                lotsUsed.append((partialShares, lot.costPerShare))
+                found = true
+                break
+            } else {
+                sharesUsed = newSharesUsed
+                totalCost = newTotalCost
+                lotsUsed.append((sharesToUse, lot.costPerShare))
+            }
+        }
+
+        if sharesUsed == 0 || !found {
+            print("❌ Could not find enough shares to meet break even threshold with partial lots")
+            return nil
+        }
+
+        // Round up shares to next whole number
+        let roundedShares = ceil(sharesUsed)
+        // Recalculate total cost for the rounded number of shares
+        var runningShares: Double = 0.0
+        var runningCost: Double = 0.0
+        for (qty, cps) in lotsUsed {
+            let sharesToAdd = min(qty, max(0, roundedShares - runningShares))
+            runningCost += sharesToAdd * cps
+            runningShares += sharesToAdd
+            if runningShares >= roundedShares { break }
+        }
+        let avgCostPerShare = runningCost / roundedShares
+        let gain = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        if gain < 1.0 {
+            print("❌ Gain is less than 1%: \(gain)%")
+            return nil
+        }
+        // Exit: 0.25% above cost-per-share
+        let exit = floor((avgCostPerShare * 1.0025) * 100) / 100
+        // Entry: 0.5% below current price
+        var entry = floor((currentPrice * 0.995) * 100) / 100
+        // Target sell: midway between entry and exit
+        var target = floor(((entry + exit) / 2.0) * 100) / 100
+        // Trailing stop: percent from entry to target sell
+        var trailingStop = ((target - entry) / entry) * 100.0
+        
+        // Ensure trailing stop is at least 0.25%
+        if trailingStop < 0.25 {
+            print("⚠️ Trailing stop \(trailingStop)% is less than 0.25%, adjusting prices...")
+            // Calculate required target price to achieve 0.25% trailing stop
+            let requiredTarget = entry * 1.0025
+            target = floor(requiredTarget * 100) / 100
+            trailingStop = 0.25
+            print("  Adjusted target: $\(target), trailing stop: \(trailingStop)%")
+        }
+        
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+        return SalesCalcResultsRecord(
+            shares: roundedShares,
+            rollingGainLoss: (target - avgCostPerShare) * roundedShares,
+            breakEven: avgCostPerShare,
+            gain: gain,
+            sharesToSell: roundedShares,
+            trailingStop: trailingStop,
+            entry: entry,
+            cancel: exit,
+            description: formattedDescription,
+            openDate: "MinBE"
         )
     }
     
