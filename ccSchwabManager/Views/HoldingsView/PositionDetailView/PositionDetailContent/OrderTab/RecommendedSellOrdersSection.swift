@@ -311,6 +311,8 @@ struct RecommendedSellOrdersSection: View {
         if symbol != lastSymbol {
             print("Symbol changed from \(lastSymbol) to \(symbol)")
             lastSymbol = symbol
+            copiedValue = "TBD"
+            selectedOrderIndex = nil
             updateRecommendedOrders()
         }
     }
