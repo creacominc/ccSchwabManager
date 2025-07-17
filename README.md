@@ -208,3 +208,27 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
     The exit price should be  1% above the target.   target / 1.01
 
 
+#### Buy Order Workflow
+
+  The goal of the buy order workflow is to increase our holdings of positions that are profitable.  All positions should have standing buy orders if they are not performing so badly that we just want to sell them.  Orders should be structured so that they are submitted on or after a certain date and time and above (or in some cases below) a certain price.  The increase in holdings should be done slowly so that we never invest more than $500 a week in a security or the price of 1 share if it the cost-per-share exceeds $500.  The number of shares bought and the target buy price should be such that we can maintain at least a certain target percent gain.  
+  
+  The target percent gain depends on the ATR of the security.  The ATR indicates the volatility and how quickly the price could rise or fall.  The target precent gain should be the greater of 15% or 7 * ATR%.  If a security has a 2% ATR, the traget would be 15%.  If it has a 3% ATR, the target would be 21%.  For the first example, we would want to always have at least 15% gain on our current holdings. For the second, 21%.  If the current P/L% is less than the target gain, we should compute the price at which it would meet the target gain and use that (plus 1*ATR) for the order entry price.
+  
+  The order submission date/time is when the order should be submitted.  It should be at 09:40 local time at least 7 days since the last buy.  If the last buy was more than 7 days ago, the order can be submitted without a submit time/date which will cause it to start right away.  If the current local time is outside of trading hours, the order should be entered on the next trading day at least 10 minutes after market open (09:40).  
+  
+  The order entry price is the price at which a trailing stop limit order should be entered.  After the submission date/time, the order will wait for order condition which will be that the BID is at or above 1*ATR% over the price that represents the target percent gain.  If the cost-per-share is at $100 and the stock has a 1% ATR, the target gain would be 15% or $115.  One more ATR% would be $116.15.  The order entry condition would be that the BID >= $116.15.  
+  
+  The Trailing Stop for the order will be the ATR% of the security.
+  
+  The target buy price will be the order entry price plus the trailing stop (1 ATR%). To continue the above example, if the entry was at $116.15 and the ATR was 1%, the order would be to buy <N> shares submit at <date> 09:40 when BID >= $116.15  Trailing Stop = 1%.  Target buy price $117.31.
+  
+  The number of shares to buy will be:
+  - the number of shares at the target buy price that would bring the P/L% down to the target percent gain.  
+  - if the cost of that number of shares exceeds $500, the number of shares will be limited to the number of shares that can be bought for $500.
+  - if the share price is over $500, the number of shares will be set to 1.
+  
+  The buy orders should be structured like the sell orders in the same table and with the same set of check boxes handled by the same submit button.  It should be clear that they are buy orders through the use of a different colour either of the text or the background and possibly by providing a small separator between the sell and buy orders.
+  
+  The description should be structured similar to the sell orders also.  Similar to:   Buy <shares> <Ticker> Submit <Date>-<Time> BID >= <entry price> TS = <ATR%> Target = <target buy price> 
+  
+  

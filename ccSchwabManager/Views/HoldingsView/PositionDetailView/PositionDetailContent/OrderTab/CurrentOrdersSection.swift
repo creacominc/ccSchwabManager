@@ -101,7 +101,7 @@ struct CurrentOrdersSection: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("Current Orders")
                     .font(.headline)
@@ -127,7 +127,7 @@ struct CurrentOrdersSection: View {
             if currentOrders.isEmpty {
                 Text("No open orders for \(symbol)")
                     .foregroundColor(.secondary)
-                    .padding()
+                    .padding(.vertical, 8)
                     .onAppear {
                         print("[OrderTab] No open orders for symbol: \(symbol)")
                     }
@@ -135,7 +135,7 @@ struct CurrentOrdersSection: View {
                 HStack(alignment: .top, spacing: 16) {
                     // Orders list
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 4) {
                             ForEach(currentOrders) { order in
                                 OrderGroupView(
                                     order: order,
@@ -279,7 +279,7 @@ struct OrderGroupView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
                 .background(Color.blue.opacity(0.05))
                 .cornerRadius(6)
             } else if let singleOrder = displayableOrders.first {
@@ -307,7 +307,7 @@ struct OrderGroupView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
                 .background(Color.blue.opacity(0.05))
                 .cornerRadius(6)
             }

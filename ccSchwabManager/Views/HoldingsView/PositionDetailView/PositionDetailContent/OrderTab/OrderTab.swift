@@ -8,26 +8,26 @@ struct OrderTab: View {
     let geometry: GeometryProxy
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Section 1: Current Orders
-                CurrentOrdersSection(symbol: symbol)
-                    .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.30)
-                
-                Divider()
-                
-                // Section 2: Recommended OCO Orders
-                RecommendedSellOrdersSection(
-                    symbol: symbol,
-                    atrValue: atrValue,
-                    taxLotData: taxLotData,
-                    sharesAvailableForTrading: sharesAvailableForTrading
-                )
-                .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.55)
-            }
+        VStack(spacing: 8) {
+            // Section 1: Current Orders
+            CurrentOrdersSection(symbol: symbol)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            
+            Divider()
+            
+            // Section 2: Recommended OCO Orders (Combined Buy and Sell)
+            RecommendedOCOOrdersSection(
+                symbol: symbol,
+                atrValue: atrValue,
+                taxLotData: taxLotData,
+                sharesAvailableForTrading: sharesAvailableForTrading
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .padding(.horizontal, geometry.size.width * 0.02)
         .tabItem {
-            Label("Orders", systemImage: "list.clipboard")
+            Image(systemName: "list.bullet")
+            Text("Orders")
         }
     }
 } 

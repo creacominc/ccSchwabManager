@@ -352,7 +352,7 @@ struct RecommendedSellOrdersSection: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             headerView
             contentView
             if copiedValue != "TBD" {
@@ -366,7 +366,7 @@ struct RecommendedSellOrdersSection: View {
     
     private var headerView: some View {
         HStack {
-            Text("Recommended OCO")
+            Text("Recommended Sell Orders")
                 .font(.headline)
             
             Spacer()
@@ -411,11 +411,11 @@ struct RecommendedSellOrdersSection: View {
             VStack {
                 Spacer()
                 if !selectedOrderIndices.isEmpty {
-                    Button(action: submitOCOOrders) {
+                    Button(action: submitSellOrders) {
                         VStack {
                             Image(systemName: "paperplane.circle.fill")
                                 .font(.title2)
-                            Text("Submit\nOCO")
+                            Text("Submit\nSell")
                                 .font(.caption)
                                 .multilineTextAlignment(.center)
                         }
@@ -431,26 +431,26 @@ struct RecommendedSellOrdersSection: View {
         }
     }
     
-    private func submitOCOOrders() {
+    private func submitSellOrders() {
         guard !selectedOrderIndices.isEmpty else { return }
         
         let selectedOrders = selectedOrderIndices.compactMap { index in
             index < currentRecommendedSellOrders.count ? currentRecommendedSellOrders[index] : nil
         }
         
-        // Create OCO order description
-        let ocoDescription = createOCOOrderDescription(orders: selectedOrders)
-        copyToClipboard(text: ocoDescription)
-        print("Submitted OCO order: \(ocoDescription)")
+        // Create sell order description
+        let sellDescription = createSellOrderDescription(orders: selectedOrders)
+        copyToClipboard(text: sellDescription)
+        print("Submitted sell orders: \(sellDescription)")
     }
     
-    private func createOCOOrderDescription(orders: [SalesCalcResultsRecord]) -> String {
+    private func createSellOrderDescription(orders: [SalesCalcResultsRecord]) -> String {
         guard !orders.isEmpty else { return "" }
         
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let releaseTime = formatReleaseTime(tomorrow)
         
-        var description = "OCO Order Group for \(symbol):\n"
+        var description = "Sell Orders for \(symbol):\n"
         
         for (index, order) in orders.enumerated() {
             description += "Order \(index + 1): \(order.description)\n"
@@ -498,7 +498,7 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
         }
         .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
         .background(Color.gray.opacity(0.1))
     }
     
@@ -566,7 +566,7 @@ struct RecommendedSellOrdersSection: View {
                 }
         }
         .padding(.horizontal)
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .background(selectedOrderIndices.contains(index) ? Color.blue.opacity(0.2) : rowStyle(for: order).opacity(0.1))
         .cornerRadius(4)
     }
