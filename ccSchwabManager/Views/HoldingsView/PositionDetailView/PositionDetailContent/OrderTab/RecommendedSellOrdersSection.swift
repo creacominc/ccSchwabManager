@@ -96,457 +96,207 @@ struct RecommendedSellOrdersSection: View {
         return max(1.0, min(atrValue, 7.0))
     }
     
+    // --- Top 100 Sell Order ---
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        print("=== calculateTop100Order ===")
-        print("Current price: $\(currentPrice)")
-        print("ATR value: \(atrValue)%")
-        print("Limited ATR value: \(getLimitedATR())%")
-        print("Total tax lots: \(sortedTaxLots.count)")
-        
-        // Log all tax lots for debugging
-        print("All tax lots:")
-        for (index, lot) in sortedTaxLots.enumerated() {
-            let daysHeld = daysSinceDateString(dateString: lot.openDate) ?? 0
-            print("  Lot \(index): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(lot.costBasis) total, held for \(daysHeld) days")
-        }
-        
-        // Check if we have at least 100 shares not under contract
+        // Only show if at least 100 shares not under contract and held > 30 days
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         let sharesUnderContract = SchwabClient.shared.getContractCountForSymbol(symbol) * 100.0
         let sharesNotUnderContract = totalShares - sharesUnderContract
-        
-        print("Total shares: \(totalShares)")
-        print("Shares under contract: \(sharesUnderContract)")
-        print("Shares not under contract: \(sharesNotUnderContract)")
-        
-        guard sharesNotUnderContract >= 100.0 else {
-            print("❌ Insufficient shares not under contract: \(sharesNotUnderContract) < 100")
-            return nil
-        }
-        
-        // Check if we have at least 100 shares held for more than 30 days
-        let sharesOver30Days = sortedTaxLots
-            .filter { (daysSinceDateString(dateString: $0.openDate) ?? 0) > 30 }
-            .reduce(0.0) { $0 + $1.quantity }
-        
-        print("Shares held for more than 30 days: \(sharesOver30Days)")
-        
-        guard sharesOver30Days >= 100.0 else {
-            print("❌ Insufficient shares held for more than 30 days: \(sharesOver30Days) < 100")
-            return nil
-        }
-        
-        // Calculate the cost per share of the 100 most expensive shares
+        guard sharesNotUnderContract >= 100.0 else { return nil }
+        let sharesOver30Days = sortedTaxLots.filter { (daysSinceDateString(dateString: $0.openDate) ?? 0) > 30 }.reduce(0.0) { $0 + $1.quantity }
+        guard sharesOver30Days >= 100.0 else { return nil }
+        // Get the 100 most expensive shares
         var sharesToConsider: Double = 0.0
         var totalCost: Double = 0.0
-        var sharesUsed: Double = 0.0
-        
-        print("Calculating cost of 100 most expensive shares:")
-        for (index, taxLot) in sortedTaxLots.enumerated() {
-            let remainingSharesNeeded = 100.0 - sharesUsed
-            let sharesFromThisLot = min(taxLot.quantity, remainingSharesNeeded)
-            
-            sharesToConsider += sharesFromThisLot
-            totalCost += sharesFromThisLot * taxLot.costPerShare
-            sharesUsed += sharesFromThisLot
-            
-            print("  Lot \(index): \(sharesFromThisLot) shares @ $\(taxLot.costPerShare) = $\(sharesFromThisLot * taxLot.costPerShare)")
-            
-            if sharesUsed >= 100.0 {
-                break
-            }
+        for lot in sortedTaxLots {
+            let needed = min(lot.quantity, 100.0 - sharesToConsider)
+            sharesToConsider += needed
+            totalCost += needed * lot.costPerShare
+            if sharesToConsider >= 100.0 { break }
         }
-        
-        guard sharesUsed >= 100.0 else {
-            print("❌ Could not get 100 shares from available lots")
-            return nil
-        }
-        
+        guard sharesToConsider >= 100.0 else { return nil }
         let costPerShare = totalCost / sharesToConsider
-        let targetSellPrice = costPerShare * 1.05 // 5% profit
-        let gain = ((targetSellPrice - costPerShare) / costPerShare) * 100.0
-        
-        print("100 most expensive shares:")
-        print("  Total cost: $\(totalCost)")
-        print("  Cost per share: $\(costPerShare)")
-        print("  Target sell price for 5% profit: $\(targetSellPrice)")
-        print("  Expected gain: \(gain)%")
-        
-        // Only add if the current price is high enough to achieve 5% profit
-        guard currentPrice >= targetSellPrice else {
-            print("❌ Current price $\(currentPrice) too low for 5% profit target $\(targetSellPrice)")
-            return nil
-        }
-        
-        // Calculate entry and cancel prices using the same logic as other orders
-        let hardExitPrice = costPerShare * 1.03
-        let atrDollarAmount = currentPrice * (getLimitedATR() / 100.0)  // Convert ATR percentage to dollar amount
-        let minEntryPrice = currentPrice - atrDollarAmount  // Entry price must be at least 1 ATR below current price
-        let entryPrice = max((currentPrice + targetSellPrice) / 2.0, minEntryPrice)
-        
-        // Ensure entry price is at least 1% below current price
-        let minEntryPrice1Percent = currentPrice * 0.99
-        let finalEntryPrice = min(entryPrice, minEntryPrice1Percent)
-        
-        let trailingStopPercent = ((finalEntryPrice - targetSellPrice) / finalEntryPrice) * 100.0
-        
-        print("Order parameters:")
-        print("  Entry price: $\(finalEntryPrice)")
-        print("  Cancel price: $\(hardExitPrice)")
-        print("  Trailing stop: \(trailingStopPercent)%")
-        print("  ATR requirement: \(2.0 * getLimitedATR())%")
-        
-        // Skip if trailing stop is less than 2 * ATR
-        guard trailingStopPercent >= (2.0 * getLimitedATR()) else {
-            print("❌ Trailing stop too low: \(trailingStopPercent)% < \(2.0 * getLimitedATR())% (2 * ATR)")
-            return nil
-        }
-        
-        print("✅ Top 100 shares order created successfully")
-        
-        // Format the description to match the standard sell order format
+        // ATR for this order is fixed: 1.5 * 0.25 = 0.375
+        let adjustedATR = 1.5 * 0.25
+        // Entry: one AATR above last price
+        let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
+        // Target: 1% above cost per share
+        let target = costPerShare * 1.01
+        // Exit: 1% above target
+        let exit = target / 1.01
+        let gain = ((target - costPerShare) / costPerShare) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(100) SELL -%.0f %@ @LAST-%.2f%% TRSTPLMT ASK below %.2f cancel below %.2f GTC SUBMIT AT %@",
-                                        sharesToConsider,
-                                        symbol,
-                                        trailingStopPercent,
-                                        finalEntryPrice,
-                                        hardExitPrice,
-                                        formatReleaseTime(tomorrow))
-        
+        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToConsider, symbol, entry, target, exit, costPerShare, formatReleaseTime(tomorrow))
         return SalesCalcResultsRecord(
             shares: sharesToConsider,
-            rollingGainLoss: (currentPrice - costPerShare) * sharesToConsider,
+            rollingGainLoss: (target - costPerShare) * sharesToConsider,
             breakEven: costPerShare,
             gain: gain,
             sharesToSell: sharesToConsider,
-            trailingStop: trailingStopPercent,
-            entry: finalEntryPrice,
-            cancel: hardExitPrice,
+            trailingStop: adjustedATR,
+            entry: entry,
+            cancel: exit,
             description: formattedDescription,
-            openDate: "Special"
+            openDate: "Top100"
         )
     }
-    
+
+    // --- Minimum ATR-based Standing Sell ---
     private func calculateMinSharesFor5PercentProfit(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        print("=== calculateMinSharesForATRLogic ===")
-        print("Current price: $\(currentPrice)")
-        print("ATR: \(atrValue)%")
-        print("Tax lots (sorted by cost per share, highest first):")
-        for (index, lot) in sortedTaxLots.enumerated() {
-            print("  Lot \(index): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(lot.costBasis) total")
-        }
-
-        // 1. Calculate entry, target, and exit prices using ATR, rounded down to the penny
         let limitedATR = getLimitedATR()
-        // For sell orders, entry should be BELOW current price, not above
-        let entryRaw = currentPrice * (1.0 - (2.0 * limitedATR / 100.0))
-        let entry = floor(entryRaw * 100) / 100
-        
-        // Ensure entry price is at least 1% below current price
-        let minEntryPrice = currentPrice * 0.99
-        let finalEntry = max(entry, minEntryPrice)
-        
-        // Target should be BELOW entry price for sell orders
-        let targetRaw = finalEntry * (1.0 - (limitedATR / 100.0))
-        let target = floor(targetRaw * 100) / 100
-        // Exit should be below target
-        let exitRaw = target * (1.0 - (limitedATR / 100.0))
-        let exit = floor(exitRaw * 100) / 100
-        let costPerShareThresholdRaw = target / 1.05
-        let costPerShareThreshold = floor(costPerShareThresholdRaw * 100) / 100
-        print("Entry: $\(finalEntry), Target: $\(target), Exit: $\(exit), Cost/share threshold: $\(costPerShareThreshold)")
-        print("Current price: $\(currentPrice)")
+        let adjustedATR = 1.5 * limitedATR
 
-        // 2. Find minimum shares such that cost-per-share <= costPerShareThreshold, allowing partial lots
+        // Only show if position is at least 6% and at least (3.5 * ATR) profitable
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
+        let avgCostPerShare = totalCost / totalShares
+        let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        let minProfitPercent = max(6.0, 3.5 * limitedATR)
+        guard currentProfitPercent >= minProfitPercent else { return nil }
+
+        let entry = currentPrice / (1.0 + (1.5 * adjustedATR / 100))
+        let target = entry / (1.0 + (1.5 * adjustedATR / 100))
+        let exit = target / 1.01
+
         var sharesUsed: Double = 0.0
-        var totalCost: Double = 0.0
-        var lotsUsed: [(Double, Double)] = [] // (shares, costPerShare)
+        var totalCostUsed: Double = 0.0
         var found = false
+        var minimumShares: Double = 0.0
+        var minimumCost: Double = 0.0
 
         for lot in sortedTaxLots {
-            let sharesToUse = lot.quantity
-            let newSharesUsed = sharesUsed + sharesToUse
-            let newTotalCost = totalCost + sharesToUse * lot.costPerShare
-            let avgCostPerShare = newTotalCost / newSharesUsed
-            
-            print("  Checking lot: \(sharesToUse) shares @ $\(lot.costPerShare)")
-            print("    Cumulative: \(newSharesUsed) shares, avg cost: $\(avgCostPerShare), threshold: $\(costPerShareThreshold)")
-            
-            // Check if this individual lot is already below the threshold
-            if lot.costPerShare <= costPerShareThreshold {
-                // If this is the first lot and it's already below threshold, take all shares
-                if sharesUsed == 0 {
-                    sharesUsed = sharesToUse
-                    totalCost = sharesToUse * lot.costPerShare
-                    lotsUsed.append((sharesToUse, lot.costPerShare))
-                    print("    ✅ First lot already below threshold, taking all \(sharesToUse) shares")
-                } else {
-                    // Only take the minimum number of shares from this lot to reach the threshold
-                    let numerator = costPerShareThreshold * sharesUsed - totalCost
-                    let denominator = lot.costPerShare - costPerShareThreshold
-                    var partialShares: Double = 0.0
-                    if denominator != 0 {
-                        partialShares = numerator / denominator
+            let newShares = sharesUsed + lot.quantity
+            let newCost = totalCostUsed + lot.quantity * lot.costPerShare
+            let avgCost = newCost / newShares
+            let gain = ((target - avgCost) / avgCost) * 100.0
+            if gain >= 5.0 {
+                let baseShares = sharesUsed
+                let baseCost = totalCostUsed
+                let lotCostPerShare = lot.costPerShare
+
+                var low: Double = 0.0
+                var high: Double = lot.quantity
+                var bestShares: Double = lot.quantity
+
+                while high - low > 0.01 {
+                    let mid = (low + high) / 2.0
+                    let testShares = baseShares + mid
+                    let testCost = baseCost + mid * lotCostPerShare
+                    let testAvgCost = testCost / testShares
+                    let testGain = ((target - testAvgCost) / testAvgCost) * 100.0
+
+                    if testGain >= 5.0 {
+                        bestShares = mid
+                        high = mid
+                    } else {
+                        low = mid
                     }
-                    // Clamp to [0, lot.quantity]
-                    partialShares = max(0.0, min(partialShares, lot.quantity))
-                    sharesUsed += partialShares
-                    totalCost += partialShares * lot.costPerShare
-                    lotsUsed.append((partialShares, lot.costPerShare))
-                    print("    ✅ Found threshold with \(partialShares) shares from this lot")
                 }
+
+                minimumShares = baseShares + bestShares
+                minimumCost = baseCost + bestShares * lotCostPerShare
                 found = true
-                // Continue adding more shares from lower-cost lots to further reduce average cost
-                print("    ➡️ Continuing to add more shares from lower-cost lots...")
-                // Do NOT break here; continue to next lots
-            } else if avgCostPerShare <= costPerShareThreshold {
-                // Only take the minimum number of shares from this lot to reach the threshold
-                let numerator = costPerShareThreshold * sharesUsed - totalCost
-                let denominator = lot.costPerShare - costPerShareThreshold
-                var partialShares: Double = 0.0
-                if denominator != 0 {
-                    partialShares = numerator / denominator
-                }
-                // Clamp to [0, lot.quantity]
-                partialShares = max(0.0, min(partialShares, lot.quantity))
-                sharesUsed += partialShares
-                totalCost += partialShares * lot.costPerShare
-                lotsUsed.append((partialShares, lot.costPerShare))
-                print("    ✅ Found threshold with \(partialShares) shares from this lot")
-                found = true
-                // Continue adding more shares from lower-cost lots to further reduce average cost
-                print("    ➡️ Continuing to add more shares from lower-cost lots...")
-                // Do NOT break here; continue to next lots
+                break
             } else {
-                sharesUsed = newSharesUsed
-                totalCost = newTotalCost
-                lotsUsed.append((sharesToUse, lot.costPerShare))
-                print("    ➡️ Added full lot, continuing...")
+                sharesUsed = newShares
+                totalCostUsed = newCost
             }
         }
 
-        if sharesUsed == 0 || !found {
-            print("❌ Could not find enough shares to meet cost-per-share threshold with partial lots")
-            return nil
-        }
-
-        // Round up shares to next whole number
-        let roundedShares = ceil(sharesUsed)
-        // Recalculate total cost for the rounded number of shares
-        var runningShares: Double = 0.0
-        var runningCost: Double = 0.0
-        for (qty, cps) in lotsUsed {
-            let sharesToAdd = min(qty, max(0, roundedShares - runningShares))
-            runningCost += sharesToAdd * cps
-            runningShares += sharesToAdd
-            if runningShares >= roundedShares { break }
-        }
-        let avgCostPerShare = runningCost / roundedShares
-        let gain = ((target - avgCostPerShare) / avgCostPerShare) * 100.0
-        
-        // Ensure the target price is at least 1% above the cost per share
-        let minRequiredTarget = avgCostPerShare * 1.01
-        
-        if gain < 1.0 {
-            print("❌ Target price $\(target) results in gain of \(gain)% which is less than 1%")
-            print("  Cost per share: $\(avgCostPerShare)")
-            print("  Min required target: $\(minRequiredTarget)")
-            
-            // Check if we can achieve a valid target
-            if minRequiredTarget > target {
-                print("❌ Cannot achieve 1% gain with current target")
-                print("  Need more shares to lower cost per share")
-                return nil
-            }
-            
-            // Recalculate target price to ensure at least 1% gain
-            let adjustedTarget = floor(minRequiredTarget * 100) / 100
-            
-            // Recalculate entry price to maintain the same ATR-based spacing
-            let limitedATR = getLimitedATR()
-            let adjustedEntry = adjustedTarget * (1.0 + (limitedATR / 100.0))
-            let adjustedEntryRounded = floor(adjustedEntry * 100) / 100
-            
-            print("  Adjusted target: $\(adjustedTarget), adjusted entry: $\(adjustedEntryRounded)")
-            
-            // Use the adjusted prices
-            let adjustedGain = ((adjustedTarget - avgCostPerShare) / avgCostPerShare) * 100.0
-            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-            let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, adjustedEntryRounded, adjustedTarget, exit, avgCostPerShare, formatReleaseTime(tomorrow))
-
-            // Set trailing stop to ATR value (1 ATR)
-            let trailingStopATR = limitedATR
-
-            return SalesCalcResultsRecord(
-                shares: roundedShares,
-                rollingGainLoss: (adjustedTarget - avgCostPerShare) * roundedShares,
-                breakEven: avgCostPerShare,
-                gain: adjustedGain,
-                sharesToSell: roundedShares,
-                trailingStop: trailingStopATR, // Set to ATR value
-                entry: adjustedEntryRounded,
-                cancel: exit,
-                description: formattedDescription,
-                openDate: "ATR"
-            )
-        }
-        
+        guard found, minimumShares > 0 else { return nil }
+        let roundedShares = ceil(minimumShares)
+        let finalAvgCost = minimumCost / roundedShares
+        let finalGain = ((target - finalAvgCost) / finalAvgCost) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, finalEntry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
-
-        // Set trailing stop to ATR value (1 ATR)
-        let trailingStopATR = limitedATR
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, finalAvgCost, formatReleaseTime(tomorrow))
 
         return SalesCalcResultsRecord(
             shares: roundedShares,
-            rollingGainLoss: (target - avgCostPerShare) * roundedShares,
-            breakEven: avgCostPerShare,
-            gain: gain,
+            rollingGainLoss: (target - finalAvgCost) * roundedShares,
+            breakEven: finalAvgCost,
+            gain: finalGain,
             sharesToSell: roundedShares,
-            trailingStop: trailingStopATR, // Set to ATR value
-            entry: finalEntry,
+            trailingStop: adjustedATR,
+            entry: entry,
             cancel: exit,
             description: formattedDescription,
             openDate: "ATR"
         )
     }
-    
-    private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        print("=== calculateMinBreakEvenOrder ===")
-        print("Current price: $\(currentPrice)")
-        print("Tax lots (sorted by cost per share, highest first):")
-        for (index, lot) in sortedTaxLots.enumerated() {
-            print("  Lot \(index): \(lot.quantity) shares @ $\(lot.costPerShare) = $\(lot.costBasis) total")
-        }
 
-        // 1. Find minimum shares such that cost-per-share is at least 1% below current price (>1% gain)
-        let costPerShareThreshold = currentPrice / 1.01 // must be at least 1% gain
+    // --- Minimum Break-even Standing Sell ---
+    private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
+        let adjustedATR = 1.5 * 0.25
+
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
+        let avgCostPerShare = totalCost / totalShares
+        let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        guard currentProfitPercent >= 1.0 else { return nil }
+
+        let entry = currentPrice / (1.0 + (1.5 * adjustedATR / 100))
+        let target = entry / (1.0 + (1.5 * adjustedATR / 100))
+        let exit = target / 1.01
+
         var sharesUsed: Double = 0.0
-        var totalCost: Double = 0.0
-        var lotsUsed: [(Double, Double)] = [] // (shares, costPerShare)
+        var totalCostUsed: Double = 0.0
         var found = false
+        var minimumShares: Double = 0.0
+        var minimumCost: Double = 0.0
 
         for lot in sortedTaxLots {
-            let sharesToUse = lot.quantity
-            let newSharesUsed = sharesUsed + sharesToUse
-            let newTotalCost = totalCost + sharesToUse * lot.costPerShare
-            let avgCostPerShare = newTotalCost / newSharesUsed
-            
-            print("  Checking lot: \(sharesToUse) shares @ $\(lot.costPerShare)")
-            print("    Cumulative: \(newSharesUsed) shares, avg cost: $\(avgCostPerShare), threshold: $\(costPerShareThreshold)")
-            
-            // Check if this individual lot is already below the threshold
-            if lot.costPerShare <= costPerShareThreshold {
-                // If this is the first lot and it's already below threshold, take all shares
-                if sharesUsed == 0 {
-                    sharesUsed = sharesToUse
-                    totalCost = sharesToUse * lot.costPerShare
-                    lotsUsed.append((sharesToUse, lot.costPerShare))
-                    print("    ✅ First lot already below threshold, taking all \(sharesToUse) shares")
-                } else {
-                    // Only take the minimum number of shares from this lot to reach the threshold
-                    let numerator = costPerShareThreshold * sharesUsed - totalCost
-                    let denominator = lot.costPerShare - costPerShareThreshold
-                    var partialShares: Double = 0.0
-                    if denominator != 0 {
-                        partialShares = numerator / denominator
+            let newShares = sharesUsed + lot.quantity
+            let newCost = totalCostUsed + lot.quantity * lot.costPerShare
+            let avgCost = newCost / newShares
+            let gain = ((target - avgCost) / avgCost) * 100.0
+            if gain >= 1.0 {
+                let baseShares = sharesUsed
+                let baseCost = totalCostUsed
+                let lotCostPerShare = lot.costPerShare
+
+                var low: Double = 0.0
+                var high: Double = lot.quantity
+                var bestShares: Double = lot.quantity
+
+                while high - low > 0.01 {
+                    let mid = (low + high) / 2.0
+                    let testShares = baseShares + mid
+                    let testCost = baseCost + mid * lotCostPerShare
+                    let testAvgCost = testCost / testShares
+                    let testGain = ((target - testAvgCost) / testAvgCost) * 100.0
+
+                    if testGain >= 1.0 {
+                        bestShares = mid
+                        high = mid
+                    } else {
+                        low = mid
                     }
-                    // Clamp to [0, lot.quantity]
-                    partialShares = max(0.0, min(partialShares, lot.quantity))
-                    sharesUsed += partialShares
-                    totalCost += partialShares * lot.costPerShare
-                    lotsUsed.append((partialShares, lot.costPerShare))
-                    print("    ✅ Found threshold with \(partialShares) shares from this lot")
                 }
+
+                minimumShares = baseShares + bestShares
+                minimumCost = baseCost + bestShares * lotCostPerShare
                 found = true
-                // Continue adding more shares from lower-cost lots to further reduce average cost
-                print("    ➡️ Continuing to add more shares from lower-cost lots...")
-                // Do NOT break here; continue to next lots
-            } else if avgCostPerShare <= costPerShareThreshold {
-                // Only take the minimum number of shares from this lot to reach the threshold
-                let numerator = costPerShareThreshold * sharesUsed - totalCost
-                let denominator = lot.costPerShare - costPerShareThreshold
-                var partialShares: Double = 0.0
-                if denominator != 0 {
-                    partialShares = numerator / denominator
-                }
-                // Clamp to [0, lot.quantity]
-                partialShares = max(0.0, min(partialShares, lot.quantity))
-                sharesUsed += partialShares
-                totalCost += partialShares * lot.costPerShare
-                lotsUsed.append((partialShares, lot.costPerShare))
-                print("    ✅ Found threshold with \(partialShares) shares from this lot")
-                found = true
-                // Continue adding more shares from lower-cost lots to further reduce average cost
-                print("    ➡️ Continuing to add more shares from lower-cost lots...")
-                // Do NOT break here; continue to next lots
+                break
             } else {
-                sharesUsed = newSharesUsed
-                totalCost = newTotalCost
-                lotsUsed.append((sharesToUse, lot.costPerShare))
-                print("    ➡️ Added full lot, continuing...")
+                sharesUsed = newShares
+                totalCostUsed = newCost
             }
         }
 
-        if sharesUsed == 0 || !found {
-            print("❌ Could not find enough shares to meet break even threshold with partial lots")
-            return nil
-        }
-
-        // Round up shares to next whole number
-        let roundedShares = ceil(sharesUsed)
-        // Recalculate total cost for the rounded number of shares
-        var runningShares: Double = 0.0
-        var runningCost: Double = 0.0
-        for (qty, cps) in lotsUsed {
-            let sharesToAdd = min(qty, max(0, roundedShares - runningShares))
-            runningCost += sharesToAdd * cps
-            runningShares += sharesToAdd
-            if runningShares >= roundedShares { break }
-        }
-        let avgCostPerShare = runningCost / roundedShares
-        let gain = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
-        if gain < 1.0 {
-            print("❌ Gain is less than 1%: \(gain)%")
-            return nil
-        }
-        
-        print("✅ Final result: \(roundedShares) shares @ $\(avgCostPerShare) (gain: \(gain)%)")
-        
-        // Exit: 0.25% above cost-per-share
-        let exit = floor((avgCostPerShare * 1.0025) * 100) / 100
-        // Entry: 0.5% below current price
-        var entry = floor((currentPrice * 0.995) * 100) / 100
-        
-        // Ensure entry price is at least 1% below current price
-        let minEntryPrice = currentPrice * 0.99
-        entry = min(entry, minEntryPrice)
-        
-        // Target sell: midway between entry and exit
-        var target = floor(((entry + exit) / 2.0) * 100) / 100
-        // Trailing stop: percent from entry to target sell
-        var trailingStop = ((target - entry) / entry) * 100.0
-        
-        // Ensure trailing stop is at least 0.25%
-        if trailingStop < 0.25 {
-            print("⚠️ Trailing stop \(trailingStop)% is less than 0.25%, adjusting prices...")
-            // Calculate required target price to achieve 0.25% trailing stop
-            let requiredTarget = entry * 1.0025
-            target = floor(requiredTarget * 100) / 100
-            trailingStop = 0.25
-            print("  Adjusted target: $\(target), trailing stop: \(trailingStop)%")
-        }
-        
+        guard found, minimumShares > 0 else { return nil }
+        let roundedShares = ceil(minimumShares)
+        let finalAvgCost = minimumCost / roundedShares
+        let finalGain = ((target - finalAvgCost) / finalAvgCost) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", roundedShares, symbol, entry, target, exit, finalAvgCost, formatReleaseTime(tomorrow))
+
         return SalesCalcResultsRecord(
             shares: roundedShares,
-            rollingGainLoss: (target - avgCostPerShare) * roundedShares,
-            breakEven: avgCostPerShare,
-            gain: gain,
+            rollingGainLoss: (target - finalAvgCost) * roundedShares,
+            breakEven: finalAvgCost,
+            gain: finalGain,
             sharesToSell: roundedShares,
-            trailingStop: trailingStop,
+            trailingStop: adjustedATR,
             entry: entry,
             cancel: exit,
             description: formattedDescription,
@@ -778,11 +528,6 @@ struct RecommendedSellOrdersSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onTapGesture {
                     copyToClipboard(text: order.description)
-                    if selectedOrderIndices.contains(index) {
-                        selectedOrderIndices.remove(index)
-                    } else {
-                        selectedOrderIndices.insert(index)
-                    }
                 }
             
             Text("\(Int(order.sharesToSell))")
@@ -790,11 +535,6 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: Double(order.sharesToSell), format: "%.0f")
-                    if selectedOrderIndices.contains(index) {
-                        selectedOrderIndices.remove(index)
-                    } else {
-                        selectedOrderIndices.insert(index)
-                    }
                 }
             
             Text(String(format: "%.2f%%", order.trailingStop))
@@ -802,11 +542,6 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 100, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.trailingStop, format: "%.2f")
-                    if selectedOrderIndices.contains(index) {
-                        selectedOrderIndices.remove(index)
-                    } else {
-                        selectedOrderIndices.insert(index)
-                    }
                 }
             
             Text(String(format: "%.2f", order.entry))
@@ -814,11 +549,6 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.entry, format: "%.2f")
-                    if selectedOrderIndices.contains(index) {
-                        selectedOrderIndices.remove(index)
-                    } else {
-                        selectedOrderIndices.insert(index)
-                    }
                 }
             
             Text(String(format: "%.2f", order.cancel))
@@ -826,11 +556,6 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.cancel, format: "%.2f")
-                    if selectedOrderIndices.contains(index) {
-                        selectedOrderIndices.remove(index)
-                    } else {
-                        selectedOrderIndices.insert(index)
-                    }
                 }
             
             Text(String(format: "%.1f%%", order.gain))
@@ -838,11 +563,6 @@ struct RecommendedSellOrdersSection: View {
                 .frame(width: 80, alignment: .trailing)
                 .onTapGesture {
                     copyToClipboard(value: order.gain, format: "%.1f")
-                    if selectedOrderIndices.contains(index) {
-                        selectedOrderIndices.remove(index)
-                    } else {
-                        selectedOrderIndices.insert(index)
-                    }
                 }
         }
         .padding(.horizontal)

@@ -695,6 +695,10 @@ struct OrderDetailRow: View {
             .font(.system(.caption, design: .monospaced))
             .foregroundColor(.primary)
             .multilineTextAlignment(.leading)
+            .onTapGesture {
+                // Only copy to clipboard, don't toggle checkbox
+                copyToClipboard(text: formatOrderDescription(order: order))
+            }
             .onAppear {
                 let description = formatOrderDescription(order: order)
                 print("=== ORDER DESCRIPTION DEBUG ===")
@@ -719,6 +723,15 @@ struct OrderDetailRow: View {
                 print(description)
                 print("=== END DEBUG ===")
             }
+    }
+    
+    private func copyToClipboard(text: String) {
+#if os(iOS)
+        UIPasteboard.general.string = text
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+#endif
     }
 } 
 
