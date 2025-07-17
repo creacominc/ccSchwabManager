@@ -358,7 +358,7 @@ struct HoldingsView: View {
                 searchText = ""
                 return .handled
             }
-            .onKeyPress(.deleteBackward) {
+            .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
                 searchText = ""
                 return .handled
             }
