@@ -55,7 +55,7 @@ enum SortableColumn: String, CaseIterable, Identifiable {
  *     - Market Value
  *     - P/L
  *     - Asset Type
- *   - Search bar for filtering holdings
+ *   - Search bar for filtering holdings (platform-specific implementation)
  * 
  * Functionality:
  * - Automatically fetches holdings when view appears
@@ -63,6 +63,8 @@ enum SortableColumn: String, CaseIterable, Identifiable {
  * - Allows searching by symbol or description
  * - Displays formatted numbers with 2 decimal places
  * - Handles optional values with empty string fallbacks
+ * - Responds to keyboard input for search functionality
+ * - Delete key clears search on both platforms
  */
 
 struct HoldingsView: View {
@@ -82,6 +84,9 @@ struct HoldingsView: View {
     @State private var sharesAvailableForTrading: Double = 0.0
     @State private var selectedTab: Int = 0
     @StateObject private var loadingState = LoadingState()
+    
+    // Search field focus state for iOS
+    @FocusState private var isSearchFieldFocused: Bool
     
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
@@ -202,6 +207,38 @@ struct HoldingsView: View {
     var body: some View {
         GeometryReader { geometry in
             VStack {
+                // Platform-specific search implementation
+                #if os(iOS)
+                // Custom search bar for iOS that's always visible
+                HStack {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("Search by symbol or description", text: $searchText)
+                            .focused($isSearchFieldFocused)
+                            .textFieldStyle(.plain)
+                            .onSubmit {
+                                // Optional: Handle search submission
+                            }
+                        
+                        if !searchText.isEmpty {
+                            Button(action: {
+                                searchText = ""
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                }
+                #endif
+                
                 // Filter section with disclosure button
                 VStack(spacing: 0) {
                     HStack {
@@ -310,7 +347,44 @@ struct HoldingsView: View {
                     )
                 }
             } // VStack
+            // Platform-specific searchable modifier (for macOS)
+            #if os(macOS)
             .searchable(text: $searchText, prompt: "Search by symbol or description")
+            #endif
+            // Keyboard handling for both platforms
+            .focusable()
+            .focused($isSearchFieldFocused)
+            .onKeyPress(.delete) {
+                searchText = ""
+                return .handled
+            }
+            .onKeyPress(.deleteBackward) {
+                searchText = ""
+                return .handled
+            }
+            .onKeyPress { keyPress in
+                // Handle alphanumeric input for search
+                let character = keyPress.characters.first
+                if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
+                    // Focus search field and append character
+                    #if os(iOS)
+                    isSearchFieldFocused = true
+                    #endif
+                    searchText += String(char)
+                    return .handled
+                }
+                return .ignored
+            }
+            .onAppear {
+                // Ensure the view can receive keyboard events
+                #if os(iOS)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isSearchFieldFocused = true
+                }
+                #else
+                isSearchFieldFocused = true
+                #endif
+            }
             //.navigationTitle("Holdings")
             .task {
                 defer { isLoadingAccounts = false }
