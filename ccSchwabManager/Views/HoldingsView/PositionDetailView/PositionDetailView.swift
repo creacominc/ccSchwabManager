@@ -17,6 +17,7 @@ struct PositionDetailView: View {
     @State private var isLoadingQuote = false
     @State private var taxLotData: [SalesCalcPositionsRecord] = []
     @State private var isLoadingTaxLots = false
+    @State private var computedSharesAvailableForTrading: Double = 0.0
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
@@ -55,6 +56,11 @@ struct PositionDetailView: View {
             
             // Fetch tax lot data as part of the main data fetch
             taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol)
+            
+            // Compute shares available for trading using the tax lots
+            computedSharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: taxLotData)
+            print("PositionDetailView: Computed shares available for \(symbol): \(computedSharesAvailableForTrading)")
+            
             // print( "   ---- fetched \(taxLotData.count) tax lots for symbol \(symbol)" )
         }
         
@@ -73,7 +79,7 @@ struct PositionDetailView: View {
                 totalPositions: totalPositions,
                 symbol: symbol,
                 atrValue: atrValue,
-                sharesAvailableForTrading: sharesAvailableForTrading,
+                sharesAvailableForTrading: computedSharesAvailableForTrading,
                 onNavigate: { newIndex in
                     guard newIndex >= 0 && newIndex < totalPositions else { return }
                     loadingState.isLoading = true

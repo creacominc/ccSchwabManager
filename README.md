@@ -168,6 +168,11 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
 
   For all orders other than the top 100, the entry must be below the last price, the target must be below the entry, and the exit must be below the target.  
 
+  Except for the Top-100 sell order, all sell orders are limited to the number of shares available to trade.  This is defined as the shares held for over 30 days less the number of shares in contracts.  For example, if we have two tax lots, one with 5 shares bought 29 days ago and one with 7 shares bought 32 days ago, only the 7 are available for trading (selling).  
+
+  For the Top-100 sales, this rule should be used only to dictate how the sell order appears.  Top-100 sell orders should appear for any position for which we have 100 or more shares but should clearly indicate if this sell is not possible due to insufficient shares available.  The reason for this is that we can use this sell order as a guide for selling covered calls for which we need to know the cost-per-share of the top 100 shares.  
+
+
   Sell orders are entered for one or more of three reasons:
   - Minimum ATR-based standing sells are meant to protect against loss and provide at least 5% gain by selling a number of shares if the price falls by a certain multiple of the ATR.  The goal is to provide a large enough gap so that the sale does not happen too quickly allowing the stock may fall but rise again before hitting the limit.  For these orders the :
         - Adjusted ATR:  if then ATR < 1; then AATR = 1; else if ATR > 7; then AATR = 7; else AATR = ATR;

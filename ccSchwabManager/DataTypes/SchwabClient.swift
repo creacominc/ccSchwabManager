@@ -1403,6 +1403,15 @@ class SchwabClient
             if fetchAttempts >= maxFetchAttempts && m_lastFilteredTransactions.count == 0 {
                 print("Reached maximum fetch attempts without finding transactions for symbol: \(symbol ?? "nil")")
             }
+            
+            // Calculate shares available for trading
+            if let symbol = symbol {
+                // We'll compute shares available for trading separately to avoid circular dependency
+                // This will be done after tax lots are computed
+                print("=== Shares Available for Trading Calculation ===")
+                print("Symbol: \(symbol)")
+                print("Shares available for trading will be computed after tax lots")
+            }
         }
         else {
             print( "  -- getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
@@ -1413,6 +1422,7 @@ class SchwabClient
     } // getTransactionsFor
     
 
+    
 
 
     private func setLatestTradeDates()
@@ -1473,7 +1483,65 @@ class SchwabClient
         return m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0
     }
 
-
+    /**
+     * Compute shares available for trading using tax lots
+     * This should be called after computeTaxLots to avoid circular dependency
+     */
+    public func computeSharesAvailableForTrading(symbol: String, taxLots: [SalesCalcPositionsRecord]) -> Double {
+        print("=== computeSharesAvailableForTrading for \(symbol) ===")
+        print("  Using provided tax lots for accurate share calculation")
+        print("  Found \(taxLots.count) tax lots for \(symbol)")
+        
+        // Calculate shares held for over 30 days from tax lots
+        var sharesOver30Days: Double = 0.0
+        let currentDate = Date()
+        
+        print("  === Processing Tax Lots ===")
+        for (index, taxLot) in taxLots.enumerated() {
+            // Parse tax lot date - format is "2024-12-03 14:34:41"
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            dateFormatter.timeZone = TimeZone.current
+            
+            guard let date = dateFormatter.date(from: taxLot.openDate)
+            else {
+                print("    Tax lot \(index): Skipping invalid date: \(taxLot.openDate)")
+                continue
+            }
+            
+            // Calculate days since tax lot was created
+            let daysSinceTaxLot = Calendar.current.dateComponents([.day], from: date, to: currentDate).day ?? 0
+            
+            if daysSinceTaxLot > 30 {
+                sharesOver30Days += taxLot.quantity
+                print("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
+            } else {
+                print("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
+            }
+        }
+        
+        print("  Total shares held for over 30 days: \(sharesOver30Days)")
+        
+        // Get shares under contract
+        let sharesUnderContract = getContractCountForSymbol(symbol) * 100.0
+        print("  Shares under contract: \(sharesUnderContract) (contracts: \(getContractCountForSymbol(symbol)))")
+        
+        // Calculate available shares
+        let availableShares = sharesOver30Days - sharesUnderContract
+        let finalAvailableShares = max(0.0, availableShares)
+        
+        print("  === Final Calculation ===")
+        print("    Shares over 30 days: \(sharesOver30Days)")
+        print("    Shares under contract: \(sharesUnderContract)")
+        print("    Available shares: \(finalAvailableShares)")
+        print("    Total shares owned: \(taxLots.reduce(0.0) { $0 + $1.quantity })")
+        
+        // Store the result for later retrieval
+        m_lastFilteredTransactionSharesAvailableToTrade = finalAvailableShares
+        
+        return finalAvailableShares
+    }
+    
     /**
      * fetchOrderHistory
      *
@@ -1917,7 +1985,6 @@ class SchwabClient
                 for transferItem in transaction.transferItems {
                     // find transferItems where the shares, value, and cost are not 0
                     guard let numberOfShares = transferItem.amount,
-                          let costPerShare = transferItem.price,
                           numberOfShares != 0.0,
                           transferItem.instrument?.symbol == symbol
                     else {
@@ -1926,10 +1993,10 @@ class SchwabClient
                     }
                     
                     totalSharesFound += numberOfShares
-                    print("  --- Found transferItem: \(numberOfShares) shares at $\(costPerShare) on \(transaction.tradeDate ?? "unknown")")
+                    print("  --- Found transferItem: \(numberOfShares) shares at $\(transferItem.price ?? 0) on \(transaction.tradeDate ?? "unknown")")
                     
-                    let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
-                    let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
+                    let gainLossDollar = (lastPrice - transferItem.price!) * numberOfShares
+                    let gainLossPct = ((lastPrice - transferItem.price!) / transferItem.price!) * 100.0
                     
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
@@ -1960,9 +2027,9 @@ class SchwabClient
                             gainLossDollar: gainLossDollar,
                             quantity: numberOfShares,
                             price: lastPrice,
-                            costPerShare: costPerShare,
+                            costPerShare: transferItem.price!,
                             marketValue: numberOfShares * lastPrice,
-                            costBasis: costPerShare * numberOfShares,
+                            costBasis: transferItem.price! * numberOfShares,
                             splitMultiple: 1.0  // Initial value, will be adjusted by splits if needed
                         )
                     )
@@ -1972,6 +2039,7 @@ class SchwabClient
                 // break if we find zero
                 if isNearZero( currentShareCount ) {
                     print( "  -- computeTaxLots:  -- Found zero -- " )
+                    print( "  -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
                     break
                 }
                 // Don't break on negative share count - continue processing to find all buy transactions
@@ -1983,6 +2051,7 @@ class SchwabClient
             // Break if we've found zero shares or reached max quarters
             if ( isNearZero(currentShareCount) ) {
                 print( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
+                print( "  -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
                 break
             }
             // Don't break on negative share count - continue processing to find all buy transactions
@@ -1991,11 +2060,13 @@ class SchwabClient
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
                 showIncompleteDataWarning = true
                 print( " -- Reached max quarter delta --" )
+                print( " -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else if fetchAttempts >= maxFetchAttempts {
                 showIncompleteDataWarning = true
                 print( " -- Reached max fetch attempts --" )
+                print( " -- WARNING: Incomplete data - reached max fetch attempts. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else

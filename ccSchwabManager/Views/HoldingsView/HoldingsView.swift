@@ -439,7 +439,10 @@ struct HoldingsView: View {
                     SchwabClient.shared.clearPriceHistoryCache()
                     
                     atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
-                    sharesAvailableForTrading = SchwabClient.shared.getSharesAvailableForTrade(for: tmpsymbol)
+                    
+                    // Compute shares available for trading using tax lots
+                    let taxLots = SchwabClient.shared.computeTaxLots(symbol: tmpsymbol)
+                    sharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: tmpsymbol, taxLots: taxLots)
                 }
             }
             .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
@@ -450,7 +453,10 @@ struct HoldingsView: View {
                         SchwabClient.shared.clearPriceHistoryCache()
                         
                         atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
-                        sharesAvailableForTrading = SchwabClient.shared.getSharesAvailableForTrade(for: tmpsymbol)
+                        
+                        // Compute shares available for trading using tax lots
+                        let taxLots = SchwabClient.shared.computeTaxLots(symbol: tmpsymbol)
+                        sharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: tmpsymbol, taxLots: taxLots)
                     }
                 }
             }
