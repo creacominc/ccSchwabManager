@@ -96,61 +96,56 @@ struct RecommendedBuyOrdersSection: View {
         // Calculate total cost of current position
         let totalCost = avgCostPerShare * totalShares
         
-        // Calculate target buy price based on ATR
-        let targetBuyPrice = currentPrice * (1.0 + atrValue / 100.0)
+        // Calculate the target buy price based on current price and target gain percentage
+        // If current P/L% is less than target gain, compute the price at which it would meet the target gain
+        let targetBuyPrice: Double
+        let entryPrice: Double
         
-        // Calculate entry price (one ATR above target buy price)
-        let entryPrice = targetBuyPrice * (1.0 + atrValue / 100.0)
+        if currentProfitPercent < targetGainPercent {
+            // Current position is below target gain, so we need to buy at a price that would bring us to target gain
+            // The target buy price should be the current price (since that's what we can buy at)
+            targetBuyPrice = currentPrice
+            // Entry price should be 1 ATR above the current price
+            entryPrice = currentPrice * (1.0 + atrValue / 100.0)
+        } else {
+            // Current position is already above target gain, so we should buy at a higher price
+            // Target buy price should be the current price
+            targetBuyPrice = currentPrice
+            // Entry price should be between 2x and 4x ATR above the current price
+            let minEntryPrice = currentPrice * (1.0 + (2.0 * atrValue / 100.0))
+            let maxEntryPrice = currentPrice * (1.0 + (4.0 * atrValue / 100.0))
+            // Use the midpoint between min and max for now (could be randomized)
+            entryPrice = (minEntryPrice + maxEntryPrice) / 2.0
+        }
         
+        print("Current P/L%: \(currentProfitPercent)%")
+        print("Target gain %: \(targetGainPercent)%")
+        print("Current price: $\(currentPrice)")
         print("Target buy price: $\(targetBuyPrice)")
         print("Entry price: $\(entryPrice)")
         
-        // Implement the correct formula from the spreadsheet:
-        // ROUNDUP(((Quantity Shares × Quantity Target Buy − Quantity Cost) ÷ (0.01 × Quantity Target Gain) − Quantity Cost) ÷ Quantity Target Buy, 0)
+        // Calculate how many shares we need to buy to bring the combined position to the target gain percentage
+        // We want the new average cost to be such that the target buy price represents the target gain percentage
+        let sharesToBuy = (totalShares * targetBuyPrice - totalCost) / (targetBuyPrice - avgCostPerShare)
         
-        // Break down the formula:
-        // 1. (Quantity Shares × Quantity Target Buy − Quantity Cost) = (totalShares × targetBuyPrice - totalCost)
-        // 2. ÷ (0.01 × Quantity Target Gain) = ÷ (0.01 × targetGainPercent)
-        // 3. − Quantity Cost = - totalCost
-        // 4. ÷ Quantity Target Buy = ÷ targetBuyPrice
-        // 5. ROUNDUP(..., 0)
-        
-        let numerator = (totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost
-        let sharesToBuy = ceil(numerator / targetBuyPrice)
-        
-        print("Formula calculation:")
-        print("  (totalShares × targetBuyPrice - totalCost) = (\(totalShares) × \(targetBuyPrice) - \(totalCost)) = \(totalShares * targetBuyPrice - totalCost)")
-        print("  ÷ (0.01 × targetGainPercent) = ÷ (0.01 × \(targetGainPercent)) = ÷ \(0.01 * targetGainPercent)")
-        print("  = \(totalShares * targetBuyPrice - totalCost) / \(0.01 * targetGainPercent) = \((totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent))")
-        print("  - totalCost = - \(totalCost) = \((totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost)")
-        print("  ÷ targetBuyPrice = ÷ \(targetBuyPrice) = \(numerator / targetBuyPrice)")
-        print("  ROUNDUP = \(sharesToBuy)")
+        print("Calculated shares to buy: \(sharesToBuy)")
         
         // Apply limits
-        var finalSharesToBuy = sharesToBuy
+        var finalSharesToBuy = max(1.0, ceil(sharesToBuy))
         let orderCost = finalSharesToBuy * targetBuyPrice
         
         print("Initial calculation: \(finalSharesToBuy) shares at $\(targetBuyPrice) = $\(orderCost)")
         
         // Limit to $500 maximum investment
         if orderCost > 500.0 {
-            finalSharesToBuy = 500.0 / targetBuyPrice
-            print("Order cost $\(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
+            finalSharesToBuy = floor(500.0 / targetBuyPrice)
+            print("Order cost \(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
         }
         
-        // If share price is over $500, limit to 1 share
-        if targetBuyPrice > 500.0 {
-            finalSharesToBuy = 1.0
-            print("Share price $\(targetBuyPrice) exceeds $500, limiting to 1 share")
-        }
-        
-        // Round down to whole shares to stay under $500 limit
-        finalSharesToBuy = floor(finalSharesToBuy)
-        
-        // If rounding down results in 0 shares, use 1 share minimum
+        // Ensure at least 1 share
         if finalSharesToBuy < 1.0 {
             finalSharesToBuy = 1.0
-            print("Rounding down resulted in 0 shares, using minimum of 1 share")
+            print("Ensuring minimum of 1 share")
         }
         
         // Recalculate final order cost
@@ -159,7 +154,7 @@ struct RecommendedBuyOrdersSection: View {
         print("Final shares to buy: \(finalSharesToBuy)")
         print("Final order cost: $\(finalOrderCost)")
         
-        // Check if order is reasonable - allow orders even if they exceed $500 for 1 share
+        // Check if order is reasonable
         guard finalSharesToBuy > 0 else {
             print("❌ Buy order not reasonable - shares: \(finalSharesToBuy)")
             return nil
@@ -175,13 +170,14 @@ struct RecommendedBuyOrdersSection: View {
         
         // Create description
         let formattedDescription = String(
-            format: "BUY %.0f %@ Submit %@ BID >= %.2f TS = %.1f%% Target = %.2f",
+            format: "BUY %.0f %@ Submit %@ BID >= %.2f TS = %.1f%% Target = %.2f TargetGain = %.1f%%",
             finalSharesToBuy,
             symbol,
             submitDate,
             entryPrice,
             atrValue,
-            targetBuyPrice
+            targetBuyPrice,
+            targetGainPercent
         )
         
         return BuyOrderRecord(
