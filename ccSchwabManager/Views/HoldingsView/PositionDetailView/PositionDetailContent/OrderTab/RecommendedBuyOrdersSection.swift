@@ -96,26 +96,27 @@ struct RecommendedBuyOrdersSection: View {
         // Calculate total cost of current position
         let totalCost = avgCostPerShare * totalShares
         
-        // Calculate the target buy price based on current price and target gain percentage
-        // If current P/L% is less than target gain, compute the price at which it would meet the target gain
-        let targetBuyPrice: Double
+        // Calculate the entry and target buy prices
+        // Entry price should be at least 1 ATR% above the last price
+        // Target price should be entry price plus the adjusted ATR%
         let entryPrice: Double
+        let targetBuyPrice: Double
         
         if currentProfitPercent < targetGainPercent {
-            // Current position is below target gain, so we need to buy at a price that would bring us to target gain
-            // The target buy price should be the current price (since that's what we can buy at)
-            targetBuyPrice = currentPrice
+            // Current position is below target gain
             // Entry price should be 1 ATR above the current price
             entryPrice = currentPrice * (1.0 + atrValue / 100.0)
+            // Target price should be entry price plus the adjusted ATR%
+            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
         } else {
-            // Current position is already above target gain, so we should buy at a higher price
-            // Target buy price should be the current price
-            targetBuyPrice = currentPrice
+            // Current position is already above target gain
             // Entry price should be between 2x and 4x ATR above the current price
             let minEntryPrice = currentPrice * (1.0 + (2.0 * atrValue / 100.0))
             let maxEntryPrice = currentPrice * (1.0 + (4.0 * atrValue / 100.0))
             // Use the midpoint between min and max for now (could be randomized)
             entryPrice = (minEntryPrice + maxEntryPrice) / 2.0
+            // Target price should be entry price plus the adjusted ATR%
+            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
         }
         
         print("Current P/L%: \(currentProfitPercent)%")
