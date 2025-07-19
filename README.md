@@ -147,7 +147,11 @@ This workflow involves collecting the position summary, price history, transacti
 
 Unfortunately, I do not see a way to get tax lots from Schwab so I attempt to compute them from the transaction history.  To this we first attempt to find a point in time when we had zero shares by taking the current share count, adding the number of shares sold and subtracting the number of shares bought with each prior transaction until we run out of data or find a number close to zero.  Splits do not impact the finding of zero because the number of shares received in a stock split are added.  Once we find zero, we move forward through the transactions adding buys and, when we have a sale of N shares, we remove the N highest cost-per-share shares.  This only works if the account is set up to sell from the highest cost and will not work well for FIFO or any other tax strategy. It will behave particulary badly if the strategy changes during the holding period for a position.
 
-Once the price history, transaction history, and tax lots are known, the tax lots are split adjusted by looking for share receive-and-distribute with a zero cost-per-share.  Once found, the number of shares held at that time is calculated and used to determine the split multiple which is then applied to all the prior share counts and cost-per-share values.
+Once the price history, transaction history, and tax lots are known, the tax lots are split adjusted by looking for share receive-and-distribute with a zero cost-per-share.  Once found, the number of shares held at that time is calculated and used to determine the split multiple which is then applied to all the prior share counts and cost-per-share values.  
+
+Mergers and Renamed securities.  If the oldest transaction found looks like a split (being a receive-and-deliver type), it is likely a rename or a merger of ticker.  In this case, the cost will show as 0.00 and needs to be adjusted.  Since it is the oldest transaction, if it matches the currentShareCount, we can compute and assign the cost-per-share based on the currentShareCount and the difference between the costs for the later tax lots and the overall cost.  If the oldest transaction (the last one we are processing in computeTaxLots) is of type RECEIVE_AND_DELIVER, the cost-per-share should be updated from 0.00 as follows:
+        received_cost_per_share = ((AveragePrice * Quantity) - Sum_of_later_tax_lots_costs) / currentShareCount
+
 
 Tax lot information is used in the calculation of the number of shares avialable to sell.
 

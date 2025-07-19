@@ -120,7 +120,9 @@ struct TransactionHistorySection: View {
                     .frame(width: calculatedWidths[1], alignment: .leading)
                 if let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) {
                     let amount = TransactionHistorySection.round(transferItem.amount ?? 0, precision: 4)
-                    let price = TransactionHistorySection.round(transferItem.price ?? 0, precision: 2)
+                    // Use computed price for merged/renamed securities
+                    let computedPrice = SchwabClient.shared.getComputedPriceForTransaction(transaction, symbol: symbol)
+                    let price = TransactionHistorySection.round(computedPrice, precision: 2)
                     Text(String(format: "%.4f", amount))
                         .frame(width: calculatedWidths[2], alignment: .trailing)
                     Text(String(format: "%.2f", price))

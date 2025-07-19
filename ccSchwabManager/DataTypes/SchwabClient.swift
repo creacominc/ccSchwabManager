@@ -211,6 +211,89 @@ class SchwabClient
         return shareCount
     }
 
+    private func getAveragePrice(symbol: String) -> Double {
+        print("=== getAveragePrice \(symbol) ===")
+
+        var averagePrice: Double = 0.0
+        
+        // Find the position for this symbol
+        for account in m_accounts {
+            if let positions = account.securitiesAccount?.positions {
+                for position in positions {
+                    if position.instrument?.symbol == symbol {
+                        averagePrice = position.averagePrice ?? 0.0
+                        print("  --- Found average price: $\(averagePrice)")
+                        return averagePrice
+                    }
+                }
+            }
+        }
+        
+        print("  --- No position found for symbol \(symbol), returning 0.0")
+        return averagePrice
+    }
+
+    /**
+     * getComputedPriceForTransaction - get the computed price for a transaction
+     * 
+     * For merged/renamed securities, the original transaction may have a price of 0.00.
+     * This function returns the computed cost-per-share from the tax lots if available,
+     * otherwise returns the original price from the transaction.
+     */
+    public func getComputedPriceForTransaction(_ transaction: Transaction, symbol: String) -> Double {
+        print("=== getComputedPriceForTransaction ===")
+        
+        // Get the original price from the transaction
+        guard let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) else {
+            print("  --- No transfer item found for symbol \(symbol)")
+            return 0.0
+        }
+        
+        let originalPrice = transferItem.price ?? 0.0
+        print("  --- Original price: $\(originalPrice)")
+        
+        // If the original price is not zero, return it
+        if originalPrice > 0.0 {
+            print("  --- Returning original price: $\(originalPrice)")
+            return originalPrice
+        }
+        
+        // For zero-price transactions, check if we have computed tax lots
+        let taxLots = computeTaxLots(symbol: symbol)
+        guard !taxLots.isEmpty else {
+            print("  --- No tax lots available")
+            return originalPrice
+        }
+        
+        // Parse the transaction date to match with tax lots
+        guard let tradeDate = transaction.tradeDate,
+              let date = ISO8601DateFormatter().date(from: tradeDate) else {
+            print("  --- Could not parse transaction date")
+            return originalPrice
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let transactionDateString = formatter.string(from: date)
+        
+        print("  --- Transaction date: \(transactionDateString)")
+        
+        // Find the matching tax lot by date and quantity
+        let transferItemAmount = transferItem.amount ?? 0.0
+        for taxLot in taxLots {
+            print("  --- Checking tax lot: \(taxLot.openDate), quantity: \(taxLot.quantity)")
+            
+            // Check if this tax lot matches the transaction
+            if taxLot.openDate == transactionDateString && abs(taxLot.quantity - transferItemAmount) < 0.01 {
+                print("  --- Found matching tax lot with computed cost: $\(taxLot.costPerShare)")
+                return taxLot.costPerShare
+            }
+        }
+        
+        print("  --- No matching tax lot found, returning original price: $\(originalPrice)")
+        return originalPrice
+    }
+
     public func getSecrets() -> Secrets
     {
         return self.m_secrets
@@ -1854,6 +1937,73 @@ class SchwabClient
     }
     
     /**
+     * handleMergedRenamedSecurities - handle cases where the earliest transaction has cost = 0
+     * 
+     * When a security has been merged or renamed, the earliest transaction (which is the last one
+     * processed since we work backwards) may have a cost of 0.00. In this case, we need to compute
+     * the cost-per-share based on the current share count and the difference between the costs for
+     * the later tax lots and the overall cost.
+     */
+    private func handleMergedRenamedSecurities(_ taxLots: [SalesCalcPositionsRecord], symbol: String) -> [SalesCalcPositionsRecord] {
+        print("=== handleMergedRenamedSecurities - processing \(taxLots.count) tax lots ===")
+        
+        guard !taxLots.isEmpty else {
+            print("  --- No tax lots to process")
+            return taxLots
+        }
+        
+        // Sort by date (oldest first) to find the earliest transaction
+        let sortedLots = taxLots.sorted { $0.openDate < $1.openDate }
+        let earliestLot = sortedLots.first!
+        
+        // Check if the earliest transaction has cost = 0 (indicating a merge/rename)
+        if earliestLot.costPerShare == 0.0 && earliestLot.quantity > 0 {
+            print("  --- Found potential merged/renamed security: \(earliestLot.openDate), shares: \(earliestLot.quantity), cost: \(earliestLot.costPerShare)")
+            
+            // Get current share count from position
+            let currentShareCount = getShareCount(symbol: symbol)
+            print("  --- Current share count: \(currentShareCount)")
+            
+            // Check if the earliest transaction matches the current share count
+            if abs(earliestLot.quantity - currentShareCount) < 0.01 {
+                print("  --- Earliest transaction matches current share count - computing cost-per-share")
+                
+                // Calculate sum of later tax lots costs
+                let laterTaxLots = sortedLots.dropFirst()
+                let sumOfLaterTaxLotsCosts = laterTaxLots.reduce(0.0) { $0 + $1.costBasis }
+                print("  --- Sum of later tax lots costs: $\(sumOfLaterTaxLotsCosts)")
+                
+                // Get average price from position
+                let averagePrice = getAveragePrice(symbol: symbol)
+                print("  --- Average price from position: $\(averagePrice)")
+                
+                // Compute the cost-per-share using the formula from README
+                let receivedCostPerShare = ((averagePrice * earliestLot.quantity) - sumOfLaterTaxLotsCosts) / currentShareCount
+                print("  --- Computed cost-per-share: $\(receivedCostPerShare)")
+                
+                // Update the earliest lot with the computed cost
+                var updatedLots = taxLots
+                if let index = updatedLots.firstIndex(where: { $0.id == earliestLot.id }) {
+                    updatedLots[index].costPerShare = receivedCostPerShare
+                    updatedLots[index].costBasis = receivedCostPerShare * earliestLot.quantity
+                    updatedLots[index].gainLossDollar = (earliestLot.price - receivedCostPerShare) * earliestLot.quantity
+                    updatedLots[index].gainLossPct = ((earliestLot.price - receivedCostPerShare) / receivedCostPerShare) * 100.0
+                    
+                    print("  --- Updated earliest lot with computed cost: $\(receivedCostPerShare)")
+                }
+                
+                return updatedLots
+            } else {
+                print("  --- Earliest transaction does not match current share count - skipping")
+            }
+        } else {
+            print("  --- No merged/renamed security detected")
+        }
+        
+        return taxLots
+    }
+
+    /**
      * adjustForStockSplits - adjust tax lots for stock splits
      * 
      * When a security experiences a stock split, the additional shares are added to the account
@@ -1973,7 +2123,7 @@ class SchwabClient
 
             // get last price for this security
             let lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
-
+            showIncompleteDataWarning = true
             // Process all trade transactions - only process again if the number of transactions changes
             print( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )
             for transaction in self.getTransactionsFor(symbol: symbol)
@@ -2038,6 +2188,7 @@ class SchwabClient
 
                 // break if we find zero
                 if isNearZero( currentShareCount ) {
+                    showIncompleteDataWarning = false
                     print( "  -- computeTaxLots:  -- Found zero -- " )
                     print( "  -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
                     break
@@ -2052,19 +2203,20 @@ class SchwabClient
             if ( isNearZero(currentShareCount) ) {
                 print( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
                 print( "  -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
+                showIncompleteDataWarning = false
                 break
             }
             // Don't break on negative share count - continue processing to find all buy transactions
             // The negative share count indicates we've encountered more sell transactions than buy transactions
             // but we need to continue to find all the buy transactions that account for our current position
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
-                showIncompleteDataWarning = true
+//                showIncompleteDataWarning = true
                 print( " -- Reached max quarter delta --" )
                 print( " -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else if fetchAttempts >= maxFetchAttempts {
-                showIncompleteDataWarning = true
+//                showIncompleteDataWarning = true
                 print( " -- Reached max fetch attempts --" )
                 print( " -- WARNING: Incomplete data - reached max fetch attempts. Setting showIncompleteDataWarning = true --" )
                 break
@@ -2093,6 +2245,7 @@ class SchwabClient
         
         if fetchAttempts >= maxFetchAttempts {
             print("Warning: computeTaxLots reached maximum fetch attempts for symbol: \(symbol)")
+            // invalid or incomplete warning
         }
         
         // Sort records by date (oldest first) and cost (highest first for same date)
@@ -2168,6 +2321,9 @@ class SchwabClient
 
         // Sort final records by date
         remainingRecords.sort { $0.openDate < $1.openDate }
+
+        // Handle merged/renamed securities where the earliest transaction has cost = 0
+        remainingRecords = handleMergedRenamedSecurities(remainingRecords, symbol: symbol)
 
         print("=== computeTaxLots Summary for \(symbol) ===")
         print("Total transactions processed: \(totalTransactionsFound)")
