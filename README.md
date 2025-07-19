@@ -98,6 +98,10 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) license. See the [LICENSE](LICENSE) file for more details.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes and improvements made to the project.
+
 ## Description
 @Swift @SwiftUI @Swift Testing @Apple Design Tips @Xcode @GitHub Actions
 
