@@ -17,6 +17,7 @@ struct SalesCalcResultsRecord: Identifiable
     var sharesToSell: Double = 0.0
     var trailingStop: Double = 0.0
     var entry: Double = 0.0
+    var target: Double = 0.0
     var cancel: Double = 0.0
     var description: String = ""
     var openDate: String = ""

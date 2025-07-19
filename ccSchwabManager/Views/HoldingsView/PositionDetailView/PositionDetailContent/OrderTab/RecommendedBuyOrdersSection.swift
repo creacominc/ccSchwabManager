@@ -85,61 +85,89 @@ struct RecommendedBuyOrdersSection: View {
         totalShares: Double
     ) -> BuyOrderRecord? {
         
-        // For buy orders, we want to increase holdings of profitable positions
-        // The target gain percent is the minimum we want to maintain
-        // If current P/L% is below target, we need to buy at a price that would bring us to target
-        // If current P/L% is above target, we can still buy more shares to increase our position
+        print("=== calculateBuyOrder ===")
+        print("Current price: $\(currentPrice)")
+        print("Avg cost per share: $\(avgCostPerShare)")
+        print("Current P/L%: \(currentProfitPercent)%")
+        print("Target gain %: \(targetGainPercent)%")
+        print("Total shares: \(totalShares)")
+        print("ATR: \(atrValue)%")
         
-        // Calculate entry and target prices based on current profit situation
-        let entryPrice: Double
-        let targetBuyPrice: Double
-        let sharesToBuy: Double
+        // Calculate total cost of current position
+        let totalCost = avgCostPerShare * totalShares
         
-        if currentProfitPercent < targetGainPercent {
-            // Current profit is below target - need to buy at a price that would bring us to target
-            let targetPrice = avgCostPerShare * (1.0 + targetGainPercent / 100.0)
-            entryPrice = targetPrice * (1.0 + atrValue / 100.0)
-            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
-            
-            // Calculate shares to buy to bring P/L% down to target
-            let targetAvgCost = currentPrice / (1.0 + targetGainPercent / 100.0)
-            sharesToBuy = (targetAvgCost * totalShares - avgCostPerShare * totalShares) / (targetBuyPrice - targetAvgCost)
-        } else {
-            // Current profit is above target - can buy more shares to increase position
-            // Use current price as base, but add ATR for entry condition
-            entryPrice = currentPrice * (1.0 + atrValue / 100.0)
-            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
-            
-            // For positions already above target, buy a small amount to increase holdings
-            // Calculate shares that would cost $500 or less
-            let maxSharesFor500 = 500.0 / targetBuyPrice
-            sharesToBuy = min(maxSharesFor500, 1.0) // Limit to 1 share if price > $500
-        }
+        // Calculate target buy price based on ATR
+        let targetBuyPrice = currentPrice * (1.0 + atrValue / 100.0)
+        
+        // Calculate entry price (one ATR above target buy price)
+        let entryPrice = targetBuyPrice * (1.0 + atrValue / 100.0)
+        
+        print("Target buy price: $\(targetBuyPrice)")
+        print("Entry price: $\(entryPrice)")
+        
+        // Implement the correct formula from the spreadsheet:
+        // ROUNDUP(((Quantity Shares × Quantity Target Buy − Quantity Cost) ÷ (0.01 × Quantity Target Gain) − Quantity Cost) ÷ Quantity Target Buy, 0)
+        
+        // Break down the formula:
+        // 1. (Quantity Shares × Quantity Target Buy − Quantity Cost) = (totalShares × targetBuyPrice - totalCost)
+        // 2. ÷ (0.01 × Quantity Target Gain) = ÷ (0.01 × targetGainPercent)
+        // 3. − Quantity Cost = - totalCost
+        // 4. ÷ Quantity Target Buy = ÷ targetBuyPrice
+        // 5. ROUNDUP(..., 0)
+        
+        let numerator = (totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost
+        let sharesToBuy = ceil(numerator / targetBuyPrice)
+        
+        print("Formula calculation:")
+        print("  (totalShares × targetBuyPrice - totalCost) = (\(totalShares) × \(targetBuyPrice) - \(totalCost)) = \(totalShares * targetBuyPrice - totalCost)")
+        print("  ÷ (0.01 × targetGainPercent) = ÷ (0.01 × \(targetGainPercent)) = ÷ \(0.01 * targetGainPercent)")
+        print("  = \(totalShares * targetBuyPrice - totalCost) / \(0.01 * targetGainPercent) = \((totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent))")
+        print("  - totalCost = - \(totalCost) = \((totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost)")
+        print("  ÷ targetBuyPrice = ÷ \(targetBuyPrice) = \(numerator / targetBuyPrice)")
+        print("  ROUNDUP = \(sharesToBuy)")
         
         // Apply limits
         var finalSharesToBuy = sharesToBuy
         let orderCost = finalSharesToBuy * targetBuyPrice
         
+        print("Initial calculation: \(finalSharesToBuy) shares at $\(targetBuyPrice) = $\(orderCost)")
+        
         // Limit to $500 maximum investment
         if orderCost > 500.0 {
             finalSharesToBuy = 500.0 / targetBuyPrice
+            print("Order cost $\(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
         }
         
         // If share price is over $500, limit to 1 share
         if targetBuyPrice > 500.0 {
             finalSharesToBuy = 1.0
+            print("Share price $\(targetBuyPrice) exceeds $500, limiting to 1 share")
         }
         
-        // Round up to whole shares
-        finalSharesToBuy = ceil(finalSharesToBuy)
+        // Round down to whole shares to stay under $500 limit
+        finalSharesToBuy = floor(finalSharesToBuy)
+        
+        // If rounding down results in 0 shares, use 1 share minimum
+        if finalSharesToBuy < 1.0 {
+            finalSharesToBuy = 1.0
+            print("Rounding down resulted in 0 shares, using minimum of 1 share")
+        }
         
         // Recalculate final order cost
         let finalOrderCost = finalSharesToBuy * targetBuyPrice
         
-        // Check if order is reasonable
-        guard finalSharesToBuy > 0 && finalOrderCost <= 500.0 else {
-            print("❌ Buy order not reasonable - shares: \(finalSharesToBuy), cost: $\(finalOrderCost)")
+        print("Final shares to buy: \(finalSharesToBuy)")
+        print("Final order cost: $\(finalOrderCost)")
+        
+        // Check if order is reasonable - allow orders even if they exceed $500 for 1 share
+        guard finalSharesToBuy > 0 else {
+            print("❌ Buy order not reasonable - shares: \(finalSharesToBuy)")
             return nil
+        }
+        
+        // Warn if order cost exceeds $500 but don't reject
+        if finalOrderCost > 500.0 {
+            print("⚠️ Warning: Order cost $\(finalOrderCost) exceeds $500 limit, but allowing 1 share minimum")
         }
         
         // Calculate submit date/time
