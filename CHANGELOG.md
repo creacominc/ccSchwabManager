@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diagnostic logging for shares available for trading calculation
 - New method `computeSharesAvailableForTrading(symbol:taxLots:)` that accepts precomputed tax lots
 - State variable `computedSharesAvailableForTrading` in PositionDetailView for real-time calculation
+- Support for merged/renamed securities with automatic cost-per-share computation
+- New method `handleMergedRenamedSecurities` to detect and fix zero-cost transactions
+- New method `getComputedPriceForTransaction` to display correct prices in transaction history
+- New method `getAveragePrice` to retrieve average price from position data
 
 ### Changed
 - **BREAKING**: Removed private method `calculateSharesAvailableForTrading` from SchwabClient to prevent circular dependencies
@@ -24,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CRITICAL**: Resolved deadlock caused by circular dependency between `getTransactionsFor`, `computeTaxLots`, and shares calculation
 - **CRITICAL**: Fixed shares available for trading showing 0.00 in PositionDetailView
 - **CRITICAL**: Fixed all tax lot dates being skipped as "invalid date" due to incorrect date parsing
+- **CRITICAL**: Fixed merged/renamed securities showing 0.00 cost-per-share in tax lots and transaction history
 - Fixed infinite loops caused by recursive method calls
 - Fixed build warnings by removing unused variables
 
@@ -54,6 +59,16 @@ The deadlock was caused by the following circular dependency:
 - Added state variable `computedSharesAvailableForTrading` to PositionDetailView
 - Updated `fetchDataForSymbol()` to compute shares available using tax lots
 - Modified PositionDetailContent to use computed value instead of passed parameter
+
+#### Merged/Renamed Securities Fix
+**Problem**: When securities are merged or renamed, the earliest transaction shows a cost-per-share of 0.00, which affects both tax lot calculations and transaction history display.
+
+**Solution**:
+- Added `handleMergedRenamedSecurities` function that detects when the earliest transaction has zero cost
+- Implemented cost-per-share computation using the formula: `((AveragePrice * Quantity) - Sum_of_later_tax_lots_costs) / currentShareCount`
+- Added `getComputedPriceForTransaction` function to display correct prices in transaction history
+- Modified `computeTaxLots` to call the new handler after processing all transactions
+- Updated TransactionRow to use computed prices when available
 
 ### Build Status
 - ✅ macOS build successful
