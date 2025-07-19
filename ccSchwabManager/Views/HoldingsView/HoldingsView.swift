@@ -183,20 +183,25 @@ struct HoldingsView: View {
                 
                 return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
             case .dte:
-                let firstDTE : Int? = SchwabClient.shared.getMinimumDTEForSymbol(first.instrument?.symbol ?? "")
-                let secondDTE : Int? = SchwabClient.shared.getMinimumDTEForSymbol(second.instrument?.symbol ?? "")
+                // Use the same logic as display: extractExpirationDate for options, getMinimumDTEForSymbol for others
+                let firstDTE : Int? = (first.instrument?.assetType == .OPTION) ? 
+                    extractExpirationDate(from: first.instrument?.symbol ?? "", description: first.instrument?.description ?? "") :
+                    SchwabClient.shared.getMinimumDTEForSymbol(first.instrument?.symbol ?? "")
+                let secondDTE : Int? = (second.instrument?.assetType == .OPTION) ? 
+                    extractExpirationDate(from: second.instrument?.symbol ?? "", description: second.instrument?.description ?? "") :
+                    SchwabClient.shared.getMinimumDTEForSymbol(second.instrument?.symbol ?? "")
                 let firstContracts : Double = SchwabClient.shared.getContractCountForSymbol(first.instrument?.symbol ?? "")
                 let secondContracts : Double = SchwabClient.shared.getContractCountForSymbol(second.instrument?.symbol ?? "")
                 
                 // Handle nil values - positions without contracts go to the end
                 if firstDTE == nil && secondDTE == nil {
-                    return ascending ? firstContracts > secondContracts : firstContracts < secondContracts // Keep original order
+                    return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
                 } else if firstDTE == nil {
                     return false // First goes after second
                 } else if secondDTE == nil {
                     return true // Second goes after first
                 } else if firstDTE! == secondDTE! {
-                    return ascending ? (firstContracts > secondContracts) : (firstContracts < secondContracts)
+                    return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
                 } else {
                     return ascending ? (firstDTE! < secondDTE!) : (firstDTE! > secondDTE!)
                 }

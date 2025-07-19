@@ -166,7 +166,7 @@ struct RecommendedOCOOrdersSection: View {
     
     // --- Top 100 Standing Sell ---
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        guard sharesAvailableForTrading >= 100.0 else { return nil }
+        // Remove the sharesAvailableForTrading check - show all orders regardless of available shares
         
         var sharesToConsider: Double = 0
         var totalCost: Double = 0
@@ -179,14 +179,19 @@ struct RecommendedOCOOrdersSection: View {
         }
         guard sharesToConsider >= 100.0 else { return nil }
         let costPerShare = totalCost / sharesToConsider
-        // ATR for this order is fixed: 1.5 * 0.25 = 0.375
+        
+        // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
         let adjustedATR = 1.5 * 0.25
-        // Entry: one AATR above last price
-        let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
-        // Target: 1% above cost per share
-        let target = costPerShare * 1.01
-        // Exit: 1% above target
-        let exit = target / 1.01
+        
+        // Target: 4.65% above breakeven (cost per share) - accounting for wash sale adjustments
+        let target = costPerShare * 1.0465
+        
+        // Entry: Target + (1.5 * ATR) above target
+        let entry = target * (1.0 + (adjustedATR / 100.0))
+        
+        // Exit: 0.9% below target
+        let exit = target * 0.991
+        
         let gain = ((target - costPerShare) / costPerShare) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToConsider, symbol, entry, target, exit, costPerShare, formatReleaseTime(tomorrow))
@@ -198,6 +203,7 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell: sharesToConsider,
             trailingStop: adjustedATR,
             entry: entry,
+            target: target,
             cancel: exit,
             description: formattedDescription,
             openDate: "Top100"
@@ -216,9 +222,14 @@ struct RecommendedOCOOrdersSection: View {
         let minProfitPercent = max(6.0, 3.5 * getLimitedATR())
         guard currentProfitPercent >= minProfitPercent else { return nil }
 
-        let entry = currentPrice / (1.0 + (1.5 * adjustedATR / 100))
-        let target = entry / (1.0 + (1.5 * adjustedATR / 100))
-        let exit = target / 1.01
+        // Target: 4.65% above breakeven (avg cost per share) - accounting for wash sale adjustments
+        let target = avgCostPerShare * 1.0465
+        
+        // Entry: Target + (1.5 * ATR) above target
+        let entry = target * (1.0 + (adjustedATR / 100.0))
+        
+        // Exit: 0.9% below target
+        let exit = target * 0.991
         
         var sharesToSell: Double = 0
         var totalGain: Double = 0
@@ -226,10 +237,10 @@ struct RecommendedOCOOrdersSection: View {
         for lot in sortedTaxLots {
             let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
             if lotGainPercent >= 5.0 {
-                let needed = min(lot.quantity, sharesAvailableForTrading - sharesToSell)
+                // Remove the sharesAvailableForTrading limitation - use all available shares in the lot
+                let needed = lot.quantity
                 sharesToSell += needed
                 totalGain += needed * (target - lot.costPerShare)
-                if sharesToSell >= sharesAvailableForTrading { break }
             }
         }
         
@@ -246,6 +257,7 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell: sharesToSell,
             trailingStop: adjustedATR,
             entry: entry,
+            target: target,
             cancel: exit,
             description: formattedDescription,
             openDate: "MinATR"
@@ -263,9 +275,14 @@ struct RecommendedOCOOrdersSection: View {
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
         guard currentProfitPercent >= 1.0 else { return nil }
 
-        let entry = currentPrice / (1.0 + (1.5 * adjustedATR / 100))
-        let target = entry / (1.0 + (1.5 * adjustedATR / 100))
-        let exit = target / 1.01
+        // Target: 4.65% above breakeven (avg cost per share) - accounting for wash sale adjustments
+        let target = avgCostPerShare * 1.0465
+        
+        // Entry: Target + (1.5 * ATR) above target
+        let entry = target * (1.0 + (adjustedATR / 100.0))
+        
+        // Exit: 0.9% below target
+        let exit = target * 0.991
         
         var sharesToSell: Double = 0
         var totalGain: Double = 0
@@ -273,10 +290,10 @@ struct RecommendedOCOOrdersSection: View {
         for lot in sortedTaxLots {
             let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
             if lotGainPercent >= 1.0 {
-                let needed = min(lot.quantity, sharesAvailableForTrading - sharesToSell)
+                // Remove the sharesAvailableForTrading limitation - use all available shares in the lot
+                let needed = lot.quantity
                 sharesToSell += needed
                 totalGain += needed * (target - lot.costPerShare)
-                if sharesToSell >= sharesAvailableForTrading { break }
             }
         }
         
@@ -293,6 +310,7 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell: sharesToSell,
             trailingStop: adjustedATR,
             entry: entry,
+            target: target,
             cancel: exit,
             description: formattedDescription,
             openDate: "MinBE"
@@ -308,44 +326,92 @@ struct RecommendedOCOOrdersSection: View {
         targetGainPercent: Double,
         totalShares: Double
     ) -> BuyOrderRecord? {
-        // For buy orders, we want to increase holdings of profitable positions
-        // The target gain percent is the minimum we want to maintain
-        // If current P/L% is below target, we need to buy at a price that would bring us to target
-        // If current P/L% is above target, we can still buy more shares to increase our position
-        let entryPrice: Double
-        let targetBuyPrice: Double
-        let sharesToBuy: Double
-        if currentProfitPercent < targetGainPercent {
-            let targetPrice = avgCostPerShare * (1.0 + targetGainPercent / 100.0)
-            entryPrice = targetPrice * (1.0 + atrValue / 100.0)
-            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
-            let targetAvgCost = currentPrice / (1.0 + targetGainPercent / 100.0)
-            sharesToBuy = (targetAvgCost * totalShares - avgCostPerShare * totalShares) / (targetBuyPrice - targetAvgCost)
-        } else {
-            entryPrice = currentPrice * (1.0 + atrValue / 100.0)
-            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
-            let maxSharesFor500 = floor(500.0 / targetBuyPrice)
-            sharesToBuy = maxSharesFor500 // Allow up to $500 worth of shares (rounded down)
-        }
+        
+        print("=== calculateBuyOrder (OCO) ===")
+        print("Current price: $\(currentPrice)")
+        print("Avg cost per share: $\(avgCostPerShare)")
+        print("Current P/L%: \(currentProfitPercent)%")
+        print("Target gain %: \(targetGainPercent)%")
+        print("Total shares: \(totalShares)")
+        print("ATR: \(atrValue)%")
+        
+        // Calculate total cost of current position
+        let totalCost = avgCostPerShare * totalShares
+        
+        // Calculate target buy price based on ATR
+        let targetBuyPrice = currentPrice * (1.0 + atrValue / 100.0)
+        
+        // Calculate entry price (one ATR above target buy price)
+        let entryPrice = targetBuyPrice * (1.0 + atrValue / 100.0)
+        
+        print("Target buy price: $\(targetBuyPrice)")
+        print("Entry price: $\(entryPrice)")
+        
+        // Implement the correct formula from the spreadsheet:
+        // ROUNDUP(((Quantity Shares × Quantity Target Buy − Quantity Cost) ÷ (0.01 × Quantity Target Gain) − Quantity Cost) ÷ Quantity Target Buy, 0)
+        
+        // Break down the formula:
+        // 1. (Quantity Shares × Quantity Target Buy − Quantity Cost) = (totalShares × targetBuyPrice - totalCost)
+        // 2. ÷ (0.01 × Quantity Target Gain) = ÷ (0.01 × targetGainPercent)
+        // 3. − Quantity Cost = - totalCost
+        // 4. ÷ Quantity Target Buy = ÷ targetBuyPrice
+        // 5. ROUNDUP(..., 0)
+        
+        let numerator = (totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost
+        let sharesToBuy = ceil(numerator / targetBuyPrice)
+        
+        print("Formula calculation:")
+        print("  (totalShares × targetBuyPrice - totalCost) = (\(totalShares) × \(targetBuyPrice) - \(totalCost)) = \(totalShares * targetBuyPrice - totalCost)")
+        print("  ÷ (0.01 × targetGainPercent) = ÷ (0.01 × \(targetGainPercent)) = ÷ \(0.01 * targetGainPercent)")
+        print("  = \(totalShares * targetBuyPrice - totalCost) / \(0.01 * targetGainPercent) = \((totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent))")
+        print("  - totalCost = - \(totalCost) = \((totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost)")
+        print("  ÷ targetBuyPrice = ÷ \(targetBuyPrice) = \(numerator / targetBuyPrice)")
+        print("  ROUNDUP = \(sharesToBuy)")
+        
         // Apply limits
         var finalSharesToBuy = sharesToBuy
-        // If the calculated shares would cost more than $500, reduce to max that fits under $500 (rounded down, at least 1)
-        let maxSharesFor500 = floor(500.0 / targetBuyPrice)
-        if finalSharesToBuy > maxSharesFor500 {
-            finalSharesToBuy = maxSharesFor500
+        let orderCost = finalSharesToBuy * targetBuyPrice
+        
+        print("Initial calculation: \(finalSharesToBuy) shares at $\(targetBuyPrice) = $\(orderCost)")
+        
+        // Limit to $500 maximum investment
+        if orderCost > 500.0 {
+            finalSharesToBuy = 500.0 / targetBuyPrice
+            print("Order cost $\(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
         }
+        
         // If share price is over $500, limit to 1 share
         if targetBuyPrice > 500.0 {
             finalSharesToBuy = 1.0
+            print("Share price $\(targetBuyPrice) exceeds $500, limiting to 1 share")
         }
-        // Never recommend less than 1 share
-        finalSharesToBuy = max(1.0, floor(finalSharesToBuy))
+        
+        // Round down to whole shares to stay under $500 limit
+        finalSharesToBuy = floor(finalSharesToBuy)
+        
+        // If rounding down results in 0 shares, use 1 share minimum
+        if finalSharesToBuy < 1.0 {
+            finalSharesToBuy = 1.0
+            print("Rounding down resulted in 0 shares, using minimum of 1 share")
+        }
+        
+        // Recalculate final order cost
         let finalOrderCost = finalSharesToBuy * targetBuyPrice
-        // If even 1 share is over $500, skip the buy order
-        if finalOrderCost > 500.0 {
-            print("❌ Buy order not reasonable - shares: \(finalSharesToBuy), cost: $\(finalOrderCost)")
+        
+        print("Final shares to buy: \(finalSharesToBuy)")
+        print("Final order cost: $\(finalOrderCost)")
+        
+        // Check if order is reasonable - allow orders even if they exceed $500 for 1 share
+        guard finalSharesToBuy > 0 else {
+            print("❌ Buy order not reasonable - shares: \(finalSharesToBuy)")
             return nil
         }
+        
+        // Warn if order cost exceeds $500 but don't reject
+        if finalOrderCost > 500.0 {
+            print("⚠️ Warning: Order cost $\(finalOrderCost) exceeds $500 limit, but allowing 1 share minimum")
+        }
+        
         let (submitDate, isImmediate) = calculateSubmitDate()
         let formattedDescription = String(
             format: "BUY %.0f %@ Submit %@ BID >= %.2f TS = %.1f%% Target = %.2f",
@@ -592,7 +658,7 @@ struct RecommendedOCOOrdersSection: View {
                 .fontWeight(.semibold)
                 .frame(width: 80, alignment: .trailing)
             
-            Text("Trailing Stop")
+            Text("Stop")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .frame(width: 100, alignment: .trailing)
@@ -607,7 +673,7 @@ struct RecommendedOCOOrdersSection: View {
                 .fontWeight(.semibold)
                 .frame(width: 80, alignment: .trailing)
             
-            Text("Cost")
+            Text("Cancel")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .frame(width: 80, alignment: .trailing)
@@ -674,18 +740,18 @@ struct RecommendedOCOOrdersSection: View {
                             copyToClipboard(value: sellOrder.entry, format: "%.2f")
                         }
                     
+                    Text(String(format: "%.2f", sellOrder.target))
+                        .font(.caption)
+                        .frame(width: 80, alignment: .trailing)
+                        .onTapGesture {
+                            copyToClipboard(value: sellOrder.target, format: "%.2f")
+                        }
+                    
                     Text(String(format: "%.2f", sellOrder.cancel))
                         .font(.caption)
                         .frame(width: 80, alignment: .trailing)
                         .onTapGesture {
                             copyToClipboard(value: sellOrder.cancel, format: "%.2f")
-                        }
-                    
-                    Text(String(format: "%.0f", sellOrder.gain))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: sellOrder.gain, format: "%.0f")
                         }
                 } else if let buyOrder = order as? BuyOrderRecord {
                     Text(buyOrder.description)
@@ -723,11 +789,11 @@ struct RecommendedOCOOrdersSection: View {
                             copyToClipboard(value: buyOrder.targetBuyPrice, format: "%.2f")
                         }
                     
-                    Text(String(format: "%.0f", buyOrder.orderCost))
+                    Text(String(format: "%.2f", buyOrder.targetBuyPrice))
                         .font(.caption)
                         .frame(width: 80, alignment: .trailing)
                         .onTapGesture {
-                            copyToClipboard(value: buyOrder.orderCost, format: "%.0f")
+                            copyToClipboard(value: buyOrder.targetBuyPrice, format: "%.2f")
                         }
                 }
             }

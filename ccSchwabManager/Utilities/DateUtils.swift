@@ -55,6 +55,26 @@ func getDateNQuartersAgoStr( quarterDelta : Int ) -> String
     )
 }
 
+func getDateNQuartersAgoStrForEndDate( quarterDelta : Int ) -> String
+{
+    // get date for end of quarter (start of next quarter)
+    var components = DateComponents()
+    components.month = -quarterDelta * 3
+    components.day = +1
+    // Add 1 second to avoid overlap with next quarter's start date
+    let baseDate = Calendar.current.date(byAdding: components, to: Date())!
+    let endDate = Calendar.current.date(byAdding: .second, value: -1, to: baseDate)!
+    
+    return endDate.formatted(.iso8601
+        .year()
+        .month()
+        .day()
+        .timeZone(separator: .omitted)
+        .time(includingFractionalSeconds: true)
+        .timeSeparator(.colon)
+    )
+}
+
 func getDateNYearsAgoStr( yearDelta : Int ) -> String
 {
     // get date one year ago

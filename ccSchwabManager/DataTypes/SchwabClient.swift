@@ -1239,7 +1239,7 @@ class SchwabClient
         let newQuarterDelta = currentQuarterDelta
 
         let initialSize: Int = m_transactionList.count
-        let endDate = getDateNQuartersAgoStr(quarterDelta: newQuarterDelta - 1)
+        let endDate = getDateNQuartersAgoStrForEndDate(quarterDelta: newQuarterDelta - 1)
         let startDate = getDateNQuartersAgoStr(quarterDelta: newQuarterDelta)
 
         print("  -- processing quarter delta: \(newQuarterDelta)")
@@ -1884,6 +1884,8 @@ class SchwabClient
 
         var fetchAttempts = 0
         let maxFetchAttempts = 5  // Limit fetch attempts to prevent infinite loops
+        var totalTransactionsFound = 0
+        var totalSharesFound = 0.0
         
         // Process transactions until we find zero shares or reach max quarters
         while fetchAttempts < maxFetchAttempts {
@@ -1909,7 +1911,9 @@ class SchwabClient
             for transaction in self.getTransactionsFor(symbol: symbol)
             where ( (transaction.type == .trade) || (transaction.type == .receiveAndDeliver))
             {
-//                if debug { print( " ***** " ) }
+                totalTransactionsFound += 1
+                print("  --- Processing transaction \(totalTransactionsFound): \(transaction.tradeDate ?? "unknown"), type: \(transaction.type?.rawValue ?? "n/a"), activity: \(transaction.activityType ?? .UNKNOWN)")
+                
                 for transferItem in transaction.transferItems {
                     // find transferItems where the shares, value, and cost are not 0
                     guard let numberOfShares = transferItem.amount,
@@ -1917,13 +1921,13 @@ class SchwabClient
                           numberOfShares != 0.0,
                           transferItem.instrument?.symbol == symbol
                     else {
-                        // log the values that caused this record to be skipped.
-//                        if debug {  print( "  -- computeTaxLots() -  Skipping transferItem with symbol: \(transferItem.instrument?.symbol ?? "n/a"),  \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), \(transferItem.cost ?? 0), \(transferItem.price ?? 0)" ) }
+                        print("  --- Skipping transferItem: shares=\(transferItem.amount ?? 0), cost=\(transferItem.price ?? 0), symbol=\(transferItem.instrument?.symbol ?? "nil")")
                         continue
                     }
-//                    if debug {  print( "  -- computeTaxLots() -  Processing transferItem in transaction: \(transaction.tradeDate ?? "n/a"), \(transaction.activityType ?? .UNKNOWN), net: \(transaction.netAmount ?? 0), shares: \(transferItem.amount ?? 0), cost: \(transferItem.cost ?? 0), price: \(transferItem.price ?? 0)" ) }
-//                    if debug /*&& transferItem.amount ?? 0 > 0 && transferItem.amount ?? 0 <= 0.1*/ { transaction.dump() }
-
+                    
+                    totalSharesFound += numberOfShares
+                    print("  --- Found transferItem: \(numberOfShares) shares at $\(costPerShare) on \(transaction.tradeDate ?? "unknown")")
+                    
                     let gainLossDollar = (lastPrice - costPerShare) * numberOfShares
                     let gainLossPct = ((lastPrice - costPerShare) / costPerShare) * 100.0
                     
@@ -1934,11 +1938,21 @@ class SchwabClient
                         continue
                     }
                     
-                    // Update share count
-                    currentShareCount = ( (currentShareCount - numberOfShares) * 100000 ).rounded()/100000
-//                    if debug { print( "  -- date: \(tradeDate), currentShareCount: \(currentShareCount),    shares: \(numberOfShares), costPerShare: \(costPerShare), gainLossPct: \(gainLossPct), gainLossDollar: \(gainLossDollar) --" ) }
+                    // Update share count (working backwards)
+                    // For BUY transactions (positive shares): subtract the shares we bought
+                    // For SELL transactions (negative shares): add back the shares we sold
+                    if numberOfShares > 0 {
+                        // BUY transaction - subtract shares
+                        currentShareCount = ( (currentShareCount - numberOfShares) * 100000 ).rounded()/100000
+                    } else {
+                        // SELL transaction - add back shares (numberOfShares is negative, so we add abs value)
+                        currentShareCount = ( (currentShareCount + abs(numberOfShares)) * 100000 ).rounded()/100000
+                    }
                     
-                    // Add position record
+                    // Log the balance after each transaction
+                    print("  --- Balance after transaction: \(numberOfShares) shares -> currentShareCount: \(currentShareCount)")
+                    
+                    // Add position record for this transaction
                     m_lastFilteredPositionRecords.append(
                         SalesCalcPositionsRecord(
                             openDate: tradeDate,
@@ -1960,10 +1974,9 @@ class SchwabClient
                     print( "  -- computeTaxLots:  -- Found zero -- " )
                     break
                 }
-                else if ( 0 > currentShareCount ) {
-                    print( "  -- computeTaxLots:  -- Negative share count --" )
-                    break
-                }
+                // Don't break on negative share count - continue processing to find all buy transactions
+                // The negative share count indicates we've encountered more sell transactions than buy transactions
+                // but we need to continue to find all the buy transactions that account for our current position
 
             } // for transaction
             
@@ -1972,11 +1985,9 @@ class SchwabClient
                 print( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
                 break
             }
-            else if ( 0 > currentShareCount ) {
-                showIncompleteDataWarning = true
-                print( "  -- computeTaxLots:  -- Negative share count --" )
-                break
-            }
+            // Don't break on negative share count - continue processing to find all buy transactions
+            // The negative share count indicates we've encountered more sell transactions than buy transactions
+            // but we need to continue to find all the buy transactions that account for our current position
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
                 showIncompleteDataWarning = true
                 print( " -- Reached max quarter delta --" )
@@ -2087,26 +2098,15 @@ class SchwabClient
         // Sort final records by date
         remainingRecords.sort { $0.openDate < $1.openDate }
 
-        // set the number of shares available to trade based on the number with a trade date more than 30 days ago.
-        m_lastFilteredTransactionSharesAvailableToTrade = 0
-        for record in remainingRecords {
-            if( 30 < daysSinceDateString(dateString: record.openDate) ?? 0 ) {
-                m_lastFilteredTransactionSharesAvailableToTrade = record.quantity + (m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)
-            }
+        print("=== computeTaxLots Summary for \(symbol) ===")
+        print("Total transactions processed: \(totalTransactionsFound)")
+        print("Total shares found in transactions: \(totalSharesFound)")
+        print("Current share count from position: \(getShareCount(symbol: symbol))")
+        print("Final tax lots created: \(remainingRecords.count)")
+        for (index, record) in remainingRecords.enumerated() {
+            print("  Lot \(index): \(record.quantity) shares at $\(record.costPerShare) on \(record.openDate)")
         }
-        // for debugging, print the number of shares available to trade and the symbol
-//        if debug { print("  -- computeTaxLots: ********** ! shares available to trade: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0) for symbol: \(symbol)") }
-        // if this symbol has contracts in the m_symbolsWithContracts map, the shares available is the minimum of those over 30 days old and the difference between the total shares and the shares held in contract.
-        if let summary = m_symbolsWithContracts[symbol] {
-            let totalQuantity = summary.totalQuantity
-            m_lastFilteredTransactionSharesAvailableToTrade = min(
-                m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0,
-                (getShareCount(symbol: symbol) - (totalQuantity * 100.0)) )
-            // for debugging, print the change in shares available to trade, the symbol, and the result
-//            if debug { print("  -- computeTaxLots:  change in shares available to trade: \(totalQuantity * 100.0) for symbol: \(symbol)") }
-//            if debug { print("  -- computeTaxLots:  result: \(m_lastFilteredTransactionSharesAvailableToTrade ?? 0.0)") }
-        }
-        
+        print("=== End computeTaxLots Summary ===")
 
         m_lastFilteredPositionRecords = remainingRecords
         
@@ -2188,8 +2188,8 @@ class SchwabClient
         await withTaskGroup(of: Void.self) { group in
             for quarter in 1...quarters {
                 group.addTask {
-                    let endDate = getDateNQuartersAgoStr(quarterDelta: quarter - 1)
-                    let startDate = getDateNQuartersAgoStr(quarterDelta: quarter)
+                                    let endDate = getDateNQuartersAgoStrForEndDate(quarterDelta: quarter - 1)
+                let startDate = getDateNQuartersAgoStr(quarterDelta: quarter)
                     
                     print("  -- processing quarter: \(quarter)")
                     
@@ -2371,7 +2371,19 @@ class SchwabClient
      */
     private func addTransactionsWithoutSorting(_ newTransactions: [Transaction]) {
         guard !newTransactions.isEmpty else { return }
-        m_transactionList.append(contentsOf: newTransactions)
+        
+        // Create a set of existing transaction activityIds to avoid duplicates
+        let existingActivityIds = Set(m_transactionList.compactMap { $0.activityId })
+        let uniqueNewTransactions = newTransactions.filter { transaction in
+            guard let activityId = transaction.activityId else { return true } // Include transactions without activityIds
+            return !existingActivityIds.contains(activityId)
+        }
+        
+        if uniqueNewTransactions.count != newTransactions.count {
+            print("  -- Removed \(newTransactions.count - uniqueNewTransactions.count) duplicate transactions")
+        }
+        
+        m_transactionList.append(contentsOf: uniqueNewTransactions)
     }
 
 

@@ -44,10 +44,6 @@ Files are saved to the user's Downloads folder by default, with a file dialog al
 - Gain/Loss $
 - Gain/Loss %
 
-
-
-
-
 ## Project Structure
 
 - `Sources/`: Contains the source code of the project.
@@ -113,7 +109,7 @@ The app should first load a Secrets object from the keychain using the readSecre
 
 If the secrets object is not found in the keychain or it does not have the appId or appSecret or redirectUrl, a dialog should prompt the user for the appId, appSecret, and redirectUrl.  Once those are entered, the secrets object should be stored in the keychain and the user should be presented with a button which will launch authentication through a link object which goes to the Schwab api login web page.  The authorization URL can be retrieved from  getAuthorizationUrl.   
 
-There should be a text field in which the user can paste the results of the authentication.  When they do, the app should extract the ‘code’ from the pasted URL and save it in the secrets object as seen in handleAuthorization.
+There should be a text field in which the user can paste the results of the authentication.  When they do, the app should extract the 'code' from the pasted URL and save it in the secrets object as seen in handleAuthorization.
 
 With the code saved in the secrets object and to the keychain, the app should fetch the account numbers as seen in fetchAccountNumbers then the account listings should be fetched as seen in fetchAccounts.  
 
@@ -145,7 +141,7 @@ If that update or the account fetch fails, we need to get the user to authorize 
 
 This workflow involves collecting the position summary, price history, transaction history, and the tax lots.
 
-Unfortunately, I do not see a way to get tax lots from Schwab so I attempt to compute them from the transaction history.  To do this we first attempt to find a point in time when we had zero shares by taking the current share count, adding the number of shares sold and subtracting the number of shares bought with each prior transaction until we run out of data or find a number close to zero.  Splits do not impact the finding of zero because the number of shares received in a stock split are added.  Once we find zero, we move forward through the transactions adding buys and, when we have a sale of N shares, we remove the N highest cost-per-share shares.  This only works if the account is set up to sell from the highest cost and will not work well for FIFO or any other tax strategy. It will behave particulary badly if the strategy changes during the holding period for a position.
+Unfortunately, I do not see a way to get tax lots from Schwab so I attempt to compute them from the transaction history.  To this we first attempt to find a point in time when we had zero shares by taking the current share count, adding the number of shares sold and subtracting the number of shares bought with each prior transaction until we run out of data or find a number close to zero.  Splits do not impact the finding of zero because the number of shares received in a stock split are added.  Once we find zero, we move forward through the transactions adding buys and, when we have a sale of N shares, we remove the N highest cost-per-share shares.  This only works if the account is set up to sell from the highest cost and will not work well for FIFO or any other tax strategy. It will behave particulary badly if the strategy changes during the holding period for a position.
 
 Once the price history, transaction history, and tax lots are known, the tax lots are split adjusted by looking for share receive-and-distribute with a zero cost-per-share.  Once found, the number of shares held at that time is calculated and used to determine the split multiple which is then applied to all the prior share counts and cost-per-share values.
 
@@ -176,8 +172,8 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
   - Minimum ATR-based standing sells are meant to protect against loss and provide at least 5% gain by selling a number of shares if the price falls by a certain multiple of the ATR.  The goal is to provide a large enough gap so that the sale does not happen too quickly allowing the stock may fall but rise again before hitting the limit.  For these orders the :
         - Adjusted ATR:  if then ATR < 1; then AATR = 1; else if ATR > 7; then AATR = 7; else AATR = ATR;
         - Submit condition: The ask price below the last price minus 1.5 * AATR.  ie. ASK <= (last_price / (1 + (1.5 * AATR/100)))
-        - Target Price:  1.5 * AATR below the submit price.  ASK <= (submit / (1+(1.5*AATR/100)))
-        - Exit Price: 1% below the Target.  ASK <= (target  / 1.01)
+        - Target Price:  3.25% above the breakeven (avg cost per share) to account for wash sale cost adjustments.  target = avg_cost_per_share * 1.0325
+        - Exit Price: 0.9% below the Target.  ASK <= (target * 0.991)
         - Quantity: the minimum number of shares it would take - when selling from the highest cost-per-share to lowest - to see at least a 5% return.  The minimum quantity would be 1 share.  The maximum would be the number of shares available to sell.  Shares will be presented as whole numbers and caculations that result in a fraction will be rounded up to the next whole value.  For a tax lot that results in more than a 5% gain, only the number of shares needed to achieve that 5% gain should be considered.  
         - Limit Offset: 0.05%
         - Stop Offset: 
@@ -189,24 +185,49 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
     To achive this, we can first ensure that the position is at least 6% and at least (3.5 * ATR) profitable.  If it is not, selling all the shares would still not meet the conditions.
     The Adjusted ATR is computed as 1.5 * the ATR for the position.
     The entry price is below the current (last) price by 1.5 * AATR  %.  ASK <= last / (1 + (1.5*AATR/100))
-    The target prie is another 1.5*AATR below that.  ASK <= entry / (1 + (1.5*AATR/100))
-    The exit price should be another 1% below the target.   ASK <= target / 1.01
+    The target price is 2.25% above the breakeven (avg cost per share).  target = avg_cost_per_share * 1.0225
+    The exit price should be 0.9% below the target.   ASK <= target * 0.991
 
 
     - Minimum break-even standing sells are meant to trim some shares, removing just enough to get rid of the shares that are not currently profitable and enough of the profitable shares so that altogether we see a 1% gain.  It is the same as the Minimum ATR except that the gain target is 1%.
     To achive this, we can first ensure that the position is at least 1% profitable.  If it is not, selling all the shares would still not meet the conditions.
-    The Adjusted ATR is computed as 1.5 * 0.25 or 0.1667.
+    The Adjusted ATR is computed as 1.5 * 0.25 or 0.375.
     The entry price is below the current (last) price by 1.5 * AATR  %.  ASK <= last / (1 + (1.5*AATR/100))
-    The target prie is another 1.5*AATR below that.  ASK <= entry / (1 + (1.5*AATR/100))
-    The exit price should be another 1% below the target.   ASK <= target / 1.01    
+    The target price is 3.25% above the breakeven (avg cost per share) to account for wash sale cost adjustments.  target = avg_cost_per_share * 1.0325
+    The exit price should be 0.9% below the target.   ASK <= target * 0.991
 
     - Top 100 sells are meant to provide the target price needed to profit from the sale of the top 100 shares.  This information may be used to set the minimum price for the sale of a call option.  The price may be above the last price. This sell order should show if there are at least 100 shares available.  If the target price is higher than the 95% of the last price, the sell should be shown in red.  Rather than computing the minimum shares, this sell order should be for the top 100.
     To achive this, we first need to compute the cost-per-share for the top 100 shares.  
-    The target prie is 1% above the target.  target = cost-per-share * 1.01
-    The Adjusted ATR is computed as 1.5 * 0.25 or 0.1667.
-    The entry price is one AATR above the (last) price.   last / (1 + (AATR/100))
-    The exit price should be  1% above the target.   target / 1.01
+    The target price is 3.25% above the breakeven (cost-per-share) to account for wash sale cost adjustments.  target = cost-per-share * 1.0325
+    The Adjusted ATR is computed as 1.5 * 0.25 or 0.375.
+    The entry price is one AATR above the target price.   target * (1 + (AATR/100))
+    The exit price should be  0.9% below the target.   target * 0.991
 
+#### Sell Order Pricing Examples
+
+**Top 100 Sell Order Example:**
+- Current price: $29.42
+- Cost per share for top 100 shares: $41.96
+- Target price: $41.96 × 1.0325 = $43.32 (3.25% above breakeven, accounting for wash sale adjustments)
+- Adjusted ATR: 1.5 × 0.25% = 0.375%
+- Entry price: $43.32 × (1 + 0.375/100) = $43.48 (Target + ATR above target)
+- Exit price: $43.32 × 0.991 = $42.93 (0.9% below target)
+
+**Min ATR Sell Order Example:**
+- Current price: $29.42
+- Average cost per share: $24.66
+- Target price: $24.66 × 1.0325 = $25.46 (3.25% above breakeven, accounting for wash sale adjustments)
+- Adjusted ATR: 1.5 × ATR% (varies by stock)
+- Entry price: $25.46 × (1 + ATR/100) (Target + ATR above target)
+- Exit price: $25.46 × 0.991 = $25.23 (0.9% below target)
+
+**Min BE Sell Order Example:**
+- Current price: $29.42
+- Average cost per share: $24.66
+- Target price: $24.66 × 1.0325 = $25.46 (3.25% above breakeven, accounting for wash sale adjustments)
+- Adjusted ATR: 1.5 × 0.25% = 0.375%
+- Entry price: $25.46 × (1 + 0.375/100) = $25.56 (Target + ATR above target)
+- Exit price: $25.46 × 0.991 = $25.23 (0.9% below target)
 
 #### Buy Order Workflow
 
