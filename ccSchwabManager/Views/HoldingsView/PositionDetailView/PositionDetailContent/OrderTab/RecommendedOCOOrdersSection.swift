@@ -435,26 +435,122 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func calculateSubmitDate() -> (String, Bool) {
-        // Check if we can submit immediately (more than 7 days since last buy)
-        // For now, we'll assume we can submit immediately
-        // TODO: Implement logic to check last buy date from transaction history
+        let calendar : Calendar = Calendar.current
+        let now : Date = Date()
         
-        let calendar = Calendar.current
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        // Get the last buy transaction date (7-day rule)
+        let lastBuyDate : Date = getLastBuyTransactionDate() ?? Date()
+        let sevenDaysAfterLastBuy  : Date = calendar.date( byAdding: .day, value: 7, to: lastBuyDate )  ?? Date()
         
-        // Format for 09:40 local time
-        var components = calendar.dateComponents([.year, .month, .day], from: tomorrow)
-        components.hour = 9
-        components.minute = 40
-        components.second = 0
+        // Calculate next trading day (only if we need to submit today)
+        let nextTradingDay : Date = getNextTradingDay()
         
-        let targetDate = calendar.date(from: components) ?? tomorrow
+        // Use the later of the two dates, but only apply the 09:30 adjustment if the 7-day date is today
+        let today = calendar.startOfDay(for: now)
+        let sevenDaysDate = calendar.startOfDay(for: sevenDaysAfterLastBuy)
+        
+        // Debug logging
         let formatter = DateFormatter()
-        formatter.dateFormat = "M/d/yy HH:mm:ss"
-        let submitDate = formatter.string(from: targetDate)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        print("DEBUG: calculateSubmitDate (OCO) for \(symbol)")
+        print("DEBUG:   now = \(formatter.string(from: now))")
+        print("DEBUG:   lastBuyDate = \(formatter.string(from: lastBuyDate))")
+        print("DEBUG:   sevenDaysAfterLastBuy = \(formatter.string(from: sevenDaysAfterLastBuy))")
+        print("DEBUG:   nextTradingDay = \(formatter.string(from: nextTradingDay))")
+        print("DEBUG:   today = \(formatter.string(from: today))")
+        print("DEBUG:   sevenDaysDate = \(formatter.string(from: sevenDaysDate))")
+        print("DEBUG:   isSevenDaysToday = \(calendar.isDate(sevenDaysDate, inSameDayAs: today))")
         
-        // For now, always use scheduled submit (not immediate)
-        return (submitDate, false)
+        let baseDate: Date
+        if calendar.isDate(sevenDaysDate, inSameDayAs: today) {
+            // 7-day rule says today, so use the next trading day logic (which handles 09:30 adjustment)
+            baseDate = nextTradingDay
+            print("DEBUG:   using nextTradingDay (7-day rule says today)")
+        } else {
+            // 7-day rule says a future date, so use that date directly (no 09:30 adjustment)
+            baseDate = sevenDaysAfterLastBuy
+            print("DEBUG:   using sevenDaysAfterLastBuy (7-day rule says future date)")
+        }
+        
+        print("DEBUG:   baseDate = \(formatter.string(from: baseDate))")
+        
+        // Set the time to 09:40:00 using calendar components
+        let targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: baseDate) ?? baseDate
+        print("DEBUG:   targetDate = \(formatter.string(from: targetDate))")
+        
+        let outputFormatter = DateFormatter()
+        outputFormatter.dateFormat = "M/d/yy HH:mm:ss"
+        let submitDate = outputFormatter.string(from: targetDate)
+        print("DEBUG:   submitDate = \(submitDate)")
+        
+        // Check if we can submit immediately (target date is today and it's before 09:30)
+        let nineThirtyToday = today.addingTimeInterval(9 * 3600 + 30 * 60) // 9 hours and 30 minutes
+        let isImmediate = calendar.isDate(targetDate, inSameDayAs: today) && now < nineThirtyToday
+        
+        return (submitDate, isImmediate)
+    }
+    
+    private func getLastBuyTransactionDate() -> Date? {
+        // Get transaction history for this symbol
+        let transactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        
+        // Find the most recent buy transaction
+        let buyTransactions = transactions.filter { transaction in
+            // Check if any transfer item is a buy (positive amount) for this symbol
+            transaction.transferItems.contains { item in
+                item.instrument?.symbol == symbol && 
+                (item.amount ?? 0) > 0
+            }
+        }
+        
+        // Sort by date (most recent first) and get the first one
+        let sortedBuyTransactions = buyTransactions.sorted { first, second in
+            let firstTime = first.time ?? ""
+            let secondTime = second.time ?? ""
+            return firstTime > secondTime
+        }
+        
+        guard let mostRecentBuy = sortedBuyTransactions.first,
+              let timeString = mostRecentBuy.time else {
+            return nil
+        }
+        
+        // Parse the time string to Date
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        
+        guard let date = formatter.date(from: timeString) else {
+            return nil
+        }
+        
+        return date
+    }
+    
+    private func getNextTradingDay() -> Date {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Check if current time is before 09:30
+        let today = calendar.startOfDay(for: now)
+        let nineThirtyToday = today.addingTimeInterval(9 * 3600 + 30 * 60) // 9 hours and 30 minutes
+        
+        var baseDate: Date
+        if now < nineThirtyToday {
+            // Before 09:30, use today
+            baseDate = today
+        } else {
+            // After 09:30, use tomorrow
+            baseDate = today.addingTimeInterval(24 * 3600) // Add 24 hours
+        }
+        
+        // Find the next weekday (skip weekends)
+        var nextWeekday = baseDate
+        while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
+            // Sunday = 1, Saturday = 7
+            nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
+        }
+        
+        return nextWeekday
     }
     
     private func updateRecommendedOrders() {
