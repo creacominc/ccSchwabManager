@@ -1,0 +1,45 @@
+{
+  "project": {
+    "name": "ccSchwabManager",
+    "scheme": "ccSchwabManager",
+    "xcodeproj": "ccSchwabManager.xcodeproj"
+  },
+  "builds": {
+    "debug": {
+      "configuration": "Debug",
+      "destination": "platform=macOS",
+      "build_for_testing": true,
+      "enable_testing": true
+    },
+    "release": {
+      "configuration": "Release",
+      "destination": "platform=macOS",
+      "build_for_testing": false,
+      "enable_testing": false
+    }
+  },
+  "tests": {
+    "unit_tests": {
+      "target": "ccSchwabManagerTests",
+      "enabled": true,
+      "timeout": 300
+    },
+    "ui_tests": {
+      "target": "ccSchwabManagerUITests",
+      "enabled": true,
+      "timeout": 600
+    }
+  },
+  "paths": {
+    "derived_data": "~/Library/Developer/Xcode/DerivedData",
+    "build_products": "Build/Products",
+    "test_results": "TestResults"
+  },
+  "options": {
+    "parallel_build": true,
+    "show_build_timings": true,
+    "enable_code_coverage": false,
+    "enable_address_sanitizer": false,
+    "enable_thread_sanitizer": false
+  }
+} 

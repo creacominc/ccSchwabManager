@@ -343,7 +343,8 @@ struct RecommendedOCOOrdersSection: View {
 
     // --- Minimum Break-even Standing Sell ---
     private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        let adjustedATR = 1.5 * 0.25 // Fixed at 0.375%
+        // According to README: AATR is fixed at 0.75%
+        let adjustedATR = 0.75
 
         // Only show if position is at least 1% profitable
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
@@ -360,83 +361,62 @@ struct RecommendedOCOOrdersSection: View {
         print("Total cost: $\(totalCost)")
         print("Adjusted ATR: \(adjustedATR)%")
 
-        // Target: 3.25% above breakeven (avg cost per share) - accounting for wash sale adjustments
+        // According to README: Target price is 3.25% above the breakeven (avg cost per share) to account for wash sale cost adjustments
         let target = avgCostPerShare * 1.0325
         print("Target price: $\(target) (3.25% above breakeven)")
         
-        // Entry: Below current price by 1.5 * AATR
-        let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
-        print("Entry price: $\(entry) (below current by \(adjustedATR)%)")
+        // According to README: Entry price is below the current (last) price by 1.5 * AATR %
+        // ASK <= last / (1 + (1.5*AATR/100))
+        let entry = currentPrice / (1.0 + (1.5 * adjustedATR / 100.0))
+        print("Entry price: $\(entry) (last / (1 + (1.5*AATR/100)))")
         
-        // Exit: 0.9% below target
+        // According to README: Exit price should be 0.9% below the target
         let exit = target * 0.991
-        print("Exit price: $\(exit) (0.9% below target)")
+        print("Exit price: $\(exit) (target * 0.991)")
         
         // Calculate minimum shares needed to achieve 1% gain on the sale
-        var sharesToSell: Double = 0
-        var totalGain: Double = 0
+        // We want to find the minimum number of shares that when sold at target price
+        // would result in a 1% gain: (target - avg_cost_of_sold_shares) / avg_cost_of_sold_shares >= 0.01
+        
+        print("Target price: $\(target)")
         
         // Sort tax lots by cost per share (highest first) for FIFO-like selling
         let sortedLots = sortedTaxLots.sorted { $0.costPerShare > $1.costPerShare }
         print("Sorted tax lots by cost per share (highest first): \(sortedLots.count) lots")
         
-        // Calculate the minimum shares needed to achieve 1% gain on the sale
-        // We want: (target - avg_cost_of_sold_shares) / avg_cost_of_sold_shares >= 0.01
-        // This means: target >= avg_cost_of_sold_shares * 1.01
-        // So: avg_cost_of_sold_shares <= target / 1.01
-        
-        let maxAvgCostFor1PercentGain = target / 1.01
-        print("Target price: $\(target)")
-        print("Max avg cost for 1% gain: $\(maxAvgCostFor1PercentGain)")
-        
-        var totalCostOfSoldShares: Double = 0
-        var totalSharesSold: Double = 0
+        // Start with the highest cost shares first (FIFO-like)
+        var cumulativeShares: Double = 0
+        var cumulativeCost: Double = 0
+        var sharesToSell: Double = 0
+        var totalGain: Double = 0
         
         for (index, lot) in sortedLots.enumerated() {
             let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
             print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
             
             if lotGainPercent >= 1.0 {
-                // Calculate how many shares from this lot we can sell
-                let sharesFromLot = min(lot.quantity, totalShares - totalSharesSold)
+                // Add all shares from this lot
+                let sharesFromLot = lot.quantity
                 let costFromLot = sharesFromLot * lot.costPerShare
                 
-                print("  Considering selling \(sharesFromLot) shares from this lot")
-                print("  Cost from lot: $\(costFromLot)")
+                cumulativeShares += sharesFromLot
+                cumulativeCost += costFromLot
+                let avgCost = cumulativeCost / cumulativeShares
                 
-                // Check if adding these shares would exceed the max avg cost for 1% gain
-                let newTotalCost = totalCostOfSoldShares + costFromLot
-                let newTotalShares = totalSharesSold + sharesFromLot
-                let newAvgCost = newTotalCost / newTotalShares
+                print("  Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
                 
-                print("  New total cost: $\(newTotalCost)")
-                print("  New total shares: \(newTotalShares)")
-                print("  New avg cost: $\(newAvgCost)")
+                // Check if this combination achieves 1% gain at target price
+                let gainPercent = ((target - avgCost) / avgCost) * 100.0
+                print("  Gain at target price: \(gainPercent)%")
                 
-                if newAvgCost <= maxAvgCostFor1PercentGain {
-                    // We can sell all shares from this lot
-                    print("  ✅ Can sell all \(sharesFromLot) shares (avg cost $\(newAvgCost) <= $\(maxAvgCostFor1PercentGain))")
-                    sharesToSell += sharesFromLot
-                    totalGain += sharesFromLot * (target - lot.costPerShare)
-                    totalCostOfSoldShares = newTotalCost
-                    totalSharesSold = newTotalShares
-                } else {
-                    // We can only sell some shares from this lot
-                    // Calculate how many shares we can sell to stay under the max avg cost
-                    let maxCostToSell = maxAvgCostFor1PercentGain * newTotalShares - totalCostOfSoldShares
-                    let maxSharesToSell = maxCostToSell / lot.costPerShare
-                    
-                    print("  ⚠️ Can only sell \(maxSharesToSell) shares to stay under max avg cost")
-                    
-                    if maxSharesToSell > 0 {
-                        let actualSharesToSell = min(maxSharesToSell, sharesFromLot)
-                        print("  ✅ Selling \(actualSharesToSell) shares")
-                        sharesToSell += actualSharesToSell
-                        totalGain += actualSharesToSell * (target - lot.costPerShare)
-                    } else {
-                        print("  ❌ Cannot sell any shares from this lot")
-                    }
+                if gainPercent >= 1.0 {
+                    // We found the minimum shares needed
+                    sharesToSell = cumulativeShares
+                    totalGain = cumulativeShares * (target - avgCost)
+                    print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(avgCost)")
                     break
+                } else {
+                    print("  ⚠️ Not enough gain yet, continuing...")
                 }
             } else {
                 print("  ❌ Lot gain \(lotGainPercent)% is below 1% threshold")
@@ -446,8 +426,8 @@ struct RecommendedOCOOrdersSection: View {
         print("Final calculation:")
         print("  Shares to sell: \(sharesToSell)")
         print("  Total gain: $\(totalGain)")
-        print("  Total shares sold: \(totalSharesSold)")
-        print("  Total cost of sold shares: $\(totalCostOfSoldShares)")
+        print("  Cumulative shares: \(cumulativeShares)")
+        print("  Cumulative cost: $\(cumulativeCost)")
         
         guard sharesToSell > 0 else { 
             print("❌ No shares to sell")

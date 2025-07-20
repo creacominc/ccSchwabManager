@@ -315,8 +315,8 @@ struct RecommendedSellOrdersSection: View {
     private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         print("=== calculateMinBreakEvenOrder ===")
         
-        // According to README: ATR for this order is fixed: 1.5 * 0.25 = 0.375
-        let adjustedATR = 1.5 * 0.25
+        // According to README: AATR is fixed at 0.75%
+        let adjustedATR = 0.75
         print("  Adjusted ATR: \(adjustedATR)%")
 
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
@@ -333,74 +333,43 @@ struct RecommendedSellOrdersSection: View {
         }
 
         // According to README: Entry price is below the current (last) price by 1.5 * AATR %
+        // ASK <= last / (1 + (1.5*AATR/100))
         let entry = currentPrice / (1.0 + (1.5 * adjustedATR / 100.0))
-        print("  Entry price: $\(entry) (below current price by 1.5 * AATR)")
+        print("  Entry price: $\(entry) (last / (1 + (1.5*AATR/100)))")
         
         // According to README: Target price is 3.25% above the breakeven (avg cost per share) to account for wash sale cost adjustments
         let target = avgCostPerShare * 1.0325
-        print("  Target price: $\(target) (3.25% above avg cost)")
+        print("  Target price: $\(target) (avg cost * 1.0325)")
         
         // According to README: Exit price should be 0.9% below the target
         let exit = target * 0.991
-        print("  Exit price: $\(exit) (0.9% below target)")
+        print("  Exit price: $\(exit) (target * 0.991)")
 
-        // Calculate minimum shares needed for 1% profit
-        var sharesUsed: Double = 0.0
-        var totalCostUsed: Double = 0.0
+        // Check if any tax lots have cost-per-share less than the cancel price
+        print("  Checking tax lots against cancel price: $\(exit)")
+        var sharesToSell: Double = 0.0
+        var totalCostToSell: Double = 0.0
         var found = false
-        var minimumShares: Double = 0.0
-        var minimumCost: Double = 0.0
-
-        print("  Calculating minimum shares for 1% profit:")
+        
         for (index, lot) in sortedTaxLots.enumerated() {
-            let newShares = sharesUsed + lot.quantity
-            let newCost = totalCostUsed + lot.quantity * lot.costPerShare
-            let avgCost = newCost / newShares
-            let gain = ((target - avgCost) / avgCost) * 100.0
+            print("    Lot \(index): \(lot.quantity) shares at $\(lot.costPerShare)")
             
-            print("    Lot \(index): \(lot.quantity) shares at $\(lot.costPerShare), cumulative gain: \(gain)%")
-            
-            if gain >= 1.0 {
-                let baseShares = sharesUsed
-                let baseCost = totalCostUsed
-                let lotCostPerShare = lot.costPerShare
-
-                var low: Double = 0.0
-                var high: Double = lot.quantity
-                var bestShares: Double = lot.quantity
-
-                while high - low > 0.01 {
-                    let mid = (low + high) / 2.0
-                    let testShares = baseShares + mid
-                    let testCost = baseCost + mid * lotCostPerShare
-                    let testAvgCost = testCost / testShares
-                    let testGain = ((target - testAvgCost) / testAvgCost) * 100.0
-
-                    if testGain >= 1.0 {
-                        bestShares = mid
-                        high = mid
-                    } else {
-                        low = mid
-                    }
-                }
-
-                minimumShares = baseShares + bestShares
-                minimumCost = baseCost + bestShares * lotCostPerShare
+            if lot.costPerShare < exit {
+                sharesToSell += lot.quantity
+                totalCostToSell += lot.quantity * lot.costPerShare
                 found = true
-                print("    Found minimum shares: \(minimumShares) for 1% gain")
-                break
+                print("    ✅ Lot \(index) qualifies (cost $\(lot.costPerShare) < cancel $\(exit))")
             } else {
-                sharesUsed = newShares
-                totalCostUsed = newCost
+                print("    ❌ Lot \(index) does not qualify (cost $\(lot.costPerShare) >= cancel $\(exit))")
             }
         }
-
-        guard found, minimumShares > 0 else { 
-            print("  ❌ Could not find minimum shares for 1% profit")
+        
+        guard found, sharesToSell > 0 else { 
+            print("  ❌ No tax lots qualify for break-even sell (all costs >= cancel price)")
             return nil 
         }
         
-        let roundedShares = ceil(minimumShares)
+        let roundedShares = ceil(sharesToSell)
         
         // According to README: Except for the Top-100 sell order, all sell orders are limited to the number of shares available to trade
         let finalShares = min(roundedShares, sharesAvailableForTrading)
@@ -409,10 +378,11 @@ struct RecommendedSellOrdersSection: View {
             print("  ⚠️ Limited shares from \(roundedShares) to \(finalShares) due to shares available for trading")
         }
         
-        let finalAvgCost = minimumCost / finalShares
+        let finalAvgCost = totalCostToSell / sharesToSell
         let finalGain = ((target - finalAvgCost) / finalAvgCost) * 100.0
         
         print("  Final calculation:")
+        print("    Shares to sell: \(sharesToSell)")
         print("    Rounded shares: \(roundedShares)")
         print("    Final shares (limited): \(finalShares)")
         print("    Final avg cost: $\(finalAvgCost)")
@@ -431,6 +401,7 @@ struct RecommendedSellOrdersSection: View {
             sharesToSell: finalShares,
             trailingStop: adjustedATR,
             entry: entry,
+            target: target,
             cancel: exit,
             description: formattedDescription,
             openDate: "MinBE"

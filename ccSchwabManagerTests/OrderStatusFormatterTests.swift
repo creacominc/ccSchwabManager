@@ -13,23 +13,32 @@ class OrderStatusFormatterTests: XCTestCase {
     func testPHOrderFormatting() {
         // Test the PH order from the JSON response
         let phOrder = Order(
-            orderId: 1003670798912,
-            status: .AWAITING_RELEASE_TIME,
+            session: nil,
+            duration: .GOOD_TILL_CANCEL,
             orderType: .TRAILING_STOP_LIMIT,
+            cancelTime: nil,
+            complexOrderStrategyType: nil,
             quantity: 1,
             filledQuantity: 0,
             remainingQuantity: 1,
+            requestedDestination: nil,
+            destinationLinkName: nil,
+            releaseTime: "2025-07-14T13:35:00+0000",
+            stopPrice: nil,
+            stopPriceLinkBasis: nil,
+            stopPriceLinkType: nil,
+            stopPriceOffset: nil,
+            stopType: .BID,
             priceLinkBasis: .BID,
             priceLinkType: .PERCENT,
             priceOffset: 3.0,
-            stopType: .BID,
-            duration: .GOOD_TILL_CANCEL,
-            releaseTime: "2025-07-14T13:35:00+0000",
+            price: nil,
+            taxLotMethod: nil,
             orderLegCollection: [
-                OrderLeg(
+                OrderLegCollection(
                     orderLegType: .EQUITY,
                     legId: 1,
-                    instrument: Instrument(
+                    instrument: AccountsInstrument(
                         assetType: .EQUITY,
                         cusip: "701094104",
                         symbol: "PH",
@@ -40,7 +49,20 @@ class OrderStatusFormatterTests: XCTestCase {
                     quantity: 1
                 )
             ],
-            orderStrategyType: .SINGLE
+            activationPrice: nil,
+            specialInstruction: nil,
+            orderStrategyType: .SINGLE,
+            orderId: 1003670798912,
+            cancelable: nil,
+            editable: nil,
+            status: .awaitingReleaseTime,
+            enteredTime: nil,
+            closeTime: nil,
+            tag: nil,
+            accountNumber: nil,
+            orderActivityCollection: nil,
+            childOrderStrategies: nil,
+            statusDescription: nil
         )
         
         let description = OrderStatusFormatter.formatDetailedOrderDescription(order: phOrder)

@@ -204,7 +204,7 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
 
     - Minimum break-even standing sells are meant to trim some shares, removing just enough to get rid of the shares that are not currently profitable and enough of the profitable shares so that altogether we see a 1% gain.  It is the same as the Minimum ATR except that the gain target is 1%.
     To achive this, we can first ensure that the position is at least 1% profitable.  If it is not, selling all the shares would still not meet the conditions.
-    The Adjusted ATR is computed as 1.5 * 0.25 or 0.375.
+    The Adjusted ATR is fixed at 0.75%.
     The entry price is below the current (last) price by 1.5 * AATR  %.  ASK <= last / (1 + (1.5*AATR/100))
     The target price is 3.25% above the breakeven (avg cost per share) to account for wash sale cost adjustments.  target = avg_cost_per_share * 1.0325
     The exit price should be 0.9% below the target.   ASK <= target * 0.991
