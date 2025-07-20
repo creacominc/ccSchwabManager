@@ -75,6 +75,7 @@ class CSVExporter {
         }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0) // Use UTC timezone
         return formatter.string(from: date)
     }
     

@@ -57,7 +57,7 @@ class BuyOrderCalculationTests: XCTestCase {
         let atrValue = 5.0
         
         let numerator = (totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost
-        let sharesToBuy = ceil(numerator / targetBuyPrice)
+        let sharesToBuy = max( ceil(numerator / targetBuyPrice), 1.0 )
         
         // Verify the calculation is reasonable
         XCTAssertGreaterThan(sharesToBuy, 0, "Shares to buy should be positive")

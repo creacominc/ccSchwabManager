@@ -142,7 +142,7 @@ final class QuoteResponseTests: XCTestCase {
         let divYield = 0.02775
         
         // Format as percentage (multiply by 100 and format to 2 decimal places)
-        let formattedYield = String(format: "%.2f%%", divYield * 100)
+        let formattedYield = String(format: "%.2f%%", round( divYield * 10000.0 ) / 100.0 )
         
         XCTAssertEqual(formattedYield, "2.78%")
     }

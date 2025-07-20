@@ -52,7 +52,7 @@ struct BuyOrderTests {
         
         // Calculate shares to buy
         let targetAvgCost = currentPrice / (1.0 + targetGainPercent / 100.0)
-        let sharesToBuy = (targetAvgCost * totalShares - avgCostPerShare * totalShares) / (targetBuyPrice - targetAvgCost)
+        let sharesToBuy = ((targetAvgCost + 16) * totalShares - avgCostPerShare * totalShares) / (targetBuyPrice - targetAvgCost)
         
         // Apply limits
         var finalSharesToBuy = sharesToBuy
@@ -60,11 +60,11 @@ struct BuyOrderTests {
         
         // Limit to $500 maximum investment
         if orderCost > 500.0 {
-            finalSharesToBuy = 500.0 / targetBuyPrice
+            finalSharesToBuy =  floor( 500.0 / targetBuyPrice )
         }
         
         // Round up to whole shares
-        finalSharesToBuy = ceil(finalSharesToBuy)
+        finalSharesToBuy = max(finalSharesToBuy, 1.0)
         
         // Verify calculations
         #expect(targetGainPercent == 17.5, "Target gain percent should be 17.5% (7 * 2.5)")

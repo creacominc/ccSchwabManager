@@ -111,9 +111,10 @@ class CSVExporterTests: XCTestCase {
         let dateString = "2025-07-13T10:30:45+0000"
         let formattedDate = CSVExporter.formatTransactionDate(dateString)
         
-        // Should format as YYYY-MM-DD HH:MM:SS
+        // Should format as YYYY-MM-DD HH:MM:SS in UTC
         XCTAssertTrue(formattedDate.contains("2025-07-13"))
         XCTAssertTrue(formattedDate.contains("10:30:45"))
+        print("Formatted date: \(formattedDate)")
     }
     
     func testFormatTransactionDateWithInvalidInput() {
