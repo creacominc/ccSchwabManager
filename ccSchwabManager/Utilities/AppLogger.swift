@@ -6,7 +6,6 @@ class AppLogger {
     
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "AppLogger")
     private let logFileURL: URL
-    private let fileHandle: FileHandle?
     
     private init() {
         // Create log file in Documents directory
@@ -18,30 +17,28 @@ class AppLogger {
             try? "=== ccSchwabManager Log Started ===\n".write(to: logFileURL, atomically: true, encoding: .utf8)
         }
         
-        // Open file handle for writing
-        fileHandle = try? FileHandle(forWritingTo: logFileURL)
-        
-        // Seek to end of file
-        fileHandle?.seekToEndOfFile()
-    }
-    
-    deinit {
-        fileHandle?.closeFile()
+        // Log startup message
+        info("=== AppLogger initialized ===")
     }
     
     func log(_ message: String, level: OSLogType = .default) {
         let timestamp = Date().formatted(date: .abbreviated, time: .standard)
         let logMessage = "[\(timestamp)] \(message)\n"
         
-        // Log to OSLog (shows in Console app)
+        // Log to OSLog (shows in Console app and Xcode console)
         logger.log(level: level, "\(message)")
         
-        // Also print to console for Xcode debugging
-        print(message)
+        // Also print to console for immediate visibility
+        print("[\(timestamp)] \(message)")
         
-        // Write to file
-        if let data = logMessage.data(using: .utf8) {
-            fileHandle?.write(data)
+        // Write to file using atomic write (more reliable than file handle)
+        do {
+            let existingContent = try String(contentsOf: logFileURL, encoding: .utf8)
+            let newContent = existingContent + logMessage
+            try newContent.write(to: logFileURL, atomically: true, encoding: .utf8)
+        } catch {
+            // If writing fails, just print to console
+            print("Failed to write to log file: \(error)")
         }
     }
     
@@ -69,6 +66,10 @@ class AppLogger {
     // Clear the log file
     func clearLog() {
         try? "=== Log Cleared ===\n".write(to: logFileURL, atomically: true, encoding: .utf8)
-        fileHandle?.seekToEndOfFile()
+    }
+    
+    // Get the log file path for monitoring
+    func getLogFilePath() -> String {
+        return logFileURL.path
     }
 } 
