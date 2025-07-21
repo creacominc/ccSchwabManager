@@ -173,7 +173,7 @@ struct RecommendedOCOOrdersSection: View {
         
         let targetDate = calendar.date(from: components) ?? adjustedDate
         let formatter = DateFormatter()
-        formatter.dateFormat = "M/d/yy HH:mm:ss"
+        formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
         return formatter.string(from: targetDate)
     }
     
@@ -662,7 +662,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         let outputFormatter = DateFormatter()
-        outputFormatter.dateFormat = "M/d/yy HH:mm:ss"
+        outputFormatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
         let submitDate = outputFormatter.string(from: targetDate)
         print("DEBUG:   submitDate = \(submitDate)")
         

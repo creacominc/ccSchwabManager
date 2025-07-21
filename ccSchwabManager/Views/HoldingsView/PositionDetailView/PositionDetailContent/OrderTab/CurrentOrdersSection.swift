@@ -577,7 +577,7 @@ struct OrderDetailRow: View {
         let formatter = ISO8601DateFormatter()
         if let date = formatter.date(from: releaseTime) {
             let outputFormatter = DateFormatter()
-            outputFormatter.dateFormat = "M/d/yy HH:mm:ss"
+            outputFormatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
             return outputFormatter.string(from: date)
         }
         return releaseTime
