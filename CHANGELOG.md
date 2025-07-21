@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New method `getAveragePrice` to retrieve average price from position data
 
 ### Changed
+- **BREAKING**: Updated `calculateMinBreakEvenOrder` calculation method to match sample.log format
+- **BREAKING**: Changed AATR calculation from fixed 0.75% to ATR/5 (one-fifth of ATR)
+- **BREAKING**: Updated entry price calculation from `last / (1 + (1.5*AATR/100))` to `Last - 1 AATR%`
+- **BREAKING**: Updated target price calculation from `avg_cost * 1.0325` to `Entry - 2 AATR%`
+- **BREAKING**: Updated exit price calculation from `target * 0.991` to `Target - 2 AATR%`
+- **BREAKING**: Optimized minimum shares calculation to sell only the minimum shares needed to achieve 1% gain target
+- Updated README.md to reflect new calculation method and examples
+- Removed outdated test files that used old calculation method
+
+### Changed
 - **BREAKING**: Removed private method `calculateSharesAvailableForTrading` from SchwabClient to prevent circular dependencies
 - Updated `getTransactionsFor` method to remove shares calculation to avoid deadlock
 - Modified PositionDetailView to compute shares available for trading when the view loads

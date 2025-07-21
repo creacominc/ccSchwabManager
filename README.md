@@ -204,10 +204,10 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
 
     - Minimum break-even standing sells are meant to trim some shares, removing just enough to get rid of the shares that are not currently profitable and enough of the profitable shares so that altogether we see a 1% gain.  It is the same as the Minimum ATR except that the gain target is 1%.
     To achive this, we can first ensure that the position is at least 1% profitable.  If it is not, selling all the shares would still not meet the conditions.
-    The Adjusted ATR is fixed at 0.75%.
-    The entry price is below the current (last) price by 1.5 * AATR  %.  ASK <= last / (1 + (1.5*AATR/100))
-    The target price is 3.25% above the breakeven (avg cost per share) to account for wash sale cost adjustments.  target = avg_cost_per_share * 1.0325
-    The exit price should be 0.9% below the target.   ASK <= target * 0.991
+    The Adjusted ATR is ATR/5 (one-fifth of the ATR).
+    The entry price is below the current (last) price by 1 AATR%.  Entry = Last - 1 AATR%
+    The target price is below the entry price by 2 AATR%.  Target = Entry - 2 AATR%
+    The exit price should be below the target price by 2 AATR%.  Cancel = Target - 2 AATR%
 
     - Top 100 sells are meant to provide the target price needed to profit from the sale of the top 100 shares.  This information may be used to set the minimum price for the sale of a call option.  The price may be above the last price. This sell order should show if there are at least 100 shares available.  If the target price is higher than the 95% of the last price, the sell should be shown in red.  Rather than computing the minimum shares, this sell order should be for the top 100.
     To achive this, we first need to compute the cost-per-share for the top 100 shares.  
@@ -235,12 +235,12 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
 - Exit price: $25.46 × 0.991 = $25.23 (0.9% below target)
 
 **Min BE Sell Order Example:**
-- Current price: $29.42
-- Average cost per share: $24.66
-- Target price: $24.66 × 1.0325 = $25.46 (3.25% above breakeven, accounting for wash sale adjustments)
-- Adjusted ATR: 1.5 × 0.25% = 0.375%
-- Entry price: $25.46 × (1 + 0.375/100) = $25.56 (Target + ATR above target)
-- Exit price: $25.46 × 0.991 = $25.23 (0.9% below target)
+- Current price: $19.75
+- ATR: 3.4%
+- Adjusted ATR: 3.4% ÷ 5 = 0.68%
+- Entry price: $19.75 × (1 - 0.68/100) = $19.62 (Last - 1 AATR%)
+- Target price: $19.62 × (1 - 2×0.68/100) = $19.35 (Entry - 2 AATR%)
+- Exit price: $19.35 × (1 - 2×0.68/100) = $19.09 (Target - 2 AATR%)
 
 #### Buy Order Workflow
 
