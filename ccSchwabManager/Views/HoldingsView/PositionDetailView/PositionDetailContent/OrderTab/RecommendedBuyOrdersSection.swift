@@ -238,8 +238,21 @@ struct RecommendedBuyOrdersSection: View {
         print("DEBUG:   baseDate = \(formatter.string(from: baseDate))")
         
         // Set the time to 09:40:00 using calendar components
-        let targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: baseDate) ?? baseDate
-        print("DEBUG:   targetDate = \(formatter.string(from: targetDate))")
+        var targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: baseDate) ?? baseDate
+        print("DEBUG:   initial targetDate = \(formatter.string(from: targetDate))")
+        
+        // Check if the target date is in the past
+        if targetDate <= now {
+            print("DEBUG:   targetDate is in the past, moving to next weekday at 09:40")
+            // Move to the next weekday at 09:40
+            var nextWeekday = calendar.date(byAdding: .day, value: 1, to: now) ?? now
+            while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
+                // Sunday = 1, Saturday = 7
+                nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
+            }
+            targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: nextWeekday) ?? nextWeekday
+            print("DEBUG:   adjusted targetDate = \(formatter.string(from: targetDate))")
+        }
         
         let outputFormatter = DateFormatter()
         outputFormatter.dateFormat = "M/d/yy HH:mm:ss"
@@ -320,12 +333,26 @@ struct RecommendedBuyOrdersSection: View {
     
     private func formatReleaseTime(_ date: Date) -> String {
         let calendar = Calendar.current
-        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        let now = Date()
+        
+        // Ensure the date is not in the past
+        var adjustedDate = date
+        if adjustedDate <= now {
+            // Move to the next weekday at 09:40
+            var nextWeekday = calendar.date(byAdding: .day, value: 1, to: now) ?? now
+            while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
+                // Sunday = 1, Saturday = 7
+                nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
+            }
+            adjustedDate = nextWeekday
+        }
+        
+        var components = calendar.dateComponents([.year, .month, .day], from: adjustedDate)
         components.hour = 9
         components.minute = 40
         components.second = 0
         
-        let targetDate = calendar.date(from: components) ?? date
+        let targetDate = calendar.date(from: components) ?? adjustedDate
         let formatter = DateFormatter()
         formatter.dateFormat = "M/d/yy HH:mm:ss"
         return formatter.string(from: targetDate)
