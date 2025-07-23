@@ -30,7 +30,7 @@ struct PositionDetailContent: View {
                 symbol: symbol,
                 atrValue: atrValue,
                 sharesAvailableForTrading: sharesAvailableForTrading,
-                lastPrice: priceHistory?.candles.last?.close ?? 0.0,
+                lastPrice: getCurrentPrice(),
                 quoteData: quoteData,
             )
             .padding(.bottom, 4)
@@ -83,6 +83,20 @@ struct PositionDetailContent: View {
                     viewSize = newValue
                 }
             }
+        }
+    }
+    
+    private func getCurrentPrice() -> Double {
+        // Use quote data for current price, fallback to price history if quote is not available
+        if let quote = quoteData?.quote?.lastPrice {
+            return quote
+        } else if let extended = quoteData?.extended?.lastPrice {
+            return extended
+        } else if let regular = quoteData?.regular?.regularMarketLastPrice {
+            return regular
+        } else {
+            // Fallback to price history if no quote data is available
+            return priceHistory?.candles.last?.close ?? 0.0
         }
     }
 } 

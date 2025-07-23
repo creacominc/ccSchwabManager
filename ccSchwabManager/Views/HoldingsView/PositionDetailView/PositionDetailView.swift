@@ -21,7 +21,7 @@ struct PositionDetailView: View {
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
-
+    @State private var isRefreshing = false
 
     private func formatDate(_ timestamp: Int64?) -> String {
         guard let timestamp = timestamp else { return "" }
@@ -76,30 +76,62 @@ struct PositionDetailView: View {
 
     var body: some View {
         ZStack {
-            PositionDetailContent(
-                position: position,
-                accountNumber: accountNumber,
-                currentIndex: currentIndex,
-                totalPositions: totalPositions,
-                symbol: symbol,
-                atrValue: atrValue,
-                sharesAvailableForTrading: computedSharesAvailableForTrading,
-                onNavigate: { newIndex in
-                    guard newIndex >= 0 && newIndex < totalPositions else { return }
-                    loadingState.isLoading = true
-                    onNavigate(newIndex)
-                },
-                priceHistory: priceHistory,
-                isLoadingPriceHistory: isLoadingPriceHistory,
-                isLoadingTransactions: isLoadingTransactions,
-                formatDate: formatDate,
-                quoteData: quoteData,
-                taxLotData: taxLotData,
-                isLoadingTaxLots: isLoadingTaxLots,
-                viewSize: $viewSize,
-                selectedTab: $selectedTab,
-            )
-            .padding(.horizontal)
+            VStack(spacing: 0) {
+                // Refresh button at the top
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        isRefreshing = true
+                        fetchDataForSymbol()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            isRefreshing = false
+                        }
+                    }) {
+                        HStack {
+                            if isRefreshing {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .foregroundColor(.accentColor)
+                            }
+                            Text(isRefreshing ? "Refreshing..." : "Refresh")
+                                .foregroundColor(.primary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshing)
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+                }
+                .background(Color.gray.opacity(0.1))
+                
+                PositionDetailContent(
+                    position: position,
+                    accountNumber: accountNumber,
+                    currentIndex: currentIndex,
+                    totalPositions: totalPositions,
+                    symbol: symbol,
+                    atrValue: atrValue,
+                    sharesAvailableForTrading: computedSharesAvailableForTrading,
+                    onNavigate: { newIndex in
+                        guard newIndex >= 0 && newIndex < totalPositions else { return }
+                        loadingState.isLoading = true
+                        onNavigate(newIndex)
+                    },
+                    priceHistory: priceHistory,
+                    isLoadingPriceHistory: isLoadingPriceHistory,
+                    isLoadingTransactions: isLoadingTransactions,
+                    formatDate: formatDate,
+                    quoteData: quoteData,
+                    taxLotData: taxLotData,
+                    isLoadingTaxLots: isLoadingTaxLots,
+                    viewSize: $viewSize,
+                    selectedTab: $selectedTab,
+                )
+                .padding(.horizontal)
+            }
         }
         .onAppear {
             loadingState.isLoading = true
@@ -108,10 +140,6 @@ struct PositionDetailView: View {
         .onDisappear {
             //print("🔗 PositionDetailView - Clearing SchwabClient.loadingDelegate")
             SchwabClient.shared.loadingDelegate = nil
-        }
-        .onChange(of: position) { oldValue, newValue in
-            loadingState.isLoading = true
-            fetchDataForSymbol()
         }
         .withLoadingState(loadingState)
     }

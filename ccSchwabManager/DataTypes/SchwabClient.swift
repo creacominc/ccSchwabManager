@@ -624,6 +624,12 @@ class SchwabClient
         AppLogger.shared.warning("🧹 SchwabClient.clearLoadingState - Clearing any stuck loading state")
         loadingDelegate?.setLoading(false)
         loadingDelegate = nil
+        
+        // Also clear any stuck refresh token operations
+        m_refreshAccessToken_running = false
+        
+        // Cancel any ongoing network requests by invalidating the URLSession
+        URLSession.shared.invalidateAndCancel()
     }
     
     /**
@@ -749,7 +755,15 @@ class SchwabClient
                 if httpResponse.statusCode == 401 && retry {
                     print( "=== retrying fetchAccounts after refreshing access token ===" )
                     refreshAccessToken()
+                    // Add a small delay to prevent rapid retries
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                     await fetchAccounts(retry: false)
+                } else {
+                    // Log the error for debugging
+                    print("fetchAccounts failed with status code: \(httpResponse.statusCode)")
+                    if let errorData = String(data: data, encoding: .utf8) {
+                        print("Error response: \(errorData)")
+                    }
                 }
                 return
             }
@@ -2613,6 +2627,17 @@ class SchwabClient
         m_transactionList.append(contentsOf: uniqueNewTransactions)
     }
 
-
+    // MARK: - Public Debug Methods
+    
+    var isRefreshTokenRunning: Bool {
+        return m_refreshAccessToken_running
+    }
+    
+    var isLoading: Bool {
+        if let loadingState = loadingDelegate as? LoadingState {
+            return loadingState.isLoading
+        }
+        return false
+    }
 
 } // SchwabClient

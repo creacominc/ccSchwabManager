@@ -223,8 +223,14 @@ struct RecommendedOCOOrdersSection: View {
         // Entry: Target + (1.5 * ATR) above target
         let entry = target * (1.0 + (adjustedATR / 100.0))
         
-        // Exit: 0.9% below target
-        let exit = target * 0.991
+        // Exit: 0.9% below target, but never below cost per share
+        let exit = max(target * 0.991, costPerShare)
+        
+        // Validate that target is above cost per share
+        guard target > costPerShare else {
+            print("❌ Top 100 order rejected: target ($\(target)) is not above cost per share ($\(costPerShare))")
+            return nil
+        }
         
         let gain = ((target - costPerShare) / costPerShare) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
@@ -272,10 +278,6 @@ struct RecommendedOCOOrdersSection: View {
         // Entry: Below current price by 1.5 * AATR
         let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
         print("Entry price: $\(entry) (below current by \(adjustedATR)%)")
-        
-        // Exit: 0.9% below target
-        let exit = target * 0.991
-        print("Exit price: $\(exit) (0.9% below target)")
         
         // Calculate minimum shares needed to achieve 5% gain overall
         var sharesToSell: Double = 0
@@ -370,6 +372,17 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         let actualCostPerShare = totalCostOfSharesSold / sharesToSell
+        
+        // Validate that target is above the actual cost per share of the shares being sold
+        guard target > actualCostPerShare else {
+            print("❌ Min ATR order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
+            return nil
+        }
+        
+        // Exit: 0.9% below target, but never below the actual cost per share of the shares being sold
+        let exit = max(target * 0.991, actualCostPerShare)
+        print("Exit price: $\(exit) (0.9% below target, but never below actual cost per share $\(actualCostPerShare))")
+        
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
@@ -417,10 +430,6 @@ struct RecommendedOCOOrdersSection: View {
         // According to sample.log: Target = Entry - 2 AATR%
         let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
         print("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
-        
-        // According to sample.log: Cancel = Target - 2 AATR%
-        let exit = target * (1.0 - 2.0 * adjustedATR / 100.0)
-        print("=== calculateMinBreakEvenOrder Exit price: $\(exit) (Target - 2 AATR%)")
         
         // Calculate minimum shares needed to achieve 1% gain on the sale
         // We want to find the minimum number of shares that when sold at target price
@@ -482,6 +491,18 @@ struct RecommendedOCOOrdersSection: View {
         // Calculate the actual cost per share for the shares being sold
         // We already have the cumulative cost and shares, so we can use the avgCost we calculated
         let actualCostPerShare = cumulativeCost / cumulativeShares
+        
+        // Validate that target is above the actual cost per share of the shares being sold
+        guard target > actualCostPerShare else {
+            print("❌ Min Break Even order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
+            return nil
+        }
+        
+        // According to sample.log: Cancel = Target - 2 AATR%
+        // But ensure exit is never below the actual cost per share of the shares being sold
+        let exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
+        print("=== calculateMinBreakEvenOrder Exit price: $\(exit) (Target - 2 AATR%, but never below actual cost per share $\(actualCostPerShare))")
+        
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
@@ -958,12 +979,12 @@ struct RecommendedOCOOrdersSection: View {
                 .fontWeight(.semibold)
                 .frame(width: 80, alignment: .trailing)
             
-            Text("Target")
+            Text("Cancel")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .frame(width: 80, alignment: .trailing)
             
-            Text("Cancel")
+            Text("Target")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .frame(width: 80, alignment: .trailing)
@@ -1030,18 +1051,18 @@ struct RecommendedOCOOrdersSection: View {
                             copyToClipboard(value: sellOrder.entry, format: "%.2f")
                         }
                     
-                    Text(String(format: "%.2f", sellOrder.target))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: sellOrder.target, format: "%.2f")
-                        }
-                    
                     Text(String(format: "%.2f", sellOrder.cancel))
                         .font(.caption)
                         .frame(width: 80, alignment: .trailing)
                         .onTapGesture {
                             copyToClipboard(value: sellOrder.cancel, format: "%.2f")
+                        }
+                    
+                    Text(String(format: "%.2f", sellOrder.target))
+                        .font(.caption)
+                        .frame(width: 80, alignment: .trailing)
+                        .onTapGesture {
+                            copyToClipboard(value: sellOrder.target, format: "%.2f")
                         }
                 } else if let buyOrder = order as? BuyOrderRecord {
                     Text(buyOrder.description)
@@ -1072,16 +1093,16 @@ struct RecommendedOCOOrdersSection: View {
                             copyToClipboard(value: buyOrder.entryPrice, format: "%.2f")
                         }
                     
+                    Text("")
+                        .font(.caption)
+                        .frame(width: 80, alignment: .trailing)
+                    
                     Text(String(format: "%.2f", buyOrder.targetBuyPrice))
                         .font(.caption)
                         .frame(width: 80, alignment: .trailing)
                         .onTapGesture {
                             copyToClipboard(value: buyOrder.targetBuyPrice, format: "%.2f")
                         }
-                    
-                    Text("")
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
                 }
             }
         }

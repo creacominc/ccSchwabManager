@@ -13,6 +13,7 @@ struct ContentView: View
     @State private var authCode = ""
     @State private var selectedTab = 0
     @State private var showingAuthDialog = false
+    @State private var isLoading = false
 
     var body: some View
     {
@@ -39,6 +40,12 @@ struct ContentView: View
                             Label("Credentials", systemImage: "key.fill")
                         }
                         .tag(1)
+                    
+                    DebugLogView()
+                        .tabItem {
+                            Label("Debug", systemImage: "ladybug.fill")
+                        }
+                        .tag(2)
                 }
             }
         }
@@ -48,6 +55,15 @@ struct ContentView: View
                     // Force view update to check conditions again
                     secretsManager.objectWillChange.send()
                 }
+        }
+        .onAppear {
+            // Clear any stuck loading states when the view appears
+            SchwabClient.shared.clearLoadingState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // Clear stuck loading states when app becomes active
+            print("📱 App became active - clearing stuck loading states")
+            SchwabClient.shared.clearLoadingState()
         }
     }
 }
