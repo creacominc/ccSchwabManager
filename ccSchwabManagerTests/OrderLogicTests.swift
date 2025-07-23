@@ -272,6 +272,8 @@ class OrderLogicTests: XCTestCase {
                 if lotGainAtTarget >= 1.0 {
                     sharesToSell = 1.0
                     totalGain = sharesToSell * (target - lot.costPerShare)
+                    cumulativeShares = 1.0
+                    cumulativeCost = 1.0 * lot.costPerShare
                     break
                 } else {
                     let sharesFromLot = lot.quantity

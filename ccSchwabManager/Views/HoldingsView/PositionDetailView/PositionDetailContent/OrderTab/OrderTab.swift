@@ -5,6 +5,7 @@ struct OrderTab: View {
     let atrValue: Double
     let sharesAvailableForTrading: Double
     let taxLotData: [SalesCalcPositionsRecord]
+    let quoteData: QuoteData?
     let geometry: GeometryProxy
     
     var body: some View {
@@ -20,7 +21,8 @@ struct OrderTab: View {
                 symbol: symbol,
                 atrValue: atrValue,
                 taxLotData: taxLotData,
-                sharesAvailableForTrading: sharesAvailableForTrading
+                sharesAvailableForTrading: sharesAvailableForTrading,
+                quoteData: quoteData
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

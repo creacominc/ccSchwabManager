@@ -2079,7 +2079,7 @@ class SchwabClient
      *
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
      */
-    public func computeTaxLots(symbol: String) -> [SalesCalcPositionsRecord] {
+    public func computeTaxLots(symbol: String, currentPrice: Double? = nil) -> [SalesCalcPositionsRecord] {
 //        let debug : Bool = true
         // display the busy indicator
 //        if debug { print("🔍 computeTaxLots - Setting loading to TRUE") }
@@ -2122,7 +2122,7 @@ class SchwabClient
             print("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
 
             // get last price for this security
-            let lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+            let lastPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
             showIncompleteDataWarning = true
             // Process all trade transactions - only process again if the number of transactions changes
             print( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )

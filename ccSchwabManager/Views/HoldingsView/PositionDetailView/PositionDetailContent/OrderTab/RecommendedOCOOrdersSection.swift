@@ -5,6 +5,7 @@ struct RecommendedOCOOrdersSection: View {
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
     let sharesAvailableForTrading: Double
+    let quoteData: QuoteData?
     @State private var selectedOrderIndices: Set<Int> = []
     @State private var recommendedSellOrders: [SalesCalcResultsRecord] = []
     @State private var recommendedBuyOrders: [BuyOrderRecord] = []
@@ -142,8 +143,28 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Sell Order Calculations (copied from RecommendedSellOrdersSection)
     
     private func getCurrentPrice() -> Double? {
-        // Get the current price from the first tax lot (they all have the same current price)
-        return taxLotData.first?.price
+        // First try to get the real-time quote price
+        if let quote = quoteData?.quote?.lastPrice {
+            print("✅ Using real-time quote price: $\(quote)")
+            return quote
+        }
+        
+        // Fallback to extended market price if available
+        if let extendedPrice = quoteData?.extended?.lastPrice {
+            print("✅ Using extended market price: $\(extendedPrice)")
+            return extendedPrice
+        }
+        
+        // Fallback to regular market price if available
+        if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
+            print("✅ Using regular market price: $\(regularPrice)")
+            return regularPrice
+        }
+        
+        // Last resort: use the price from tax lot data (may be yesterday's close)
+        let fallbackPrice = taxLotData.first?.price
+        print("⚠️ Using fallback price from tax lot data: $\(fallbackPrice ?? 0)")
+        return fallbackPrice
     }
     
     private func getLimitedATR() -> Double {

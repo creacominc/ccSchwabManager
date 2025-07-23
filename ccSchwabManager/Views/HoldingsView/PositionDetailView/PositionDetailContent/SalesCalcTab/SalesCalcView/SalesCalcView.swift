@@ -11,6 +11,7 @@ struct SalesCalcView: View {
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
+    let quoteData: QuoteData?
     @State private var currentSort: SalesCalcSortConfig? = SalesCalcSortConfig(column: .costPerShare, ascending: SalesCalcSortableColumn.costPerShare.defaultAscending )
     @State private var viewSize: CGSize = .zero
     @State private var showIncompleteDataWarning = false

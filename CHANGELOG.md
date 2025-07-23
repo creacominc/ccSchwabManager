@@ -11,11 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CRITICAL**: Fixed sell order break-even calculations to use specific tax lot cost-per-share instead of overall position average
 - Fixed sell order gain calculations to avoid division by zero (NaN values)
 - Updated test implementations to match corrected sell order logic
+- **CRITICAL**: Fixed last price display to use real-time quote data instead of yesterday's close
+- Updated order calculations and Sales Calc table to use current market price from quote
 
 ### Changed
 - **BREAKING**: Updated `calculateMinBreakEvenOrder` to use weighted average cost per share for specific shares being sold
 - **BREAKING**: Updated `calculateMinSharesFor5PercentProfit` to track cost of shares from each tax lot individually
 - Modified sell order calculations to start with highest cost-per-share tax lots (FIFO method)
+- **BREAKING**: Updated `computeTaxLots` to accept optional current price parameter for real-time pricing
+- Modified `getCurrentPrice()` method to prioritize real-time quote data over price history
+- Updated component hierarchy to pass quote data through to order calculations
 
 ### Technical Details
 
@@ -108,6 +113,26 @@ The deadlock was caused by the following circular dependency:
 - Added `getComputedPriceForTransaction` function to display correct prices in transaction history
 - Modified `computeTaxLots` to call the new handler after processing all transactions
 - Updated TransactionRow to use computed prices when available
+
+#### Real-time Price Fix
+**Problem**: The app was using yesterday's close price from price history instead of real-time quote data for order calculations and display.
+
+**Solution**:
+- Updated `getCurrentPrice()` method to prioritize real-time quote data with fallback chain
+- Modified `computeTaxLots` to accept optional current price parameter
+- Updated component hierarchy to pass quote data through to order calculations
+- Added fallback chain: real-time quote → extended market → regular market → price history
+
+**Files Modified**:
+- `RecommendedOCOOrdersSection.swift` - Main implementation fixes and real-time price support
+- `OrderTab.swift` - Added quote data parameter
+- `SalesCalcTab.swift` - Added quote data parameter  
+- `SalesCalcView.swift` - Added quote data parameter
+- `PositionDetailContent.swift` - Pass quote data to tabs
+- `PositionDetailView.swift` - Pass current price to computeTaxLots
+- `SchwabClient.swift` - Updated computeTaxLots to accept current price parameter
+- `OrderLogicTests.swift` - Test implementation fixes
+- `CSVValidationTests.swift` - Test implementation fixes
 
 ### Build Status
 - ✅ macOS build successful

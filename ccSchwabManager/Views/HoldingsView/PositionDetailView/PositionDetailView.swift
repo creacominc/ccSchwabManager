@@ -55,7 +55,11 @@ struct PositionDetailView: View {
             quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
             
             // Fetch tax lot data as part of the main data fetch
-            taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol)
+            // Get current price from quote for tax lot calculations
+            let currentPrice = quoteData?.quote?.lastPrice ?? 
+                              quoteData?.extended?.lastPrice ?? 
+                              quoteData?.regular?.regularMarketLastPrice
+            taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
             
             // Compute shares available for trading using the tax lots
             computedSharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: taxLotData)

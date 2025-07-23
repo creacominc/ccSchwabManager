@@ -61,6 +61,7 @@ struct PositionDetailContent: View {
                         sharesAvailableForTrading: sharesAvailableForTrading,
                         taxLotData: taxLotData,
                         isLoadingTaxLots: isLoadingTaxLots,
+                        quoteData: quoteData,
                         geometry: geometry,
                     )
                     .tag(2)
@@ -70,6 +71,7 @@ struct PositionDetailContent: View {
                         atrValue: atrValue,
                         sharesAvailableForTrading: sharesAvailableForTrading,
                         taxLotData: taxLotData,
+                        quoteData: quoteData,
                         geometry: geometry
                     )
                     .tag(3)

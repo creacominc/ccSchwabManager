@@ -6,6 +6,7 @@ struct SalesCalcTab: View {
     let sharesAvailableForTrading: Double
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
+    let quoteData: QuoteData?
     let geometry: GeometryProxy
 
     var body: some View {
@@ -14,7 +15,8 @@ struct SalesCalcTab: View {
                 symbol: symbol,
                 atrValue: atrValue,
                 taxLotData: taxLotData,
-                isLoadingTaxLots: isLoadingTaxLots
+                isLoadingTaxLots: isLoadingTaxLots,
+                quoteData: quoteData
             )
             .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.9)
         }
