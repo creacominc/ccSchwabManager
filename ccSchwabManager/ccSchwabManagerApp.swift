@@ -54,6 +54,11 @@ struct ccSchwabManagerApp: App
                     print("📱 App became active - clearing any stuck loading states")
                     SchwabClient.shared.clearLoadingState()
                 }
+                .onKeyPress(.escape) {
+                    print("🔑 ESC key pressed - clearing any stuck loading states")
+                    SchwabClient.shared.clearLoadingState()
+                    return .handled
+                }
         }
     }
 }

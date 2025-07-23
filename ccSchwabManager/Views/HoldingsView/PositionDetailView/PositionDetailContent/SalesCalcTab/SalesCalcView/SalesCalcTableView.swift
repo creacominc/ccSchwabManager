@@ -37,7 +37,7 @@ struct SalesCalcTable: View {
     private let columnWidths: [CGFloat] = [0.15, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.09, 0.06, 0.16]
     
     var sortedData: [SalesCalcPositionsRecord] {
-        print("SalesCalcTable - Received \(positionsData.count) records")
+        print("SalesCalcTable - Received \(positionsData.count) records for symbol \(symbol)")
         guard let sort = currentSort else { return positionsData }
         
         return positionsData.sorted { t1, t2 in

@@ -84,6 +84,7 @@ struct HoldingsView: View {
     @State private var sharesAvailableForTrading: Double = 0.0
     @State private var selectedTab: Int = 0
     @StateObject private var loadingState = LoadingState()
+    @State private var isNavigating = false
     
     // Search field focus state for iOS
     @FocusState private var isSearchFieldFocused: Bool
@@ -426,9 +427,22 @@ struct HoldingsView: View {
                 sharesAvailableForTrading: sharesAvailableForTrading,
                 onNavigate: { newIndex in
                     guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
-                    let newPosition = sortedHoldings[newIndex]
-                    let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
-                    selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
+                    guard !isNavigating else { return } // Prevent rapid navigation
+                    
+                    print("HoldingsView: Navigating to position \(newIndex)")
+                    isNavigating = true
+                    
+                    // Add a small delay to prevent rapid navigation
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        let newPosition = sortedHoldings[newIndex]
+                        let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
+                        selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
+                        
+                        // Reset navigation flag after a delay
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            isNavigating = false
+                        }
+                    }
                 },
                 selectedTab: $selectedTab,
             )

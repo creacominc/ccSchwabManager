@@ -34,10 +34,6 @@ struct PositionDetailView: View {
     private func fetchDataForSymbol() {
         //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to TRUE")
         loadingState.isLoading = true
-        defer { 
-            //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to FALSE")
-            loadingState.isLoading = false
-        }
         
         // Connect loading state to SchwabClient
         //print("🔗 PositionDetailView - Setting SchwabClient.loadingDelegate")
@@ -48,30 +44,41 @@ struct PositionDetailView: View {
         isLoadingQuote = true
         isLoadingTaxLots = true
         
-        if let symbol = position.instrument?.symbol {
-            // Fetch all position-related data in parallel
-            priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-            _ = SchwabClient.shared.getTransactionsFor(symbol: symbol)
-            quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
-            
-            // Fetch tax lot data as part of the main data fetch
-            // Get current price from quote for tax lot calculations
-            let currentPrice = quoteData?.quote?.lastPrice ?? 
-                              quoteData?.extended?.lastPrice ?? 
-                              quoteData?.regular?.regularMarketLastPrice
-            taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
-            
-            // Compute shares available for trading using the tax lots
-            computedSharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: taxLotData)
-            print("PositionDetailView: Computed shares available for \(symbol): \(computedSharesAvailableForTrading)")
-            
-            // print( "   ---- fetched \(taxLotData.count) tax lots for symbol \(symbol)" )
+        defer { 
+            //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to FALSE")
+            loadingState.isLoading = false
+            isLoadingPriceHistory = false
+            isLoadingTransactions = false
+            isLoadingQuote = false
+            isLoadingTaxLots = false
         }
         
-        isLoadingPriceHistory = false
-        isLoadingTransactions = false
-        isLoadingQuote = false
-        isLoadingTaxLots = false
+        guard let symbol = position.instrument?.symbol else {
+            print("PositionDetailView: No symbol found for position")
+            return
+        }
+        
+        print("PositionDetailView: Fetching data for symbol \(symbol)")
+        
+        // Fetch all position-related data in parallel
+        priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        _ = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
+        
+        // Fetch tax lot data as part of the main data fetch
+        // Get current price from quote for tax lot calculations
+        let currentPrice = quoteData?.quote?.lastPrice ?? 
+                          quoteData?.extended?.lastPrice ?? 
+                          quoteData?.regular?.regularMarketLastPrice
+        taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        
+        print("PositionDetailView: Fetched \(taxLotData.count) tax lots for \(symbol)")
+        
+        // Compute shares available for trading using the tax lots
+        computedSharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: taxLotData)
+        print("PositionDetailView: Computed shares available for \(symbol): \(computedSharesAvailableForTrading)")
+        
+        // print( "   ---- fetched \(taxLotData.count) tax lots for symbol \(symbol)" )
     }
 
     var body: some View {
@@ -136,6 +143,22 @@ struct PositionDetailView: View {
         .onAppear {
             loadingState.isLoading = true
             fetchDataForSymbol()
+        }
+        .onChange(of: position.instrument?.symbol) { oldValue, newValue in
+            // Refetch data when position changes (navigation)
+            if oldValue != newValue {
+                print("PositionDetailView: Position changed from \(oldValue ?? "nil") to \(newValue ?? "nil")")
+                loadingState.isLoading = true
+                fetchDataForSymbol()
+                
+                // Add a safety timeout to clear loading state if it gets stuck
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+                    if loadingState.isLoading {
+                        print("PositionDetailView: Loading timeout - clearing stuck loading state")
+                        loadingState.forceClearLoading()
+                    }
+                }
+            }
         }
         .onDisappear {
             //print("🔗 PositionDetailView - Clearing SchwabClient.loadingDelegate")
