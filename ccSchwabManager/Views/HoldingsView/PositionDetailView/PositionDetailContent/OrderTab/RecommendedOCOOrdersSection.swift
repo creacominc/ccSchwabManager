@@ -336,14 +336,27 @@ struct RecommendedOCOOrdersSection: View {
             return nil 
         }
         
-        let gain = (totalGain / sharesToSell) / (target - avgCostPerShare) * 100.0
+        // Calculate the actual cost per share for the shares being sold
+        // We need to track the cost of the shares being sold
+        var totalCostOfSharesSold: Double = 0
+        var sharesSoldSoFar: Double = 0
+        
+        for lot in sortedLots {
+            if sharesSoldSoFar >= sharesToSell { break }
+            let sharesFromThisLot = min(lot.quantity, sharesToSell - sharesSoldSoFar)
+            totalCostOfSharesSold += sharesFromThisLot * lot.costPerShare
+            sharesSoldSoFar += sharesFromThisLot
+        }
+        
+        let actualCostPerShare = totalCostOfSharesSold / sharesToSell
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
         print("✅ Min ATR order created: \(formattedDescription)")
         return SalesCalcResultsRecord(
             shares: sharesToSell,
             rollingGainLoss: totalGain,
-            breakEven: avgCostPerShare,
+            breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: sharesToSell,
             trailingStop: adjustedATR,
@@ -408,51 +421,29 @@ struct RecommendedOCOOrdersSection: View {
             let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
             print("=== calculateMinBreakEvenOrder Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
             
-            if lotGainPercent >= 1.0 {
-                // Calculate how many shares we need from this lot to achieve 1% gain
-                // We want: (target - avg_cost_of_sold_shares) / avg_cost_of_sold_shares >= 0.01
-                // This means: target >= avg_cost_of_sold_shares * 1.01
-                // For a single lot: target >= cost_per_share * 1.01
-                // So: cost_per_share <= target / 1.01
-                
-                // Check if this lot alone can achieve 1% gain
-                let lotGainAtTarget = ((target - lot.costPerShare) / lot.costPerShare) * 100.0
-                print("=== calculateMinBreakEvenOrder   Lot gain at target price: \(lotGainAtTarget)%")
-                
-                if lotGainAtTarget >= 1.0 {
-                    // This lot alone can achieve 1% gain, so we only need 1 share
-                    sharesToSell = 1.0
-                    totalGain = sharesToSell * (target - lot.costPerShare)
-                    print("=== calculateMinBreakEvenOrder   ✅ This lot alone achieves 1% gain, selling 1 share")
-                    break
-                } else {
-                    // This lot alone can't achieve 1% gain, so we need to combine with previous lots
-                    // Add all shares from this lot and check cumulative gain
-                    let sharesFromLot = lot.quantity
-                    let costFromLot = sharesFromLot * lot.costPerShare
-                    
-                    cumulativeShares += sharesFromLot
-                    cumulativeCost += costFromLot
-                    let avgCost = cumulativeCost / cumulativeShares
-                    
-                    print("=== calculateMinBreakEvenOrder   Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
-                    
-                    // Check if this combination achieves 1% gain at target price
-                    let gainPercent = ((target - avgCost) / avgCost) * 100.0
-                    print("=== calculateMinBreakEvenOrder   Cumulative gain at target price: \(gainPercent)%")
-                    
-                    if gainPercent >= 1.0 {
-                        // We found the minimum shares needed
-                        sharesToSell = cumulativeShares
-                        totalGain = cumulativeShares * (target - avgCost)
-                        print("=== calculateMinBreakEvenOrder   ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(avgCost)")
-                        break
-                    } else {
-                        print("=== calculateMinBreakEvenOrder   ⚠️ Not enough gain yet, continuing...")
-                    }
-                }
+            // For Minimum BreakEven, we want to sell the highest cost shares first
+            // to minimize losses, regardless of whether they're at a gain or loss
+            let sharesFromLot = lot.quantity
+            let costFromLot = sharesFromLot * lot.costPerShare
+            
+            cumulativeShares += sharesFromLot
+            cumulativeCost += costFromLot
+            let avgCost = cumulativeCost / cumulativeShares
+            
+            print("=== calculateMinBreakEvenOrder   Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            
+            // Check if this combination achieves 1% gain at target price
+            let gainPercent = ((target - avgCost) / avgCost) * 100.0
+            print("=== calculateMinBreakEvenOrder   Cumulative gain at target price: \(gainPercent)%")
+            
+            if gainPercent >= 1.0 {
+                // We found the minimum shares needed to achieve 1% gain
+                sharesToSell = cumulativeShares
+                totalGain = cumulativeShares * (target - avgCost)
+                print("=== calculateMinBreakEvenOrder   ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(avgCost)")
+                break
             } else {
-                print("=== calculateMinBreakEvenOrder   ❌ Lot gain \(lotGainPercent)% is below 1% threshold")
+                print("=== calculateMinBreakEvenOrder   ⚠️ Not enough gain yet, continuing...")
             }
         }
         
@@ -467,14 +458,17 @@ struct RecommendedOCOOrdersSection: View {
             return nil 
         }
         
-        let gain = (totalGain / sharesToSell) / (target - avgCostPerShare) * 100.0
+        // Calculate the actual cost per share for the shares being sold
+        // We already have the cumulative cost and shares, so we can use the avgCost we calculated
+        let actualCostPerShare = cumulativeCost / cumulativeShares
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, avgCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
         print("=== calculateMinBreakEvenOrder ✅ Min break even order created: \(formattedDescription)")
         return SalesCalcResultsRecord(
             shares: sharesToSell,
             rollingGainLoss: totalGain,
-            breakEven: avgCostPerShare,
+            breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: sharesToSell,
             trailingStop: adjustedATR,

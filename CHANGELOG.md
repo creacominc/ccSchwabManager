@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **CRITICAL**: Fixed sell order break-even calculations to use specific tax lot cost-per-share instead of overall position average
+- Fixed sell order gain calculations to avoid division by zero (NaN values)
+- Updated test implementations to match corrected sell order logic
+
+### Changed
+- **BREAKING**: Updated `calculateMinBreakEvenOrder` to use weighted average cost per share for specific shares being sold
+- **BREAKING**: Updated `calculateMinSharesFor5PercentProfit` to track cost of shares from each tax lot individually
+- Modified sell order calculations to start with highest cost-per-share tax lots (FIFO method)
+
+### Technical Details
+
+#### Sell Order Break-even Fix
+**Problem**: Sell orders were using the overall position average cost per share (41.34) instead of the specific cost-per-share for the tax lots being sold, leading to inaccurate break-even calculations.
+
+**Solution**:
+- Modified `calculateMinBreakEvenOrder` to track cumulative cost and shares for specific tax lots being sold
+- Updated `calculateMinSharesFor5PercentProfit` to calculate actual cost per share for shares being sold
+- Fixed gain calculation formula to use `((target - actualCostPerShare) / actualCostPerShare) * 100.0`
+- Updated test implementations in `OrderLogicTests.swift` and `CSVValidationTests.swift` to match corrected logic
+
+#### Tax Lot Cost Calculation
+**Problem**: Sell orders were not properly calculating the weighted average cost for the specific shares being sold.
+
+**Solution**:
+- Implemented proper tracking of cumulative cost and shares for each tax lot
+- Used FIFO (First In, First Out) method starting with highest cost-per-share tax lots
+- Calculated actual cost per share as `cumulativeCost / cumulativeShares` for specific shares being sold
+
 ### Added
 - CSV export functionality for transaction history and tax lot data
 - Diagnostic logging for shares available for trading calculation
