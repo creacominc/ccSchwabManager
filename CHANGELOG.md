@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **NEW**: Optimized sell order calculations to use minimum shares needed instead of full tax lot quantities
+- Added helper functions `calculateMinimumSharesForGain` and `calculateMinimumSharesForRemainingProfit`
+- Implemented intelligent share selection that prioritizes profitable shares over unprofitable ones
+
+### Changed
+- **BREAKING**: Updated all sell order calculations to use minimum shares logic:
+  - Top 100 Order: Now calculates minimum shares needed for 3.25% gain (limited to 100 max)
+  - Min ATR Order: Now calculates minimum shares needed to maintain 5% profit on remaining position
+  - Min Break Even Order: Now calculates minimum shares needed for 1% gain at target price
+- **BREAKING**: Modified `calculateMinimumSharesForGain` to prioritize profitable shares first, then include unprofitable shares only if necessary
+- Updated sell order logic to use FIFO (First In, First Out) method starting with highest cost-per-share tax lots
+
+### Technical Details
+
+#### Minimum Shares Optimization
+**Problem**: Sell orders were using the full quantity of tax lots instead of calculating the minimum shares needed to meet the requirements, resulting in unnecessarily large sell orders.
+
+**Solution**:
+- Added `calculateMinimumSharesForGain` helper function that finds the minimum shares needed to achieve a specific gain percentage at a target price
+- Added `calculateMinimumSharesForRemainingProfit` helper function that calculates minimum shares needed to maintain a specific profit percentage on the remaining position
+- Implemented intelligent share selection that:
+  1. First tries to achieve target gain using only profitable shares
+  2. Starts with highest cost-per-share profitable shares (FIFO method)
+  3. Stops as soon as target gain is achieved
+  4. Only includes unprofitable shares if absolutely necessary
+
+**Example Impact**:
+- **Before**: Min Break Even order might sell 123 shares (all shares from multiple tax lots)
+- **After**: Min Break Even order sells only 100 shares (minimum needed to achieve 1% gain)
+
+**Files Modified**:
+- `RecommendedOCOOrdersSection.swift` - Added helper functions and updated all sell order calculations
+
 ### Fixed
 - **CRITICAL**: Fixed sell order break-even calculations to use specific tax lot cost-per-share instead of overall position average
 - Fixed sell order gain calculations to avoid division by zero (NaN values)

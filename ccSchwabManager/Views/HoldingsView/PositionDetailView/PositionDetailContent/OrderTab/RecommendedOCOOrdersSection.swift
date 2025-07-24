@@ -202,45 +202,66 @@ struct RecommendedOCOOrdersSection: View {
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         // Remove the sharesAvailableForTrading check - show all orders regardless of available shares
         
-        var sharesToConsider: Double = 0
-        var totalCost: Double = 0
+        // Calculate the minimum shares needed to achieve 3.25% gain at target price
+        // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
+        let targetGainPercent = 3.25
         
-        for lot in sortedTaxLots {
-            let needed = min(lot.quantity, 100.0 - sharesToConsider)
-            sharesToConsider += needed
-            totalCost += needed * lot.costPerShare
-            if sharesToConsider >= 100.0 { break }
+        // We need to calculate the target price first, but we need the cost per share
+        // Let's start with a reasonable estimate and then refine
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
+        let avgCostPerShare = totalCost / totalShares
+        let estimatedTarget = avgCostPerShare * 1.0325
+        
+        // Use the helper function to calculate minimum shares needed
+        guard let result = calculateMinimumSharesForGain(
+            targetGainPercent: targetGainPercent,
+            targetPrice: estimatedTarget,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            print("❌ Top 100 order: Could not achieve \(targetGainPercent)% gain")
+            return nil
         }
-        guard sharesToConsider >= 100.0 else { return nil }
-        let costPerShare = totalCost / sharesToConsider
+        
+        let sharesToConsider = result.sharesToSell
+        let actualCostPerShare = result.actualCostPerShare
+        let totalGain = result.totalGain
+        
+        // Recalculate target based on actual cost per share
+        let target = actualCostPerShare * 1.0325
+        
+        // Limit to 100 shares maximum
+        let finalSharesToConsider = min(sharesToConsider, 100.0)
+        
+        guard finalSharesToConsider >= 100.0 else { 
+            print("❌ Top 100 order: Only \(finalSharesToConsider) shares available, need 100")
+            return nil 
+        }
         
         // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
         let adjustedATR = 1.5 * 0.25
-        
-        // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
-        let target = costPerShare * 1.0325
         
         // Entry: Target + (1.5 * ATR) above target
         let entry = target * (1.0 + (adjustedATR / 100.0))
         
         // Exit: 0.9% below target, but never below cost per share
-        let exit = max(target * 0.991, costPerShare)
+        let exit = max(target * 0.991, actualCostPerShare)
         
         // Validate that target is above cost per share
-        guard target > costPerShare else {
-            print("❌ Top 100 order rejected: target ($\(target)) is not above cost per share ($\(costPerShare))")
+        guard target > actualCostPerShare else {
+            print("❌ Top 100 order rejected: target ($\(target)) is not above cost per share ($\(actualCostPerShare))")
             return nil
         }
         
-        let gain = ((target - costPerShare) / costPerShare) * 100.0
+        let gain = ((target - actualCostPerShare) / actualCostPerShare) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToConsider, symbol, entry, target, exit, costPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", finalSharesToConsider, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
         return SalesCalcResultsRecord(
-            shares: sharesToConsider,
-            rollingGainLoss: (target - costPerShare) * sharesToConsider,
-            breakEven: costPerShare,
+            shares: finalSharesToConsider,
+            rollingGainLoss: (target - actualCostPerShare) * finalSharesToConsider,
+            breakEven: actualCostPerShare,
             gain: gain,
-            sharesToSell: sharesToConsider,
+            sharesToSell: finalSharesToConsider,
             trailingStop: adjustedATR,
             entry: entry,
             target: target,
@@ -279,99 +300,24 @@ struct RecommendedOCOOrdersSection: View {
         let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
         print("Entry price: $\(entry) (below current by \(adjustedATR)%)")
         
-        // Calculate minimum shares needed to achieve 5% gain overall
-        var sharesToSell: Double = 0
-        var totalGain: Double = 0
-        var remainingShares = totalShares
-        var remainingCost = totalCost
-        
-        // Sort tax lots by cost per share (highest first) for FIFO-like selling
-        let sortedLots = sortedTaxLots.sorted { $0.costPerShare > $1.costPerShare }
-        print("Sorted tax lots by cost per share (highest first): \(sortedLots.count) lots")
-        
-        for (index, lot) in sortedLots.enumerated() {
-            let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
-            
-            if lotGainPercent >= 5.0 {
-                // Calculate how many shares from this lot we need to sell
-                let sharesFromLot = min(lot.quantity, remainingShares)
-                let costFromLot = sharesFromLot * lot.costPerShare
-                let gainFromLot = sharesFromLot * (target - lot.costPerShare)
-                
-                print("  Considering selling \(sharesFromLot) shares from this lot")
-                print("  Cost from lot: $\(costFromLot)")
-                print("  Gain from lot: $\(gainFromLot)")
-                
-                // Check if selling these shares would achieve 5% gain overall
-                let newRemainingShares = remainingShares - sharesFromLot
-                let newRemainingCost = remainingCost - costFromLot
-                let newAvgCost = newRemainingCost / newRemainingShares
-                let newProfitPercent = ((currentPrice - newAvgCost) / newAvgCost) * 100.0
-                
-                print("  New remaining shares: \(newRemainingShares)")
-                print("  New remaining cost: $\(newRemainingCost)")
-                print("  New avg cost: $\(newAvgCost)")
-                print("  New P/L%: \(newProfitPercent)%")
-                
-                if newProfitPercent >= 5.0 {
-                    // We can sell these shares and still maintain 5% profit
-                    print("  ✅ Can sell all \(sharesFromLot) shares and maintain 5% profit")
-                    sharesToSell += sharesFromLot
-                    totalGain += gainFromLot
-                    remainingShares = newRemainingShares
-                    remainingCost = newRemainingCost
-                } else {
-                    // Selling these shares would drop us below 5% profit
-                    // Only sell enough to maintain 5% profit
-                    print("  ⚠️ Selling all shares would drop P/L% below 5%")
-                    let targetRemainingCost = (currentPrice * remainingShares) / 1.05 // 5% profit
-                    let maxCostToSell = remainingCost - targetRemainingCost
-                    let maxSharesToSell = maxCostToSell / lot.costPerShare
-                    
-                    print("  Target remaining cost for 5% profit: $\(targetRemainingCost)")
-                    print("  Max cost to sell: $\(maxCostToSell)")
-                    print("  Max shares to sell: \(maxSharesToSell)")
-                    
-                    if maxSharesToSell > 0 {
-                        let actualSharesToSell = min(maxSharesToSell, lot.quantity)
-                        print("  ✅ Selling \(actualSharesToSell) shares to maintain 5% profit")
-                        sharesToSell += actualSharesToSell
-                        totalGain += actualSharesToSell * (target - lot.costPerShare)
-                    } else {
-                        print("  ❌ Cannot sell any shares from this lot")
-                    }
-                    break
-                }
-            } else {
-                print("  ❌ Lot gain \(lotGainPercent)% is below 5% threshold")
-            }
+        // Use the helper function to calculate minimum shares needed to maintain 5% profit on remaining position
+        guard let result = calculateMinimumSharesForRemainingProfit(
+            targetProfitPercent: 5.0,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            print("❌ Min ATR order: Could not achieve 5% profit on remaining position")
+            return nil
         }
+        
+        let sharesToSell = result.sharesToSell
+        let totalGain = result.totalGain
+        let actualCostPerShare = result.actualCostPerShare
         
         print("Final calculation:")
         print("  Shares to sell: \(sharesToSell)")
         print("  Total gain: $\(totalGain)")
-        print("  Remaining shares: \(remainingShares)")
-        print("  Remaining cost: $\(remainingCost)")
-        
-        guard sharesToSell > 0 else { 
-            print("❌ No shares to sell")
-            return nil 
-        }
-        
-        // Calculate the actual cost per share for the shares being sold
-        // We need to track the cost of the shares being sold
-        var totalCostOfSharesSold: Double = 0
-        var sharesSoldSoFar: Double = 0
-        
-        for lot in sortedLots {
-            if sharesSoldSoFar >= sharesToSell { break }
-            let sharesFromThisLot = min(lot.quantity, sharesToSell - sharesSoldSoFar)
-            totalCostOfSharesSold += sharesFromThisLot * lot.costPerShare
-            sharesSoldSoFar += sharesFromThisLot
-        }
-        
-        let actualCostPerShare = totalCostOfSharesSold / sharesToSell
+        print("  Actual cost per share: $\(actualCostPerShare)")
         
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
@@ -431,66 +377,24 @@ struct RecommendedOCOOrdersSection: View {
         let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
         print("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
         
-        // Calculate minimum shares needed to achieve 1% gain on the sale
-        // We want to find the minimum number of shares that when sold at target price
-        // would result in a 1% gain: (target - avg_cost_of_sold_shares) / avg_cost_of_sold_shares >= 0.01
-        
-        print("=== calculateMinBreakEvenOrder Target price: $\(target)")
-        
-        // Sort tax lots by cost per share (highest first) for FIFO-like selling
-        let sortedLots = sortedTaxLots.sorted { $0.costPerShare > $1.costPerShare }
-        print("=== calculateMinBreakEvenOrder Sorted tax lots by cost per share (highest first): \(sortedLots.count) lots")
-        
-        // Start with the highest cost shares first (FIFO-like)
-        var cumulativeShares: Double = 0
-        var cumulativeCost: Double = 0
-        var sharesToSell: Double = 0
-        var totalGain: Double = 0
-        
-        for (index, lot) in sortedLots.enumerated() {
-            let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-            print("=== calculateMinBreakEvenOrder Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
-            
-            // For Minimum BreakEven, we want to sell the highest cost shares first
-            // to minimize losses, regardless of whether they're at a gain or loss
-            let sharesFromLot = lot.quantity
-            let costFromLot = sharesFromLot * lot.costPerShare
-            
-            cumulativeShares += sharesFromLot
-            cumulativeCost += costFromLot
-            let avgCost = cumulativeCost / cumulativeShares
-            
-            print("=== calculateMinBreakEvenOrder   Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
-            
-            // Check if this combination achieves 1% gain at target price
-            let gainPercent = ((target - avgCost) / avgCost) * 100.0
-            print("=== calculateMinBreakEvenOrder   Cumulative gain at target price: \(gainPercent)%")
-            
-            if gainPercent >= 1.0 {
-                // We found the minimum shares needed to achieve 1% gain
-                sharesToSell = cumulativeShares
-                totalGain = cumulativeShares * (target - avgCost)
-                print("=== calculateMinBreakEvenOrder   ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(avgCost)")
-                break
-            } else {
-                print("=== calculateMinBreakEvenOrder   ⚠️ Not enough gain yet, continuing...")
-            }
+        // Use the helper function to calculate minimum shares needed to achieve 1% gain at target price
+        guard let result = calculateMinimumSharesForGain(
+            targetGainPercent: 1.0,
+            targetPrice: target,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            print("❌ Min Break Even order: Could not achieve 1% gain at target price")
+            return nil
         }
+        
+        let sharesToSell = result.sharesToSell
+        let totalGain = result.totalGain
+        let actualCostPerShare = result.actualCostPerShare
         
         print("=== calculateMinBreakEvenOrder Final calculation:")
         print("=== calculateMinBreakEvenOrder  Shares to sell: \(sharesToSell)")
         print("=== calculateMinBreakEvenOrder  Total gain: $\(totalGain)")
-        print("=== calculateMinBreakEvenOrder  Cumulative shares: \(cumulativeShares)")
-        print("=== calculateMinBreakEvenOrder  Cumulative cost: $\(cumulativeCost)")
-        
-        guard sharesToSell > 0 else { 
-            print("=== calculateMinBreakEvenOrder ❌ No shares to sell")
-            return nil 
-        }
-        
-        // Calculate the actual cost per share for the shares being sold
-        // We already have the cumulative cost and shares, so we can use the avgCost we calculated
-        let actualCostPerShare = cumulativeCost / cumulativeShares
+        print("=== calculateMinBreakEvenOrder  Actual cost per share: $\(actualCostPerShare)")
         
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
@@ -1110,5 +1014,229 @@ struct RecommendedOCOOrdersSection: View {
         .padding(.vertical, 2)
         .background(selectedOrderIndices.contains(index) ? Color.blue.opacity(0.2) : rowStyle(for: orderType, item: order).opacity(0.1))
         .cornerRadius(4)
+    }
+    
+    // MARK: - Helper Functions for Minimum Share Calculations
+    
+    /// Calculates the minimum shares needed from tax lots to meet a specific gain requirement
+    /// - Parameters:
+    ///   - targetGainPercent: The minimum gain percentage required
+    ///   - targetPrice: The price at which the shares will be sold
+    ///   - sortedTaxLots: Tax lots sorted by cost per share (highest first for FIFO-like selling)
+    /// - Returns: A tuple containing (sharesToSell, totalGain, actualCostPerShare) or nil if not possible
+    private func calculateMinimumSharesForGain(
+        targetGainPercent: Double,
+        targetPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
+        
+        print("=== calculateMinimumSharesForGain ===")
+        print("Target gain %: \(targetGainPercent)%")
+        print("Target price: $\(targetPrice)")
+        print("Tax lots count: \(sortedTaxLots.count)")
+        
+        // First, separate profitable and unprofitable lots
+        var profitableLots: [SalesCalcPositionsRecord] = []
+        var unprofitableLots: [SalesCalcPositionsRecord] = []
+        
+        for (index, lot) in sortedTaxLots.enumerated() {
+            let gainAtTarget = ((targetPrice - lot.costPerShare) / lot.costPerShare) * 100.0
+            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain at target: \(gainAtTarget)%)")
+            
+            if gainAtTarget > 0 {
+                profitableLots.append(lot)
+                print("  ✅ Profitable lot: \(lot.quantity) shares")
+            } else {
+                unprofitableLots.append(lot)
+                print("  ❌ Unprofitable lot: \(lot.quantity) shares")
+            }
+        }
+        
+        print("Profitable lots: \(profitableLots.count)")
+        print("Unprofitable lots: \(unprofitableLots.count)")
+        
+        // Try to achieve target gain with only profitable shares first
+        if !profitableLots.isEmpty {
+            var cumulativeShares: Double = 0
+            var cumulativeCost: Double = 0
+            
+            for (index, lot) in profitableLots.enumerated() {
+                let sharesFromLot = lot.quantity
+                let costFromLot = sharesFromLot * lot.costPerShare
+                
+                cumulativeShares += sharesFromLot
+                cumulativeCost += costFromLot
+                let avgCost = cumulativeCost / cumulativeShares
+                
+                print("  Profitable lot \(index + 1): Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+                
+                // Check if this combination achieves the target gain
+                let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
+                print("  Cumulative gain at target price: \(gainPercent)%")
+                
+                if gainPercent >= targetGainPercent {
+                    // We found the minimum profitable shares needed
+                    let totalGain = cumulativeShares * (targetPrice - avgCost)
+                    print("  ✅ Found minimum profitable shares: \(cumulativeShares) shares with avg cost $\(avgCost)")
+                    print("  Total gain: $\(totalGain)")
+                    return (cumulativeShares, totalGain, avgCost)
+                } else {
+                    print("  ⚠️ Not enough gain yet, continuing with profitable shares...")
+                }
+            }
+        }
+        
+        // If we can't achieve the target with only profitable shares, we need to include some unprofitable shares
+        // Start with the highest cost shares first (FIFO-like selling)
+        var cumulativeShares: Double = 0
+        var cumulativeCost: Double = 0
+        var sharesToSell: Double = 0
+        var totalGain: Double = 0
+        
+        for (index, lot) in sortedTaxLots.enumerated() {
+            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+            
+            let sharesFromLot = lot.quantity
+            let costFromLot = sharesFromLot * lot.costPerShare
+            
+            cumulativeShares += sharesFromLot
+            cumulativeCost += costFromLot
+            let avgCost = cumulativeCost / cumulativeShares
+            
+            print("  Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            
+            // Check if this combination achieves the target gain at target price
+            let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
+            print("  Cumulative gain at target price: \(gainPercent)%")
+            
+            if gainPercent >= targetGainPercent {
+                // We found the minimum shares needed to achieve target gain
+                sharesToSell = cumulativeShares
+                totalGain = cumulativeShares * (targetPrice - avgCost)
+                let actualCostPerShare = avgCost
+                
+                print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                print("  Total gain: $\(totalGain)")
+                
+                return (sharesToSell, totalGain, actualCostPerShare)
+            } else {
+                print("  ⚠️ Not enough gain yet, continuing...")
+            }
+        }
+        
+        print("❌ Could not achieve target gain of \(targetGainPercent)%")
+        return nil
+    }
+    
+    /// Calculates the minimum shares needed to achieve a specific profit percentage on the remaining position
+    /// - Parameters:
+    ///   - targetProfitPercent: The minimum profit percentage required on the remaining position
+    ///   - currentPrice: The current market price
+    ///   - sortedTaxLots: Tax lots sorted by cost per share (highest first for FIFO-like selling)
+    /// - Returns: A tuple containing (sharesToSell, totalGain, actualCostPerShare) or nil if not possible
+    private func calculateMinimumSharesForRemainingProfit(
+        targetProfitPercent: Double,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
+        
+        print("=== calculateMinimumSharesForRemainingProfit ===")
+        print("Target profit %: \(targetProfitPercent)%")
+        print("Current price: $\(currentPrice)")
+        print("Tax lots count: \(sortedTaxLots.count)")
+        
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
+        
+        print("Total shares: \(totalShares)")
+        print("Total cost: $\(totalCost)")
+        
+        var sharesToSell: Double = 0
+        var totalGain: Double = 0
+        var remainingShares = totalShares
+        var remainingCost = totalCost
+        
+        for (index, lot) in sortedTaxLots.enumerated() {
+            let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
+            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
+            
+            if lotGainPercent >= targetProfitPercent {
+                // Calculate how many shares from this lot we need to sell
+                let sharesFromLot = min(lot.quantity, remainingShares)
+                let costFromLot = sharesFromLot * lot.costPerShare
+                
+                print("  Considering selling \(sharesFromLot) shares from this lot")
+                print("  Cost from lot: $\(costFromLot)")
+                
+                // Check if selling these shares would achieve target profit overall
+                let newRemainingShares = remainingShares - sharesFromLot
+                let newRemainingCost = remainingCost - costFromLot
+                let newAvgCost = newRemainingCost / newRemainingShares
+                let newProfitPercent = ((currentPrice - newAvgCost) / newAvgCost) * 100.0
+                
+                print("  New remaining shares: \(newRemainingShares)")
+                print("  New remaining cost: $\(newRemainingCost)")
+                print("  New avg cost: $\(newAvgCost)")
+                print("  New P/L%: \(newProfitPercent)%")
+                
+                if newProfitPercent >= targetProfitPercent {
+                    // We can sell these shares and still maintain target profit
+                    print("  ✅ Can sell all \(sharesFromLot) shares and maintain \(targetProfitPercent)% profit")
+                    sharesToSell += sharesFromLot
+                    totalGain += sharesFromLot * (currentPrice - lot.costPerShare)
+                    remainingShares = newRemainingShares
+                    remainingCost = newRemainingCost
+                } else {
+                    // Selling these shares would drop us below target profit
+                    // Only sell enough to maintain target profit
+                    print("  ⚠️ Selling all shares would drop P/L% below \(targetProfitPercent)%")
+                    let targetRemainingCost = (currentPrice * remainingShares) / (1.0 + targetProfitPercent / 100.0)
+                    let maxCostToSell = remainingCost - targetRemainingCost
+                    let maxSharesToSell = maxCostToSell / lot.costPerShare
+                    
+                    print("  Target remaining cost for \(targetProfitPercent)% profit: $\(targetRemainingCost)")
+                    print("  Max cost to sell: $\(maxCostToSell)")
+                    print("  Max shares to sell: \(maxSharesToSell)")
+                    
+                    if maxSharesToSell > 0 {
+                        let actualSharesToSell = min(maxSharesToSell, lot.quantity)
+                        print("  ✅ Selling \(actualSharesToSell) shares to maintain \(targetProfitPercent)% profit")
+                        sharesToSell += actualSharesToSell
+                        totalGain += actualSharesToSell * (currentPrice - lot.costPerShare)
+                    } else {
+                        print("  ❌ Cannot sell any shares from this lot")
+                    }
+                    break
+                }
+            } else {
+                print("  ❌ Lot gain \(lotGainPercent)% is below \(targetProfitPercent)% threshold")
+            }
+        }
+        
+        print("Final calculation:")
+        print("  Shares to sell: \(sharesToSell)")
+        print("  Total gain: $\(totalGain)")
+        print("  Remaining shares: \(remainingShares)")
+        print("  Remaining cost: $\(remainingCost)")
+        
+        guard sharesToSell > 0 else { 
+            print("❌ No shares to sell")
+            return nil 
+        }
+        
+        // Calculate the actual cost per share for the shares being sold
+        var totalCostOfSharesSold: Double = 0
+        var sharesSoldSoFar: Double = 0
+        
+        for lot in sortedTaxLots {
+            if sharesSoldSoFar >= sharesToSell { break }
+            let sharesFromThisLot = min(lot.quantity, sharesToSell - sharesSoldSoFar)
+            totalCostOfSharesSold += sharesFromThisLot * lot.costPerShare
+            sharesSoldSoFar += sharesFromThisLot
+        }
+        
+        let actualCostPerShare = totalCostOfSharesSold / sharesToSell
+        
+        return (sharesToSell, totalGain, actualCostPerShare)
     }
 } 
