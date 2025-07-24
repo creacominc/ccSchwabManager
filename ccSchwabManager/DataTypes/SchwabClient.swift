@@ -1766,6 +1766,13 @@ class SchwabClient
         m_orderList = uniqueOrders
         print("After deduplication: \(m_orderList.count) unique orders")
         
+        updateSymbolsWithOrders()
+    }
+    
+    private func updateSymbolsWithOrders() {
+        // Clear existing symbols with orders
+        m_symbolsWithOrders.removeAll(keepingCapacity: true)
+        
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
         for order in m_orderList {
             if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
@@ -1817,8 +1824,15 @@ class SchwabClient
     }
 
     // cancel select order 
-    public func cancelOrders( orderIds: [Int64] ) {
-        print("=== cancelOrders  ===")
+    public func cancelOrders( orderIds: [Int64] ) async -> (success: Bool, errorMessage: String?) {
+        print("=== cancelOrders ===")
+        print("Cancelling \(orderIds.count) orders: \(orderIds)")
+        
+        loadingDelegate?.setLoading(true)
+        defer {
+            loadingDelegate?.setLoading(false)
+        }
+
         /**
          * Cancel order URL:  /accounts/{accountNumber}/orders/{orderId}
          *
@@ -1832,14 +1846,98 @@ class SchwabClient
          *
          * 
          */
-        //print("🔍 fetchOrderHistory - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
-        defer {
-            //print("🔍 fetchOrderHistory - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+        
+        var failedOrders: [Int64] = []
+        var errorMessages: [String] = []
+        
+        // Process each order cancellation in parallel
+        await withTaskGroup(of: (orderId: Int64, success: Bool, errorMessage: String?).self) { group in
+            for orderId in orderIds {
+                group.addTask {
+                    // Find the account number for this order
+                    guard let accountNumberHash = self.m_secrets.acountNumberHash.first else {
+                        return (orderId: orderId, success: false, errorMessage: "No account numbers available")
+                    }
+                    
+                    guard let hashValue = accountNumberHash.hashValue else {
+                        return (orderId: orderId, success: false, errorMessage: "Invalid account hash value")
+                    }
+                    
+                    let cancelOrderUrl = "\(accountWeb)/\(hashValue)/orders/\(orderId)"
+                    
+                    guard let url = URL(string: cancelOrderUrl) else {
+                        return (orderId: orderId, success: false, errorMessage: "Invalid URL for order cancellation")
+                    }
+                    
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "test" // "DELETE"
+                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                    request.setValue("*/*", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = self.requestTimeout
+                    
+                    do {
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        
+                        guard let httpResponse = response as? HTTPURLResponse else {
+                            return (orderId: orderId, success: false, errorMessage: "Invalid response type")
+                        }
+                        
+                        if httpResponse.statusCode == 200 || httpResponse.statusCode == 204 {
+                            print("Successfully cancelled order \(orderId)")
+                            return (orderId: orderId, success: true, errorMessage: nil)
+                        } else {
+                            // Try to decode error response
+                            let errorMessage: String
+                            if let responseString = String(data: data, encoding: .utf8) {
+                                errorMessage = "HTTP \(httpResponse.statusCode): \(responseString)"
+                            } else {
+                                errorMessage = "HTTP \(httpResponse.statusCode): Unknown error"
+                            }
+                            
+                            print("Failed to cancel order \(orderId): \(errorMessage)")
+                            return (orderId: orderId, success: false, errorMessage: errorMessage)
+                        }
+                    } catch {
+                        let errorMessage = "Network error: \(error.localizedDescription)"
+                        print("Error cancelling order \(orderId): \(errorMessage)")
+                        return (orderId: orderId, success: false, errorMessage: errorMessage)
+                    }
+                }
+            }
+            
+            // Collect results
+            for await result in group {
+                if !result.success {
+                    failedOrders.append(result.orderId)
+                    if let errorMessage = result.errorMessage {
+                        errorMessages.append("Order \(result.orderId): \(errorMessage)")
+                    }
+                }
+            }
+        }
+        
+        // Remove successfully cancelled orders from the order list
+        if failedOrders.isEmpty {
+            // All orders were cancelled successfully, remove them from the order list
+            m_orderList.removeAll { order in
+                if let orderId = order.orderId {
+                    return orderIds.contains(orderId)
+                }
+                return false
+            }
+            
+            // Update symbols with orders
+            updateSymbolsWithOrders()
+            
+            print("Successfully cancelled all \(orderIds.count) orders")
+            return (success: true, errorMessage: nil)
+        } else {
+            // Some orders failed to cancel
+            let errorMessage = "Failed to cancel \(failedOrders.count) orders:\n" + errorMessages.joined(separator: "\n")
+            print("Cancellation failed: \(errorMessage)")
+            return (success: false, errorMessage: errorMessage)
         }
     }
-
 
     // place an order
     public func placeOrder( order: Order ) {

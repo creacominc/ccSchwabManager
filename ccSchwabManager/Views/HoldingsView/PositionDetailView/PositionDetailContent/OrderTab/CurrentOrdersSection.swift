@@ -3,6 +3,9 @@ import SwiftUI
 struct CurrentOrdersSection: View {
     let symbol: String
     @State private var selectedOrderGroups: Set<Int64> = []
+    @State private var showingErrorAlert = false
+    @State private var errorMessage = ""
+    @State private var showingSuccessAlert = false
     
     private var openStatuses: [ActiveOrderStatus] {
         return [.awaitingParentOrder, .awaitingCondition, .awaitingSellStopCondition, .awaitingBuyStopCondition, .awaitingManualReview, 
@@ -95,9 +98,23 @@ struct CurrentOrdersSection: View {
     }
     
     private func performCancellations() {
-        // TODO: Implement cancellation logic
-        print("Cancelling order groups: \(selectedOrderGroups)")
-        selectedOrderGroups.removeAll()
+        let orderIds = Array(selectedOrderGroups)
+        
+        Task {
+            let result = await SchwabClient.shared.cancelOrders(orderIds: orderIds)
+            
+            await MainActor.run {
+                if result.success {
+                    // Clear selected orders and show success message
+                    selectedOrderGroups.removeAll()
+                    showingSuccessAlert = true
+                } else {
+                    // Show error message
+                    errorMessage = result.errorMessage ?? "Unknown error occurred"
+                    showingErrorAlert = true
+                }
+            }
+        }
     }
     
     var body: some View {
@@ -172,6 +189,16 @@ struct CurrentOrdersSection: View {
         }
         .background(Color.gray.opacity(0.05))
         .cornerRadius(8)
+        .alert("Order Cancellation Error", isPresented: $showingErrorAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage)
+        }
+        .alert("Orders Cancelled", isPresented: $showingSuccessAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Selected orders have been successfully cancelled.")
+        }
     }
 }
 
