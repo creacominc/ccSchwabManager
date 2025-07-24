@@ -1,6 +1,27 @@
 # ccSchwabManager
 
-A macOS application for managing Charles Schwab trading accounts and positions.
+A cross-platform SwiftUI application for managing Charles Schwab trading accounts and positions. Supports both macOS and iOS platforms.
+
+## Platform Support
+
+- **macOS 15.2+**: Full desktop experience with native file system access
+- **iOS 18.2+**: Mobile interface optimized for iPhone and iPad
+- **visionOS 2.2+**: Compatible with Apple Vision Pro
+
+## Quick Build
+
+```bash
+# Build for macOS
+make build
+
+# Build for iOS Simulator  
+make build-ios
+
+# Build for iOS Device
+make build-ios-device
+```
+
+For detailed build instructions and iOS compilation fixes, see [`IOS_BUILD_FIXES.md`](IOS_BUILD_FIXES.md).
 
 ## Features
 
