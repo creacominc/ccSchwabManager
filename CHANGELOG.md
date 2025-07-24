@@ -8,11 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Enhanced order cancellation with comprehensive logging and verification
+- **NEW**: Multi-account support for order cancellation - each order now uses its correct account
+- Added detailed request verification logging for DELETE operations
+- Added test mode support for order cancellation verification
 - **NEW**: Optimized sell order calculations to use minimum shares needed instead of full tax lot quantities
 - Added helper functions `calculateMinimumSharesForGain` and `calculateMinimumSharesForRemainingProfit`
 - Implemented intelligent share selection that prioritizes profitable shares over unprofitable ones
 
 ### Changed
+- **BREAKING**: Enhanced `cancelOrders` function to use order-specific account resolution instead of first account
+- **BREAKING**: Updated order cancellation to find each order's account number and corresponding hash value
 - **BREAKING**: Updated all sell order calculations to use minimum shares logic:
   - Top 100 Order: Now calculates minimum shares needed for 3.25% gain (limited to 100 max)
   - Min ATR Order: Now calculates minimum shares needed to maintain 5% profit on remaining position
@@ -21,6 +27,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated sell order logic to use FIFO (First In, First Out) method starting with highest cost-per-share tax lots
 
 ### Technical Details
+
+#### Order Cancellation Multi-Account Support
+**Problem**: The `cancelOrders` function was using only the first account hash for all order cancellations, which could fail if orders belonged to different accounts.
+
+**Solution**:
+- Modified `cancelOrders` to find each order by its ID in `m_orderList`
+- Extract the account number from each order's `accountNumber` property
+- Look up the correct hash value for that specific account number
+- Use the order-specific account hash for each cancellation request
+- Added comprehensive logging to verify the correct account is being used
+
+**Enhanced Logging**:
+- Added detailed request verification with URL, order ID, account number, and hash value
+- Added test mode support that simulates DELETE requests without making actual API calls
+- Added success/failure summary with counts and error details
+- Added emoji indicators for better visual scanning of logs
+
+**Example Impact**:
+- **Before**: All orders cancelled using first account hash (could fail for multi-account setups)
+- **After**: Each order cancelled using its specific account hash (supports multiple accounts)
+
+**Files Modified**:
+- `SchwabClient.swift` - Enhanced `cancelOrders` function with account resolution and logging
 
 #### Minimum Shares Optimization
 **Problem**: Sell orders were using the full quantity of tax lots instead of calculating the minimum shares needed to meet the requirements, resulting in unnecessarily large sell orders.

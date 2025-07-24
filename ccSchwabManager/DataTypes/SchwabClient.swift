@@ -1855,9 +1855,20 @@ class SchwabClient
         await withTaskGroup(of: (orderId: Int64, success: Bool, errorMessage: String?).self) { group in
             for orderId in orderIds {
                 group.addTask {
-                    // Find the account number for this order
-                    guard let accountNumberHash = self.m_secrets.acountNumberHash.first else {
-                        return (orderId: orderId, success: false, errorMessage: "No account numbers available")
+                    // Find the order by ID to get its account number
+                    guard let order = self.m_orderList.first(where: { $0.orderId == orderId }) else {
+                        return (orderId: orderId, success: false, errorMessage: "Order not found in order list")
+                    }
+                    
+                    guard let orderAccountNumber = order.accountNumber else {
+                        return (orderId: orderId, success: false, errorMessage: "Order does not have account number")
+                    }
+                    
+                    // Find the account hash for this order's account number
+                    guard let accountNumberHash = self.m_secrets.acountNumberHash.first(where: { 
+                        $0.accountNumber == String(orderAccountNumber) 
+                    }) else {
+                        return (orderId: orderId, success: false, errorMessage: "Account hash not found for account number \(orderAccountNumber)")
                     }
                     
                     guard let hashValue = accountNumberHash.hashValue else {
@@ -1880,24 +1891,16 @@ class SchwabClient
                     print("🔍 DELETE REQUEST VERIFICATION:")
                     print("  📍 URL: \(cancelOrderUrl)")
                     print("  🆔 Order ID: \(orderId)")
+                    print("  🏦 Order Account Number: \(orderAccountNumber)")
                     print("  🔑 Account Hash: \(hashValue)")
                     print("  🏷️  HTTP Method: \(request.httpMethod ?? "nil")")
                     print("  📋 Headers:")
                     print("    Authorization: Bearer \(String(self.m_secrets.accessToken.prefix(20)))...")
                     print("    Accept: \(request.value(forHTTPHeaderField: "Accept") ?? "nil")")
                     print("  ⏱️  Timeout: \(request.timeoutInterval) seconds")
-                    print("  📊 Request would delete order \(orderId) from account \(hashValue)")
+                    print("  📊 Request would delete order \(orderId) from account \(orderAccountNumber) (hash: \(hashValue))")
                     print("  ✅ Request verification complete - ready to execute DELETE")
                     
-                    // Check if this is a test request
-                    if request.httpMethod == "test" {
-                        print("🧪 TEST MODE: Simulating DELETE request for order \(orderId)")
-                        print("  📤 Would send DELETE request to: \(cancelOrderUrl)")
-                        print("  📥 Expected response: HTTP 200 or 204 for successful cancellation")
-                        print("  🎯 This would delete order \(orderId) exactly once")
-                        print("  ✅ Test verification complete - request is ready for production")
-                        return (orderId: orderId, success: true, errorMessage: "TEST_MODE - Request verified")
-                    }
                     
                     do {
                         let (data, response) = try await URLSession.shared.data(for: request)
