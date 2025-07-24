@@ -29,6 +29,7 @@ struct TransactionHistorySection: View {
     let isLoading: Bool
     let symbol: String
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
+    @State private var copiedValue: String = "TBD"
 
     private var sortedTransactions: [Transaction] {
         guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
@@ -69,6 +70,29 @@ struct TransactionHistorySection: View {
     // Define proportional widths for columns
     private let columnProportions: [CGFloat] = [0.25, 0.15, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
 
+    private func copyToClipboard(value: Double, format: String) {
+        let formattedValue = String(format: format, value)
+#if os(iOS)
+        UIPasteboard.general.string = formattedValue
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(formattedValue, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
+    
+    private func copyToClipboard(text: String) {
+#if os(iOS)
+        UIPasteboard.general.string = text
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
+
     @ViewBuilder
     private func columnHeader(title: String, column: TransactionSortableColumn, alignment: Alignment = .leading) -> some View {
         Button(action: {
@@ -107,6 +131,8 @@ struct TransactionHistorySection: View {
         let symbol: String
         let calculatedWidths: [CGFloat]
         let formatDate: (String?) -> String
+        let copyToClipboard: (String) -> Void
+        let copyToClipboardValue: (Double, String) -> Void
         
         private var isSell: Bool {
             return transaction.netAmount ?? 0 > 0
@@ -116,8 +142,14 @@ struct TransactionHistorySection: View {
             HStack(spacing: 8) {
                 Text(formatDate(transaction.tradeDate))
                     .frame(width: calculatedWidths[0], alignment: .leading)
+                    .onTapGesture {
+                        copyToClipboard(formatDate(transaction.tradeDate))
+                    }
                 Text(transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown")
                     .frame(width: calculatedWidths[1], alignment: .leading)
+                    .onTapGesture {
+                        copyToClipboard(transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown")
+                    }
                 if let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) {
                     let amount = TransactionHistorySection.round(transferItem.amount ?? 0, precision: 4)
                     // Use computed price for merged/renamed securities
@@ -125,14 +157,23 @@ struct TransactionHistorySection: View {
                     let price = TransactionHistorySection.round(computedPrice, precision: 2)
                     Text(String(format: "%.4f", amount))
                         .frame(width: calculatedWidths[2], alignment: .trailing)
+                        .onTapGesture {
+                            copyToClipboardValue(amount, "%.4f")
+                        }
                     Text(String(format: "%.2f", price))
                         .frame(width: calculatedWidths[3], alignment: .trailing)
+                        .onTapGesture {
+                            copyToClipboardValue(price, "%.2f")
+                        }
                 } else {
                     Text("").frame(width: calculatedWidths[2])
                     Text("").frame(width: calculatedWidths[3])
                 }
                 Text(String(format: "%.2f", transaction.netAmount ?? 0))
                     .frame(width: calculatedWidths[4], alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboardValue(transaction.netAmount ?? 0, "%.2f")
+                    }
             }
             .padding(.horizontal)
             .padding(.vertical, 3)
@@ -198,10 +239,19 @@ struct TransactionHistorySection: View {
                                         transaction: transaction,
                                         symbol: symbol,
                                         calculatedWidths: calculatedWidths,
-                                        formatDate: formatDate
+                                        formatDate: formatDate,
+                                        copyToClipboard: copyToClipboard,
+                                        copyToClipboardValue: copyToClipboard
                                     )
                                 }
                             }
+                        }
+                        
+                        if copiedValue != "TBD" {
+                            Text("Copied: \(copiedValue)")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                                .padding(.horizontal)
                         }
                     }
                 }

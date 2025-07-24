@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Added clipboard functionality to transaction history and sales calc tables
+  - Users can now click on any field in transaction history table to copy value to clipboard
+  - Users can now click on any field in sales calc table to copy value to clipboard
+  - Added visual feedback showing "Copied: [value]" when a field is copied
+  - Matches existing clipboard functionality in OCO order table for consistent UX
+  - Works on both macOS and iOS platforms
 - **NEW**: Enhanced order cancellation with comprehensive logging and verification
 - **NEW**: Multi-account support for order cancellation - each order now uses its correct account
 - Added detailed request verification logging for DELETE operations
