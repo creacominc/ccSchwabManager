@@ -1979,7 +1979,174 @@ class SchwabClient
     public func placeOrder( order: Order ) {
         print("=== placeOrder  ===")
         /**
+         * /accounts/{accountNumber}/orders
          * 
+         * example order:
+         * {
+                "session": "NORMAL",
+                "duration": "DAY",
+                "orderType": "MARKET",
+                "cancelTime": "2025-07-24T12:16:14.606Z",
+                "complexOrderStrategyType": "NONE",
+                "quantity": 0,
+                "filledQuantity": 0,
+                "remainingQuantity": 0,
+                "destinationLinkName": "string",
+                "releaseTime": "2025-07-24T12:16:14.606Z",
+                "stopPrice": 0,
+                "stopPriceLinkBasis": "MANUAL",
+                "stopPriceLinkType": "VALUE",
+                "stopPriceOffset": 0,
+                "stopType": "STANDARD",
+                "priceLinkBasis": "MANUAL",
+                "priceLinkType": "VALUE",
+                "price": 0,
+                "taxLotMethod": "FIFO",
+                "orderLegCollection": [
+                    {
+                    "orderLegType": "EQUITY",
+                    "legId": 0,
+                    "instrument": {
+                        "cusip": "string",
+                        "symbol": "string",
+                        "description": "string",
+                        "instrumentId": 0,
+                        "netChange": 0,
+                        "type": "SWEEP_VEHICLE"
+                    },
+                    "instruction": "BUY",
+                    "positionEffect": "OPENING",
+                    "quantity": 0,
+                    "quantityType": "ALL_SHARES",
+                    "divCapGains": "REINVEST",
+                    "toSymbol": "string"
+                    }
+                ],
+                "activationPrice": 0,
+                "specialInstruction": "ALL_OR_NONE",
+                "orderStrategyType": "SINGLE",
+                "orderId": 0,
+                "cancelable": false,
+                "editable": false,
+                "status": "AWAITING_PARENT_ORDER",
+                "enteredTime": "2025-07-24T12:16:14.606Z",
+                "closeTime": "2025-07-24T12:16:14.606Z",
+                "accountNumber": 0,
+                "orderActivityCollection": [
+                    {
+                    "activityType": "EXECUTION",
+                    "executionType": "FILL",
+                    "quantity": 0,
+                    "orderRemainingQuantity": 0,
+                    "executionLegs": [
+                        {
+                        "legId": 0,
+                        "price": 0,
+                        "quantity": 0,
+                        "mismarkedQuantity": 0,
+                        "instrumentId": 0,
+                        "time": "2025-07-24T12:16:14.606Z"
+                        }
+                    ]
+                    }
+                ],
+                "replacingOrderCollection": [
+                    "string"
+                ],
+                "childOrderStrategies": [
+                    "string"
+                ],
+                "statusDescription": "string"
+                }
+
+
+         * https://api.schwabapi.com/trader/v1/accounts/<accountHash>/orders
+
+
+         * curl -X 'POST' \
+                'https://api.schwabapi.com/trader/v1/accounts/<accountHash>/orders' \
+                -H 'accept: * / *' \
+                -H 'Authorization: Bearer <BearerKey> \
+                -H 'Content-Type: application/json' \
+                -d '{
+                "session": "NORMAL",
+                "duration": "DAY",
+                "orderType": "MARKET",
+                "cancelTime": "2025-07-24T09:19:39.649Z",
+                "complexOrderStrategyType": "NONE",
+                "quantity": 0,
+                "filledQuantity": 0,
+                "remainingQuantity": 0,
+                "destinationLinkName": "string",
+                "releaseTime": "2025-08-24T12:19:39.649Z",
+                "stopPrice": 0,
+                "stopPriceLinkBasis": "MANUAL",
+                "stopPriceLinkType": "VALUE",
+                "stopPriceOffset": 0,
+                "stopType": "STANDARD",
+                "priceLinkBasis": "MANUAL",
+                "priceLinkType": "VALUE",
+                "price": 0,
+                "taxLotMethod": "FIFO",
+                "orderLegCollection": [
+                    {
+                    "orderLegType": "EQUITY",
+                    "legId": 0,
+                    "instrument": {
+                        "cusip": "string",
+                        "symbol": "string",
+                        "description": "string",
+                        "instrumentId": 0,
+                        "netChange": 0,
+                        "type": "SWEEP_VEHICLE"
+                    },
+                    "instruction": "BUY",
+                    "positionEffect": "OPENING",
+                    "quantity": 0,
+                    "quantityType": "ALL_SHARES",
+                    "divCapGains": "REINVEST",
+                    "toSymbol": "string"
+                    }
+                ],
+                "activationPrice": 0,
+                "specialInstruction": "ALL_OR_NONE",
+                "orderStrategyType": "SINGLE",
+                "orderId": 0,
+                "cancelable": false,
+                "editable": false,
+                "status": "AWAITING_PARENT_ORDER",
+                "enteredTime": "2025-07-24T12:19:39.649Z",
+                "closeTime": "2025-07-24T12:19:39.649Z",
+                "accountNumber": 0,
+                "orderActivityCollection": [
+                    {
+                    "activityType": "EXECUTION",
+                    "executionType": "FILL",
+                    "quantity": 0,
+                    "orderRemainingQuantity": 0,
+                    "executionLegs": [
+                        {
+                        "legId": 0,
+                        "price": 0,
+                        "quantity": 0,
+                        "mismarkedQuantity": 0,
+                        "instrumentId": 0,
+                        "time": "2025-07-24T12:19:39.649Z"
+                        }
+                    ]
+                    }
+                ],
+                "replacingOrderCollection": [
+                    "string"
+                ],
+                "childOrderStrategies": [
+                    "string"
+                ],
+                "statusDescription": "string"
+                }'
+
+
+
          */
         // print the order
         print("  order: \(order)")
