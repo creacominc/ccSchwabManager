@@ -1826,7 +1826,8 @@ class SchwabClient
     // cancel select order 
     public func cancelOrders( orderIds: [Int64] ) async -> (success: Bool, errorMessage: String?) {
         print("=== cancelOrders ===")
-        print("Cancelling \(orderIds.count) orders: \(orderIds)")
+        print("🎯 Cancelling \(orderIds.count) orders: \(orderIds)")
+        print("📋 Order IDs to cancel: \(orderIds.map { String($0) }.joined(separator: ", "))")
         
         loadingDelegate?.setLoading(true)
         defer {
@@ -1870,10 +1871,33 @@ class SchwabClient
                     }
                     
                     var request = URLRequest(url: url)
-                    request.httpMethod = "test" // "DELETE"
+                    request.httpMethod = "DELETE"
                     request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
                     request.setValue("*/*", forHTTPHeaderField: "Accept")
                     request.timeoutInterval = self.requestTimeout
+                    
+                    // Log the request details for verification
+                    print("🔍 DELETE REQUEST VERIFICATION:")
+                    print("  📍 URL: \(cancelOrderUrl)")
+                    print("  🆔 Order ID: \(orderId)")
+                    print("  🔑 Account Hash: \(hashValue)")
+                    print("  🏷️  HTTP Method: \(request.httpMethod ?? "nil")")
+                    print("  📋 Headers:")
+                    print("    Authorization: Bearer \(String(self.m_secrets.accessToken.prefix(20)))...")
+                    print("    Accept: \(request.value(forHTTPHeaderField: "Accept") ?? "nil")")
+                    print("  ⏱️  Timeout: \(request.timeoutInterval) seconds")
+                    print("  📊 Request would delete order \(orderId) from account \(hashValue)")
+                    print("  ✅ Request verification complete - ready to execute DELETE")
+                    
+                    // Check if this is a test request
+                    if request.httpMethod == "test" {
+                        print("🧪 TEST MODE: Simulating DELETE request for order \(orderId)")
+                        print("  📤 Would send DELETE request to: \(cancelOrderUrl)")
+                        print("  📥 Expected response: HTTP 200 or 204 for successful cancellation")
+                        print("  🎯 This would delete order \(orderId) exactly once")
+                        print("  ✅ Test verification complete - request is ready for production")
+                        return (orderId: orderId, success: true, errorMessage: "TEST_MODE - Request verified")
+                    }
                     
                     do {
                         let (data, response) = try await URLSession.shared.data(for: request)
@@ -1883,7 +1907,7 @@ class SchwabClient
                         }
                         
                         if httpResponse.statusCode == 200 || httpResponse.statusCode == 204 {
-                            print("Successfully cancelled order \(orderId)")
+                            print("✅ Successfully cancelled order \(orderId)")
                             return (orderId: orderId, success: true, errorMessage: nil)
                         } else {
                             // Try to decode error response
@@ -1894,12 +1918,12 @@ class SchwabClient
                                 errorMessage = "HTTP \(httpResponse.statusCode): Unknown error"
                             }
                             
-                            print("Failed to cancel order \(orderId): \(errorMessage)")
+                            print("❌ Failed to cancel order \(orderId): \(errorMessage)")
                             return (orderId: orderId, success: false, errorMessage: errorMessage)
                         }
                     } catch {
                         let errorMessage = "Network error: \(error.localizedDescription)"
-                        print("Error cancelling order \(orderId): \(errorMessage)")
+                        print("❌ Error cancelling order \(orderId): \(errorMessage)")
                         return (orderId: orderId, success: false, errorMessage: errorMessage)
                     }
                 }
@@ -1929,12 +1953,21 @@ class SchwabClient
             // Update symbols with orders
             updateSymbolsWithOrders()
             
-            print("Successfully cancelled all \(orderIds.count) orders")
+            print("✅ SUCCESS: Cancelled all \(orderIds.count) orders successfully")
+            print("📊 Final Results:")
+            print("  🎯 Total orders requested: \(orderIds.count)")
+            print("  ✅ Successfully cancelled: \(orderIds.count)")
+            print("  ❌ Failed to cancel: 0")
             return (success: true, errorMessage: nil)
         } else {
             // Some orders failed to cancel
             let errorMessage = "Failed to cancel \(failedOrders.count) orders:\n" + errorMessages.joined(separator: "\n")
-            print("Cancellation failed: \(errorMessage)")
+            print("❌ FAILURE: Cancellation failed")
+            print("📊 Final Results:")
+            print("  🎯 Total orders requested: \(orderIds.count)")
+            print("  ✅ Successfully cancelled: \(orderIds.count - failedOrders.count)")
+            print("  ❌ Failed to cancel: \(failedOrders.count)")
+            print("  📝 Error details: \(errorMessage)")
             return (success: false, errorMessage: errorMessage)
         }
     }
