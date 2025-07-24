@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct ContentView: View
 {
@@ -14,6 +19,14 @@ struct ContentView: View
     @State private var selectedTab = 0
     @State private var showingAuthDialog = false
     @State private var isLoading = false
+    
+    var didBecomeActiveNotification: Notification.Name {
+#if os(iOS)
+        return UIApplication.didBecomeActiveNotification
+#else
+        return NSApplication.didBecomeActiveNotification
+#endif
+    }
 
     var body: some View
     {
@@ -60,7 +73,7 @@ struct ContentView: View
             // Clear any stuck loading states when the view appears
             SchwabClient.shared.clearLoadingState()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
             // Clear stuck loading states when app becomes active
             print("📱 App became active - clearing stuck loading states")
             SchwabClient.shared.clearLoadingState()

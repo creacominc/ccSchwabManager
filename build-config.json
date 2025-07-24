@@ -16,6 +16,30 @@
       "destination": "platform=macOS",
       "build_for_testing": false,
       "enable_testing": false
+    },
+    "debug-ios": {
+      "configuration": "Debug",
+      "destination": "platform=iOS Simulator,name=iPhone 15 Pro",
+      "build_for_testing": true,
+      "enable_testing": true
+    },
+    "release-ios": {
+      "configuration": "Release",
+      "destination": "platform=iOS Simulator,name=iPhone 15 Pro",
+      "build_for_testing": false,
+      "enable_testing": false
+    },
+    "debug-device-ios": {
+      "configuration": "Debug",
+      "destination": "generic/platform=iOS",
+      "build_for_testing": false,
+      "enable_testing": false
+    },
+    "release-device-ios": {
+      "configuration": "Release",
+      "destination": "generic/platform=iOS",
+      "build_for_testing": false,
+      "enable_testing": false
     }
   },
   "tests": {

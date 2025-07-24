@@ -8,7 +8,9 @@ help:
 	@echo "ccSchwabManager Build Commands"
 	@echo ""
 	@echo "Available commands:"
-	@echo "  make build     - Build the app"
+	@echo "  make build           - Build the app for macOS"
+	@echo "  make build-ios       - Build the app for iOS Simulator"
+	@echo "  make build-ios-device - Build the app for iOS Device"
 	@echo "  make test      - Build unit tests and show instructions"
 	@echo "  make test-unit - Build unit tests and show instructions"
 	@echo "  make test-scheme - Run unit tests (scheme method)"
@@ -29,6 +31,14 @@ help:
 # Build the app
 build:
 	@./build-enhanced.sh build
+
+# Build for iOS Simulator
+build-ios:
+	@DESTINATION="platform=iOS Simulator,name=iPhone 15 Pro" ./build-enhanced.sh build
+
+# Build for iOS Device
+build-ios-device:
+	@DESTINATION="generic/platform=iOS" ./build-enhanced.sh build
 
 # Run unit tests
 test:
