@@ -163,6 +163,436 @@ class OrderLogicTests: XCTestCase {
         }
     }
     
+    func testEGOMinimumBreakEvenCalculation() {
+        // EGO tax lots data from the image
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2025-07-23 13:31:24",
+                gainLossPct: -0.93,
+                gainLossDollar: -4.49,
+                quantity: 23.0,
+                price: 20.79,
+                costPerShare: 20.98,
+                marketValue: 478.17,
+                costBasis: 482.65,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-11-21 20:36:59",
+                gainLossPct: 25.09,
+                gainLossDollar: 417.02,
+                quantity: 100.0,
+                price: 20.79,
+                costPerShare: 16.62,
+                marketValue: 2079.00,
+                costBasis: 1661.98,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-08-06 14:12:08",
+                gainLossPct: 27.23,
+                gainLossDollar: 440.55,
+                quantity: 99.0,
+                price: 20.79,
+                costPerShare: 16.34,
+                marketValue: 2058.21,
+                costBasis: 1617.66,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-08-06 14:12:08",
+                gainLossPct: 27.23,
+                gainLossDollar: 4.45,
+                quantity: 1.0,
+                price: 20.79,
+                costPerShare: 16.34,
+                marketValue: 20.79,
+                costBasis: 16.34,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2025-03-06 18:43:54",
+                gainLossPct: 44.27,
+                gainLossDollar: 31.90,
+                quantity: 5.0,
+                price: 20.79,
+                costPerShare: 14.41,
+                marketValue: 103.95,
+                costBasis: 72.05,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2025-03-06 19:19:20",
+                gainLossPct: 44.98,
+                gainLossDollar: 32.25,
+                quantity: 5.0,
+                price: 20.79,
+                costPerShare: 14.34,
+                marketValue: 103.95,
+                costBasis: 71.70,
+                splitMultiple: 1.0
+            )
+        ]
+        
+        let currentPrice = 20.79
+        let atrValue = 3.32 // From the image
+        
+        // Calculate the Minimum BreakEven order
+        let adjustedATR = atrValue / 5.0
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+        
+        print("=== EGO Minimum BreakEven Test ===")
+        print("Current price: $\(currentPrice)")
+        print("ATR: \(atrValue)%")
+        print("Adjusted ATR (ATR/5): \(adjustedATR)%")
+        print("Entry price: $\(entry)")
+        print("Target price: $\(target)")
+        
+        // Test the minimum shares calculation
+        let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: taxLots)
+        
+        XCTAssertNotNil(minBreakEvenOrder, "Min Break Even order should be created")
+        
+        if let order = minBreakEvenOrder {
+            print("✅ Min break even order created: \(order.description)")
+            print("Shares to sell: \(order.sharesToSell)")
+            print("Target price: $\(order.target)")
+            print("Actual cost per share: $\(order.breakEven)")
+            
+            // The minimum shares should be much less than 100 since we can combine
+            // the unprofitable 23 shares with some profitable shares to achieve 1% gain
+            XCTAssertLessThan(order.sharesToSell, 100, "Should be able to achieve 1% gain with fewer than 100 shares")
+            XCTAssertGreaterThan(order.target, order.breakEven, "Target should be above break even")
+        }
+    }
+    
+    func testEGOManualCalculation() {
+        // EGO tax lots data from the image
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2025-07-23 13:31:24",
+                gainLossPct: -0.93,
+                gainLossDollar: -4.49,
+                quantity: 23.0,
+                price: 20.79,
+                costPerShare: 20.98,
+                marketValue: 478.17,
+                costBasis: 482.65,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-11-21 20:36:59",
+                gainLossPct: 25.09,
+                gainLossDollar: 417.02,
+                quantity: 100.0,
+                price: 20.79,
+                costPerShare: 16.62,
+                marketValue: 2079.00,
+                costBasis: 1661.98,
+                splitMultiple: 1.0
+            )
+        ]
+        
+        let currentPrice = 20.79
+        let atrValue = 3.32 // From the image
+        
+        // Calculate the Minimum BreakEven order
+        let adjustedATR = atrValue / 5.0
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+        
+        print("=== EGO Manual Calculation Test ===")
+        print("Current price: $\(currentPrice)")
+        print("ATR: \(atrValue)%")
+        print("Adjusted ATR (ATR/5): \(adjustedATR)%")
+        print("Entry price: $\(entry)")
+        print("Target price: $\(target)")
+        
+        // Manual calculation
+        let lot1Shares = 23.0
+        let lot1Cost = 20.98
+        let lot2Shares = 100.0
+        let lot2Cost = 16.62
+        
+        // Try combining the lots
+        let totalShares = lot1Shares + lot2Shares
+        let totalCost = (lot1Shares * lot1Cost) + (lot2Shares * lot2Cost)
+        let avgCost = totalCost / totalShares
+        
+        let gainPercent = ((target - avgCost) / avgCost) * 100.0
+        
+        print("Combined calculation:")
+        print("  Lot 1: \(lot1Shares) shares at $\(lot1Cost)")
+        print("  Lot 2: \(lot2Shares) shares at $\(lot2Cost)")
+        print("  Total shares: \(totalShares)")
+        print("  Total cost: $\(totalCost)")
+        print("  Avg cost: $\(avgCost)")
+        print("  Gain at target: \(gainPercent)%")
+        
+        // The combined calculation should achieve 1% gain
+        XCTAssertGreaterThanOrEqual(gainPercent, 1.0, "Combined lots should achieve at least 1% gain")
+        
+        // Now try with just the second lot
+        let lot2GainPercent = ((target - lot2Cost) / lot2Cost) * 100.0
+        print("Lot 2 only:")
+        print("  Gain at target: \(lot2GainPercent)%")
+        
+        // The second lot alone should achieve 1% gain
+        XCTAssertGreaterThanOrEqual(lot2GainPercent, 1.0, "Lot 2 alone should achieve at least 1% gain")
+    }
+    
+    func testEGOActualImplementation() {
+        // EGO tax lots data from the image
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2025-07-23 13:31:24",
+                gainLossPct: -0.93,
+                gainLossDollar: -4.49,
+                quantity: 23.0,
+                price: 20.79,
+                costPerShare: 20.98,
+                marketValue: 478.17,
+                costBasis: 482.65,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-11-21 20:36:59",
+                gainLossPct: 25.09,
+                gainLossDollar: 417.02,
+                quantity: 100.0,
+                price: 20.79,
+                costPerShare: 16.62,
+                marketValue: 2079.00,
+                costBasis: 1661.98,
+                splitMultiple: 1.0
+            )
+        ]
+        
+        let currentPrice = 20.79
+        let atrValue = 3.32 // From the image
+        
+        // Calculate the Minimum BreakEven order using the actual implementation
+        let adjustedATR = atrValue / 5.0
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+        
+        print("=== EGO Actual Implementation Test ===")
+        print("Current price: $\(currentPrice)")
+        print("ATR: \(atrValue)%")
+        print("Adjusted ATR (ATR/5): \(adjustedATR)%")
+        print("Entry price: $\(entry)")
+        print("Target price: $\(target)")
+        
+        // Test the minimum shares calculation using the actual implementation
+        let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: taxLots)
+        
+        XCTAssertNotNil(minBreakEvenOrder, "Min Break Even order should be created")
+        
+        if let order = minBreakEvenOrder {
+            print("✅ Min break even order created: \(order.description)")
+            print("Shares to sell: \(order.sharesToSell)")
+            print("Target price: $\(order.target)")
+            print("Actual cost per share: $\(order.breakEven)")
+            
+            // The minimum shares should be much less than 100 since we can combine
+            // the unprofitable 23 shares with some profitable shares to achieve 1% gain
+            XCTAssertLessThan(order.sharesToSell, 100, "Should be able to achieve 1% gain with fewer than 100 shares")
+            XCTAssertGreaterThan(order.target, order.breakEven, "Target should be above break even")
+        }
+    }
+    
+    func testEGOTargetPriceCalculation() {
+        // EGO tax lots data from the image
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2025-07-23 13:31:24",
+                gainLossPct: -0.93,
+                gainLossDollar: -4.49,
+                quantity: 23.0,
+                price: 20.79,
+                costPerShare: 20.98,
+                marketValue: 478.17,
+                costBasis: 482.65,
+                splitMultiple: 1.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-11-21 20:36:59",
+                gainLossPct: 25.09,
+                gainLossDollar: 417.02,
+                quantity: 100.0,
+                price: 20.79,
+                costPerShare: 16.62,
+                marketValue: 2079.00,
+                costBasis: 1662.00,
+                splitMultiple: 1.0
+            )
+        ]
+        
+        let currentPrice = 20.79
+        let atrValue = 2.5 // From the image
+        let adjustedATR = atrValue / 5.0 // 0.5%
+        
+        // Calculate entry and target prices
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+        
+        print("=== EGO Target Price Calculation ===")
+        print("Current price: $\(currentPrice)")
+        print("ATR: \(atrValue)%")
+        print("Adjusted ATR (ATR/5): \(adjustedATR)%")
+        print("Entry price: $\(entry) (Last - 1 AATR%)")
+        print("Target price: $\(target) (Entry - 2 AATR%)")
+        
+        // Test different share combinations
+        print("\n=== Testing different share combinations ===")
+        
+        // Test just the first lot (23 shares at $20.98)
+        let lot1Gain = ((target - 20.98) / 20.98) * 100.0
+        print("Lot 1 (23 shares at $20.98): \(lot1Gain)% gain at target")
+        
+        // Test just the second lot (100 shares at $16.62)
+        let lot2Gain = ((target - 16.62) / 16.62) * 100.0
+        print("Lot 2 (100 shares at $16.62): \(lot2Gain)% gain at target")
+        
+        // Test combining some of lot 1 with lot 2
+        for sharesFromLot1 in stride(from: 1, through: 23, by: 1) {
+            let sharesFromLot2 = 100 - sharesFromLot1
+            if sharesFromLot2 >= 0 {
+                let totalCost = (Double(sharesFromLot1) * 20.98) + (Double(sharesFromLot2) * 16.62)
+                let totalShares = Double(sharesFromLot1 + sharesFromLot2)
+                let avgCost = totalCost / totalShares
+                let gain = ((target - avgCost) / avgCost) * 100.0
+                
+                if gain >= 1.0 {
+                    print("Combination \(sharesFromLot1) from Lot 1 + \(sharesFromLot2) from Lot 2: \(gain)% gain (avg cost: $\(avgCost))")
+                    break
+                }
+            }
+        }
+    }
+    
+    func testEGOMinimumSharesCalculation() {
+        let currentPrice = 20.79
+        let atrValue = 2.5
+        let adjustedATR = atrValue / 5.0
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+        
+        print("=== EGO Minimum Shares Calculation ===")
+        print("Target price: $\(target)")
+        print("Required gain: 1.0%")
+        
+        // EGO tax lots data
+        let lot1 = (shares: 23.0, cost: 20.98)
+        let lot2 = (shares: 100.0, cost: 16.62)
+        
+        // Test different combinations to find minimum shares
+        var minShares = Double.infinity
+        var bestCombination = ""
+        
+        // Test just lot 2 (profitable)
+        let lot2Gain = ((target - lot2.cost) / lot2.cost) * 100.0
+        if lot2Gain >= 1.0 {
+            // Find minimum shares from lot 2
+            for shares in stride(from: 1.0, through: lot2.shares, by: 1.0) {
+                let gain = ((target - lot2.cost) / lot2.cost) * 100.0
+                if gain >= 1.0 {
+                    if shares < minShares {
+                        minShares = shares
+                        bestCombination = "\(shares) shares from Lot 2 only"
+                    }
+                    break
+                }
+            }
+        }
+        
+        // Test combinations of lot 1 and lot 2
+        for sharesFromLot1 in stride(from: 0.0, through: lot1.shares, by: 1.0) {
+            for sharesFromLot2 in stride(from: 0.0, through: lot2.shares, by: 1.0) {
+                let totalShares = sharesFromLot1 + sharesFromLot2
+                if totalShares > 0 {
+                    let totalCost = (sharesFromLot1 * lot1.cost) + (sharesFromLot2 * lot2.cost)
+                    let avgCost = totalCost / totalShares
+                    let gain = ((target - avgCost) / avgCost) * 100.0
+                    
+                    if gain >= 1.0 && totalShares < minShares {
+                        minShares = totalShares
+                        bestCombination = "\(sharesFromLot1) from Lot 1 + \(sharesFromLot2) from Lot 2"
+                        print("Found better combination: \(bestCombination) = \(totalShares) shares (gain: \(gain)%)")
+                    }
+                }
+            }
+        }
+        
+        print("Minimum shares needed: \(minShares)")
+        print("Best combination: \(bestCombination)")
+        
+        // Calculate what the actual implementation should return
+        print("\nExpected implementation result:")
+        print("  Target price: $\(target)")
+        print("  Required gain: 1.0%")
+        print("  Lot 2 (100 shares at $16.62) gain at target: \(((target - 16.62) / 16.62) * 100.0)%")
+        print("  Since Lot 2 alone achieves >1% gain, minimum shares should be 100")
+    }
+    
+    func testEGOCorrectCalculation() {
+        let currentPrice = 20.79
+        let atrValue = 3.32
+        let adjustedATR = atrValue / 5.0
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+        
+        print("=== EGO Correct Calculation ===")
+        print("Target price: $\(target)")
+        print("Required gain: 1.0%")
+        
+        // EGO tax lots data from the image
+        let lot1 = (shares: 23.0, cost: 20.98)  // Unprofitable lot
+        let lot2 = (shares: 100.0, cost: 16.62) // Profitable lot
+        
+        print("Lot 1: \(lot1.shares) shares at $\(lot1.cost) (unprofitable)")
+        print("Lot 2: \(lot2.shares) shares at $\(lot2.cost) (profitable)")
+        
+        // Calculate the correct minimum shares needed
+        // We need to include all unprofitable shares and add minimum profitable shares
+        
+        // Start with all unprofitable shares
+        var cumulativeShares = lot1.shares
+        var cumulativeCost = lot1.shares * lot1.cost
+        var avgCost = cumulativeCost / cumulativeShares
+        
+        print("Starting with Lot 1: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+        
+        // Calculate gain with just unprofitable shares
+        let gainWithUnprofitable = ((target - avgCost) / avgCost) * 100.0
+        print("Gain with just unprofitable shares: \(gainWithUnprofitable)%")
+        
+        // Add profitable shares until we achieve 1% gain
+        var sharesFromLot2 = 0.0
+        while sharesFromLot2 <= lot2.shares {
+            let testShares = cumulativeShares + sharesFromLot2
+            let testCost = cumulativeCost + (sharesFromLot2 * lot2.cost)
+            let testAvgCost = testCost / testShares
+            let testGain = ((target - testAvgCost) / testAvgCost) * 100.0
+            
+            if testGain >= 1.0 {
+                print("✅ Found minimum shares: \(testShares) shares")
+                print("  - Lot 1: \(lot1.shares) shares")
+                print("  - Lot 2: \(sharesFromLot2) shares")
+                print("  - Avg cost: $\(testAvgCost)")
+                print("  - Gain: \(testGain)%")
+                break
+            }
+            
+            sharesFromLot2 += 1.0
+        }
+        
+        // Verify this is the correct calculation
+        XCTAssertTrue(sharesFromLot2 > 0, "Should need some shares from Lot 2")
+        XCTAssertTrue(sharesFromLot2 <= lot2.shares, "Should not need more than available shares")
+    }
+    
     // MARK: - Helper Methods
     
     private func createTestTaxLots() -> [SalesCalcPositionsRecord] {
@@ -255,49 +685,19 @@ class OrderLogicTests: XCTestCase {
         // According to sample.log: Cancel = Target - 2 AATR%
         let exit = target * (1.0 - 2.0 * adjustedATR / 100.0)
         
-        // Calculate minimum shares needed to achieve 1% gain on the sale
-        let sortedLots = sortedTaxLots.sorted { $0.costPerShare > $1.costPerShare }
+        // Use the actual implementation logic for minimum shares calculation
+        let minSharesResult = calculateMinimumSharesForGain(
+            targetGainPercent: 1.0,
+            targetPrice: target,
+            sortedTaxLots: sortedTaxLots
+        )
         
-        var cumulativeShares: Double = 0
-        var cumulativeCost: Double = 0
-        var sharesToSell: Double = 0
-        var totalGain: Double = 0
+        guard let result = minSharesResult else { return nil }
         
-        for lot in sortedLots {
-            let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-            
-            if lotGainPercent >= 1.0 {
-                let lotGainAtTarget = ((target - lot.costPerShare) / lot.costPerShare) * 100.0
-                
-                if lotGainAtTarget >= 1.0 {
-                    sharesToSell = 1.0
-                    totalGain = sharesToSell * (target - lot.costPerShare)
-                    cumulativeShares = 1.0
-                    cumulativeCost = 1.0 * lot.costPerShare
-                    break
-                } else {
-                    let sharesFromLot = lot.quantity
-                    let costFromLot = sharesFromLot * lot.costPerShare
-                    
-                    cumulativeShares += sharesFromLot
-                    cumulativeCost += costFromLot
-                    let avgCost = cumulativeCost / cumulativeShares
-                    
-                    let gainPercent = ((target - avgCost) / avgCost) * 100.0
-                    
-                    if gainPercent >= 1.0 {
-                        sharesToSell = cumulativeShares
-                        totalGain = cumulativeShares * (target - avgCost)
-                        break
-                    }
-                }
-            }
-        }
+        let sharesToSell = result.sharesToSell
+        let totalGain = result.totalGain
+        let actualCostPerShare = result.actualCostPerShare
         
-        guard sharesToSell > 0 else { return nil }
-        
-        // Calculate the actual cost per share for the shares being sold
-        let actualCostPerShare = cumulativeCost / cumulativeShares
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, "TEST", entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
@@ -314,6 +714,135 @@ class OrderLogicTests: XCTestCase {
             description: formattedDescription,
             openDate: "MinBE"
         )
+    }
+    
+    // Copy the actual implementation for testing
+    private func calculateMinimumSharesForGain(
+        targetGainPercent: Double,
+        targetPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
+        
+        print("=== calculateMinimumSharesForGain ===")
+        print("Target gain %: \(targetGainPercent)%")
+        print("Target price: $\(targetPrice)")
+        print("Tax lots count: \(sortedTaxLots.count)")
+        
+        // First, separate profitable and unprofitable lots
+        var profitableLots: [SalesCalcPositionsRecord] = []
+        var unprofitableLots: [SalesCalcPositionsRecord] = []
+        
+        for (index, lot) in sortedTaxLots.enumerated() {
+            let gainAtTarget = ((targetPrice - lot.costPerShare) / lot.costPerShare) * 100.0
+            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain at target: \(gainAtTarget)%)")
+            
+            if gainAtTarget > 0 {
+                profitableLots.append(lot)
+                print("  ✅ Profitable lot: \(lot.quantity) shares")
+            } else {
+                unprofitableLots.append(lot)
+                print("  ❌ Unprofitable lot: \(lot.quantity) shares")
+            }
+        }
+        
+        print("Profitable lots: \(profitableLots.count)")
+        print("Unprofitable lots: \(unprofitableLots.count)")
+        
+        // Always start with unprofitable shares first (FIFO-like selling)
+        // Then add minimum profitable shares needed to achieve target gain
+        var cumulativeShares: Double = 0
+        var cumulativeCost: Double = 0
+        
+        // First, add all unprofitable shares
+        for (index, lot) in unprofitableLots.enumerated() {
+            print("Unprofitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+            
+            let sharesFromLot = lot.quantity
+            let costFromLot = sharesFromLot * lot.costPerShare
+            
+            cumulativeShares += sharesFromLot
+            cumulativeCost += costFromLot
+            let avgCost = cumulativeCost / cumulativeShares
+            
+            print("  Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            
+            // Check if this combination achieves the target gain at target price
+            let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
+            print("  Cumulative gain at target price: \(gainPercent)%")
+            
+            if gainPercent >= targetGainPercent {
+                // We found the minimum shares needed to achieve target gain
+                let sharesToSell = cumulativeShares
+                let totalGain = cumulativeShares * (targetPrice - avgCost)
+                let actualCostPerShare = avgCost
+                
+                print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                print("  Total gain: $\(totalGain)")
+                
+                return (sharesToSell, totalGain, actualCostPerShare)
+            } else {
+                print("  ⚠️ Not enough gain yet, continuing with unprofitable shares...")
+            }
+        }
+        
+        // If we still need more shares, add profitable shares one by one
+        for (index, lot) in profitableLots.enumerated() {
+            print("Profitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+            
+            // Try adding shares from this lot one by one
+            for sharesToAdd in stride(from: 1.0, through: lot.quantity, by: 1.0) {
+                let testShares = cumulativeShares + sharesToAdd
+                let testCost = cumulativeCost + (sharesToAdd * lot.costPerShare)
+                let testAvgCost = testCost / testShares
+                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
+                
+                print("  Testing with \(sharesToAdd) shares from this lot, cumulative: \(testShares) shares, avg cost: $\(testAvgCost)")
+                print("  Test gain at target price: \(testGainPercent)%")
+                
+                if testGainPercent >= targetGainPercent {
+                    // We found the minimum shares needed to achieve target gain
+                    let sharesToSell = testShares
+                    let totalGain = testShares * (targetPrice - testAvgCost)
+                    let actualCostPerShare = testAvgCost
+                    
+                    print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                    print("  Total gain: $\(totalGain)")
+                    
+                    return (sharesToSell, totalGain, actualCostPerShare)
+                }
+            }
+            
+            // If we get here, we need all shares from this lot
+            let sharesFromLot = lot.quantity
+            let costFromLot = sharesFromLot * lot.costPerShare
+            
+            cumulativeShares += sharesFromLot
+            cumulativeCost += costFromLot
+            let avgCost = cumulativeCost / cumulativeShares
+            
+            print("  Adding all \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            
+            // Check if this combination achieves the target gain at target price
+            let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
+            print("  Cumulative gain at target price: \(gainPercent)%")
+            
+            if gainPercent >= targetGainPercent {
+                // We found the minimum shares needed to achieve target gain
+                let sharesToSell = cumulativeShares
+                let totalGain = cumulativeShares * (targetPrice - avgCost)
+                let actualCostPerShare = avgCost
+                
+                print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                print("  Total gain: $\(totalGain)")
+                
+                return (sharesToSell, totalGain, actualCostPerShare)
+            } else {
+                print("  ⚠️ Not enough gain yet, continuing with profitable shares...")
+            }
+        }
+        
+        print("❌ Could not achieve target gain of \(targetGainPercent)%")
+        return nil
     }
     
     private func formatReleaseTime(_ date: Date) -> String {

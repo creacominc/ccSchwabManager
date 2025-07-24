@@ -1669,7 +1669,7 @@ class SchwabClient
 
         // get date one year ago
         let dateOneYearAgoStr : String = getDateNYearsAgoStr( yearDelta: 1 )
-        
+
         // Fetch orders from all accounts in parallel
         await withTaskGroup(of: [Order]?.self) { group in
             // loop over the OrderStatus types to request the orders for each status
@@ -1726,93 +1726,6 @@ class SchwabClient
                             
                             let decoder = JSONDecoder()
                             let orders = try decoder.decode([Order].self, from: data)
-                            
-                            // Add detailed logging for PH symbol orders
-//                            for order in orders {
-//                                // Check if this order contains PH symbol
-//                                var hasPHSymbol = false
-//                                var phSymbolDetails: [String] = []
-//                                
-//                                // Check main order legs
-//                                if let orderLegs = order.orderLegCollection {
-//                                    for leg in orderLegs {
-//                                        if let symbol = leg.instrument?.symbol, symbol == "PH" {
-//                                            hasPHSymbol = true
-//                                            phSymbolDetails.append("Main leg: \(symbol) - \(leg.instrument?.description ?? "No description")")
-//                                        }
-//                                    }
-//                                }
-//                                
-//                                // Check child order strategies
-//                                if let childOrders = order.childOrderStrategies {
-//                                    for childOrder in childOrders {
-//                                        if let childLegs = childOrder.orderLegCollection {
-//                                            for leg in childLegs {
-//                                                if let symbol = leg.instrument?.symbol, symbol == "PH" {
-//                                                    hasPHSymbol = true
-//                                                    phSymbolDetails.append("Child leg: \(symbol) - \(leg.instrument?.description ?? "No description")")
-//                                                }
-//                                            }
-//                                        }
-//                                    }
-//                                }
-//                                
-//                                if hasPHSymbol {
-//                                    print("🔍 PH ORDER FOUND:")
-//                                    print("  Order ID: \(order.orderId ?? -1)")
-//                                    print("  Status: \(order.status?.rawValue ?? "unknown")")
-//                                    print("  Status Description: \(order.statusDescription ?? "none")")
-//                                    print("  Order Type: \(order.orderType?.rawValue ?? "unknown")")
-//                                    print("  Strategy Type: \(order.orderStrategyType?.rawValue ?? "unknown")")
-//                                    print("  Quantity: \(order.quantity ?? 0)")
-//                                    print("  Filled Quantity: \(order.filledQuantity ?? 0)")
-//                                    print("  Remaining Quantity: \(order.remainingQuantity ?? 0)")
-//                                    print("  Price: \(order.price ?? 0)")
-//                                    print("  Release Time: \(order.releaseTime ?? "none")")
-//                                    print("  Entered Time: \(order.enteredTime ?? "none")")
-//                                    print("  Close Time: \(order.closeTime ?? "none")")
-//                                    print("  Cancelable: \(order.cancelable ?? false)")
-//                                    print("  Editable: \(order.editable ?? false)")
-//                                    print("  Account Number: \(order.accountNumber ?? -1)")
-//                                    print("  PH Symbol Details:")
-//                                    for detail in phSymbolDetails {
-//                                        print("    \(detail)")
-//                                    }
-//                                    
-//                                    // Log order leg details for PH
-//                                    if let orderLegs = order.orderLegCollection {
-//                                        print("  Order Legs:")
-//                                        for (index, leg) in orderLegs.enumerated() {
-//                                            print("    Leg \(index):")
-//                                            print("      Type: \(leg.orderLegType?.rawValue ?? "unknown")")
-//                                            print("      Instruction: \(leg.instruction?.rawValue ?? "unknown")")
-//                                            print("      Quantity: \(leg.quantity ?? 0)")
-//                                            print("      Symbol: \(leg.instrument?.symbol ?? "none")")
-//                                            print("      Description: \(leg.instrument?.description ?? "none")")
-//                                            print("      Asset Type: \(leg.instrument?.assetType?.rawValue ?? "unknown")")
-//                                        }
-//                                    }
-//                                    
-//                                    // Log child order details
-//                                    if let childOrders = order.childOrderStrategies {
-//                                        print("  Child Orders:")
-//                                        for (index, childOrder) in childOrders.enumerated() {
-//                                            print("    Child \(index):")
-//                                            print("      Status: \(childOrder.status?.rawValue ?? "unknown")")
-//                                            print("      Order Type: \(childOrder.orderType?.rawValue ?? "unknown")")
-//                                            print("      Quantity: \(childOrder.quantity ?? 0)")
-//                                            print("      Price: \(childOrder.price ?? 0)")
-//                                            if let childLegs = childOrder.orderLegCollection {
-//                                                for (legIndex, leg) in childLegs.enumerated() {
-//                                                    print("        Leg \(legIndex): \(leg.instrument?.symbol ?? "none") - \(leg.quantity ?? 0)")
-//                                                }
-//                                            }
-//                                        }
-//                                    }
-//                                    
-//                                    print("  --- END PH ORDER ---")
-//                                }
-//                            }
 
                             return orders
                         } catch {
@@ -1902,6 +1815,44 @@ class SchwabClient
         
         print("\(m_symbolsWithOrders.count) symbols have orders in awaiting states")
     }
+
+    // cancel select order 
+    public func cancelOrders( orderIds: [Int64] ) {
+        print("=== cancelOrders  ===")
+        /**
+         * Cancel order URL:  /accounts/{accountNumber}/orders/{orderId}
+         *
+         * accountNumber string    The encrypted ID of the account
+         * orderId int64           The ID of the order to cancel
+         * 
+         * curl -X "DELETE" 
+         *  "https://api.schwabapi.com/trader/v1/accounts/<encrypted_account>/orders/<orderId>" 
+         *  -H "accept: *" 
+         *  -H "Authorization: Bearer I0......@"
+         *
+         * 
+         */
+        //print("🔍 fetchOrderHistory - Setting loading to TRUE")
+        loadingDelegate?.setLoading(true)
+        defer {
+            //print("🔍 fetchOrderHistory - Setting loading to FALSE")
+            loadingDelegate?.setLoading(false)
+        }
+    }
+
+
+    // place an order
+    public func placeOrder( order: Order ) {
+        print("=== placeOrder  ===")
+        /**
+         * 
+         */
+        // print the order
+        print("  order: \(order)")
+    }
+
+
+
 
     public func hasOrders( symbol: String? = nil ) -> Bool
     {

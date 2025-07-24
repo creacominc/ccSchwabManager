@@ -1055,46 +1055,14 @@ struct RecommendedOCOOrdersSection: View {
         print("Profitable lots: \(profitableLots.count)")
         print("Unprofitable lots: \(unprofitableLots.count)")
         
-        // Try to achieve target gain with only profitable shares first
-        if !profitableLots.isEmpty {
-            var cumulativeShares: Double = 0
-            var cumulativeCost: Double = 0
-            
-            for (index, lot) in profitableLots.enumerated() {
-                let sharesFromLot = lot.quantity
-                let costFromLot = sharesFromLot * lot.costPerShare
-                
-                cumulativeShares += sharesFromLot
-                cumulativeCost += costFromLot
-                let avgCost = cumulativeCost / cumulativeShares
-                
-                print("  Profitable lot \(index + 1): Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
-                
-                // Check if this combination achieves the target gain
-                let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
-                print("  Cumulative gain at target price: \(gainPercent)%")
-                
-                if gainPercent >= targetGainPercent {
-                    // We found the minimum profitable shares needed
-                    let totalGain = cumulativeShares * (targetPrice - avgCost)
-                    print("  ✅ Found minimum profitable shares: \(cumulativeShares) shares with avg cost $\(avgCost)")
-                    print("  Total gain: $\(totalGain)")
-                    return (cumulativeShares, totalGain, avgCost)
-                } else {
-                    print("  ⚠️ Not enough gain yet, continuing with profitable shares...")
-                }
-            }
-        }
-        
-        // If we can't achieve the target with only profitable shares, we need to include some unprofitable shares
-        // Start with the highest cost shares first (FIFO-like selling)
+        // Always start with unprofitable shares first (FIFO-like selling)
+        // Then add minimum profitable shares needed to achieve target gain
         var cumulativeShares: Double = 0
         var cumulativeCost: Double = 0
-        var sharesToSell: Double = 0
-        var totalGain: Double = 0
         
-        for (index, lot) in sortedTaxLots.enumerated() {
-            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+        // First, add all unprofitable shares
+        for (index, lot) in unprofitableLots.enumerated() {
+            print("Unprofitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
             
             let sharesFromLot = lot.quantity
             let costFromLot = sharesFromLot * lot.costPerShare
@@ -1111,8 +1079,8 @@ struct RecommendedOCOOrdersSection: View {
             
             if gainPercent >= targetGainPercent {
                 // We found the minimum shares needed to achieve target gain
-                sharesToSell = cumulativeShares
-                totalGain = cumulativeShares * (targetPrice - avgCost)
+                let sharesToSell = cumulativeShares
+                let totalGain = cumulativeShares * (targetPrice - avgCost)
                 let actualCostPerShare = avgCost
                 
                 print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
@@ -1120,12 +1088,112 @@ struct RecommendedOCOOrdersSection: View {
                 
                 return (sharesToSell, totalGain, actualCostPerShare)
             } else {
-                print("  ⚠️ Not enough gain yet, continuing...")
+                print("  ⚠️ Not enough gain yet, continuing with unprofitable shares...")
+            }
+        }
+        
+        // If we still need more shares, add profitable shares one by one
+        for (index, lot) in profitableLots.enumerated() {
+            print("Profitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+            
+            // Try adding shares from this lot one by one
+            for sharesToAdd in stride(from: 1.0, through: lot.quantity, by: 1.0) {
+                let testShares = cumulativeShares + sharesToAdd
+                let testCost = cumulativeCost + (sharesToAdd * lot.costPerShare)
+                let testAvgCost = testCost / testShares
+                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
+                
+                print("  Testing with \(sharesToAdd) shares from this lot, cumulative: \(testShares) shares, avg cost: $\(testAvgCost)")
+                print("  Test gain at target price: \(testGainPercent)%")
+                
+                if testGainPercent >= targetGainPercent {
+                    // We found the minimum shares needed to achieve target gain
+                    let sharesToSell = testShares
+                    let totalGain = testShares * (targetPrice - testAvgCost)
+                    let actualCostPerShare = testAvgCost
+                    
+                    print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                    print("  Total gain: $\(totalGain)")
+                    
+                    return (sharesToSell, totalGain, actualCostPerShare)
+                }
+            }
+            
+            // If we get here, we need all shares from this lot
+            let sharesFromLot = lot.quantity
+            let costFromLot = sharesFromLot * lot.costPerShare
+            
+            cumulativeShares += sharesFromLot
+            cumulativeCost += costFromLot
+            let avgCost = cumulativeCost / cumulativeShares
+            
+            print("  Adding all \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            
+            // Check if this combination achieves the target gain at target price
+            let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
+            print("  Cumulative gain at target price: \(gainPercent)%")
+            
+            if gainPercent >= targetGainPercent {
+                // We found the minimum shares needed to achieve target gain
+                let sharesToSell = cumulativeShares
+                let totalGain = cumulativeShares * (targetPrice - avgCost)
+                let actualCostPerShare = avgCost
+                
+                print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                print("  Total gain: $\(totalGain)")
+                
+                return (sharesToSell, totalGain, actualCostPerShare)
+            } else {
+                print("  ⚠️ Not enough gain yet, continuing with profitable shares...")
             }
         }
         
         print("❌ Could not achieve target gain of \(targetGainPercent)%")
         return nil
+    }
+    
+    /// Calculate the minimum number of shares needed from a specific lot to achieve the target gain
+    private func calculateMinimumSharesFromLot(
+        lot: SalesCalcPositionsRecord,
+        targetGainPercent: Double,
+        targetPrice: Double,
+        cumulativeShares: Double,
+        cumulativeCost: Double
+    ) -> Double {
+        // If this lot alone can achieve the target gain, calculate the minimum shares needed
+        let lotGainPercent = ((targetPrice - lot.costPerShare) / lot.costPerShare) * 100.0
+        
+        if lotGainPercent >= targetGainPercent {
+            // This lot alone can achieve the target gain
+            // Calculate the minimum shares needed from this lot
+            let minShares = 1.0 // Start with 1 share
+            
+            // Binary search to find the minimum shares needed
+            var low = 1.0
+            var high = lot.quantity
+            
+            while low <= high {
+                let mid = (low + high) / 2.0
+                let testShares = cumulativeShares + mid
+                let testCost = cumulativeCost + (mid * lot.costPerShare)
+                let testAvgCost = testCost / testShares
+                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
+                
+                if testGainPercent >= targetGainPercent {
+                    // We can achieve the target with this many shares, try fewer
+                    high = mid - 1.0
+                } else {
+                    // We need more shares
+                    low = mid + 1.0
+                }
+            }
+            
+            return low
+        } else {
+            // This lot alone cannot achieve the target gain
+            // We need all shares from this lot plus some from previous lots
+            return lot.quantity
+        }
     }
     
     /// Calculates the minimum shares needed to achieve a specific profit percentage on the remaining position
