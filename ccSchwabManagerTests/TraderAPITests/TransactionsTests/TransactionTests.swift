@@ -12,7 +12,7 @@ import Foundation
  {
    "activityId": 95512265692,
    "time": "2025-04-23T19:59:12+0000",
-   "accountNumber": "88516767",
+   "accountNumber": "...767",
    "type": "TRADE",
    "status": "VALID",
    "subAccount": "CASH",
@@ -73,7 +73,7 @@ struct TransactionTests
                                     activityId: 123456789,
                                     time: "2025-04-23T19:59:12+0000",
                                     user: userDetails,
-                                    accountNumber: "88516767",
+                                    accountNumber: "...767",
                                     type: .trade,
                                     status: .VALID,
                                     subAccount: .CASH,
@@ -110,7 +110,7 @@ struct TransactionTests
         {
           "activityId": 95512265692,
           "time": "2025-04-23T19:59:12+0000",
-          "accountNumber": "88516767",
+          "accountNumber": "...767",
           "type": "TRADE",
           "status": "VALID",
           "subAccount": "CASH",
@@ -145,7 +145,7 @@ struct TransactionTests
         // Assert
         #expect( decodedEquity.activityId    == 95512265692, "Activity ID should be 95512265692" )
         #expect( decodedEquity.time == "2025-04-23T19:59:12+0000", "Time should be 2025-04-23T19:59:12+0000")
-        #expect( decodedEquity.accountNumber == "88516767", "Account number should be 88516767" )
+        #expect( decodedEquity.accountNumber == "...767", "Account number should be ...767" )
         #expect( decodedEquity.type == TransactionType.trade, "Transaction type should be TRADE" )
         #expect( decodedEquity.status == TransactionStatus.VALID, "Status should be VALID" )
         #expect( decodedEquity.subAccount    == .CASH, "Sub account should be CASH" )

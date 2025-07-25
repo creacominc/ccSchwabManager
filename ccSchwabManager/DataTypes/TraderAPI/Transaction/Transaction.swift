@@ -14,7 +14,7 @@ import Foundation
  {
    "activityId": 95512265692,
    "time": "2025-04-23T19:59:12+0000",
-   "accountNumber": "88516767",
+   "accountNumber": "...767",
    "type": "TRADE",
    "status": "VALID",
    "subAccount": "CASH",

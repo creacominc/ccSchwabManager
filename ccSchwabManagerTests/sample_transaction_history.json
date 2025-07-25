@@ -1,6 +1,6 @@
 [
     {
-        "activityId":83475229919,"time":"2024-07-16T17:24:35+0000","accountNumber":"88516767","type":"TRADE","status":"VALID","subAccount":"CASH","tradeDate":"2024-07-16T17:24:35+0000","positionId":2534326709,"orderId":1001024057697,"netAmount":-1254.42,
+        "activityId":83475229919,"time":"2024-07-16T17:24:35+0000","accountNumber":"...767","type":"TRADE","status":"VALID","subAccount":"CASH","tradeDate":"2024-07-16T17:24:35+0000","positionId":2534326709,"orderId":1001024057697,"netAmount":-1254.42,
         "transferItems":
         
         [
@@ -14,7 +14,7 @@
         ]
     },
     {
-        "activityId":82860461802,"time":"2024-06-28T21:57:00+0000","description":"FEDERAL AGRIC MTG CORP","accountNumber":"88516767","type":"TRADE","status":"VALID","subAccount":"CASH","tradeDate":"2024-06-28T04:00:00+0000","settlementDate":"2024-06-28T04:00:00+0000","positionId":1517262023,"netAmount":-10.22,
+        "activityId":82860461802,"time":"2024-06-28T21:57:00+0000","description":"FEDERAL AGRIC MTG CORP","accountNumber":"...767","type":"TRADE","status":"VALID","subAccount":"CASH","tradeDate":"2024-06-28T04:00:00+0000","settlementDate":"2024-06-28T04:00:00+0000","positionId":1517262023,"netAmount":-10.22,
         "transferItems":
         [
             {
@@ -30,7 +30,7 @@
         "activityId":90476045490,
         "time":"2024-12-31T17:46:21+0000",
         "description":"FEDERAL AGRIC MTG CORP",
-        "accountNumber":"98189487",
+        "accountNumber":"...487",
         "type":"TRADE",
         "status":"VALID",
         "subAccount":"CASH",
@@ -58,7 +58,7 @@
     {
         "activityId":84187033655,
         "time":"2024-08-01T19:14:07+0000",
-        "accountNumber":"98189487",
+        "accountNumber":"...487",
         "type":"TRADE",
         "status":"VALID",
         "subAccount":"CASH",
@@ -88,7 +88,7 @@
         "activityId":94381487402,
         "time":"2025-03-31T17:58:20+0000",
         "description":"FEDERAL AGRIC MTG CORP",
-        "accountNumber":"98189487",
+        "accountNumber":"...487",
         "type":"TRADE",
         "status":"VALID",
         "subAccount":"CASH",
