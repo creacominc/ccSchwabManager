@@ -4,7 +4,7 @@ import os.log
 
 class LoadingState: ObservableObject, LoadingStateDelegate {
     @Published var isLoading: Bool = false
-    private var loadingCallStack: String = ""
+    // private var loadingCallStack: String = ""
     private var loadingTimer: Timer?
     private var loadingStartTime: Date?
     
@@ -14,12 +14,12 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
     func setLoading(_ isLoading: Bool) {
         // Ensure this runs on the main thread
         DispatchQueue.main.async {
-            let callStack = Thread.callStackSymbols.prefix(5).joined(separator: "\n")            
+            // let callStack = Thread.callStackSymbols.prefix(5).joined(separator: "\n")            
             if isLoading {
-                self.loadingCallStack = callStack
+                // self.loadingCallStack = callStack
                 self.loadingStartTime = Date()
-                AppLogger.shared.info("🔄 LoadingState.setLoading(TRUE) - Call stack:\n\(callStack)")
-                
+                // AppLogger.shared.info("🔄 LoadingState.setLoading(TRUE) - Call stack:\n\(callStack)")
+
                 // Set a timeout to automatically clear loading state after 30 seconds
                 self.loadingTimer?.invalidate()
                 self.loadingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
@@ -31,8 +31,8 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
                 }
             } else {
                 let duration = self.loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-                AppLogger.shared.info("✅ LoadingState.setLoading(FALSE) - Duration: \(String(format: "%.2f", duration))s - Previous call stack:\n\(self.loadingCallStack)")
-                self.loadingCallStack = ""
+                // AppLogger.shared.info("✅ LoadingState.setLoading(FALSE) - Duration: \(String(format: "%.2f", duration))s - Previous call stack:\n\(self.loadingCallStack)")
+                // self.loadingCallStack = ""
                 self.loadingStartTime = nil
                 self.loadingTimer?.invalidate()
                 self.loadingTimer = nil
@@ -46,7 +46,7 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
         DispatchQueue.main.async {
             AppLogger.shared.warning("🧹 LoadingState.forceClearLoading - Force clearing stuck loading state")
             self.isLoading = false
-            self.loadingCallStack = ""
+            // self.loadingCallStack = ""
             self.loadingStartTime = nil
             self.loadingTimer?.invalidate()
             self.loadingTimer = nil
@@ -55,9 +55,9 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
     
     deinit {
         loadingTimer?.invalidate()
-        if isLoading {
-            print("⚠️ LoadingState deallocated while still loading! Call stack:\n\(loadingCallStack)")
-        }
+        // if isLoading {
+        //     print("⚠️ LoadingState deallocated while still loading! Call stack:\n\(loadingCallStack)")
+        // }
     }
 }
 

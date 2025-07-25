@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Enhanced Top-100 sell order logic for better contract pricing support
+  - Top-100 orders now show for any position with over 100 shares (regardless of available shares)
+  - Orders display accurate cost-per-share for the 100 most expensive shares
+  - Added profitability indicators in order descriptions ("Top 100" vs "Top 100 - UNPROFITABLE")
+  - Added visual distinction with purple background for unprofitable Top-100 orders
+  - Enhanced logging to show target vs cost per share and entry vs current price comparisons
 - **NEW**: Added clipboard functionality to transaction history and sales calc tables
   - Users can now click on any field in transaction history table to copy value to clipboard
   - Users can now click on any field in sales calc table to copy value to clipboard

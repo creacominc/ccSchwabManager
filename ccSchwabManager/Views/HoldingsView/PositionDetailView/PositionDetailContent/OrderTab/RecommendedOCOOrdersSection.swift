@@ -200,7 +200,13 @@ struct RecommendedOCOOrdersSection: View {
     
     // --- Top 100 Standing Sell ---
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        // Remove the sharesAvailableForTrading check - show all orders regardless of available shares
+        // Check if position has more than 100 shares total (not just available for trading)
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        
+        guard totalShares >= 100.0 else {
+            print("❌ Top 100 order: Position has only \(totalShares) shares, need at least 100")
+            return nil
+        }
         
         // Calculate the minimum shares needed to achieve 3.25% gain at target price
         // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
@@ -208,63 +214,84 @@ struct RecommendedOCOOrdersSection: View {
         
         // We need to calculate the target price first, but we need the cost per share
         // Let's start with a reasonable estimate and then refine
-        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
         let avgCostPerShare = totalCost / totalShares
         let estimatedTarget = avgCostPerShare * 1.0325
         
-        // Use the helper function to calculate minimum shares needed
-        guard let result = calculateMinimumSharesForGain(
-            targetGainPercent: targetGainPercent,
-            targetPrice: estimatedTarget,
-            sortedTaxLots: sortedTaxLots
-        ) else {
-            print("❌ Top 100 order: Could not achieve \(targetGainPercent)% gain")
-            return nil
+        // For Top-100 order, always use exactly 100 shares of the most expensive shares
+        let finalSharesToConsider = 100.0
+        
+        // Calculate the cost per share for the 100 most expensive shares
+        var sharesRemaining = finalSharesToConsider
+        var totalCostOfTop100 = 0.0
+        var actualCostPerShare = 0.0
+        
+        for lot in sortedTaxLots {
+            if sharesRemaining <= 0 { break }
+            
+            let sharesFromThisLot = min(lot.quantity, sharesRemaining)
+            totalCostOfTop100 += sharesFromThisLot * lot.costPerShare
+            sharesRemaining -= sharesFromThisLot
         }
         
-        let sharesToConsider = result.sharesToSell
-        let actualCostPerShare = result.actualCostPerShare
-        let totalGain = result.totalGain
+        actualCostPerShare = totalCostOfTop100 / finalSharesToConsider
         
-        // Recalculate target based on actual cost per share
+        print("Top 100 order calculation:")
+        print("  Total shares in position: \(totalShares)")
+        print("  Cost per share for 100 most expensive shares: $\(actualCostPerShare)")
+        
+        // Calculate target price - ensure it's above cost per share
         let target = actualCostPerShare * 1.0325
         
-        // Limit to 100 shares maximum
-        let finalSharesToConsider = min(sharesToConsider, 100.0)
+        // Check if target is above cost per share
+        let isTargetProfitable = target > actualCostPerShare
+        let totalGain = finalSharesToConsider * (target - actualCostPerShare)
         
-        guard finalSharesToConsider >= 100.0 else { 
-            print("❌ Top 100 order: Only \(finalSharesToConsider) shares available, need 100")
-            return nil 
+        if isTargetProfitable {
+            print("✅ Top 100 order: Target price $\(target) is above cost per share $\(actualCostPerShare)")
+        } else {
+            print("⚠️ Top 100 order: Target price $\(target) is below cost per share $\(actualCostPerShare)")
         }
         
         // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
         let adjustedATR = 1.5 * 0.25
         
-        // Entry: Target + (1.5 * ATR) above target
-        let entry = target * (1.0 + (adjustedATR / 100.0))
+        // If target is below cost per share, raise it to be profitable
+        let adjustedTarget = max(target, actualCostPerShare * 1.01) // At least 1% above cost
         
-        // Exit: 0.9% below target, but never below cost per share
-        let exit = max(target * 0.991, actualCostPerShare)
+        // Entry: Adjusted target + (1.5 * ATR) above target
+        let entry = adjustedTarget * (1.0 + (adjustedATR / 100.0))
         
-        // Validate that target is above cost per share
-        guard target > actualCostPerShare else {
-            print("❌ Top 100 order rejected: target ($\(target)) is not above cost per share ($\(actualCostPerShare))")
-            return nil
+        // Exit: 0.9% below adjusted target, but never below cost per share
+        let exit = max(adjustedTarget * 0.991, actualCostPerShare)
+        
+        // Check if entry price is above current price
+        let isEntryAboveCurrent = entry > currentPrice
+        let isProfitable = isTargetProfitable && !isEntryAboveCurrent
+        
+        if isEntryAboveCurrent {
+            print("⚠️ Top 100 order: Entry price $\(entry) is above current price $\(currentPrice)")
+        } else {
+            print("✅ Top 100 order: Entry price $\(entry) is below current price $\(currentPrice)")
         }
         
-        let gain = ((target - actualCostPerShare) / actualCostPerShare) * 100.0
+        // Calculate gain based on adjusted target
+        let gain = ((adjustedTarget - actualCostPerShare) / actualCostPerShare) * 100.0
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", finalSharesToConsider, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
+        
+        // Create description with profitability indicator
+        let profitIndicator = isProfitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
+        let formattedDescription = String(format: "%@ SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", profitIndicator, finalSharesToConsider, symbol, entry, adjustedTarget, exit, actualCostPerShare, formatReleaseTime(tomorrow))
+        
         return SalesCalcResultsRecord(
             shares: finalSharesToConsider,
-            rollingGainLoss: (target - actualCostPerShare) * finalSharesToConsider,
+            rollingGainLoss: (adjustedTarget - actualCostPerShare) * finalSharesToConsider,
             breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: finalSharesToConsider,
             trailingStop: adjustedATR,
             entry: entry,
-            target: target,
+            target: adjustedTarget,
             cancel: exit,
             description: formattedDescription,
             openDate: "Top100"
@@ -718,7 +745,10 @@ struct RecommendedOCOOrdersSection: View {
         switch orderType {
         case "SELL":
             if let sellOrder = item as? SalesCalcResultsRecord {
-                if sellOrder.sharesToSell > sharesAvailableForTrading {
+                // Check if this is an unprofitable Top-100 order
+                if sellOrder.description.contains("UNPROFITABLE") {
+                    return .purple  // Purple for unprofitable Top-100 orders
+                } else if sellOrder.sharesToSell > sharesAvailableForTrading {
                     return .red
                 } else if sellOrder.trailingStop < (2.0 * getLimitedATR()) {
                     return .orange
