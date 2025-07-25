@@ -1,0 +1,96 @@
+
+
+[
+
+    {
+      "orderStrategyType": "OCO",
+      "orderId": 1003801937777,
+      "cancelable": true,
+      "editable": false,
+      "status": "WORKING",
+      "enteredTime": "2025-07-24T22:39:17+0000",
+      "accountNumber": ...767,
+      "childOrderStrategies": [
+        {
+          "session": "NORMAL",
+          "duration": "GOOD_TILL_CANCEL",
+          "orderType": "TRAILING_STOP_LIMIT",
+          "complexOrderStrategyType": "NONE",
+          "quantity": 37,
+          "filledQuantity": 0,
+          "remainingQuantity": 37,
+          "requestedDestination": "AUTO",
+          "destinationLinkName": "AutoRoute",
+          "releaseTime": "2025-07-25T13:40:00+0000",
+          "stopType": "BID",
+          "priceLinkBasis": "LAST",
+          "priceLinkType": "PERCENT",
+          "priceOffset": 0.02,
+          "orderLegCollection": [
+            {
+              "orderLegType": "EQUITY",
+              "legId": 1,
+              "instrument": {
+                "assetType": "EQUITY",
+                "cusip": "724479100",
+                "symbol": "PBI",
+                "instrumentId": 2884125
+              },
+              "instruction": "BUY",
+              "positionEffect": "OPENING",
+              "quantity": 37
+            }
+          ],
+          "orderStrategyType": "SINGLE",
+          "orderId": 1003801937778,
+          "cancelable": true,
+          "editable": false,
+          "status": "AWAITING_RELEASE_TIME",
+          "enteredTime": "2025-07-24T22:39:17+0000",
+          "tag": "API_TOS:CHART",
+          "accountNumber": ...767
+        },
+        {
+          "session": "NORMAL",
+          "duration": "GOOD_TILL_CANCEL",
+          "orderType": "TRAILING_STOP_LIMIT",
+          "complexOrderStrategyType": "NONE",
+          "quantity": 1,
+          "filledQuantity": 0,
+          "remainingQuantity": 1,
+          "requestedDestination": "AUTO",
+          "destinationLinkName": "AutoRoute",
+          "releaseTime": "2025-07-25T13:40:00+0000",
+          "stopType": "ASK",
+          "priceLinkBasis": "LAST",
+          "priceLinkType": "PERCENT",
+          "priceOffset": -0.02,
+          "orderLegCollection": [
+            {
+              "orderLegType": "EQUITY",
+              "legId": 1,
+              "instrument": {
+                "assetType": "EQUITY",
+                "cusip": "724479100",
+                "symbol": "PBI",
+                "instrumentId": 2884125
+              },
+              "instruction": "SELL",
+              "positionEffect": "CLOSING",
+              "quantity": 1
+            }
+          ],
+          "orderStrategyType": "SINGLE",
+          "orderId": 1003801937779,
+          "cancelable": true,
+          "editable": false,
+          "status": "AWAITING_RELEASE_TIME",
+          "enteredTime": "2025-07-24T22:39:17+0000",
+          "tag": "API_TOS:CHART",
+          "accountNumber": ...767
+        }
+      ]
+    }
+    
+ 
+  ]
