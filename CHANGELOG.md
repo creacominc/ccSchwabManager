@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **FIXED**: iOS copy-to-clipboard functionality in SalesCalcTableView
+  - Fixed state management issue where copyToClipboard functions weren't properly updating the copiedValue state
+  - Moved copyToClipboard functions to TableContent struct with proper @Binding for state updates
+  - Ensures copy-to-clipboard works consistently on both iOS and macOS platforms
+  - Users can now click on any field in the sales calc table to copy values to clipboard
+
 ### Added
 - **NEW**: Added copy-to-clipboard functionality to HoldingsTable for consistent UX across all tables
   - Users can now click on any field in the main holdings table to copy value to clipboard
@@ -14,7 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Works on both macOS and iOS platforms
   - Matches existing clipboard functionality in other tables for consistent user experience
 - **NEW**: Enhanced table row focus and visual feedback system
-  - Added alternating row colors (zebra striping) for better row tracking across columns
+  - Added alternating row colors (zebra striping) for better readability
+  - Improved hover effects and visual feedback for better user experience
+  - Enhanced accessibility with better contrast and focus indicators
   - Added hover effects on macOS for immediate visual feedback when hovering over rows
   - Added selected row highlighting with accent color background
   - Implemented platform-specific hover functionality (macOS only) for cross-platform compatibility

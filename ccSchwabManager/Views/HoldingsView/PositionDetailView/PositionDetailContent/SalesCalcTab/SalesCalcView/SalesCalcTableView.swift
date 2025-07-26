@@ -126,8 +126,7 @@ struct SalesCalcTable: View {
                 positionsData: sortedData,
                 viewSize: viewSize,
                 columnWidths: columnWidths,
-                copyToClipboard: copyToClipboard,
-                copyToClipboardValue: copyToClipboard
+                copiedValue: $copiedValue
             )
             if copiedValue != "TBD" {
                 Text("Copied: \(copiedValue)")
@@ -199,8 +198,30 @@ private struct TableContent: View {
     let positionsData: [SalesCalcPositionsRecord]
     let viewSize: CGSize
     let columnWidths: [CGFloat]
-    let copyToClipboard: (String) -> Void
-    let copyToClipboardValue: (Double, String) -> Void
+    @Binding var copiedValue: String
+    
+    private func copyToClipboard(value: Double, format: String) {
+        let formattedValue = String(format: format, value)
+#if os(iOS)
+        UIPasteboard.general.string = formattedValue
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(formattedValue, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
+    
+    private func copyToClipboard(text: String) {
+#if os(iOS)
+        UIPasteboard.general.string = text
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
     
     var body: some View {
         ScrollView {
@@ -210,8 +231,12 @@ private struct TableContent: View {
                         item: item,
                         viewSize: viewSize,
                         columnWidths: columnWidths,
-                        copyToClipboard: copyToClipboard,
-                        copyToClipboardValue: copyToClipboardValue,
+                        copyToClipboard: { text in
+                            copyToClipboard(text: text)
+                        },
+                        copyToClipboardValue: { value, format in
+                            copyToClipboard(value: value, format: format)
+                        },
                         isEvenRow: index % 2 == 0
                     )
                     Divider()

@@ -214,8 +214,8 @@ struct RecommendedOCOOrdersSection: View {
         
         // We need to calculate the target price first, but we need the cost per share
         // Let's start with a reasonable estimate and then refine
-        let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
-        let avgCostPerShare = totalCost / totalShares
+        //let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
+        // let avgCostPerShare = totalCost / totalShares
         // let estimatedTarget = avgCostPerShare * 1.0325
         
         // For Top-100 order, always use exactly 100 shares of the most expensive shares
