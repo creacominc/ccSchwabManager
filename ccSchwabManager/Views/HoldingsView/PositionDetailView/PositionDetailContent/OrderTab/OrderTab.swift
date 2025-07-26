@@ -7,6 +7,7 @@ struct OrderTab: View {
     let taxLotData: [SalesCalcPositionsRecord]
     let quoteData: QuoteData?
     let geometry: GeometryProxy
+    let accountNumber: String
     
     var body: some View {
         VStack(spacing: 8) {
@@ -22,7 +23,8 @@ struct OrderTab: View {
                 atrValue: atrValue,
                 taxLotData: taxLotData,
                 sharesAvailableForTrading: sharesAvailableForTrading,
-                quoteData: quoteData
+                quoteData: quoteData,
+                accountNumber: accountNumber
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

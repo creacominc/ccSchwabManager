@@ -6,11 +6,23 @@ struct RecommendedOCOOrdersSection: View {
     let taxLotData: [SalesCalcPositionsRecord]
     let sharesAvailableForTrading: Double
     let quoteData: QuoteData?
+    let accountNumber: String
     @State private var selectedOrderIndices: Set<Int> = []
     @State private var recommendedSellOrders: [SalesCalcResultsRecord] = []
     @State private var recommendedBuyOrders: [BuyOrderRecord] = []
     @State private var lastSymbol: String = ""
     @State private var copiedValue: String = "TBD"
+    
+    // State variables for confirmation dialog
+    @State private var showingConfirmationDialog = false
+    @State private var orderToSubmit: Order?
+    @State private var orderDescriptions: [String] = []
+    @State private var orderJson: String = ""
+    
+    // State variables for success/error alerts
+    @State private var showingSuccessAlert = false
+    @State private var showingErrorAlert = false
+    @State private var errorMessage = ""
     
     private var currentRecommendedSellOrders: [SalesCalcResultsRecord] {
         let orders = calculateRecommendedSellOrders()
@@ -35,16 +47,23 @@ struct RecommendedOCOOrdersSection: View {
     private var allOrders: [(String, Any)] {
         var orders: [(String, Any)] = []
         
+        print("=== allOrders computed property ===")
+        print("currentRecommendedSellOrders count: \(currentRecommendedSellOrders.count)")
+        print("currentRecommendedBuyOrders count: \(currentRecommendedBuyOrders.count)")
+        
         // Add sell orders first
-        for order in currentRecommendedSellOrders {
+        for (index, order) in currentRecommendedSellOrders.enumerated() {
+            print("  Adding SELL order \(index + 1): sharesToSell=\(order.sharesToSell), entry=\(order.entry), target=\(order.target), cancel=\(order.cancel)")
             orders.append(("SELL", order))
         }
         
         // Add buy orders
-        for order in currentRecommendedBuyOrders {
+        for (index, order) in currentRecommendedBuyOrders.enumerated() {
+            print("  Adding BUY order \(index + 1): sharesToBuy=\(order.sharesToBuy), targetBuyPrice=\(order.targetBuyPrice), entryPrice=\(order.entryPrice), targetGainPercent=\(order.targetGainPercent)")
             orders.append(("BUY", order))
         }
         
+        print("Total orders created: \(orders.count)")
         return orders
     }
     
@@ -783,6 +802,109 @@ struct RecommendedOCOOrdersSection: View {
                     .padding(.horizontal)
             }
         }
+        .sheet(isPresented: $showingConfirmationDialog) {
+            confirmationDialogView
+        }
+        .onChange(of: showingConfirmationDialog) { isPresented in
+            if isPresented {
+                print("=== Sheet is being presented ===")
+                print("orderDescriptions count: \(orderDescriptions.count)")
+                print("orderJson length: \(orderJson.count)")
+                print("orderToSubmit is nil: \(orderToSubmit == nil)")
+            }
+        }
+        .alert("Order Submission Error", isPresented: $showingErrorAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage)
+        }
+        .alert("Order Submitted Successfully", isPresented: $showingSuccessAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your OCO order has been submitted successfully.")
+        }
+    }
+    
+    private var confirmationDialogView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack {
+                Text("Confirm OCO Order Submission")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                Button("Cancel") {
+                    showingConfirmationDialog = false
+                    orderToSubmit = nil
+                    orderDescriptions = []
+                    orderJson = ""
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal)
+            
+            // Order Descriptions Section
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Please review the following orders before submission:")
+                    .font(.headline)
+                
+                if orderDescriptions.isEmpty {
+                    Text("No order descriptions available")
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(orderDescriptions.enumerated()), id: \.offset) { index, description in
+                            Text(description)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .padding(.vertical, 2)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .padding(.horizontal)
+            
+            Divider()
+            
+            // JSON Section
+            VStack(alignment: .leading, spacing: 8) {
+                Text("JSON to be submitted:")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                
+                ScrollView {
+                    Text(orderJson.isEmpty ? "No JSON available" : orderJson)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 150)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(4)
+            }
+            .padding(.horizontal)
+            
+            Spacer()
+            
+            // Action Buttons
+            HStack {
+                Spacer()
+                
+                Button("Submit Order") {
+                    confirmAndSubmitOrder()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal)
+            .padding(.bottom)
+        }
+        .frame(minWidth: 600, minHeight: 400)
+        .padding()
     }
     
     private var headerView: some View {
@@ -853,16 +975,197 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func submitOCOOrders() {
-        guard !selectedOrderIndices.isEmpty else { return }
+        print("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
+        print("🔄 [OCO-SUBMIT] Selected order indices: \(selectedOrderIndices)")
+        print("🔄 [OCO-SUBMIT] All orders count: \(allOrders.count)")
+        
+        guard !selectedOrderIndices.isEmpty else { 
+            print("🔄 [OCO-SUBMIT] ❌ No orders selected")
+            return 
+        }
         
         let selectedOrders = selectedOrderIndices.compactMap { index in
             index < allOrders.count ? allOrders[index] : nil
         }
         
-        // Create OCO order description
-        let ocoDescription = createOCOOrderDescription(orders: selectedOrders)
-        copyToClipboard(text: ocoDescription)
-        print("Submitted OCO orders: \(ocoDescription)")
+        print("🔄 [OCO-SUBMIT] Selected orders count: \(selectedOrders.count)")
+        print("🔄 [OCO-SUBMIT] Selected orders details:")
+        for (index, (orderType, order)) in selectedOrders.enumerated() {
+            print("🔄 [OCO-SUBMIT]   Order \(index + 1): type=\(orderType), order=\(type(of: order))")
+            if let sellOrder = order as? SalesCalcResultsRecord {
+                print("🔄 [OCO-SUBMIT]     SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+            } else if let buyOrder = order as? BuyOrderRecord {
+                print("🔄 [OCO-SUBMIT]     BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+            } else {
+                print("🔄 [OCO-SUBMIT]     Unknown order type: \(type(of: order))")
+            }
+        }
+        
+        // Get account number from the position
+        guard let accountNumberInt = getAccountNumber() else {
+            print("🔄 [OCO-SUBMIT] ❌ Could not get account number for position")
+            return
+        }
+        print("🔄 [OCO-SUBMIT] Account number: \(accountNumberInt)")
+        
+        // Calculate release time (tomorrow at market open)
+        let releaseTime = calculateReleaseTime()
+        print("🔄 [OCO-SUBMIT] Release time: \(releaseTime)")
+        
+        // Create OCO order using SchwabClient
+        guard let ocoOrder = SchwabClient.shared.createOCOOrder(
+            symbol: symbol,
+            accountNumber: accountNumberInt,
+            selectedOrders: selectedOrders,
+            releaseTime: releaseTime
+        ) else {
+            print("🔄 [OCO-SUBMIT] ❌ Failed to create OCO order")
+            return
+        }
+        print("🔄 [OCO-SUBMIT] ✅ OCO order created successfully")
+        
+        // Create order descriptions for confirmation dialog
+        orderDescriptions = createOrderDescriptions(orders: selectedOrders)
+        print("🔄 [OCO-SUBMIT] Created \(orderDescriptions.count) order descriptions:")
+        for (index, description) in orderDescriptions.enumerated() {
+            print("🔄 [OCO-SUBMIT]   \(index + 1): \(description)")
+        }
+        
+        // Create JSON preview
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let jsonData = try encoder.encode(ocoOrder)
+            orderJson = String(data: jsonData, encoding: .utf8) ?? "{}"
+            print("🔄 [OCO-SUBMIT] JSON created successfully, length: \(orderJson.count)")
+            print("🔄 [OCO-SUBMIT] JSON preview (first 200 chars): \(String(orderJson.prefix(200)))")
+        } catch {
+            orderJson = "Error encoding order: \(error)"
+            print("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
+        }
+        
+        // Store the order and show confirmation dialog
+        orderToSubmit = ocoOrder
+        showingConfirmationDialog = true
+        print("🔄 [OCO-SUBMIT] ✅ Showing confirmation dialog")
+        print("🔄 [OCO-SUBMIT] === submitOCOOrders END ===")
+    }
+    
+    private func getAccountNumber() -> Int64? {
+        // Get the full account number from SchwabClient instead of using the truncated version
+        let accounts = SchwabClient.shared.getAccounts()
+        print("=== getAccountNumber ===")
+        print("Total accounts found: \(accounts.count)")
+        
+        for (index, accountContent) in accounts.enumerated() {
+            print("Account \(index + 1):")
+            print("  Securities account: \(accountContent.securitiesAccount?.accountNumber ?? "nil")")
+            print("  Positions count: \(accountContent.securitiesAccount?.positions.count ?? 0)")
+            
+            // Check if this account contains the current symbol
+            if let positions = accountContent.securitiesAccount?.positions {
+                for position in positions {
+                    if position.instrument?.symbol == symbol {
+                        print("  ✅ Found position for symbol \(symbol) in this account")
+                        if let fullAccountNumber = accountContent.securitiesAccount?.accountNumber,
+                           let accountNumberInt = Int64(fullAccountNumber) {
+                            print("  ✅ Using full account number: \(fullAccountNumber)")
+                            return accountNumberInt
+                        } else {
+                            print("  ❌ Could not convert account number to Int64")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback to the truncated version if full account number not found
+        print("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
+        return Int64(accountNumber)
+    }
+    
+    private func calculateReleaseTime() -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Get tomorrow's date
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) else {
+            return formatDateForSchwab(now)
+        }
+        
+        // Set to 9:30 AM (market open)
+        var components = calendar.dateComponents([.year, .month, .day], from: tomorrow)
+        components.hour = 9
+        components.minute = 30
+        components.second = 0
+        
+        guard let marketOpen = calendar.date(from: components) else {
+            return formatDateForSchwab(tomorrow)
+        }
+        
+        return formatDateForSchwab(marketOpen)
+    }
+    
+    private func formatDateForSchwab(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
+        return formatter.string(from: date)
+    }
+    
+    private func createOrderDescriptions(orders: [(String, Any)]) -> [String] {
+        print("=== createOrderDescriptions ===")
+        print("Input orders count: \(orders.count)")
+        
+        var descriptions: [String] = []
+        for (index, (orderType, order)) in orders.enumerated() {
+            print("Processing order \(index + 1): type=\(orderType), order=\(type(of: order))")
+            
+            if let sellOrder = order as? SalesCalcResultsRecord {
+                print("  Found SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+                let description = sellOrder.description.isEmpty ? 
+                    "SELL \(sellOrder.sharesToSell) shares at \(sellOrder.entry) (Target: \(sellOrder.target), Cancel: \(sellOrder.cancel))" :
+                    sellOrder.description
+                descriptions.append("Order \(index + 1) (SELL): \(description)")
+            } else if let buyOrder = order as? BuyOrderRecord {
+                print("  Found BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+                let description = buyOrder.description.isEmpty ?
+                    "BUY \(buyOrder.sharesToBuy) shares at \(buyOrder.targetBuyPrice) (Entry: \(buyOrder.entryPrice), Target: \(buyOrder.targetGainPercent)%)" :
+                    buyOrder.description
+                descriptions.append("Order \(index + 1) (BUY): \(description)")
+            } else {
+                print("  ❌ Unknown order type: \(type(of: order))")
+            }
+        }
+        
+        print("Created \(descriptions.count) descriptions")
+        return descriptions
+    }
+    
+    private func confirmAndSubmitOrder() {
+        guard let order = orderToSubmit else { return }
+        
+        // Submit the order asynchronously
+        Task {
+            let result = await SchwabClient.shared.placeOrder(order: order)
+            
+            await MainActor.run {
+                // Clear the dialog state
+                showingConfirmationDialog = false
+                orderToSubmit = nil
+                orderDescriptions = []
+                orderJson = ""
+                selectedOrderIndices.removeAll()
+                
+                // Show success or error dialog
+                if result.success {
+                    showingSuccessAlert = true
+                } else {
+                    errorMessage = result.errorMessage ?? "Unknown error occurred"
+                    showingErrorAlert = true
+                }
+            }
+        }
     }
     
     private func createOCOOrderDescription(orders: [(String, Any)]) -> String {

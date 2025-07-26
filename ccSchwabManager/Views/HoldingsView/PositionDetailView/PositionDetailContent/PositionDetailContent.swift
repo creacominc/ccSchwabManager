@@ -72,7 +72,8 @@ struct PositionDetailContent: View {
                         sharesAvailableForTrading: sharesAvailableForTrading,
                         taxLotData: taxLotData,
                         quoteData: quoteData,
-                        geometry: geometry
+                        geometry: geometry,
+                        accountNumber: accountNumber
                     )
                     .tag(3)
                 }

@@ -10,6 +10,16 @@ import os.log
 @_exported import class Foundation.NSError
 @_exported import var Foundation.NSLocalizedDescriptionKey
 
+// MARK: - DateFormatter Extension for Schwab API
+
+extension DateFormatter {
+    static let schwabDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        formatter.timeZone = TimeZone(abbreviation: "UTC")
+        return formatter
+    }()
+}
 
 // MARK: - Symbol Contract Summary Structure
 
@@ -1976,112 +1986,110 @@ class SchwabClient
     }
 
     // place an order
-    public func placeOrder( order: Order ) {
-        print("=== placeOrder  ===")
-        /**
-         * /accounts/{accountNumber}/orders
-         *
-         * example order:
-         *
-            [
-                {
-                    "orderStrategyType": "OCO",
-                    "complexOrderStrategyType": "NONE",
-                    "orderId": 0,
-                    "cancelable": true,
-                    "editable": false,
-                    "status": "AWAITING_PARENT_ORDER",
-                    "enteredTime": <currentDateTime>,
-                    "accountNumber": <accountNumber>,
-                    "childOrderStrategies": [
-                        {
-                        "session": "NORMAL",
-                        "duration": "GOOD_TILL_CANCEL",
-                        "orderType": "TRAILING_STOP_LIMIT",
-                        "complexOrderStrategyType": "NONE",
-                        "quantity": <buy-quantity>,
-                        "filledQuantity": 0,
-                        "remainingQuantity": <buy-quantity>,
-                        "requestedDestination": "AUTO",
-                        "destinationLinkName": "AutoRoute",
-                        "releaseTime": <submitTime>,
-                        "stopType": "BID",
-                            "priceLinkBasis": "LAST",
-                        "priceLinkType": "PERCENT",
-                        "priceOffset": 0.02,
-                        "orderLegCollection": [
-                            {
-                            "orderLegType": "EQUITY",
-                            "legId": 1,
-                            "instrument": {
-                                "assetType": "EQUITY",
-                                "cusip": <hopefully we can get this from the instrument>,
-                                "symbol": <symbol>,
-                                "instrumentId": <hopefully we can get this from the instrument>
-                            },
-                            "instruction": "BUY",
-                            "positionEffect": "OPENING",
-                            "quantity": <buy-quantity>
+    public func placeOrder( order: Order ) async -> (success: Bool, errorMessage: String?) {
+        print("📤 [PLACE-ORDER] === placeOrder  ===")
+        
+        // Get the account hash for the order's account number
+        guard let orderAccountNumber = order.accountNumber else {
+            print("📤 [PLACE-ORDER] ❌ Order does not have account number")
+            return (false, "Order does not have account number")
+        }
+        
+        guard let accountNumberHash = m_secrets.acountNumberHash.first(where: { 
+            $0.accountNumber == String(orderAccountNumber) 
+        }) else {
+            print("📤 [PLACE-ORDER] ❌ Account hash not found for account number \(orderAccountNumber)")
+            return (false, "Account hash not found for account number \(orderAccountNumber)")
+        }
+        
+        guard let hashValue = accountNumberHash.hashValue else {
+            print("📤 [PLACE-ORDER] ❌ Invalid account hash value")
+            return (false, "Invalid account hash value")
+        }
+        
+        let placeOrderUrl = "\(accountWeb)/\(hashValue)/orders"
+        
+        guard let url = URL(string: placeOrderUrl) else {
+            print("📤 [PLACE-ORDER] ❌ Invalid URL for order placement")
+            return (false, "Invalid URL for order placement")
+        }
+        
+        // Create JSON encoder with proper date formatting
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .formatted(DateFormatter.schwabDateFormatter)
+        
+        do {
+            let jsonData = try encoder.encode(order)
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
+            
+            print("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
+            print("📤 [PLACE-ORDER]   📍 URL: \(placeOrderUrl)")
+            print("📤 [PLACE-ORDER]   🏦 Account Number: \(orderAccountNumber)")
+            print("📤 [PLACE-ORDER]   🔑 Account Hash: \(hashValue)")
+            print("📤 [PLACE-ORDER]   📋 JSON Body:")
+            print("📤 [PLACE-ORDER] \(jsonString)")
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("*/*", forHTTPHeaderField: "Accept")
+            request.httpBody = jsonData
+            request.timeoutInterval = requestTimeout
+            
+            // Execute the request
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("📤 [PLACE-ORDER] 📥 RESPONSE:")
+                    print("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
+                    print("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
+                    
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        print("📤 [PLACE-ORDER]   📄 Response Body: \(responseString)")
+                    }
+                    
+                    if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
+                        print("📤 [PLACE-ORDER] ✅ Order placed successfully")
+                        // Refresh orders list
+                        await fetchOrderHistory()
+                        return (true, nil)
+                    } else {
+                        // Try to extract error message from response body
+                        var errorMessage = "Order placement failed with status code: \(httpResponse.statusCode)"
+                        
+                        if let responseString = String(data: data, encoding: .utf8) {
+                            // Try to parse JSON response for error message
+                            if let jsonData = responseString.data(using: .utf8),
+                               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                               let apiMessage = json["message"] as? String {
+                                errorMessage = "API Error: \(apiMessage)"
+                            } else {
+                                // If not JSON, use the raw response
+                                errorMessage = "API Error: \(responseString)"
                             }
-                        ],
-                        "orderStrategyType": "SINGLE",
-                        "orderId": <0>,
-                        "cancelable": true,
-                        "editable": false,
-                        "status": "AWAITING_RELEASE_TIME",
-                        "enteredTime": <submitTime>,
-                        "tag": "API_TOS:CHART",
-                        "accountNumber": <accountNumber>
-                        },
-                        {
-                        "session": "NORMAL",
-                        "duration": "GOOD_TILL_CANCEL",
-                        "orderType": "TRAILING_STOP_LIMIT",
-                        "complexOrderStrategyType": "NONE",
-                        "quantity": <sell-quantity>,
-                        "filledQuantity": 0,
-                        "remainingQuantity": <sell-quantity>,
-                        "requestedDestination": "AUTO",
-                        "destinationLinkName": "AutoRoute",
-                        "releaseTime": <submitTime>,
-                        "stopType": "ASK",
-                        "priceLinkBasis": "LAST",
-                        "priceLinkType": "PERCENT",
-                        "priceOffset": -0.02,
-                        "orderLegCollection": [
-                            {
-                            "orderLegType": "EQUITY",
-                            "legId": 1,
-                            "instrument": {
-                                "assetType": "EQUITY",
-                                "cusip": <hopefully we can get this from the instrument>,
-                                "symbol": <symbol>,
-                                "instrumentId": <hopefully we can get this from the instrument>
-                            },
-                            "instruction": "SELL",
-                            "positionEffect": "CLOSING",
-                            "quantity": <sell-quantity>
-                            }
-                        ],
-                        "orderStrategyType": "SINGLE",
-                        "orderId": <0>,
-                        "cancelable": true,
-                        "editable": false,
-                        "status": "AWAITING_RELEASE_TIME",
-                        "enteredTime": <submitTime>,
-                        "tag": "API_TOS:CHART",
-                        "accountNumber": <accountNumber>
                         }
-                    ]
+                        
+                        print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+                        return (false, errorMessage)
+                    }
+                } else {
+                    let errorMessage = "Invalid response type"
+                    print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+                    return (false, errorMessage)
                 }
-
-            ]
-
-         * https://api.schwabapi.com/trader/v1/accounts/<accountHash>/orders
-
-         */
-        // print the order
-        print("  order: \(order)")
+            } catch {
+                let errorMessage = "Error placing order: \(error.localizedDescription)"
+                print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+                return (false, errorMessage)
+            }
+            
+        } catch {
+            let errorMessage = "Error encoding order to JSON: \(error.localizedDescription)"
+            print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+            return (false, errorMessage)
+        }
     }
 
 
@@ -2822,6 +2830,166 @@ class SchwabClient
             return loadingState.isLoading
         }
         return false
+    }
+
+    // MARK: - OCO Order Creation Methods
+    
+    /**
+     * Create an OCO order from selected buy and sell orders
+     */
+    public func createOCOOrder(
+        symbol: String,
+        accountNumber: Int64,
+        selectedOrders: [(String, Any)],
+        releaseTime: String
+    ) -> Order? {
+        print("=== createOCOOrder ===")
+        print("Symbol: \(symbol)")
+        print("Account Number: \(accountNumber)")
+        print("Selected Orders Count: \(selectedOrders.count)")
+        print("Release Time: \(releaseTime)")
+        
+        guard !selectedOrders.isEmpty else {
+            print("❌ No orders selected")
+            return nil
+        }
+        
+        // Create child order strategies
+        var childOrderStrategies: [Order] = []
+        
+        for (index, (orderType, order)) in selectedOrders.enumerated() {
+            if let childOrder = createChildOrder(
+                symbol: symbol,
+                accountNumber: accountNumber,
+                orderType: orderType,
+                order: order,
+                releaseTime: releaseTime,
+                legId: index + 1
+            ) {
+                childOrderStrategies.append(childOrder)
+                print("✅ Created child order \(index + 1): \(orderType)")
+            } else {
+                print("❌ Failed to create child order \(index + 1): \(orderType)")
+            }
+        }
+        
+        guard !childOrderStrategies.isEmpty else {
+            print("❌ No valid child orders created")
+            return nil
+        }
+        
+        // Create the parent OCO order
+        let ocoOrder = Order(
+            complexOrderStrategyType: .NONE,
+            releaseTime: releaseTime,
+            orderStrategyType: .OCO,
+            orderId: 0,
+            cancelable: true,
+            editable: false,
+            status: .awaitingParentOrder,
+            enteredTime: DateFormatter.schwabDateFormatter.string(from: Date()),
+            accountNumber: accountNumber,
+            childOrderStrategies: childOrderStrategies
+        )
+        
+        print("✅ Created OCO order with \(childOrderStrategies.count) child orders")
+        return ocoOrder
+    }
+    
+    /**
+     * Create a child order for the OCO strategy
+     */
+    private func createChildOrder(
+        symbol: String,
+        accountNumber: Int64,
+        orderType: String,
+        order: Any,
+        releaseTime: String,
+        legId: Int
+    ) -> Order? {
+        
+        var quantity: Double = 0.0
+        var instruction: OrderInstructionType = .BUY
+        var positionEffect: PositionEffectType = .OPENING
+        var priceOffset: Double = 0.0
+        var stopType: StopType = .BID
+        var targetPrice: Double = 0.0
+        
+        // Extract order details based on type
+        if orderType == "BUY", let buyOrder = order as? BuyOrderRecord {
+            quantity = buyOrder.sharesToBuy
+            instruction = .BUY
+            positionEffect = .OPENING
+            priceOffset = 0.02 // 2% above bid
+            stopType = .BID
+            targetPrice = buyOrder.targetBuyPrice
+            print("  📊 Buy Order Details:")
+            print("    Quantity: \(quantity)")
+            print("    Target Price: \(targetPrice)")
+        } else if orderType == "SELL", let sellOrder = order as? SalesCalcResultsRecord {
+            quantity = sellOrder.sharesToSell
+            instruction = .SELL
+            positionEffect = .CLOSING
+            priceOffset = -0.02 // 2% below ask
+            stopType = .ASK
+            targetPrice = sellOrder.target
+            print("  📊 Sell Order Details:")
+            print("    Quantity: \(quantity)")
+            print("    Target Price: \(targetPrice)")
+        } else {
+            print("❌ Unknown order type: \(orderType)")
+            return nil
+        }
+        
+        guard quantity > 0 else {
+            print("❌ Invalid quantity: \(quantity)")
+            return nil
+        }
+        
+        // Create the instrument
+        let instrument = AccountsInstrument(
+            assetType: .EQUITY,
+            symbol: symbol
+        )
+        
+        // Create the order leg collection
+        let orderLeg = OrderLegCollection(
+            orderLegType: .EQUITY,
+            legId: Int64(legId),
+            instrument: instrument,
+            instruction: instruction,
+            positionEffect: positionEffect,
+            quantity: quantity
+        )
+        
+        // Create the child order
+        let childOrder = Order(
+            session: .NORMAL,
+            duration: .GOOD_TILL_CANCEL,
+            orderType: .TRAILING_STOP_LIMIT,
+            complexOrderStrategyType: .NONE,
+            quantity: quantity,
+            filledQuantity: 0,
+            remainingQuantity: quantity,
+            requestedDestination: .AUTO,
+            destinationLinkName: "AutoRoute",
+            releaseTime: releaseTime,
+            stopType: stopType,
+            priceLinkBasis: .LAST,
+            priceLinkType: .PERCENT,
+            priceOffset: priceOffset,
+            orderLegCollection: [orderLeg],
+            orderStrategyType: .SINGLE,
+            orderId: 0,
+            cancelable: true,
+            editable: false,
+            status: .awaitingReleaseTime,
+            enteredTime: releaseTime,
+            tag: "API_TOS:CHART",
+            accountNumber: accountNumber
+        )
+        
+        return childOrder
     }
 
 } // SchwabClient
