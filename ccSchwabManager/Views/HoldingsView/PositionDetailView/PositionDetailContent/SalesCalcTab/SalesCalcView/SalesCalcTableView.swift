@@ -67,7 +67,7 @@ struct SalesCalcTable: View {
     @State private var copiedValue: String = "TBD"
     
     // Define proportional widths for columns
-    private let columnWidths: [CGFloat] = [0.12, 0.10, 0.10, 0.12, 0.12, 0.12, 0.12, 0.12, 0.08] // Open Date, Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss $, Gain/Loss %, Split
+    private let columnWidths: [CGFloat] = [0.16, 0.09, 0.09, 0.11, 0.11, 0.11, 0.11, 0.11, 0.11] // Open Date (wider), Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss $, Gain/Loss %, Split
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)

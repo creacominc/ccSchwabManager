@@ -217,7 +217,7 @@ private struct TableRow: View {
         } else if isEvenRow {
             return Color.clear
         } else {
-            return Color.gray.opacity(0.05)
+            return Color.gray.opacity(0.08) // Slightly more visible for iOS
         }
     }
     
