@@ -9,8 +9,32 @@ struct HoldingsTable: View {
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
 //    let dteCache: [String: Int?]
+    @State private var copiedValue: String = "TBD"
 
     private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05, 0.05]
+
+    private func copyToClipboard(value: Double, format: String) {
+        let formattedValue = String(format: format, value)
+#if os(iOS)
+        UIPasteboard.general.string = formattedValue
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(formattedValue, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
+    
+    private func copyToClipboard(text: String) {
+#if os(iOS)
+        UIPasteboard.general.string = text
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,8 +48,16 @@ struct HoldingsTable: View {
                 columnWidths: columnWidths,
                 tradeDateCache: tradeDateCache,
                 orderStatusCache: orderStatusCache,
+                copyToClipboard: copyToClipboard,
+                copyToClipboardValue: copyToClipboard
 //                dteCache: dteCache
             )
+            if copiedValue != "TBD" {
+                Text("Copied: \(copiedValue)")
+                    .font(.caption)
+                    .foregroundColor(.green)
+                    .padding(.horizontal)
+            }
         }
     }
 }
@@ -91,6 +123,8 @@ private struct TableContent: View {
     let columnWidths: [CGFloat]
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
+    let copyToClipboard: (String) -> Void
+    let copyToClipboardValue: (Double, String) -> Void
 //    let dteCache: [String: Int?]
 
     private func accountNumberFor(_ position: Position) -> String {
@@ -113,7 +147,9 @@ private struct TableContent: View {
                         orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil,
                         dte: (nil == dte) ? "" : String( format: "%d / %.0f", dte ?? 0, count ),
                         isEvenRow: index % 2 == 0,
-                        isSelected: selectedPositionId == position.id
+                        isSelected: selectedPositionId == position.id,
+                        copyToClipboard: copyToClipboard,
+                        copyToClipboardValue: copyToClipboardValue
                     )
                     Divider()
                 }
@@ -133,6 +169,8 @@ private struct TableRow: View {
     let dte: String
     let isEvenRow: Bool
     let isSelected: Bool
+    let copyToClipboard: (String) -> Void
+    let copyToClipboardValue: (Double, String) -> Void
     
     @State private var isHovered = false
     
@@ -176,26 +214,80 @@ private struct TableRow: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            Text(position.instrument?.symbol ?? "").frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
-            Text(String(format: "%.2f", ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0)))).frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
-            Text(String(format: "%.2f", position.averagePrice ?? 0.0)).frame(width: columnWidths[2] * viewSize.width, alignment: .trailing).monospacedDigit()
-            Text(String(format: "%.2f", position.marketValue ?? 0.0)).frame(width: columnWidths[3] * viewSize.width, alignment: .trailing).monospacedDigit()
+            Text(position.instrument?.symbol ?? "")
+                .frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboard(position.instrument?.symbol ?? "")
+                }
+            
+            Text(String(format: "%.2f", ((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0))))
+                .frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
+                .monospacedDigit()
+                .onTapGesture {
+                    copyToClipboardValue((position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0), "%.2f")
+                }
+            
+            Text(String(format: "%.2f", position.averagePrice ?? 0.0))
+                .frame(width: columnWidths[2] * viewSize.width, alignment: .trailing)
+                .monospacedDigit()
+                .onTapGesture {
+                    copyToClipboardValue(position.averagePrice ?? 0.0, "%.2f")
+                }
+            
+            Text(String(format: "%.2f", position.marketValue ?? 0.0))
+                .frame(width: columnWidths[3] * viewSize.width, alignment: .trailing)
+                .monospacedDigit()
+                .onTapGesture {
+                    copyToClipboardValue(position.marketValue ?? 0.0, "%.2f")
+                }
+            
             Text(String(format: "%.2f", position.longOpenProfitLoss ?? 0.0))
                 .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .foregroundColor(plColor)
+                .onTapGesture {
+                    copyToClipboardValue(position.longOpenProfitLoss ?? 0.0, "%.2f")
+                }
+            
             Text(String(format: "%.1f%%", plPercent))
                 .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .foregroundColor(plColor)
-            Text(position.instrument?.assetType?.rawValue ?? "").frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
-            Text(accountNumber).frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
-            Text(tradeDate).frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboardValue(plPercent, "%.1f")
+                }
+            
+            Text(position.instrument?.assetType?.rawValue ?? "")
+                .frame(width: columnWidths[6] * viewSize.width, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboard(position.instrument?.assetType?.rawValue ?? "")
+                }
+            
+            Text(accountNumber)
+                .frame(width: columnWidths[7] * viewSize.width, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboard(accountNumber)
+                }
+            
+            Text(tradeDate)
+                .frame(width: columnWidths[8] * viewSize.width, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboard(tradeDate)
+                }
+            
             Text(orderStatusText)
                 .frame(width: columnWidths[9] * viewSize.width, alignment: .trailing)
                 .foregroundColor(orderStatusColor)
                 .font(.system(.body, design: .monospaced))
-            Text(dte).frame(width: columnWidths[10] * viewSize.width, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(orderStatusText)
+                }
+            
+            Text(dte)
+                .frame(width: columnWidths[10] * viewSize.width, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(dte)
+                }
         }
         .padding(.horizontal)
         .padding(.vertical, 5)

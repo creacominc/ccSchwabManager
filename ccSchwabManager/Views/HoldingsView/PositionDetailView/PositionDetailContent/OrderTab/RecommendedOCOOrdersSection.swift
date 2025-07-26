@@ -210,13 +210,13 @@ struct RecommendedOCOOrdersSection: View {
         
         // Calculate the minimum shares needed to achieve 3.25% gain at target price
         // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
-        let targetGainPercent = 3.25
+        // let targetGainPercent = 3.25
         
         // We need to calculate the target price first, but we need the cost per share
         // Let's start with a reasonable estimate and then refine
         let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
         let avgCostPerShare = totalCost / totalShares
-        let estimatedTarget = avgCostPerShare * 1.0325
+        // let estimatedTarget = avgCostPerShare * 1.0325
         
         // For Top-100 order, always use exactly 100 shares of the most expensive shares
         let finalSharesToConsider = 100.0
@@ -245,7 +245,7 @@ struct RecommendedOCOOrdersSection: View {
         
         // Check if target is above cost per share
         let isTargetProfitable = target > actualCostPerShare
-        let totalGain = finalSharesToConsider * (target - actualCostPerShare)
+        // let totalGain = finalSharesToConsider * (target - actualCostPerShare)
         
         if isTargetProfitable {
             print("✅ Top 100 order: Target price $\(target) is above cost per share $\(actualCostPerShare)")
@@ -1196,7 +1196,7 @@ struct RecommendedOCOOrdersSection: View {
         if lotGainPercent >= targetGainPercent {
             // This lot alone can achieve the target gain
             // Calculate the minimum shares needed from this lot
-            let minShares = 1.0 // Start with 1 share
+            // let minShares: Double = 1.0 // Start with 1 share
             
             // Binary search to find the minimum shares needed
             var low = 1.0

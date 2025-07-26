@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Added copy-to-clipboard functionality to HoldingsTable for consistent UX across all tables
+  - Users can now click on any field in the main holdings table to copy value to clipboard
+  - Added visual feedback showing "Copied: [value]" when a field is copied
+  - Works on both macOS and iOS platforms
+  - Matches existing clipboard functionality in other tables for consistent user experience
 - **NEW**: Enhanced table row focus and visual feedback system
   - Added alternating row colors (zebra striping) for better row tracking across columns
   - Added hover effects on macOS for immediate visual feedback when hovering over rows

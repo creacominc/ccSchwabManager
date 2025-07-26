@@ -30,7 +30,7 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
                     }
                 }
             } else {
-                let duration = self.loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                // let duration = self.loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
                 // AppLogger.shared.info("✅ LoadingState.setLoading(FALSE) - Duration: \(String(format: "%.2f", duration))s - Previous call stack:\n\(self.loadingCallStack)")
                 // self.loadingCallStack = ""
                 self.loadingStartTime = nil
