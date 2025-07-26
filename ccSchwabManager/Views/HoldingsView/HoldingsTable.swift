@@ -100,7 +100,7 @@ private struct TableContent: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(sortedHoldings) { position in
+                ForEach(Array(sortedHoldings.enumerated()), id: \.element.id) { index, position in
                     let dte : Int? =  ( position.instrument?.assetType == .OPTION) ?  extractExpirationDate( from: position.instrument?.symbol ?? "", description: position.instrument?.description ?? "" )   : SchwabClient.shared.getMinimumDTEForSymbol(position.instrument?.symbol ?? "")
                     let count : Double = SchwabClient.shared.getContractCountForSymbol(position.instrument?.symbol ?? "")
                     TableRow(
@@ -111,7 +111,9 @@ private struct TableContent: View {
                         onTap: { selectedPositionId = position.id },
                         tradeDate: tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000",
                         orderStatus: orderStatusCache[position.instrument?.symbol ?? ""] ?? nil,
-                        dte: (nil == dte) ? "" : String( format: "%d / %.0f", dte ?? 0, count )
+                        dte: (nil == dte) ? "" : String( format: "%d / %.0f", dte ?? 0, count ),
+                        isEvenRow: index % 2 == 0,
+                        isSelected: selectedPositionId == position.id
                     )
                     Divider()
                 }
@@ -129,6 +131,10 @@ private struct TableRow: View {
     let tradeDate: String
     let orderStatus: ActiveOrderStatus?
     let dte: String
+    let isEvenRow: Bool
+    let isSelected: Bool
+    
+    @State private var isHovered = false
     
     private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
@@ -193,8 +199,26 @@ private struct TableRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
+        .background(rowBackgroundColor)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+        #if os(macOS)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        #endif
+    }
+    
+    private var rowBackgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(0.15)
+        } else if isHovered {
+            return Color.gray.opacity(0.1)
+        } else if isEvenRow {
+            return Color.clear
+        } else {
+            return Color.gray.opacity(0.05)
+        }
     }
     
 

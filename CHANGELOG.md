@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Enhanced table row focus and visual feedback system
+  - Added alternating row colors (zebra striping) for better row tracking across columns
+  - Added hover effects on macOS for immediate visual feedback when hovering over rows
+  - Added selected row highlighting with accent color background
+  - Implemented platform-specific hover functionality (macOS only) for cross-platform compatibility
+  - Enhanced visual hierarchy with subtle background color variations
+  - Applied consistent row focus behavior across all table views:
+    - HoldingsTable: Main positions table with symbol, quantity, price, market value, P&L columns
+    - SalesCalcTableView: Sales calculation results table
+    - TransactionHistoryComponents: Transaction history table
 - **NEW**: Enhanced Top-100 sell order logic for better contract pricing support
   - Top-100 orders now show for any position with over 100 shares (regardless of available shares)
   - Orders display accurate cost-per-share for the 100 most expensive shares

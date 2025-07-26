@@ -133,6 +133,9 @@ struct TransactionHistorySection: View {
         let formatDate: (String?) -> String
         let copyToClipboard: (String) -> Void
         let copyToClipboardValue: (Double, String) -> Void
+        let isEvenRow: Bool
+        
+        @State private var isHovered = false
         
         private var isSell: Bool {
             return transaction.netAmount ?? 0 > 0
@@ -177,8 +180,24 @@ struct TransactionHistorySection: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 3)
+            .background(rowBackgroundColor)
             .foregroundColor(isSell ? .red : .primary)
+            #if os(macOS)
+            .onHover { hovering in
+                isHovered = hovering
+            }
+            #endif
             Divider()
+        }
+        
+        private var rowBackgroundColor: Color {
+            if isHovered {
+                return Color.gray.opacity(0.1)
+            } else if isEvenRow {
+                return Color.clear
+            } else {
+                return Color.gray.opacity(0.05)
+            }
         }
     }
 
@@ -234,14 +253,15 @@ struct TransactionHistorySection: View {
 
                         ScrollView {
                             LazyVStack(spacing: 0) {
-                                ForEach(sortedTransactions) { transaction in
+                                ForEach(Array(sortedTransactions.enumerated()), id: \.element.id) { index, transaction in
                                     TransactionRow(
                                         transaction: transaction,
                                         symbol: symbol,
                                         calculatedWidths: calculatedWidths,
                                         formatDate: formatDate,
                                         copyToClipboard: copyToClipboard,
-                                        copyToClipboardValue: copyToClipboard
+                                        copyToClipboardValue: copyToClipboard,
+                                        isEvenRow: index % 2 == 0
                                     )
                                 }
                             }

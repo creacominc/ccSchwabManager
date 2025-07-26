@@ -205,13 +205,14 @@ private struct TableContent: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(positionsData) { item in
+                ForEach(Array(positionsData.enumerated()), id: \.element.id) { index, item in
                     TableRow(
                         item: item,
                         viewSize: viewSize,
                         columnWidths: columnWidths,
                         copyToClipboard: copyToClipboard,
-                        copyToClipboardValue: copyToClipboardValue
+                        copyToClipboardValue: copyToClipboardValue,
+                        isEvenRow: index % 2 == 0
                     )
                     Divider()
                 }
@@ -227,6 +228,9 @@ private struct TableRow: View {
     let columnWidths: [CGFloat]
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
+    let isEvenRow: Bool
+    
+    @State private var isHovered = false
     
     private func rowStyle() -> Color {
         if item.gainLossPct < 0.0 {
@@ -308,6 +312,21 @@ private struct TableRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
-        .background(Color.gray.opacity(0.05))
+        .background(rowBackgroundColor)
+        #if os(macOS)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+        #endif
+    }
+    
+    private var rowBackgroundColor: Color {
+        if isHovered {
+            return Color.gray.opacity(0.1)
+        } else if isEvenRow {
+            return Color.clear
+        } else {
+            return Color.gray.opacity(0.05)
+        }
     }
 } 
