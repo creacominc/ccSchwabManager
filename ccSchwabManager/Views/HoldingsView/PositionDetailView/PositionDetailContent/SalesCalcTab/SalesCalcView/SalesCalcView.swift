@@ -33,16 +33,14 @@ struct SalesCalcView: View {
                 }
                 .padding(.horizontal)
             }
-            .onChange(of: SchwabClient.shared.showIncompleteDataWarning) { oldValue, newValue in
-                showIncompleteDataWarning = newValue
-            }
-            .alert("Incomplete Data Warning", isPresented: $showIncompleteDataWarning) {
-                Button("OK", role: .cancel) {
-                    SchwabClient.shared.showIncompleteDataWarning = false
-                }
-            } message: {
-                Text("The information for \(symbol) may be incomplete and inaccurate due to missing historical data.")
-            }
+        }
+        .onChange(of: SchwabClient.shared.showIncompleteDataWarning) { oldValue, newValue in
+            showIncompleteDataWarning = newValue
+        }
+        .alert("Incomplete Data Warning", isPresented: $showIncompleteDataWarning) {
+            Button("OK") { }
+        } message: {
+            Text("Some data may be incomplete or missing. Please refresh to get the latest information.")
         }
     }
 

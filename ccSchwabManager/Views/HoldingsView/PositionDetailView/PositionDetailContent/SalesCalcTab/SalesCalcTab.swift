@@ -18,7 +18,7 @@ struct SalesCalcTab: View {
                 isLoadingTaxLots: isLoadingTaxLots,
                 quoteData: quoteData
             )
-            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.9)
+            .frame(width: geometry.size.width * 0.96, height: geometry.size.height * 0.88)
         }
         .tabItem {
             Label("Sales Calc", systemImage: "calculator")

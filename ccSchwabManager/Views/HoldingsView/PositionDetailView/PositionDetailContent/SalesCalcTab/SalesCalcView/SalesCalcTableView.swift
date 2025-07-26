@@ -71,9 +71,12 @@ struct SalesCalcTable: View {
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
+        print("SalesCalcTableView: copyToClipboard(value: \(value), format: \(format)) -> formattedValue: \(formattedValue)")
 #if os(iOS)
         UIPasteboard.general.string = formattedValue
-        copiedValue = UIPasteboard.general.string ?? "no value"
+        let pastedValue = UIPasteboard.general.string ?? "no value"
+        copiedValue = pastedValue
+        print("SalesCalcTableView: iOS pasteboard - set: \(formattedValue), retrieved: \(pastedValue)")
 #else
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(formattedValue, forType: .string)
@@ -82,9 +85,12 @@ struct SalesCalcTable: View {
     }
     
     private func copyToClipboard(text: String) {
+        print("SalesCalcTableView: copyToClipboard(text: \(text))")
 #if os(iOS)
         UIPasteboard.general.string = text
-        copiedValue = UIPasteboard.general.string ?? "no value"
+        let pastedValue = UIPasteboard.general.string ?? "no value"
+        copiedValue = pastedValue
+        print("SalesCalcTableView: iOS pasteboard - set: \(text), retrieved: \(pastedValue)")
 #else
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -126,16 +132,24 @@ struct SalesCalcTable: View {
                 positionsData: sortedData,
                 viewSize: viewSize,
                 columnWidths: columnWidths,
-                copiedValue: $copiedValue
+                copiedValue: $copiedValue,
+                copyToClipboard: copyToClipboard,
+                copyToClipboardValue: copyToClipboard
             )
             if copiedValue != "TBD" {
                 Text("Copied: \(copiedValue)")
                     .font(.caption)
                     .foregroundColor(.green)
                     .padding(.horizontal)
+                    .onAppear {
+                        print("SalesCalcTableView: Displaying copied value: \(copiedValue)")
+                    }
             }
         }
         .frame(maxWidth: .infinity)
+        .onAppear {
+            print("SalesCalcTableView: Table initialized with \(sortedData.count) items for symbol \(symbol)")
+        }
     }
     
     private var headerRow: some View {
@@ -199,29 +213,8 @@ private struct TableContent: View {
     let viewSize: CGSize
     let columnWidths: [CGFloat]
     @Binding var copiedValue: String
-    
-    private func copyToClipboard(value: Double, format: String) {
-        let formattedValue = String(format: format, value)
-#if os(iOS)
-        UIPasteboard.general.string = formattedValue
-        copiedValue = UIPasteboard.general.string ?? "no value"
-#else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(formattedValue, forType: .string)
-        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
-#endif
-    }
-    
-    private func copyToClipboard(text: String) {
-#if os(iOS)
-        UIPasteboard.general.string = text
-        copiedValue = UIPasteboard.general.string ?? "no value"
-#else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
-#endif
-    }
+    let copyToClipboard: (String) -> Void
+    let copyToClipboardValue: (Double, String) -> Void
     
     var body: some View {
         ScrollView {
@@ -232,10 +225,10 @@ private struct TableContent: View {
                         viewSize: viewSize,
                         columnWidths: columnWidths,
                         copyToClipboard: { text in
-                            copyToClipboard(text: text)
+                            copyToClipboard(text)
                         },
                         copyToClipboardValue: { value, format in
-                            copyToClipboard(value: value, format: format)
+                            copyToClipboardValue(value, format)
                         },
                         isEvenRow: index % 2 == 0
                     )
@@ -272,6 +265,7 @@ private struct TableRow: View {
                 .frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
                 .foregroundStyle(daysSinceDateString(dateString: item.openDate) ?? 0 > 30 ? .green : .red)
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Open Date: \(item.openDate)")
                     copyToClipboard(item.openDate)
                 }
             
@@ -279,6 +273,7 @@ private struct TableRow: View {
                 .frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Quantity: \(item.quantity)")
                     copyToClipboardValue(item.quantity, "%.2f")
                 }
             
@@ -286,6 +281,7 @@ private struct TableRow: View {
                 .frame(width: columnWidths[2] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Price: \(item.price)")
                     copyToClipboardValue(item.price, "%.2f")
                 }
             
@@ -294,6 +290,7 @@ private struct TableRow: View {
                 .monospacedDigit()
                 .foregroundStyle(item.costPerShare > item.price ? .red : .primary)
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Cost/Share: \(item.costPerShare)")
                     copyToClipboardValue(item.costPerShare, "%.2f")
                 }
             
@@ -301,6 +298,7 @@ private struct TableRow: View {
                 .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Market Value: \(item.marketValue)")
                     copyToClipboardValue(item.marketValue, "%.2f")
                 }
             
@@ -308,6 +306,7 @@ private struct TableRow: View {
                 .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Cost Basis: \(item.costBasis)")
                     copyToClipboardValue(item.costBasis, "%.2f")
                 }
             
@@ -316,6 +315,7 @@ private struct TableRow: View {
                 .monospacedDigit()
                 .foregroundStyle(item.gainLossDollar > 0.0 ? .green : .red)
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Gain/Loss $: \(item.gainLossDollar)")
                     copyToClipboardValue(item.gainLossDollar, "%.2f")
                 }
             
@@ -324,6 +324,7 @@ private struct TableRow: View {
                 .monospacedDigit()
                 .foregroundStyle(item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red)
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Gain/Loss %: \(item.gainLossPct)")
                     copyToClipboardValue(item.gainLossPct, "%.2f")
                 }
             
@@ -332,6 +333,7 @@ private struct TableRow: View {
                 .monospacedDigit()
                 .foregroundStyle(item.splitMultiple > 1.0 ? .blue : .secondary)
                 .onTapGesture {
+                    print("SalesCalcTableView: Tap detected on Split: \(item.splitMultiple)")
                     copyToClipboardValue(item.splitMultiple, "%.0f")
                 }
         }

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **FIXED**: Sales Calc table layout and sizing issues
+  - Restored proper table sizing to maximize available space usage
+  - Fixed height constraint to use 88% of available height while leaving space for "Copied:" message
+  - Restored GeometryReader to ensure table properly fills available space
+  - Table now displays at full size like other tables in the application
+  - "Copied:" message remains visible at bottom when copy operations occur
 - **FIXED**: iOS copy-to-clipboard functionality in SalesCalcTableView
   - Fixed state management issue where copyToClipboard functions weren't properly updating the copiedValue state
   - Moved copyToClipboard functions to TableContent struct with proper @Binding for state updates
