@@ -2023,9 +2023,9 @@ class SchwabClient
             let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
             
             print("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
-            print("📤 [PLACE-ORDER]   📍 URL: \(placeOrderUrl)")
-            print("📤 [PLACE-ORDER]   🏦 Account Number: \(orderAccountNumber)")
-            print("📤 [PLACE-ORDER]   🔑 Account Hash: \(hashValue)")
+            // print("📤 [PLACE-ORDER]   📍 URL: \(placeOrderUrl)")
+            // print("📤 [PLACE-ORDER]   🏦 Account Number: \(orderAccountNumber)")
+            // print("📤 [PLACE-ORDER]   🔑 Account Hash: \(hashValue)")
             print("📤 [PLACE-ORDER]   📋 JSON Body:")
             print("📤 [PLACE-ORDER] \(jsonString)")
             
@@ -2045,7 +2045,9 @@ class SchwabClient
                     print("📤 [PLACE-ORDER] 📥 RESPONSE:")
                     print("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
                     print("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
-                    
+                    print(" [PLACE-ORDER]  \(httpResponse.description)")
+                    print(" [PLACE-ORDER]  \(httpResponse.debugDescription)")
+
                     if let responseString = String(data: data, encoding: .utf8) {
                         print("📤 [PLACE-ORDER]   📄 Response Body: \(responseString)")
                     }
@@ -2836,6 +2838,54 @@ class SchwabClient
     
     /**
      * Create an OCO order from selected buy and sell orders
+
+
+     🔄 [OCO-SUBMIT] JSON preview : {
+       "enteredTime" : "2025-07-26T13:45:59Z",
+       "editable" : false,
+       "cancelable" : true,
+       "releaseTime" : "2025-07-27T13:30:00Z",
+       "status" : "AWAITING_PARENT_ORDER",
+       "orderStrategyType" : "OCO",
+       "accountNumber" : 88516767,
+       "childOrderStrategies" : [
+         {
+           "remainingQuantity" : 37,
+           "priceLinkType" : "PERCENT",
+           "releaseTime" : "2025-07-27T13:30:00Z",
+           "stopType" : "BID",
+           "cancelable" : true,
+           "requestedDestination" : "AUTO",
+           "priceOffset" : 0.02,
+           "quantity" : 37,
+           "filledQuantity" : 0,
+           "priceLinkBasis" : "LAST",
+           "enteredTime" : "2025-07-27T13:30:00Z",
+           "destinationLinkName" : "AutoRoute",
+           "orderLegCollection" : [
+             {
+               "instruction" : "BUY",
+               "orderLegType" : "EQUITY",
+               "positionEffect" : "OPENING",
+               "instrument" : {
+                 "assetType" : "EQUITY",
+                 "symbol" : "PBI"
+               },
+               "legId" : 1,
+               "quantity" : 37
+             }
+           ],
+           "editable" : false,
+           "accountNumber" : 88516767,
+           "orderStrategyType" : "SINGLE",
+           "orderId" : 0,
+           "status" : "AWAITING_RELEASE_TIME",
+           "tag" : "API_TOS:CHART"
+         }
+       ]
+     }
+
+
      */
     public func createOCOOrder(
         symbol: String,
@@ -2880,14 +2930,14 @@ class SchwabClient
         
         // Create the parent OCO order
         let ocoOrder = Order(
-            complexOrderStrategyType: .NONE,
-            releaseTime: releaseTime,
+            // session: .NORMAL,
+            // duration: .GOOD_TILL_CANCEL,
+            // releaseTime: releaseTime,
             orderStrategyType: .OCO,
-            orderId: 0,
-            cancelable: true,
-            editable: false,
-            status: .awaitingParentOrder,
-            enteredTime: DateFormatter.schwabDateFormatter.string(from: Date()),
+            // cancelable: true,
+            // editable: false,
+            // status: .awaitingParentOrder,
+            // enteredTime: DateFormatter.schwabDateFormatter.string(from: Date()),
             accountNumber: accountNumber,
             childOrderStrategies: childOrderStrategies
         )
@@ -2898,6 +2948,53 @@ class SchwabClient
     
     /**
      * Create a child order for the OCO strategy
+
+     🔄 [OCO-SUBMIT] JSON preview : {
+       "enteredTime" : "2025-07-26T13:45:59Z",
+       "editable" : false,
+       "cancelable" : true,
+       "releaseTime" : "2025-07-27T13:30:00Z",
+       "status" : "AWAITING_PARENT_ORDER",
+       "orderStrategyType" : "OCO",
+       "accountNumber" : 88516767,
+       "childOrderStrategies" : [
+         {
+           "remainingQuantity" : 37,
+           "priceLinkType" : "PERCENT",
+           "releaseTime" : "2025-07-27T13:30:00Z",
+           "stopType" : "BID",
+           "cancelable" : true,
+           "requestedDestination" : "AUTO",
+           "priceOffset" : 0.02,
+           "quantity" : 37,
+           "filledQuantity" : 0,
+           "priceLinkBasis" : "LAST",
+           "enteredTime" : "2025-07-27T13:30:00Z",
+           "destinationLinkName" : "AutoRoute",
+           "orderLegCollection" : [
+             {
+               "instruction" : "BUY",
+               "orderLegType" : "EQUITY",
+               "positionEffect" : "OPENING",
+               "instrument" : {
+                 "assetType" : "EQUITY",
+                 "symbol" : "PBI"
+               },
+               "legId" : 1,
+               "quantity" : 37
+             }
+           ],
+           "editable" : false,
+           "accountNumber" : 88516767,
+           "orderStrategyType" : "SINGLE",
+           "orderId" : 0,
+           "status" : "AWAITING_RELEASE_TIME",
+           "tag" : "API_TOS:CHART"
+         }
+       ]
+     }
+
+     
      */
     private func createChildOrder(
         symbol: String,
@@ -2969,8 +3066,8 @@ class SchwabClient
             orderType: .TRAILING_STOP_LIMIT,
             complexOrderStrategyType: .NONE,
             quantity: quantity,
-            filledQuantity: 0,
-            remainingQuantity: quantity,
+            // filledQuantity: 0,
+            // remainingQuantity: quantity,
             requestedDestination: .AUTO,
             destinationLinkName: "AutoRoute",
             releaseTime: releaseTime,
@@ -2980,12 +3077,12 @@ class SchwabClient
             priceOffset: priceOffset,
             orderLegCollection: [orderLeg],
             orderStrategyType: .SINGLE,
-            orderId: 0,
+            // orderId: 0,
             cancelable: true,
             editable: false,
-            status: .awaitingReleaseTime,
-            enteredTime: releaseTime,
-            tag: "API_TOS:CHART",
+            // status: .awaitingReleaseTime,
+            // enteredTime: releaseTime,
+            // tag: "API_TOS:CHART",
             accountNumber: accountNumber
         )
         
