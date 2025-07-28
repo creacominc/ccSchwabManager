@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **ENHANCED**: Break-even calculation logic for profitable positions
+  - When the highest cost-per-share tax lot is already profitable, the system now uses enhanced logic:
+    - Target price is set to the average of cost-per-share and last price (instead of traditional break-even)
+    - Shares to sell are set to 50% of the highest tax lot (providing better position management)
+    - Entry price is set at 3/4 of the difference above cost-per-share (providing greater trailing stop room)
+    - Cancel price is set at 1/4 above cost-per-share (25% above cost basis)
+    - Trailing stop is calculated as 1/4 of the difference as percentage (dynamic based on profit potential)
+  - Original break-even logic is maintained for non-profitable highest cost lots
+  - This provides better risk management and larger trailing stops when the most expensive shares are already profitable
+- **SIMPLIFIED**: OCO order descriptions to remove problematic timing information
+  - Removed submit and cancel times from all order descriptions to eliminate timing-related issues
+  - Sell orders no longer include "GTC SUBMIT AT {time}" in descriptions
+  - Buy orders no longer include "Submit {date}" in descriptions
+  - OCO orders are now cleaner and focus on core order parameters without timing constraints
+  - This resolves issues with order submission timing and improves order clarity
+
 ### Fixed
 - **FIXED**: Sales Calc table layout and sizing issues
   - Restored proper table sizing to maximize available space usage

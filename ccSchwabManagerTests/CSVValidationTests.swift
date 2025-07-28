@@ -170,8 +170,7 @@ class CSVValidationTests: XCTestCase {
         let exit = target * 0.991
         
         let gain = ((target - costPerShare) / costPerShare) * 100.0
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToConsider, "TEST", entry, target, exit, costPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToConsider, "TEST", entry, target, exit, costPerShare)
         return SalesCalcResultsRecord(
             shares: sharesToConsider,
             rollingGainLoss: (target - costPerShare) * sharesToConsider,
@@ -251,8 +250,7 @@ class CSVValidationTests: XCTestCase {
         // Calculate the actual cost per share for the shares being sold
         let actualCostPerShare = cumulativeCost / cumulativeShares
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, "TEST", entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToSell, "TEST", entry, target, exit, actualCostPerShare)
         return SalesCalcResultsRecord(
             shares: sharesToSell,
             rollingGainLoss: totalGain,

@@ -300,7 +300,7 @@ struct RecommendedOCOOrdersSection: View {
         
         // Create description with profitability indicator
         let profitIndicator = isProfitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
-        let formattedDescription = String(format: "%@ SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", profitIndicator, finalSharesToConsider, symbol, entry, adjustedTarget, exit, actualCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "%@ SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", profitIndicator, finalSharesToConsider, symbol, entry, adjustedTarget, exit, actualCostPerShare)
         
         return SalesCalcResultsRecord(
             shares: finalSharesToConsider,
@@ -376,8 +376,7 @@ struct RecommendedOCOOrdersSection: View {
         print("Exit price: $\(exit) (0.9% below target, but never below actual cost per share $\(actualCostPerShare))")
         
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToSell, symbol, entry, target, exit, actualCostPerShare)
         print("✅ Min ATR order created: \(formattedDescription)")
         return SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -415,32 +414,74 @@ struct RecommendedOCOOrdersSection: View {
         print("=== calculateMinBreakEvenOrder ATR: \(atrValue)%")
         print("=== calculateMinBreakEvenOrder AATR (ATR/5): \(adjustedATR)%")
 
-        // According to sample.log: Entry = Last - 1 AATR%
-        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
-        print("=== calculateMinBreakEvenOrder Entry price: $\(entry) (Last - 1 AATR%)")
+        // Check if the highest cost-per-share tax lot is profitable
+        guard let highestCostLot = sortedTaxLots.first else { return nil }
+        let highestCostProfitPercent = ((currentPrice - highestCostLot.costPerShare) / highestCostLot.costPerShare) * 100.0
+        let isHighestCostLotProfitable = highestCostProfitPercent > 0
         
-        // According to sample.log: Target = Entry - 2 AATR%
-        let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
-        print("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
+        print("=== calculateMinBreakEvenOrder Highest cost lot: $\(highestCostLot.costPerShare), profit: \(highestCostProfitPercent)%")
+        print("=== calculateMinBreakEvenOrder Is highest cost lot profitable: \(isHighestCostLotProfitable)")
         
-        // Use the helper function to calculate minimum shares needed to achieve 1% gain at target price
-        guard let result = calculateMinimumSharesForGain(
-            targetGainPercent: 1.0,
-            targetPrice: target,
-            sortedTaxLots: sortedTaxLots
-        ) else {
-            print("❌ Min Break Even order: Could not achieve 1% gain at target price")
-            return nil
+        let entry: Double
+        let target: Double
+        let sharesToSell: Double
+        let actualCostPerShare: Double
+        
+        if isHighestCostLotProfitable {
+            // New logic: If highest cost lot is profitable
+            print("=== calculateMinBreakEvenOrder Using new profitable logic")
+            
+            // Set shares to 50% of the highest tax lot
+            sharesToSell = highestCostLot.quantity * 0.5
+            actualCostPerShare = highestCostLot.costPerShare
+            
+            // Use descriptive variable names for clarity
+            let costPerShare = actualCostPerShare
+            let lastPrice = currentPrice
+            
+            // Target price = (lastPrice + costPerShare)/2 or (lastPrice - costPerShare)/2 + costPerShare
+            target = (lastPrice + costPerShare) / 2.0
+            
+            // Entry point = (lastPrice - costPerShare)/4 + target (halfway between last and target)
+            entry = (lastPrice - costPerShare) / 4.0 + target
+            
+            // Trailing stop = 1/4 of the amount from entry to target
+            let trailingStopValue = ((entry - target) / target) * 100.0
+            
+            print("=== calculateMinBreakEvenOrder Cost per share: $\(costPerShare)")
+            print("=== calculateMinBreakEvenOrder Last price: $\(lastPrice)")
+            print("=== calculateMinBreakEvenOrder Target price: $\(target) = (lastPrice + costPerShare)/2")
+            print("=== calculateMinBreakEvenOrder Entry price: $\(entry) = (lastPrice - costPerShare)/4 + target")
+            print("=== calculateMinBreakEvenOrder Shares to sell: \(sharesToSell) (50% of highest lot)")
+            print("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 from entry to target)")
+            
+        } else {
+            // Original logic: Entry = Last - 1 AATR%, Target = Entry - 2 AATR%
+            print("=== calculateMinBreakEvenOrder Using original break-even logic")
+            
+            entry = currentPrice * (1.0 - adjustedATR / 100.0)
+            target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+            
+            print("=== calculateMinBreakEvenOrder Entry price: $\(entry) (Last - 1 AATR%)")
+            print("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
+            
+            // Use the helper function to calculate minimum shares needed to achieve 1% gain at target price
+            guard let result = calculateMinimumSharesForGain(
+                targetGainPercent: 1.0,
+                targetPrice: target,
+                sortedTaxLots: sortedTaxLots
+            ) else {
+                print("❌ Min Break Even order: Could not achieve 1% gain at target price")
+                return nil
+            }
+            
+            sharesToSell = result.sharesToSell
+            actualCostPerShare = result.actualCostPerShare
+            
+            print("=== calculateMinBreakEvenOrder Final calculation:")
+            print("=== calculateMinBreakEvenOrder  Shares to sell: \(sharesToSell)")
+            print("=== calculateMinBreakEvenOrder  Actual cost per share: $\(actualCostPerShare)")
         }
-        
-        let sharesToSell = result.sharesToSell
-        let totalGain = result.totalGain
-        let actualCostPerShare = result.actualCostPerShare
-        
-        print("=== calculateMinBreakEvenOrder Final calculation:")
-        print("=== calculateMinBreakEvenOrder  Shares to sell: \(sharesToSell)")
-        print("=== calculateMinBreakEvenOrder  Total gain: $\(totalGain)")
-        print("=== calculateMinBreakEvenOrder  Actual cost per share: $\(actualCostPerShare)")
         
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
@@ -448,22 +489,45 @@ struct RecommendedOCOOrdersSection: View {
             return nil
         }
         
-        // According to sample.log: Cancel = Target - 2 AATR%
-        // But ensure exit is never below the actual cost per share of the shares being sold
-        let exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
-        print("=== calculateMinBreakEvenOrder Exit price: $\(exit) (Target - 2 AATR%, but never below actual cost per share $\(actualCostPerShare))")
+        // Calculate exit price
+        let exit: Double
+        if isHighestCostLotProfitable {
+            // Exit (cancel) = target - (lastPrice - costPerShare)/4 (1/4 below target)
+            let costPerShare = actualCostPerShare
+            let lastPrice = currentPrice
+            exit = target - (lastPrice - costPerShare) / 4.0
+        } else {
+            // Original logic: Cancel = Target - 2 AATR%, but never below actual cost per share
+            exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
+        }
         
+        print("=== calculateMinBreakEvenOrder Exit price: $\(exit) = target - (lastPrice - costPerShare)/4")
+        
+        // Verify the ordering: Entry > Target > Exit > Cost-per-share for sell orders
+        print("=== calculateMinBreakEvenOrder Ordering verification:")
+        print("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > CostPerShare ($\(actualCostPerShare))")
+        print("=== calculateMinBreakEvenOrder Entry > Target: \(entry > target)")
+        print("=== calculateMinBreakEvenOrder Target > Exit: \(target > exit)")
+        print("=== calculateMinBreakEvenOrder Exit > CostPerShare: \(exit > actualCostPerShare)")
+        
+        let totalGain = sharesToSell * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC SUBMIT AT %@", sharesToSell, symbol, entry, target, exit, actualCostPerShare, formatReleaseTime(tomorrow))
+        
+        // Calculate trailing stop value
+        let trailingStopValue = isHighestCostLotProfitable ? 
+            ((entry - target) / target) * 100.0 : adjustedATR
+        
+        // Remove submit time from description
+        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToSell, symbol, entry, target, exit, actualCostPerShare)
         print("=== calculateMinBreakEvenOrder ✅ Min break even order created: \(formattedDescription)")
+        
         return SalesCalcResultsRecord(
             shares: sharesToSell,
             rollingGainLoss: totalGain,
             breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: sharesToSell,
-            trailingStop: adjustedATR,
+            trailingStop: trailingStopValue,
             entry: entry,
             target: target,
             cancel: exit,
@@ -565,10 +629,9 @@ struct RecommendedOCOOrdersSection: View {
         
         let (submitDate, isImmediate) = calculateSubmitDate()
         let formattedDescription = String(
-            format: "BUY %.0f %@ Submit %@ BID >= %.2f TS = %.1f%% Target = %.2f TargetGain = %.1f%%",
+            format: "BUY %.0f %@ BID >= %.2f TS = %.1f%% Target = %.2f TargetGain = %.1f%%",
             finalSharesToBuy,
             symbol,
-            submitDate,
             entryPrice,
             atrValue,
             targetBuyPrice,
