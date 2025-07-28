@@ -416,22 +416,25 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell = highestCostLot.quantity * 0.5
             actualCostPerShare = highestCostLot.costPerShare
             
-            // Target price = average of cost-per-share and last price
-            target = (actualCostPerShare + currentPrice) / 2.0
+            // Let C = cost per share, L = last price (current price)
+            let C = actualCostPerShare
+            let L = currentPrice
             
-            // Calculate the difference for trailing stop calculation
-            let difference = target - actualCostPerShare
+            // Target price T = (L + C)/2 or T = (L - C)/2 + C
+            target = (L + C) / 2.0
             
-            // Entry = 3/4 of the difference above cost-per-share
-            entry = actualCostPerShare + (difference * 0.75)
+            // Entry point E = (L - C)/4 + T (halfway between last and target)
+            entry = (L - C) / 4.0 + target
             
-            // Trailing stop = 1/4 of the difference as percentage
-            let trailingStopValue = (difference * 0.25 / actualCostPerShare) * 100.0
+            // Trailing stop = 1/4 of the amount from entry to target
+            let trailingStopValue = ((entry - target) / target) * 100.0
             
-            print("=== calculateMinBreakEvenOrder Target price: $\(target) (average of cost $\(actualCostPerShare) and last $\(currentPrice))")
-            print("=== calculateMinBreakEvenOrder Entry price: $\(entry) (3/4 of difference above cost)")
+            print("=== calculateMinBreakEvenOrder Cost per share (C): $\(C)")
+            print("=== calculateMinBreakEvenOrder Last price (L): $\(L)")
+            print("=== calculateMinBreakEvenOrder Target price (T): $\(target) = (L + C)/2")
+            print("=== calculateMinBreakEvenOrder Entry price (E): $\(entry) = (L - C)/4 + T")
             print("=== calculateMinBreakEvenOrder Shares to sell: \(sharesToSell) (50% of highest lot)")
-            print("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 of difference)")
+            print("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 from entry to target)")
             
         } else {
             // Original logic: Entry = Last - 1 AATR%, Target = Entry - 2 AATR%
@@ -470,21 +473,30 @@ struct RecommendedOCOOrdersSection: View {
         // Calculate exit price
         let exit: Double
         if isHighestCostLotProfitable {
-            // Cancel = 1/4 above cost-per-share
-            exit = actualCostPerShare * 1.25
+            // Exit (cancel) X = T - (L - C)/4 (1/4 below target)
+            let C = actualCostPerShare
+            let L = currentPrice
+            exit = target - (L - C) / 4.0
         } else {
             // Original logic: Cancel = Target - 2 AATR%, but never below actual cost per share
             exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
         }
         
-        print("=== calculateMinBreakEvenOrder Exit price: $\(exit)")
+        print("=== calculateMinBreakEvenOrder Exit price (X): $\(exit) = T - (L - C)/4")
+        
+        // Verify the ordering: Entry > Target > Exit > Cost-per-share for sell orders
+        print("=== calculateMinBreakEvenOrder Ordering verification:")
+        print("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > Cost ($\(actualCostPerShare))")
+        print("=== calculateMinBreakEvenOrder Entry > Target: \(entry > target)")
+        print("=== calculateMinBreakEvenOrder Target > Exit: \(target > exit)")
+        print("=== calculateMinBreakEvenOrder Exit > Cost: \(exit > actualCostPerShare)")
         
         let totalGain = sharesToSell * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         
         // Calculate trailing stop value
         let trailingStopValue = isHighestCostLotProfitable ? 
-            ((target - actualCostPerShare) * 0.25 / actualCostPerShare) * 100.0 : adjustedATR
+            ((entry - target) / target) * 100.0 : adjustedATR
         
         // Remove submit time from description
         let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToSell, symbol, entry, target, exit, actualCostPerShare)
