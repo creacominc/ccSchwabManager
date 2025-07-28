@@ -22,4 +22,4 @@ struct BuyOrderRecord: Identifiable
     var orderType: String = ""
     var submitDate: String = ""
     var isImmediate: Bool = false
-} 
+}
