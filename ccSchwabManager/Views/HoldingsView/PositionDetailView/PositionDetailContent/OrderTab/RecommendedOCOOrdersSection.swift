@@ -416,23 +416,23 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell = highestCostLot.quantity * 0.5
             actualCostPerShare = highestCostLot.costPerShare
             
-            // Let C = cost per share, L = last price (current price)
-            let C = actualCostPerShare
-            let L = currentPrice
+            // Use descriptive variable names for clarity
+            let costPerShare = actualCostPerShare
+            let lastPrice = currentPrice
             
-            // Target price T = (L + C)/2 or T = (L - C)/2 + C
-            target = (L + C) / 2.0
+            // Target price = (lastPrice + costPerShare)/2 or (lastPrice - costPerShare)/2 + costPerShare
+            target = (lastPrice + costPerShare) / 2.0
             
-            // Entry point E = (L - C)/4 + T (halfway between last and target)
-            entry = (L - C) / 4.0 + target
+            // Entry point = (lastPrice - costPerShare)/4 + target (halfway between last and target)
+            entry = (lastPrice - costPerShare) / 4.0 + target
             
             // Trailing stop = 1/4 of the amount from entry to target
             let trailingStopValue = ((entry - target) / target) * 100.0
             
-            print("=== calculateMinBreakEvenOrder Cost per share (C): $\(C)")
-            print("=== calculateMinBreakEvenOrder Last price (L): $\(L)")
-            print("=== calculateMinBreakEvenOrder Target price (T): $\(target) = (L + C)/2")
-            print("=== calculateMinBreakEvenOrder Entry price (E): $\(entry) = (L - C)/4 + T")
+            print("=== calculateMinBreakEvenOrder Cost per share: $\(costPerShare)")
+            print("=== calculateMinBreakEvenOrder Last price: $\(lastPrice)")
+            print("=== calculateMinBreakEvenOrder Target price: $\(target) = (lastPrice + costPerShare)/2")
+            print("=== calculateMinBreakEvenOrder Entry price: $\(entry) = (lastPrice - costPerShare)/4 + target")
             print("=== calculateMinBreakEvenOrder Shares to sell: \(sharesToSell) (50% of highest lot)")
             print("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 from entry to target)")
             
@@ -473,23 +473,23 @@ struct RecommendedOCOOrdersSection: View {
         // Calculate exit price
         let exit: Double
         if isHighestCostLotProfitable {
-            // Exit (cancel) X = T - (L - C)/4 (1/4 below target)
-            let C = actualCostPerShare
-            let L = currentPrice
-            exit = target - (L - C) / 4.0
+            // Exit (cancel) = target - (lastPrice - costPerShare)/4 (1/4 below target)
+            let costPerShare = actualCostPerShare
+            let lastPrice = currentPrice
+            exit = target - (lastPrice - costPerShare) / 4.0
         } else {
             // Original logic: Cancel = Target - 2 AATR%, but never below actual cost per share
             exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
         }
         
-        print("=== calculateMinBreakEvenOrder Exit price (X): $\(exit) = T - (L - C)/4")
+        print("=== calculateMinBreakEvenOrder Exit price: $\(exit) = target - (lastPrice - costPerShare)/4")
         
         // Verify the ordering: Entry > Target > Exit > Cost-per-share for sell orders
         print("=== calculateMinBreakEvenOrder Ordering verification:")
-        print("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > Cost ($\(actualCostPerShare))")
+        print("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > CostPerShare ($\(actualCostPerShare))")
         print("=== calculateMinBreakEvenOrder Entry > Target: \(entry > target)")
         print("=== calculateMinBreakEvenOrder Target > Exit: \(target > exit)")
-        print("=== calculateMinBreakEvenOrder Exit > Cost: \(exit > actualCostPerShare)")
+        print("=== calculateMinBreakEvenOrder Exit > CostPerShare: \(exit > actualCostPerShare)")
         
         let totalGain = sharesToSell * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
