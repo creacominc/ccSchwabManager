@@ -805,7 +805,7 @@ struct RecommendedOCOOrdersSection: View {
         .sheet(isPresented: $showingConfirmationDialog) {
             confirmationDialogView
         }
-        .onChange(of: showingConfirmationDialog) { isPresented in
+        .onChange(of: showingConfirmationDialog) { _, isPresented in
             if isPresented {
                 print("=== Sheet is being presented ===")
                 print("orderDescriptions count: \(orderDescriptions.count)")
@@ -1038,7 +1038,7 @@ struct RecommendedOCOOrdersSection: View {
             let jsonData = try encoder.encode(ocoOrder)
             orderJson = String(data: jsonData, encoding: .utf8) ?? "{}"
             print("🔄 [OCO-SUBMIT] JSON created successfully, length: \(orderJson.count)")
-            print("🔄 [OCO-SUBMIT] JSON preview (first 200 chars): \(String(orderJson.prefix(200)))")
+            print("🔄 [OCO-SUBMIT] JSON preview : \(String(orderJson))")
         } catch {
             orderJson = "Error encoding order: \(error)"
             print("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
