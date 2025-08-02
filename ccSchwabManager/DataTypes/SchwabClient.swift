@@ -2669,22 +2669,6 @@ class SchwabClient
                                         
                                         let decoder = JSONDecoder()
                                         let transactions = try decoder.decode([Transaction].self, from: data)
-
-//                                        /** @TODO:  REMOVE */
-//                                        if true { // if TransactionType.receiveAndDeliver == transactionType {
-//                                            // Check if any transaction contains "FAST" as a symbol
-//                                            for transaction in transactions {
-//                                                for transferItem in transaction.transferItems {
-//                                                    if transferItem.instrument?.symbol  == "FAST" { // != "MMDA1" { //
-//                                                        // print the data for debugging
-//                                                        print(" ***** fetchTransactionHistoryReduced: Found \(transactionType.rawValue)  \(transferItem.instrument?.symbol ?? "n/a") transaction: ")
-//                                                        print("       \(transaction.dump())")
-//                                                        //break
-//                                                    }
-//                                                }
-//                                            }
-//                                        }
-                                        
                                         return transactions
                                     } catch {
                                         print("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
@@ -2838,9 +2822,7 @@ class SchwabClient
     
     /**
      * Create an OCO order from selected buy and sell orders
-
-
-     🔄 [OCO-SUBMIT] JSON preview : {
+       [OCO-SUBMIT] JSON preview : {
        "enteredTime" : "2025-07-26T13:45:59Z",
        "editable" : false,
        "cancelable" : true,
@@ -2884,13 +2866,7 @@ class SchwabClient
          }
        ]
      }
-
-
-     
      */
-
-
-
     public func createOrder(
         symbol: String,
         accountNumber: Int64,
@@ -3002,9 +2978,9 @@ class SchwabClient
                 quantity: sellOrder.sharesToSell
             )
             
-            // Calculate trailing stop as percentage from target to current price
+            // Calculate trailing stop as 90% of the percentage from target to current price
             // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0
+            let trailingStopPercent = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0 * 0.90
             
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(sellOrder.target * 100) / 100
@@ -3057,9 +3033,9 @@ class SchwabClient
                 quantity: buyOrder.sharesToBuy
             )
             
-            // Calculate trailing stop as percentage from current price to target
+            // Calculate trailing stop as 90% of the percentage from current price to target
             // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent = ((buyOrder.targetBuyPrice - currentPrice) / currentPrice) * 100.0
+            let trailingStopPercent = ((buyOrder.targetBuyPrice - currentPrice) / currentPrice) * 100.0 * 0.90
             
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(buyOrder.targetBuyPrice * 100) / 100
@@ -3096,178 +3072,6 @@ class SchwabClient
         print("❌ Unknown order type: \(orderType)")
         return nil
     }
-    
-    /**
-     * Create a child order for the OCO strategy
 
-     🔄 [OCO-SUBMIT] JSON preview : {
-       "enteredTime" : "2025-07-26T13:45:59Z",
-       "editable" : false,
-       "cancelable" : true,
-       "releaseTime" : "2025-07-27T13:30:00Z",
-       "status" : "AWAITING_PARENT_ORDER",
-       "orderStrategyType" : "OCO",
-       "accountNumber" : 00000767,
-       "childOrderStrategies" : [
-         {
-           "remainingQuantity" : 37,
-           "priceLinkType" : "PERCENT",
-           "releaseTime" : "2025-07-27T13:30:00Z",
-           "stopType" : "BID",
-           "cancelable" : true,
-           "requestedDestination" : "AUTO",
-           "priceOffset" : 0.02,
-           "quantity" : 37,
-           "filledQuantity" : 0,
-           "priceLinkBasis" : "LAST",
-           "enteredTime" : "2025-07-27T13:30:00Z",
-           "destinationLinkName" : "AutoRoute",
-           "orderLegCollection" : [
-             {
-               "instruction" : "BUY",
-               "orderLegType" : "EQUITY",
-               "positionEffect" : "OPENING",
-               "instrument" : {
-                 "assetType" : "EQUITY",
-                 "symbol" : "PBI"
-               },
-               "legId" : 1,
-               "quantity" : 37
-             }
-           ],
-           "editable" : false,
-           "accountNumber" : 00000767,
-           "orderStrategyType" : "SINGLE",
-           "orderId" : 0,
-           "status" : "AWAITING_RELEASE_TIME",
-           "tag" : "API_TOS:CHART"
-         }
-       ]
-     }
-
-     
-     */
-    private func createChildOrder(
-        symbol: String,
-        accountNumber: Int64,
-        orderType: String,
-        order: Any,
-        // releaseTime: String,
-        legId: Int
-    ) -> Order? {
-        
-        var quantity: Double = 0.0
-        var instruction: OrderInstructionType = .BUY
-        // var positionEffect: PositionEffectType = .OPENING
-        // var priceOffset: Double = 0.0  // OLD CODE (commented out) - no longer used with MANUAL stop price
-        var stopType: StopType = .BID
-        var targetPrice: Double = 0.0
-        var entryPrice: Double = 0.0
-        var currentPrice: Double = 0.0
-        
-        // Extract order details based on type
-        if orderType == "BUY", let buyOrder = order as? BuyOrderRecord {
-            quantity = buyOrder.sharesToBuy
-            instruction = .BUY
-//            positionEffect = .OPENING
-            // OLD CODE (commented out): priceOffset = 0.02 // 2% above bid
-            stopType = .BID
-            targetPrice = buyOrder.targetBuyPrice
-            entryPrice = buyOrder.entryPrice
-            // For buy orders, use the entry price as current price for trailing stop calculation
-            currentPrice = entryPrice
-            print("  📊 Buy Order Details:")
-            print("    Quantity: \(quantity)")
-            print("    Target Price: \(targetPrice)")
-            print("    Entry Price: \(entryPrice)")
-        } else if orderType == "SELL", let sellOrder = order as? SalesCalcResultsRecord {
-            quantity = sellOrder.sharesToSell
-            instruction = .SELL
-//            positionEffect = .CLOSING
-            // OLD CODE (commented out): priceOffset = -0.02 // 2% below ask
-            stopType = .ASK
-            targetPrice = sellOrder.target
-            entryPrice = sellOrder.entry
-            // For sell orders, use the entry price as current price for trailing stop calculation
-            currentPrice = entryPrice
-            print("  📊 Sell Order Details:")
-            print("    Quantity: \(quantity)")
-            print("    Target Price: \(targetPrice)")
-            print("    Entry Price: \(entryPrice)")
-        } else {
-            print("❌ Unknown order type: \(orderType)")
-            return nil
-        }
-        
-        guard quantity > 0 else {
-            print("❌ Invalid quantity: \(quantity)")
-            return nil
-        }
-        
-        // Calculate the trailing stop percentage based on target price vs current price
-        // This ensures the stop is set correctly relative to the target price
-        let trailingStopPercent = abs((targetPrice - currentPrice) / currentPrice) * 100.0
-        print("  📊 Trailing Stop Calculation:")
-        print("    Target Price: \(targetPrice)")
-        print("    Current Price: \(currentPrice)")
-        print("    Trailing Stop %: \(trailingStopPercent)")
-        
-        // Round prices and percentages to the penny (2 decimal places)
-        let roundedTargetPrice = round(targetPrice * 100) / 100
-        let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
-        
-        print("  📊 Rounded Values:")
-        print("    Rounded Target Price: \(roundedTargetPrice)")
-        print("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
-        
-        // Create the instrument
-        let instrument = AccountsInstrument(
-            assetType: .EQUITY,
-            symbol: symbol
-        )
-        
-        // Create the order leg collection
-        let orderLeg = OrderLegCollection(
-            orderLegType: .EQUITY,
-            legId: Int64(legId),
-            instrument: instrument,
-            instruction: instruction,
-//            positionEffect: positionEffect,
-            quantity: 1 // !!!!!!! REPLACE quantity
-        )
-        
-        // Create the child order with MANUAL stop price link basis and target price as stop price
-        let childOrder = Order(
-            session: .NORMAL,
-            duration: .GOOD_TILL_CANCEL,
-            orderType: .TRAILING_STOP_LIMIT,
-            complexOrderStrategyType: .NONE,
-            quantity: 1, // !!!!!! REPLACE quantity,
-            // filledQuantity: 0,
-            // remainingQuantity: quantity,
-            // requestedDestination: .AUTO,
-            // destinationLinkName: "AutoRoute",
-            // releaseTime: releaseTime,
-            stopPrice: roundedTargetPrice,
-            stopPriceLinkBasis: .MANUAL,
-            stopPriceLinkType: .VALUE,
-            // stopPriceOffset: 0.0, // No offset needed for manual price
-            stopType: stopType,
-            priceLinkBasis: .LAST,
-            priceLinkType: .PERCENT,
-            priceOffset: roundedTrailingStopPercent,
-            orderLegCollection: [orderLeg],
-            orderStrategyType: .SINGLE,
-            // orderId: 0,
-            cancelable: true,
-            editable: false,
-            // status: .awaitingReleaseTime,
-            // enteredTime: releaseTime,
-            // tag: "API_TOS:CHART",
-            accountNumber: accountNumber
-        )
-        
-        return childOrder
-    }
 
 } // SchwabClient
