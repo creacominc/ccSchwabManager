@@ -2847,7 +2847,7 @@ class SchwabClient
        "releaseTime" : "2025-07-27T13:30:00Z",
        "status" : "AWAITING_PARENT_ORDER",
        "orderStrategyType" : "OCO",
-       "accountNumber" : 88516767,
+       "accountNumber" : 00000767,
        "childOrderStrategies" : [
          {
            "remainingQuantity" : 37,
@@ -2876,7 +2876,7 @@ class SchwabClient
              }
            ],
            "editable" : false,
-           "accountNumber" : 88516767,
+           "accountNumber" : 00000767,
            "orderStrategyType" : "SINGLE",
            "orderId" : 0,
            "status" : "AWAITING_RELEASE_TIME",
@@ -2886,7 +2886,11 @@ class SchwabClient
      }
 
 
+     
      */
+
+
+
     public func createOCOOrder(
         symbol: String,
         accountNumber: Int64,
@@ -2899,27 +2903,21 @@ class SchwabClient
         print("Selected Orders Count: \(selectedOrders.count)")
         print("Release Time: \(releaseTime)")
         
-        guard !selectedOrders.isEmpty else {
-            print("❌ No orders selected")
-            return nil
-        }
-        
-        // Create child order strategies
+        // Create child order strategies based on the working sample_order7.py pattern
         var childOrderStrategies: [Order] = []
         
         for (index, (orderType, order)) in selectedOrders.enumerated() {
-            if let childOrder = createChildOrder(
+            if let childOrder = createSimplifiedChildOrder(
                 symbol: symbol,
                 accountNumber: accountNumber,
                 orderType: orderType,
                 order: order,
-                releaseTime: releaseTime,
                 legId: index + 1
             ) {
                 childOrderStrategies.append(childOrder)
-                print("✅ Created child order \(index + 1): \(orderType)")
+                print("✅ Created simplified child order \(index + 1): \(orderType)")
             } else {
-                print("❌ Failed to create child order \(index + 1): \(orderType)")
+                print("❌ Failed to create simplified child order \(index + 1): \(orderType)")
             }
         }
         
@@ -2928,22 +2926,131 @@ class SchwabClient
             return nil
         }
         
-        // Create the parent OCO order
+        // Create the parent OCO order (simplified - no timing constraints)
         let ocoOrder = Order(
-            // session: .NORMAL,
-            // duration: .GOOD_TILL_CANCEL,
-            // releaseTime: releaseTime,
             orderStrategyType: .OCO,
-            // cancelable: true,
-            // editable: false,
-            // status: .awaitingParentOrder,
-            // enteredTime: DateFormatter.schwabDateFormatter.string(from: Date()),
             accountNumber: accountNumber,
-            childOrderStrategies: childOrderStrategies
+            childOrderStrategies: childOrderStrategies,
+            statusDescription: "Simplified OCO order"
         )
         
-        print("✅ Created OCO order with \(childOrderStrategies.count) child orders")
+        print("✅ Created simplified OCO order with \(childOrderStrategies.count) child orders")
         return ocoOrder
+    }
+    
+    /**
+     * Create a simplified child order that matches the working sample_order7.py pattern
+     */
+    private func createSimplifiedChildOrder(
+        symbol: String,
+        accountNumber: Int64,
+        orderType: String,
+        order: Any,
+        legId: Int
+    ) -> Order? {
+        
+        // Create the instrument
+        let instrument = AccountsInstrument(
+            assetType: .EQUITY,
+            symbol: symbol
+        )
+        
+        if orderType == "SELL" {
+            guard let sellOrder = order as? SalesCalcResultsRecord else {
+                print("❌ Invalid sell order type")
+                return nil
+            }
+            
+            print("Creating simplified SELL order:")
+            print("  Shares: \(sellOrder.sharesToSell)")
+            print("  Target: \(sellOrder.target)")
+            print("  Entry: \(sellOrder.entry)")
+            print("  Cancel: \(sellOrder.cancel)")
+            
+            // Create the order leg collection for SELL
+            let orderLeg = OrderLegCollection(
+                orderLegType: .EQUITY,
+                legId: Int64(legId),
+                instrument: instrument,
+                instruction: .SELL,
+                quantity: sellOrder.sharesToSell
+            )
+            
+            // Calculate trailing stop as percentage from target to current price
+            // This reflects how far the price would have to move to reach the target
+            let trailingStopPercent = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0
+            
+            // Create simplified SELL order matching sample_order7.py pattern
+            let childOrder = Order(
+                session: .NORMAL,
+                duration: .GOOD_TILL_CANCEL,
+                orderType: .TRAILING_STOP_LIMIT,
+                complexOrderStrategyType: .NONE,
+                quantity: sellOrder.sharesToSell,
+                stopPriceLinkBasis: .ASK,
+                stopPriceLinkType: .PERCENT,
+                stopPriceOffset: trailingStopPercent,
+                stopType: .ASK,
+                priceLinkBasis: .MANUAL,
+                price: sellOrder.target, // Use target price as limit price
+                orderLegCollection: [orderLeg],
+                orderStrategyType: .SINGLE,
+                cancelable: true,
+                editable: false,
+                accountNumber: accountNumber
+            )
+            
+            return childOrder
+            
+        } else if orderType == "BUY" {
+            guard let buyOrder = order as? BuyOrderRecord else {
+                print("❌ Invalid buy order type")
+                return nil
+            }
+            
+            print("Creating simplified BUY order:")
+            print("  Shares: \(buyOrder.sharesToBuy)")
+            print("  Target: \(buyOrder.targetBuyPrice)")
+            print("  Entry: \(buyOrder.entryPrice)")
+            
+            // Create the order leg collection for BUY
+            let orderLeg = OrderLegCollection(
+                orderLegType: .EQUITY,
+                legId: Int64(legId),
+                instrument: instrument,
+                instruction: .BUY,
+                quantity: buyOrder.sharesToBuy
+            )
+            
+            // Calculate trailing stop as percentage from current price to target
+            // This reflects how far the price would have to move to reach the target
+            let trailingStopPercent = ((buyOrder.targetBuyPrice - buyOrder.entryPrice) / buyOrder.entryPrice) * 100.0
+            
+            // Create simplified BUY order matching sample_order7.py pattern
+            let childOrder = Order(
+                session: .NORMAL,
+                duration: .GOOD_TILL_CANCEL,
+                orderType: .TRAILING_STOP_LIMIT,
+                complexOrderStrategyType: .NONE,
+                quantity: buyOrder.sharesToBuy,
+                stopPriceLinkBasis: .BID,
+                stopPriceLinkType: .PERCENT,
+                stopPriceOffset: trailingStopPercent,
+                stopType: .BID,
+                priceLinkBasis: .MANUAL,
+                price: buyOrder.targetBuyPrice, // Use target price as limit price
+                orderLegCollection: [orderLeg],
+                orderStrategyType: .SINGLE,
+                cancelable: true,
+                editable: false,
+                accountNumber: accountNumber
+            )
+            
+            return childOrder
+        }
+        
+        print("❌ Unknown order type: \(orderType)")
+        return nil
     }
     
     /**
@@ -2956,7 +3063,7 @@ class SchwabClient
        "releaseTime" : "2025-07-27T13:30:00Z",
        "status" : "AWAITING_PARENT_ORDER",
        "orderStrategyType" : "OCO",
-       "accountNumber" : 88516767,
+       "accountNumber" : 00000767,
        "childOrderStrategies" : [
          {
            "remainingQuantity" : 37,
@@ -2985,7 +3092,7 @@ class SchwabClient
              }
            ],
            "editable" : false,
-           "accountNumber" : 88516767,
+           "accountNumber" : 00000767,
            "orderStrategyType" : "SINGLE",
            "orderId" : 0,
            "status" : "AWAITING_RELEASE_TIME",
@@ -3001,38 +3108,46 @@ class SchwabClient
         accountNumber: Int64,
         orderType: String,
         order: Any,
-        releaseTime: String,
+        // releaseTime: String,
         legId: Int
     ) -> Order? {
         
         var quantity: Double = 0.0
         var instruction: OrderInstructionType = .BUY
         var positionEffect: PositionEffectType = .OPENING
-        var priceOffset: Double = 0.0
+        // var priceOffset: Double = 0.0  // OLD CODE (commented out) - no longer used with MANUAL stop price
         var stopType: StopType = .BID
         var targetPrice: Double = 0.0
+        var entryPrice: Double = 0.0
+        var currentPrice: Double = 0.0
         
         // Extract order details based on type
         if orderType == "BUY", let buyOrder = order as? BuyOrderRecord {
             quantity = buyOrder.sharesToBuy
             instruction = .BUY
-            positionEffect = .OPENING
-            priceOffset = 0.02 // 2% above bid
+//            positionEffect = .OPENING
+            // OLD CODE (commented out): priceOffset = 0.02 // 2% above bid
             stopType = .BID
             targetPrice = buyOrder.targetBuyPrice
+            entryPrice = buyOrder.entryPrice
+            currentPrice = entryPrice // Use entry price as current price for calculation
             print("  📊 Buy Order Details:")
             print("    Quantity: \(quantity)")
             print("    Target Price: \(targetPrice)")
+            print("    Entry Price: \(entryPrice)")
         } else if orderType == "SELL", let sellOrder = order as? SalesCalcResultsRecord {
             quantity = sellOrder.sharesToSell
             instruction = .SELL
-            positionEffect = .CLOSING
-            priceOffset = -0.02 // 2% below ask
+//            positionEffect = .CLOSING
+            // OLD CODE (commented out): priceOffset = -0.02 // 2% below ask
             stopType = .ASK
             targetPrice = sellOrder.target
+            entryPrice = sellOrder.entry
+            currentPrice = entryPrice // Use entry price as current price for calculation
             print("  📊 Sell Order Details:")
             print("    Quantity: \(quantity)")
             print("    Target Price: \(targetPrice)")
+            print("    Entry Price: \(entryPrice)")
         } else {
             print("❌ Unknown order type: \(orderType)")
             return nil
@@ -3042,6 +3157,14 @@ class SchwabClient
             print("❌ Invalid quantity: \(quantity)")
             return nil
         }
+        
+        // Calculate the trailing stop percentage to compensate for inability to set entry prices
+        // The trailing stop should be the percent difference between current price and entry price
+        let trailingStopPercent = abs((currentPrice - entryPrice) / entryPrice) * 100.0
+        print("  📊 Trailing Stop Calculation:")
+        print("    Current Price: \(currentPrice)")
+        print("    Entry Price: \(entryPrice)")
+        print("    Trailing Stop %: \(trailingStopPercent)")
         
         // Create the instrument
         let instrument = AccountsInstrument(
@@ -3055,26 +3178,30 @@ class SchwabClient
             legId: Int64(legId),
             instrument: instrument,
             instruction: instruction,
-            positionEffect: positionEffect,
-            quantity: quantity
+//            positionEffect: positionEffect,
+            quantity: 1 // !!!!!!! REPLACE quantity
         )
         
-        // Create the child order
+        // Create the child order with MANUAL stop price link basis and target price as stop price
         let childOrder = Order(
             session: .NORMAL,
             duration: .GOOD_TILL_CANCEL,
             orderType: .TRAILING_STOP_LIMIT,
             complexOrderStrategyType: .NONE,
-            quantity: quantity,
+            quantity: 1, // !!!!!! REPLACE quantity,
             // filledQuantity: 0,
             // remainingQuantity: quantity,
-            requestedDestination: .AUTO,
-            destinationLinkName: "AutoRoute",
-            releaseTime: releaseTime,
+            // requestedDestination: .AUTO,
+            // destinationLinkName: "AutoRoute",
+            // releaseTime: releaseTime,
+            stopPrice: targetPrice,
+            stopPriceLinkBasis: .MANUAL,
+            stopPriceLinkType: .VALUE,
+            // stopPriceOffset: 0.0, // No offset needed for manual price
             stopType: stopType,
             priceLinkBasis: .LAST,
             priceLinkType: .PERCENT,
-            priceOffset: priceOffset,
+            priceOffset: trailingStopPercent,
             orderLegCollection: [orderLeg],
             orderStrategyType: .SINGLE,
             // orderId: 0,

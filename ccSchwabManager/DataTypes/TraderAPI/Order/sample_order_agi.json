@@ -1,0 +1,63 @@
+{
+  "accountNumber" : 487,
+  "orderStrategyType" : "OCO",
+  "childOrderStrategies" : [
+    {
+      "orderType": "TRAILING_STOP_LIMIT",
+      "session": "NORMAL",
+      "duration": "GOOD_TILL_CANCEL",
+      "orderLegCollection" : [
+        {
+          "instruction" : "BUY",
+          "quantity" : 17,
+          "orderLegType" : "EQUITY",
+          "legId" : 1,
+          "instrument" : {
+            "assetType" : "EQUITY",
+            "symbol" : "AGI"
+          }
+        }
+      ],
+      "cancelable" : true,
+      "stopPriceOffset" : 4.00808465608466,
+      "stopPriceLinkType" : "PERCENT",
+      "accountNumber" : 487,
+      "price" : 28.825633095315325,
+      "priceLinkBasis" : "MANUAL",
+      "stopType" : "BID",
+      "orderStrategyType" : "SINGLE",
+      "editable" : false,
+      "stopPriceLinkBasis" : "BID",
+      "destinationLinkName" : "AutoRoute"
+    },
+    {
+      "orderType": "TRAILING_STOP_LIMIT",
+      "session": "NORMAL",
+      "duration": "GOOD_TILL_CANCEL",
+      "orderLegCollection" : [
+        {
+          "instruction" : "SELL",
+          "quantity" : 7,
+          "orderLegType" : "EQUITY",
+          "legId" : 2,
+          "instrument" : {
+            "symbol" : "AGI",
+            "assetType" : "EQUITY"
+          }
+        }
+      ],
+      "cancelable" : true,
+      "stopPriceOffset" : 6.31143578449804,
+      "stopPriceLinkType" : "PERCENT",
+      "accountNumber" : 487,
+      "price" : 21.8025,
+      "priceLinkBasis" : "MANUAL",
+      "stopType" : "ASK",
+      "orderStrategyType" : "SINGLE",
+      "editable" : false,
+      "stopPriceLinkBasis" : "ASK",
+      "destinationLinkName" : "AutoRoute"
+    }
+  ],
+  "statusDescription" : "Simplified OCO order"
+}

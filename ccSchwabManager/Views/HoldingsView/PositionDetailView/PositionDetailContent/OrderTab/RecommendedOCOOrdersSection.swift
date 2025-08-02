@@ -190,6 +190,9 @@ struct RecommendedOCOOrdersSection: View {
         return max(1.0, min(7.0, atrValue))
     }
     
+    // OLD CODE - COMMENTED OUT FOR REFERENCE
+    // This timing-related function is no longer needed for simplified orders.
+    /*
     private func formatReleaseTime(_ date: Date) -> String {
         let calendar = Calendar.current
         let now = Date()
@@ -216,6 +219,7 @@ struct RecommendedOCOOrdersSection: View {
         formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
         return formatter.string(from: targetDate)
     }
+    */
     
     // --- Top 100 Standing Sell ---
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
@@ -296,11 +300,11 @@ struct RecommendedOCOOrdersSection: View {
         
         // Calculate gain based on adjusted target
         let gain = ((adjustedTarget - actualCostPerShare) / actualCostPerShare) * 100.0
-        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        // let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         
-        // Create description with profitability indicator
+        // Create simplified description without timing constraints
         let profitIndicator = isProfitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
-        let formattedDescription = String(format: "%@ SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", profitIndicator, finalSharesToConsider, symbol, entry, adjustedTarget, exit, actualCostPerShare)
+        let formattedDescription = String(format: "%@ SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", profitIndicator, finalSharesToConsider, symbol, adjustedTarget, adjustedATR, actualCostPerShare)
         
         return SalesCalcResultsRecord(
             shares: finalSharesToConsider,
@@ -376,7 +380,7 @@ struct RecommendedOCOOrdersSection: View {
         print("Exit price: $\(exit) (0.9% below target, but never below actual cost per share $\(actualCostPerShare))")
         
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToSell, symbol, entry, target, exit, actualCostPerShare)
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, symbol, target, adjustedATR, actualCostPerShare)
         print("✅ Min ATR order created: \(formattedDescription)")
         return SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -432,7 +436,7 @@ struct RecommendedOCOOrdersSection: View {
             print("=== calculateMinBreakEvenOrder Using new profitable logic")
             
             // Set shares to 50% of the highest tax lot
-            sharesToSell = highestCostLot.quantity * 0.5
+            sharesToSell = ceil(highestCostLot.quantity * 0.5)
             actualCostPerShare = highestCostLot.costPerShare
             
             // Use descriptive variable names for clarity
@@ -517,8 +521,9 @@ struct RecommendedOCOOrdersSection: View {
         let trailingStopValue = isHighestCostLotProfitable ? 
             ((entry - target) / target) * 100.0 : adjustedATR
         
-        // Remove submit time from description
-        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToSell, symbol, entry, target, exit, actualCostPerShare)
+        // Simplified description without timing constraints
+        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                                          sharesToSell, symbol, target, trailingStopValue, actualCostPerShare)
         print("=== calculateMinBreakEvenOrder ✅ Min break even order created: \(formattedDescription)")
         
         return SalesCalcResultsRecord(
@@ -627,14 +632,13 @@ struct RecommendedOCOOrdersSection: View {
             print("⚠️ Warning: Order cost $\(finalOrderCost) exceeds $500 limit, but allowing 1 share minimum")
         }
         
-        let (submitDate, isImmediate) = calculateSubmitDate()
+        // Simplified order description without timing constraints
         let formattedDescription = String(
-            format: "BUY %.0f %@ BID >= %.2f TS = %.1f%% Target = %.2f TargetGain = %.1f%%",
+            format: "BUY %.0f %@ Target = %.2f TS = %.1f%% TargetGain = %.1f%%",
             finalSharesToBuy,
             symbol,
-            entryPrice,
-            atrValue,
             targetBuyPrice,
+            atrValue,
             targetGainPercent
         )
         return BuyOrderRecord(
@@ -648,11 +652,15 @@ struct RecommendedOCOOrdersSection: View {
             orderCost: finalOrderCost,
             description: formattedDescription,
             orderType: "BUY",
-            submitDate: submitDate,
-            isImmediate: isImmediate
+            submitDate: "", // No submit date for simplified orders
+            isImmediate: false // No immediate submission for simplified orders
         )
     }
     
+    // OLD CODE - COMMENTED OUT FOR REFERENCE
+    // The following timing-related functions are no longer needed for simplified orders
+    // that don't use submit/cancel times or dates.
+    /*
     private func calculateSubmitDate() -> (String, Bool) {
         let calendar : Calendar = Calendar.current
         let now : Date = Date()
@@ -721,7 +729,11 @@ struct RecommendedOCOOrdersSection: View {
         
         return (submitDate, isImmediate)
     }
+    */
     
+    // OLD CODE - COMMENTED OUT FOR REFERENCE
+    // These timing-related functions are no longer needed for simplified orders.
+    /*
     private func getLastBuyTransactionDate() -> Date? {
         // Get transaction history for this symbol
         let transactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
@@ -784,6 +796,7 @@ struct RecommendedOCOOrdersSection: View {
         
         return nextWeekday
     }
+    */
     
     private func updateRecommendedOrders() {
         recommendedSellOrders = calculateRecommendedSellOrders()
@@ -1071,16 +1084,15 @@ struct RecommendedOCOOrdersSection: View {
         }
         print("🔄 [OCO-SUBMIT] Account number: \(accountNumberInt)")
         
-        // Calculate release time (tomorrow at market open)
-        let releaseTime = calculateReleaseTime()
-        print("🔄 [OCO-SUBMIT] Release time: \(releaseTime)")
+        // Simplified OCO order creation - no timing constraints
+        print("🔄 [OCO-SUBMIT] Creating simplified OCO order without timing constraints")
         
         // Create OCO order using SchwabClient
         guard let ocoOrder = SchwabClient.shared.createOCOOrder(
             symbol: symbol,
             accountNumber: accountNumberInt,
             selectedOrders: selectedOrders,
-            releaseTime: releaseTime
+            releaseTime: "" // No release time for simplified orders
         ) else {
             print("🔄 [OCO-SUBMIT] ❌ Failed to create OCO order")
             return
@@ -1147,6 +1159,9 @@ struct RecommendedOCOOrdersSection: View {
         return Int64(accountNumber)
     }
     
+    // OLD CODE - COMMENTED OUT FOR REFERENCE
+    // These timing-related functions are no longer needed for simplified orders.
+    /*
     private func calculateReleaseTime() -> String {
         let calendar = Calendar.current
         let now = Date()
@@ -1175,6 +1190,7 @@ struct RecommendedOCOOrdersSection: View {
         formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter.string(from: date)
     }
+    */
     
     private func createOrderDescriptions(orders: [(String, Any)]) -> [String] {
         print("=== createOrderDescriptions ===")
@@ -1274,16 +1290,6 @@ struct RecommendedOCOOrdersSection: View {
                 .fontWeight(.semibold)
                 .frame(width: 100, alignment: .trailing)
             
-            Text("Entry")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 80, alignment: .trailing)
-            
-            Text("Cancel")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 80, alignment: .trailing)
-            
             Text("Target")
                 .font(.caption)
                 .fontWeight(.semibold)
@@ -1344,20 +1350,6 @@ struct RecommendedOCOOrdersSection: View {
                             copyToClipboard(value: sellOrder.trailingStop, format: "%.2f")
                         }
                     
-                    Text(String(format: "%.2f", sellOrder.entry))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: sellOrder.entry, format: "%.2f")
-                        }
-                    
-                    Text(String(format: "%.2f", sellOrder.cancel))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: sellOrder.cancel, format: "%.2f")
-                        }
-                    
                     Text(String(format: "%.2f", sellOrder.target))
                         .font(.caption)
                         .frame(width: 80, alignment: .trailing)
@@ -1385,17 +1377,6 @@ struct RecommendedOCOOrdersSection: View {
                         .onTapGesture {
                             copyToClipboard(value: buyOrder.trailingStop, format: "%.2f")
                         }
-                    
-                    Text(String(format: "%.2f", buyOrder.entryPrice))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: buyOrder.entryPrice, format: "%.2f")
-                        }
-                    
-                    Text("")
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
                     
                     Text(String(format: "%.2f", buyOrder.targetBuyPrice))
                         .font(.caption)
