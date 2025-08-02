@@ -1,0 +1,131 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug ccSchwabManager (macOS)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/ccSchwabManager.app/Contents/MacOS/ccSchwabManager",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Debug ccSchwabManager (iOS Simulator)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/DerivedData/Build/Products/Debug-iphonesimulator/ccSchwabManager.app/ccSchwabManager",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Build and Run ccSchwabManager (macOS)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/ccSchwabManager.app/Contents/MacOS/ccSchwabManager",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Build and Run ccSchwabManager (iOS Simulator)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/DerivedData/Build/Products/Debug-iphonesimulator/ccSchwabManager.app/ccSchwabManager",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Run Unit Tests (macOS)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/xcodebuild",
+            "args": [
+                "-project", "ccSchwabManager.xcodeproj",
+                "-scheme", "ccSchwabManager",
+                "-destination", "platform=macOS",
+                "-sdk", "macosx15.5",
+                "-only-testing:ccSchwabManagerTests",
+                "test"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Run Unit Tests (iOS Simulator)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/xcodebuild",
+            "args": [
+                "-project", "ccSchwabManager.xcodeproj",
+                "-scheme", "ccSchwabManager",
+                "-destination", "platform=iOS Simulator,name=iPhone 16 Pro",
+                "-sdk", "iphonesimulator18.5",
+                "-only-testing:ccSchwabManagerTests",
+                "test"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Run UI Tests (macOS)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/xcodebuild",
+            "args": [
+                "-project", "ccSchwabManager.xcodeproj",
+                "-scheme", "ccSchwabManager",
+                "-destination", "platform=macOS",
+                "-sdk", "macosx15.5",
+                "-only-testing:ccSchwabManagerUITests",
+                "test"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb"
+        },
+        {
+            "name": "Run UI Tests (iOS Simulator)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/xcodebuild",
+            "args": [
+                "-project", "ccSchwabManager.xcodeproj",
+                "-scheme", "ccSchwabManager",
+                "-destination", "platform=iOS Simulator,name=iPhone 16 Pro",
+                "-sdk", "iphonesimulator18.5",
+                "-only-testing:ccSchwabManagerUITests",
+                "test"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb"
+        }
+    ]
+}
+
+

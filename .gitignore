@@ -43,7 +43,6 @@ playground.xcworkspace
 
 # IDE Specific
 .idea/
-.vscode/
 
 # Other
 *.swp
