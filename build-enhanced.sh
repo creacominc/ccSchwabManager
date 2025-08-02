@@ -244,10 +244,7 @@ clean_build() {
                clean
     
     # Also clean derived data for this project
-    local derived_data_path=$(read_config '.paths.derived_data' 'derived_data')
-    derived_data_path=$(eval echo "$derived_data_path")
-    
-    local project_derived_data=$(find "$derived_data_path" -name "*$PROJECT_NAME*" -type d 2>/dev/null | head -1)
+    local project_derived_data=$(find_project_derived_data)
     
     if [ -n "$project_derived_data" ]; then
         print_status "Removing derived data: $project_derived_data"
@@ -257,15 +254,38 @@ clean_build() {
     print_success "Clean completed"
 }
 
+# Function to get the actual Xcode DerivedData path
+get_derived_data_path() {
+    # Use the same logic Xcode uses to find DerivedData
+    local derived_data_paths=(
+        "$HOME/Library/Developer/Xcode/DerivedData"
+        "$HOME/Library/Developer/Xcode/DerivedData-$(sw_vers -productVersion)"
+    )
+    
+    for path in "${derived_data_paths[@]}"; do
+        if [ -d "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    
+    # Fallback to default
+    echo "$HOME/Library/Developer/Xcode/DerivedData"
+}
+
+# Function to find the project's DerivedData directory
+find_project_derived_data() {
+    local derived_data_path=$(get_derived_data_path)
+    local project_derived_data=$(find "$derived_data_path" -name "*$PROJECT_NAME*" -type d 2>/dev/null | head -1)
+    echo "$project_derived_data"
+}
+
 # Function to launch the app
 launch_app() {
     print_status "Launching app..."
     
-    local derived_data_path=$(read_config '.paths.derived_data' 'derived_data')
-    derived_data_path=$(eval echo "$derived_data_path")
+    local project_derived_data=$(find_project_derived_data)
     local build_products=$(read_config '.paths.build_products' 'build_products')
-    
-    local project_derived_data=$(find "$derived_data_path" -name "*$PROJECT_NAME*" -type d 2>/dev/null | head -1)
     
     if [ -n "$project_derived_data" ]; then
         local app_path="$project_derived_data/$build_products/$BUILD_CONFIG/$PROJECT_NAME.app"
