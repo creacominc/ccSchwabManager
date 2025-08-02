@@ -8,36 +8,56 @@
     "debug": {
       "configuration": "Debug",
       "destination": "platform=macOS",
+      "sdk": "macosx15.5",
       "build_for_testing": true,
       "enable_testing": true
     },
     "release": {
       "configuration": "Release",
       "destination": "platform=macOS",
+      "sdk": "macosx15.5",
       "build_for_testing": false,
       "enable_testing": false
     },
-    "debug-ios": {
+    "debug-ios-simulator": {
       "configuration": "Debug",
-      "destination": "platform=iOS Simulator,name=iPhone 15 Pro",
+      "destination": "platform=iOS Simulator,name=iPhone 16 Pro",
+      "sdk": "iphonesimulator18.5",
       "build_for_testing": true,
       "enable_testing": true
     },
-    "release-ios": {
+    "release-ios-simulator": {
       "configuration": "Release",
-      "destination": "platform=iOS Simulator,name=iPhone 15 Pro",
+      "destination": "platform=iOS Simulator,name=iPhone 16 Pro",
+      "sdk": "iphonesimulator18.5",
       "build_for_testing": false,
       "enable_testing": false
     },
-    "debug-device-ios": {
+    "debug-ios-device": {
       "configuration": "Debug",
       "destination": "generic/platform=iOS",
+      "sdk": "iphoneos18.5",
       "build_for_testing": false,
       "enable_testing": false
     },
-    "release-device-ios": {
+    "release-ios-device": {
       "configuration": "Release",
       "destination": "generic/platform=iOS",
+      "sdk": "iphoneos18.5",
+      "build_for_testing": false,
+      "enable_testing": false
+    },
+    "debug-macos": {
+      "configuration": "Debug",
+      "destination": "platform=macOS",
+      "sdk": "macosx15.5",
+      "build_for_testing": true,
+      "enable_testing": true
+    },
+    "release-macos": {
+      "configuration": "Release",
+      "destination": "platform=macOS",
+      "sdk": "macosx15.5",
       "build_for_testing": false,
       "enable_testing": false
     }
@@ -65,5 +85,9 @@
     "enable_code_coverage": false,
     "enable_address_sanitizer": false,
     "enable_thread_sanitizer": false
+  },
+  "deployment_targets": {
+    "macos": "15.5",
+    "ios": "18.5"
   }
 } 

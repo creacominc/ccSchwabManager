@@ -1,0 +1,49 @@
+{
+    "folders": [
+        {
+            "name": "ccSchwabManager",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "files.associations": {
+            "*.swift": "swift",
+            "*.xcodeproj": "json",
+            "*.xcworkspace": "json",
+            "*.plist": "xml"
+        },
+        "lldb.executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/lldb",
+        "lldb.launch.sourceMap": [
+            {
+                "source": "${workspaceFolder}",
+                "target": "${workspaceFolder}"
+            }
+        ],
+        "lldb.console": "integratedTerminal",
+        "lldb.showDisassembly": "auto",
+        "lldb.dereferencePointers": true,
+        "lldb.evaluationMode": "lldb",
+        "lldb.terminal.integrated.env.osx": {
+            "DYLD_FRAMEWORK_PATH": "${workspaceFolder}/build/Debug"
+        },
+        "lldb.terminal.integrated.cwd": "${workspaceFolder}",
+        "debug.allowBreakpointsEverywhere": true,
+        "debug.inlineValues": true,
+        "debug.showBreakpointsInOverviewRuler": true,
+        "debug.showInlineBreakpointCandidates": true,
+        "makefile.configureOnOpen": true,
+        "lldb.launch.expressions": "native",
+        "lldb.launch.sourceLanguages": ["swift"],
+        "lldb.launch.terminal.integrated.env.osx": {
+            "DYLD_FRAMEWORK_PATH": "${workspaceFolder}/build/Debug"
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "vadimcn.vscode-lldb"
+        ]
+    }
+}
+
+
+

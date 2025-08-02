@@ -14,8 +14,8 @@ struct testKeychainManager
     
     @Test func testSaveSecrets() async throws
     {
-        let keychainManager = KeychainManager()
-        let secrets = Secrets() // Adjust the properties as per your Secrets struct
+        let _ = KeychainManager()
+        let _ = Secrets() // Adjust the properties as per your Secrets struct
         //        let saveResult = keychainManager.saveSecrets(secrets: secrets)
         //        #expect(saveResult == true, "Failed to save secrets")
         //        // Additional check to verify the secrets were saved correctly
@@ -26,8 +26,8 @@ struct testKeychainManager
     
     @Test func testReadSecrets() async throws
     {
-        let keychainManager = KeychainManager()
-        let secrets = Secrets() // Adjust the properties as per your Secrets struct
+        let _ = KeychainManager()
+        let _ = Secrets() // Adjust the properties as per your Secrets struct
         //        let _ = keychainManager.saveSecrets(secrets: secrets)
         //        let retrievedSecrets = keychainManager.readSecrets(prefix: "test")
         //        #expect(retrievedSecrets != nil, "Secrets should not be nil")
@@ -36,7 +36,7 @@ struct testKeychainManager
     
     @Test func testReadSecretsWhenNoneSaved() async throws
     {
-        let keychainManager = KeychainManager()
+        let _ = KeychainManager()
         //        let retrievedSecrets = keychainManager.readSecrets(prefix: "test")
         //        #expect(retrievedSecrets == nil, "Secrets should be nil when none are saved")
     }

@@ -14,11 +14,11 @@ class BuyOrderCalculationTests: XCTestCase {
         // Test data from the spreadsheet
         let totalShares = 359.0
         let totalCost = 3445.18
-        let avgCostPerShare = totalCost / totalShares
-        let currentPrice = 15.62
+        let _ = totalCost / totalShares
+        let _ = 15.62
         let targetBuyPrice = 16.84
         let targetGainPercent = 54.88
-        let atrValue = 7.84
+        let _ = 7.84
         
         // Calculate using the correct formula:
         // ROUNDUP(((Quantity Shares × Quantity Target Buy − Quantity Cost) ÷ (0.01 × Quantity Target Gain) − Quantity Cost) ÷ Quantity Target Buy, 0)
@@ -50,11 +50,11 @@ class BuyOrderCalculationTests: XCTestCase {
         // Test with different data to ensure formula works generally
         let totalShares = 100.0
         let totalCost = 1000.0
-        let avgCostPerShare = totalCost / totalShares
-        let currentPrice = 12.0
+        let _ = totalCost / totalShares
+        let _ = 12.0
         let targetBuyPrice = 13.0
         let targetGainPercent = 30.0
-        let atrValue = 5.0
+        let _ = 5.0
         
         let numerator = (totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost
         let sharesToBuy = max( ceil(numerator / targetBuyPrice), 1.0 )
@@ -68,11 +68,11 @@ class BuyOrderCalculationTests: XCTestCase {
         // Test edge case where current profit is already above target
         let totalShares = 50.0
         let totalCost = 500.0
-        let avgCostPerShare = totalCost / totalShares
-        let currentPrice = 15.0
+        let _ = totalCost / totalShares
+        let _ = 15.0
         let targetBuyPrice = 16.0
         let targetGainPercent = 20.0
-        let atrValue = 3.0
+        let _ = 3.0
         
         let numerator = (totalShares * targetBuyPrice - totalCost) / (0.01 * targetGainPercent) - totalCost
         let sharesToBuy = ceil(numerator / targetBuyPrice)

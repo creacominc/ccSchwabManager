@@ -13,14 +13,14 @@ struct BuyOrderTests {
     
     @Test func testBuyOrderCalculation() async throws {
         // Test data setup
-        let symbol = "AAPL"
+        let _ = "AAPL"
         let atrValue = 2.5 // 2.5% ATR
         let currentPrice = 150.0
         let avgCostPerShare = 140.0
         let totalShares = 100.0
         
         // Create mock tax lot data
-        let taxLotData = [
+        let _ = [
             SalesCalcPositionsRecord(
                 openDate: "2024-01-01 09:30:00",
                 gainLossPct: ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0,

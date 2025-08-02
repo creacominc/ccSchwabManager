@@ -39,7 +39,13 @@ read_config() {
     if [ -f "build-config.json" ]; then
         # Use jq if available, otherwise use a simple grep approach
         if command -v jq &> /dev/null; then
-            jq -r "$1" build-config.json
+            local result
+            result=$(jq -r "$1" build-config.json 2>/dev/null)
+            if [ $? -eq 0 ] && [ "$result" != "null" ]; then
+                echo "$result"
+            else
+                echo ""
+            fi
         else
             # Simple fallback for when jq is not available
             grep -o "\"$2\":[^,]*" build-config.json | cut -d':' -f2 | tr -d '"' | tr -d ' '
@@ -60,14 +66,25 @@ DESTINATION=${DESTINATION:-$(read_config '.builds.debug.destination' 'destinatio
 # Function to build the app
 build_app() {
     local config=${1:-$BUILD_CONFIG}
-    print_status "Building $PROJECT_NAME app with configuration: $config"
+    local build_type=${2:-"debug"}
+    print_status "Building $PROJECT_NAME app with configuration: $config (build type: $build_type)"
+    
+    # Get SDK from configuration
+    local sdk=$(read_config ".builds.\"$build_type\".sdk" 'sdk')
+    local destination=$(read_config ".builds.\"$build_type\".destination" 'destination')
     
     local build_args=(
         -project "$XCODEPROJ"
         -scheme "$SCHEME_NAME"
         -configuration "$config"
-        -destination "$DESTINATION"
+        -destination "$destination"
     )
+    
+    # Add SDK if specified
+    if [ -n "$sdk" ]; then
+        build_args+=(-sdk "$sdk")
+        print_status "Using SDK: $sdk"
+    fi
     
     # Add parallel build if enabled
     if [ "$(read_config '.options.parallel_build' 'parallel_build')" = "true" ]; then
@@ -91,6 +108,44 @@ build_app() {
         print_error "App build failed"
         return 1
     fi
+}
+
+# Function to build for specific platform
+build_for_platform() {
+    local platform=$1
+    local config=${2:-"Debug"}
+    
+    case $platform in
+        "macos"|"mac")
+            print_status "Building for macOS..."
+            build_app "$config" "debug-macos"
+            ;;
+        "macos-release"|"mac-release")
+            print_status "Building for macOS (Release)..."
+            build_app "Release" "release-macos"
+            ;;
+        "ios-simulator"|"ios-sim")
+            print_status "Building for iOS Simulator..."
+            build_app "$config" "debug-ios-simulator"
+            ;;
+        "ios-simulator-release"|"ios-sim-release")
+            print_status "Building for iOS Simulator (Release)..."
+            build_app "Release" "release-ios-simulator"
+            ;;
+        "ios-device"|"ios")
+            print_status "Building for iOS Device..."
+            build_app "$config" "debug-ios-device"
+            ;;
+        "ios-device-release"|"ios-release")
+            print_status "Building for iOS Device (Release)..."
+            build_app "Release" "release-ios-device"
+            ;;
+        *)
+            print_error "Unknown platform: $platform"
+            print_status "Available platforms: macos, macos-release, ios-simulator, ios-simulator-release, ios-device, ios-device-release"
+            return 1
+            ;;
+    esac
 }
 
 # Function to run unit tests
@@ -234,6 +289,18 @@ show_info() {
     echo "  Configuration: $BUILD_CONFIG"
     echo "  Destination: $DESTINATION"
     echo ""
+    echo "Deployment Targets:"
+    echo "  macOS: $(read_config '.deployment_targets.macos' 'macos')"
+    echo "  iOS: $(read_config '.deployment_targets.ios' 'ios')"
+    echo ""
+    echo "Available Build Configurations:"
+    echo "  macOS Debug: $(read_config '.builds."debug-macos".sdk' 'sdk')"
+    echo "  macOS Release: $(read_config '.builds."release-macos".sdk' 'sdk')"
+    echo "  iOS Simulator Debug: $(read_config '.builds."debug-ios-simulator".sdk' 'sdk')"
+    echo "  iOS Simulator Release: $(read_config '.builds."release-ios-simulator".sdk' 'sdk')"
+    echo "  iOS Device Debug: $(read_config '.builds."debug-ios-device".sdk' 'sdk')"
+    echo "  iOS Device Release: $(read_config '.builds."release-ios-device".sdk' 'sdk')"
+    echo ""
     echo "Test Configuration:"
     echo "  Unit Tests: $(read_config '.tests.unit_tests.enabled' 'enabled')"
     echo "  UI Tests: $(read_config '.tests.ui_tests.enabled' 'enabled')"
@@ -247,10 +314,10 @@ show_info() {
 show_usage() {
     echo "Enhanced Build Script for $PROJECT_NAME"
     echo ""
-    echo "Usage: $0 [command] [options]"
+    echo "Usage: $0 [command] [platform] [options]"
     echo ""
     echo "Commands:"
-    echo "  build      - Build the app"
+    echo "  build      - Build the app for specified platform"
     echo "  test       - Run unit tests"
     echo "  ui-test    - Run UI tests"
     echo "  all        - Build app and run all tests"
@@ -259,22 +326,32 @@ show_usage() {
     echo "  info       - Show build configuration"
     echo "  help       - Show this help message"
     echo ""
+    echo "Platforms:"
+    echo "  macos              - Build for macOS (Debug)"
+    echo "  macos-release      - Build for macOS (Release)"
+    echo "  ios-simulator      - Build for iOS Simulator (Debug)"
+    echo "  ios-simulator-release - Build for iOS Simulator (Release)"
+    echo "  ios-device         - Build for iOS Device (Debug)"
+    echo "  ios-device-release - Build for iOS Device (Release)"
+    echo ""
     echo "Options:"
     echo "  BUILD_CONFIG=Release  - Set build configuration"
     echo "  DESTINATION=platform=iOS  - Set destination"
     echo ""
     echo "Examples:"
-    echo "  $0 build"
+    echo "  $0 build macos"
+    echo "  $0 build ios-simulator"
+    echo "  $0 build ios-device-release"
     echo "  $0 test"
     echo "  $0 all"
-    echo "  BUILD_CONFIG=Release $0 build"
     echo "  $0 clean"
 }
 
 # Main script logic
 case "${1:-help}" in
     "build")
-        build_app
+        platform=${2:-"macos"}
+        build_for_platform "$platform"
         ;;
     "test")
         run_unit_tests
@@ -283,7 +360,7 @@ case "${1:-help}" in
         run_ui_tests
         ;;
     "all")
-        build_app && run_all_tests
+        build_for_platform "macos" && run_all_tests
         ;;
     "clean")
         clean_build
