@@ -36,14 +36,14 @@
     "debug-ios-device": {
       "configuration": "Debug",
       "destination": "generic/platform=iOS",
-      "sdk": "iphoneos18.5",
+      "sdk": "iOS SDKs:",
       "build_for_testing": false,
       "enable_testing": false
     },
     "release-ios-device": {
       "configuration": "Release",
       "destination": "generic/platform=iOS",
-      "sdk": "iphoneos18.5",
+      "sdk": "iOS SDKs:",
       "build_for_testing": false,
       "enable_testing": false
     },
