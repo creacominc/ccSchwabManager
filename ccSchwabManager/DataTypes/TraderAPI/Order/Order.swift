@@ -130,6 +130,11 @@ class Order: Codable, Identifiable
     public var statusDescription: String?
     
     enum CodingKeys: String, CodingKey {
+        case session
+        case duration
+        case orderType
+        case cancelTime
+        case complexOrderStrategyType
         case quantity
         case filledQuantity
         case remainingQuantity

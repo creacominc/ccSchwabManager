@@ -80,4 +80,160 @@ class BuyOrderCalculationTests: XCTestCase {
         // Should still calculate a reasonable number of shares
         XCTAssertGreaterThanOrEqual(sharesToBuy, 0, "Shares to buy should be non-negative")
     }
+    
+    func testNewBuyOrderLogicForBelowTargetGain() {
+        // Test the new logic for positions below target gain
+        // Using the user's example: FCX with current price 40.14, avg cost 43.77, ATR 4.76%
+        let currentPrice = 40.14
+        let avgCostPerShare = 43.77
+        let atrValue = 4.76
+        let targetGainPercent = 33.0 // 7 * ATR
+        
+        // Calculate current profit percent
+        let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        // Should be negative (below target gain)
+        XCTAssertLessThan(currentProfitPercent, targetGainPercent, "Current position should be below target gain")
+        
+        // Test the new logic:
+        // Target price should be 33% above current price
+        let expectedTargetPrice = currentPrice * 1.333
+        XCTAssertEqual(expectedTargetPrice, 53.51, accuracy: 0.01, "Target price should be 33% above current price")
+        
+        // Entry price should be 1 ATR% below target price
+        let expectedEntryPrice = expectedTargetPrice * (1.0 - atrValue / 100.0)
+        XCTAssertEqual(expectedEntryPrice, 53.51 * 0.9524, accuracy: 0.01, "Entry price should be 1 ATR% below target")
+        
+        // Trailing stop should be set so that from current price, the stop would be at target price
+        let expectedTrailingStop = ((expectedTargetPrice / currentPrice) - 1.0) * 100.0
+        XCTAssertEqual(expectedTrailingStop, 33.30, accuracy: 0.1, "Trailing stop should be 33.30%")
+        
+        print("Test results:")
+        print("  Current price: $\(currentPrice)")
+        print("  Avg cost per share: $\(avgCostPerShare)")
+        print("  Current P/L%: \(currentProfitPercent)%")
+        print("  Target gain %: \(targetGainPercent)%")
+        print("  ATR: \(atrValue)%")
+        print("  Target price: $\(expectedTargetPrice)")
+        print("  Entry price: $\(expectedEntryPrice)")
+        print("  Trailing stop %: \(expectedTrailingStop)%")
+    }
+    
+    func testSingleOrderCreation() {
+        // Test that single orders are created without OCO wrapper
+        let symbol = "TEST"
+        let accountNumber: Int64 = 487
+        
+        // Create a single buy order
+        let buyOrder = BuyOrderRecord(
+            shares: 10.0,
+            targetBuyPrice: 50.0,
+            entryPrice: 45.0,
+            trailingStop: 10.0,
+            targetGainPercent: 20.0,
+            currentGainPercent: -5.0,
+            sharesToBuy: 10.0,
+            orderCost: 500.0,
+            description: "Test buy order",
+            orderType: "BUY",
+            submitDate: "2025/01/01 09:30:00",
+            isImmediate: false
+        )
+        
+        let selectedOrders: [(String, Any)] = [("BUY", buyOrder)]
+        
+        // Test the createOrder method
+        let order = SchwabClient.shared.createOrder(
+            symbol: symbol,
+            accountNumber: accountNumber,
+            selectedOrders: selectedOrders,
+            releaseTime: ""
+        )
+        
+        // Verify that a single order was created (not OCO)
+        XCTAssertNotNil(order, "Order should be created successfully")
+        XCTAssertEqual(order?.orderStrategyType, .SINGLE, "Single order should have SINGLE strategy type")
+        XCTAssertNil(order?.childOrderStrategies, "Single order should not have child strategies")
+        
+        print("✅ Single order created successfully without OCO wrapper")
+    }
+    
+    func testFCXExampleCalculation() {
+        // Test the FCX example: current price 40.14, target price 53.51
+        // Trailing stop should be (53.51-40.14)/40.14 = 33.30%
+        let currentPrice = 40.14
+        let targetPrice = 53.51
+        
+        // Calculate the trailing stop percentage
+        let trailingStopPercent = ((targetPrice - currentPrice) / currentPrice) * 100.0
+        let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
+        
+        print("📊 FCX Example Calculation:")
+        print("  Current Price: $\(currentPrice)")
+        print("  Target Price: $\(targetPrice)")
+        print("  Trailing Stop %: \(trailingStopPercent)%")
+        print("  Rounded Trailing Stop %: \(roundedTrailingStopPercent)%")
+        
+        // Verify the calculation is correct
+        XCTAssertEqual(roundedTrailingStopPercent, 33.31, accuracy: 0.01, "FCX trailing stop should be 33.31%")
+        
+        // Test that the price is rounded to the penny
+        let roundedTargetPrice = round(targetPrice * 100) / 100
+        XCTAssertEqual(roundedTargetPrice, 53.51, accuracy: 0.01, "Target price should be rounded to 53.51")
+        
+        print("✅ FCX example calculation verified correctly")
+    }
+    
+    func testMultipleOrdersCreateOCO() {
+        // Test that multiple orders create an OCO structure
+        let symbol = "TEST"
+        let accountNumber: Int64 = 487
+        
+        // Create multiple orders
+        let buyOrder = BuyOrderRecord(
+            shares: 10.0,
+            targetBuyPrice: 50.0,
+            entryPrice: 45.0,
+            trailingStop: 10.0,
+            targetGainPercent: 20.0,
+            currentGainPercent: -5.0,
+            sharesToBuy: 10.0,
+            orderCost: 500.0,
+            description: "Test buy order",
+            orderType: "BUY",
+            submitDate: "2025/01/01 09:30:00",
+            isImmediate: false
+        )
+        
+        let sellOrder = SalesCalcResultsRecord(
+            shares: 5.0,
+            rollingGainLoss: 0.0,
+            breakEven: 0.0,
+            gain: 0.0,
+            sharesToSell: 5.0,
+            trailingStop: 10.0,
+            entry: 50.0,
+            target: 55.0,
+            cancel: 45.0,
+            description: "Test sell order",
+            openDate: "2025/01/01 09:30:00"
+        )
+        
+        let selectedOrders: [(String, Any)] = [("BUY", buyOrder), ("SELL", sellOrder)]
+        
+        // Test the createOrder method
+        let order = SchwabClient.shared.createOrder(
+            symbol: symbol,
+            accountNumber: accountNumber,
+            selectedOrders: selectedOrders,
+            releaseTime: ""
+        )
+        
+        // Verify that an OCO order was created
+        XCTAssertNotNil(order, "Order should be created successfully")
+        XCTAssertEqual(order?.orderStrategyType, .OCO, "Multiple orders should create OCO strategy type")
+        XCTAssertNotNil(order?.childOrderStrategies, "OCO order should have child strategies")
+        XCTAssertEqual(order?.childOrderStrategies?.count, 2, "OCO order should have 2 child orders")
+        
+        print("✅ Multiple orders created OCO structure successfully")
+    }
 } 

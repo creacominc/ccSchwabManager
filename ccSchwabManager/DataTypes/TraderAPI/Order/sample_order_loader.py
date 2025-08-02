@@ -62,7 +62,7 @@ buy_trailing_stop_limit_to_target_price = 5
 
 # Load order payload from JSON file
 def load_order_payload():
-    json_file_path = os.path.join(os.path.dirname(__file__), 'sample_order_agi.json')
+    json_file_path = os.path.join(os.path.dirname(__file__), 'sample_order_fcx.json')
     try:
         with open(json_file_path, 'r') as f:
             order_payload = json.load(f)

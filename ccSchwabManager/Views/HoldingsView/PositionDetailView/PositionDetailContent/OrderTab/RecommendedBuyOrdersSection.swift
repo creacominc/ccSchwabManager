@@ -97,26 +97,40 @@ struct RecommendedBuyOrdersSection: View {
         let totalCost = avgCostPerShare * totalShares
         
         // Calculate the entry and target buy prices
-        // Entry price should be at least 1 ATR% above the last price
-        // Target price should be entry price plus the adjusted ATR%
         let entryPrice: Double
         let targetBuyPrice: Double
+        let trailingStopPercent: Double
         
         if currentProfitPercent < targetGainPercent {
             // Current position is below target gain
-            // Entry price should be 1 ATR above the current price
-            entryPrice = currentPrice * (1.0 + atrValue / 100.0)
-            // Target price should be entry price plus the adjusted ATR%
-            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
+            // Target price should be 33% above current price (1.333 * currentPrice)
+            targetBuyPrice = currentPrice * 1.333
+            
+            // Entry price should be 1 ATR% below the target price
+            entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
+            
+            // Trailing stop should be set so that from current price, the stop would be at target price
+            // This means: currentPrice * (1 + trailingStopPercent/100) = targetBuyPrice
+            // So: trailingStopPercent = ((targetBuyPrice / currentPrice) - 1) * 100
+            trailingStopPercent = ((targetBuyPrice / currentPrice) - 1.0) * 100.0
+            
+            print("Position below target gain - using new strategy:")
+            print("  Target price (33% above current): $\(targetBuyPrice)")
+            print("  Entry price (1 ATR% below target): $\(entryPrice)")
+            print("  Trailing stop %: \(trailingStopPercent)%")
         } else {
             // Current position is already above target gain
-            // Entry price should be between 2x and 4x ATR above the current price
+            // Use the original logic for positions already profitable
             let minEntryPrice = currentPrice * (1.0 + (2.0 * atrValue / 100.0))
             let maxEntryPrice = currentPrice * (1.0 + (4.0 * atrValue / 100.0))
-            // Use the midpoint between min and max for now (could be randomized)
             entryPrice = (minEntryPrice + maxEntryPrice) / 2.0
-            // Target price should be entry price plus the adjusted ATR%
             targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
+            trailingStopPercent = atrValue
+            
+            print("Position above target gain - using original logic:")
+            print("  Entry price: $\(entryPrice)")
+            print("  Target price: $\(targetBuyPrice)")
+            print("  Trailing stop %: \(trailingStopPercent)%")
         }
         
         print("Current P/L%: \(currentProfitPercent)%")
@@ -124,6 +138,7 @@ struct RecommendedBuyOrdersSection: View {
         print("Current price: $\(currentPrice)")
         print("Target buy price: $\(targetBuyPrice)")
         print("Entry price: $\(entryPrice)")
+        print("Trailing stop %: \(trailingStopPercent)%")
         
         // Calculate how many shares we need to buy to bring the combined position to the target gain percentage
         // We want the new average cost to be such that the target buy price represents the target gain percentage
@@ -176,7 +191,7 @@ struct RecommendedBuyOrdersSection: View {
             symbol,
             submitDate,
             entryPrice,
-            atrValue,
+            trailingStopPercent,
             targetBuyPrice,
             targetGainPercent
         )
@@ -185,7 +200,7 @@ struct RecommendedBuyOrdersSection: View {
             shares: finalSharesToBuy,
             targetBuyPrice: targetBuyPrice,
             entryPrice: entryPrice,
-            trailingStop: atrValue,
+            trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,
             currentGainPercent: currentProfitPercent,
             sharesToBuy: finalSharesToBuy,

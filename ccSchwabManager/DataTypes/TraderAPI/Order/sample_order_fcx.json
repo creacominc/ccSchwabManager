@@ -1,0 +1,30 @@
+{
+    "stopPriceLinkType" : "PERCENT",
+    "destinationLinkName" : "AutoRoute",
+    "priceLinkBasis" : "MANUAL",
+    "price" : 53.51,
+    "complexOrderStrategyType" : "NONE",
+    "duration" : "GOOD_TILL_CANCEL",
+    "stopType" : "BID",
+    "stopPriceLinkBasis" : "BID",
+    "cancelable" : true,
+    "editable" : false,
+    "orderType" : "TRAILING_STOP_LIMIT",
+    "orderStrategyType" : "SINGLE",
+    "session" : "NORMAL",
+    "orderLegCollection" : [
+      {
+        "instruction" : "BUY",
+        "legId" : 1,
+        "orderLegType" : "EQUITY",
+        "instrument" : {
+          "assetType" : "EQUITY",
+          "symbol" : "FCX"
+        },
+        "quantity" : 9
+      }
+    ],
+    "stopPriceOffset" : 5,
+    "quantity" : 9,
+    "accountNumber" : 98189487
+  }

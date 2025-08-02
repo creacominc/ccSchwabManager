@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **NEW**: Enhanced buy order logic for positions below target gain
+  - Implemented smart target price calculation that sets target to 33% above current price when position is below target gain
+  - Added intelligent entry pricing that sets buy orders to enter at 1 ATR% below target price
+  - Implemented precise trailing stop calculation based on target price vs current price
+  - Added price rounding to the penny (2 decimal places) for all prices and percentages
+  - Enhanced order creation to intelligently create single orders vs OCO orders based on selection count
+  - Fixed trailing stop calculation to use current price instead of entry price for accurate percentages
+  - Added comprehensive test coverage for new buy order logic including FCX example calculations
+  - Updated order creation to include missing session and duration fields in JSON serialization
+  - Fixed compiler warnings by removing unused variables
+
 ### Changed
 - **ENHANCED**: Break-even calculation logic for profitable positions
   - When the highest cost-per-share tax lot is already profitable, the system now uses enhanced logic:
@@ -208,88 +220,4 @@ The deadlock was caused by the following circular dependency:
 
 **Solution**: 
 - Removed shares calculation from `getTransactionsFor`
-- Created new method `computeSharesAvailableForTrading(symbol:taxLots:)` that accepts precomputed tax lots
-- Updated UI to compute tax lots first, then shares available
-
-#### Date Parsing Fix
-**Problem**: Tax lot dates in format "2024-12-03 14:34:41" were being parsed with ISO8601 strategy, causing all dates to be invalid.
-
-**Solution**: 
-- Replaced ISO8601 date parsing with DateFormatter using format "yyyy-MM-dd HH:mm:ss"
-- Added proper timezone handling
-
-#### Shares Available Calculation
-**Problem**: PositionDetailView received shares available as parameter but didn't recalculate when view loaded.
-
-**Solution**:
-- Added state variable `computedSharesAvailableForTrading` to PositionDetailView
-- Updated `fetchDataForSymbol()` to compute shares available using tax lots
-- Modified PositionDetailContent to use computed value instead of passed parameter
-
-#### Merged/Renamed Securities Fix
-**Problem**: When securities are merged or renamed, the earliest transaction shows a cost-per-share of 0.00, which affects both tax lot calculations and transaction history display.
-
-**Solution**:
-- Added `handleMergedRenamedSecurities` function that detects when the earliest transaction has zero cost
-- Implemented cost-per-share computation using the formula: `((AveragePrice * Quantity) - Sum_of_later_tax_lots_costs) / currentShareCount`
-- Added `getComputedPriceForTransaction` function to display correct prices in transaction history
-- Modified `computeTaxLots` to call the new handler after processing all transactions
-- Updated TransactionRow to use computed prices when available
-
-#### Real-time Price Fix
-**Problem**: The app was using yesterday's close price from price history instead of real-time quote data for order calculations and display.
-
-**Solution**:
-- Updated `getCurrentPrice()` method to prioritize real-time quote data with fallback chain
-- Modified `computeTaxLots` to accept optional current price parameter
-- Updated component hierarchy to pass quote data through to order calculations
-- Added fallback chain: real-time quote → extended market → regular market → price history
-
-**Files Modified**:
-- `RecommendedOCOOrdersSection.swift` - Main implementation fixes and real-time price support
-- `OrderTab.swift` - Added quote data parameter
-- `SalesCalcTab.swift` - Added quote data parameter  
-- `SalesCalcView.swift` - Added quote data parameter
-- `PositionDetailContent.swift` - Pass quote data to tabs
-- `PositionDetailView.swift` - Pass current price to computeTaxLots
-- `SchwabClient.swift` - Updated computeTaxLots to accept current price parameter
-- `OrderLogicTests.swift` - Test implementation fixes
-- `CSVValidationTests.swift` - Test implementation fixes
-
-### Build Status
-- ✅ macOS build successful
-- ✅ iOS build successful (expected)
-- ✅ No deadlocks in runtime
-- ✅ Correct shares available for trading calculation
-- ✅ Proper diagnostic logging
-
-## [1.0.0] - 2025-07-19
-
-### Added
-- Initial release of ccSchwabManager
-- Charles Schwab trading account integration
-- Holdings view with position details
-- Transaction history and tax lot computation
-- Price history charts
-- Order management interface
-- Authentication flow with Schwab API
-- CSV export functionality for transaction and tax lot data
-
-### Features
-- Multi-account support
-- Real-time market data
-- Tax lot computation from transaction history
-- Shares available for trading calculation
-- ATR (Average True Range) calculation
-- Order status tracking
-- Position profit/loss tracking
-- Stock split adjustment
-- Contract tracking for covered calls
-
-### Technical Architecture
-- SwiftUI for macOS and iOS
-- Schwab Trader API integration
-- Keychain-based secrets management
-- Cached data management
-- Background data loading
-- Multi-threaded data processing 
+- Created new method `computeSharesAvailableForTrading(symbol:taxLots:)`

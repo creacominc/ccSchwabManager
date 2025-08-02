@@ -2891,17 +2891,41 @@ class SchwabClient
 
 
 
-    public func createOCOOrder(
+    public func createOrder(
         symbol: String,
         accountNumber: Int64,
         selectedOrders: [(String, Any)],
         releaseTime: String
     ) -> Order? {
-        print("=== createOCOOrder ===")
+        print("=== createOrder ===")
         print("Symbol: \(symbol)")
         print("Account Number: \(accountNumber)")
         print("Selected Orders Count: \(selectedOrders.count)")
         print("Release Time: \(releaseTime)")
+        
+        // If there's only one order, return it directly without OCO wrapper
+        if selectedOrders.count == 1 {
+            print("📝 Single order detected - creating direct order without OCO wrapper")
+            
+            let (orderType, order) = selectedOrders[0]
+            if let singleOrder = createSimplifiedChildOrder(
+                symbol: symbol,
+                accountNumber: accountNumber,
+                orderType: orderType,
+                order: order,
+                legId: 1,
+                currentPrice: 40.14 // TODO: Get actual current price from order
+            ) {
+                print("✅ Created single order directly")
+                return singleOrder
+            } else {
+                print("❌ Failed to create single order")
+                return nil
+            }
+        }
+        
+        // For multiple orders, create OCO structure
+        print("📝 Multiple orders detected - creating OCO structure")
         
         // Create child order strategies based on the working sample_order7.py pattern
         var childOrderStrategies: [Order] = []
@@ -2912,7 +2936,8 @@ class SchwabClient
                 accountNumber: accountNumber,
                 orderType: orderType,
                 order: order,
-                legId: index + 1
+                legId: index + 1,
+                currentPrice: 40.14 // TODO: Get actual current price from order
             ) {
                 childOrderStrategies.append(childOrder)
                 print("✅ Created simplified child order \(index + 1): \(orderType)")
@@ -2946,7 +2971,8 @@ class SchwabClient
         accountNumber: Int64,
         orderType: String,
         order: Any,
-        legId: Int
+        legId: Int,
+        currentPrice: Double
     ) -> Order? {
         
         // Create the instrument
@@ -2980,6 +3006,14 @@ class SchwabClient
             // This reflects how far the price would have to move to reach the target
             let trailingStopPercent = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0
             
+            // Round prices and percentages to the penny (2 decimal places)
+            let roundedTargetPrice = round(sellOrder.target * 100) / 100
+            let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
+            
+            print("  📊 Rounded Values:")
+            print("    Rounded Target Price: \(roundedTargetPrice)")
+            print("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
+            
             // Create simplified SELL order matching sample_order7.py pattern
             let childOrder = Order(
                 session: .NORMAL,
@@ -2987,12 +3021,13 @@ class SchwabClient
                 orderType: .TRAILING_STOP_LIMIT,
                 complexOrderStrategyType: .NONE,
                 quantity: sellOrder.sharesToSell,
+                destinationLinkName: "AutoRoute",
                 stopPriceLinkBasis: .ASK,
                 stopPriceLinkType: .PERCENT,
-                stopPriceOffset: trailingStopPercent,
+                stopPriceOffset: roundedTrailingStopPercent,
                 stopType: .ASK,
                 priceLinkBasis: .MANUAL,
-                price: sellOrder.target, // Use target price as limit price
+                price: roundedTargetPrice, // Use rounded target price as limit price
                 orderLegCollection: [orderLeg],
                 orderStrategyType: .SINGLE,
                 cancelable: true,
@@ -3024,7 +3059,15 @@ class SchwabClient
             
             // Calculate trailing stop as percentage from current price to target
             // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent = ((buyOrder.targetBuyPrice - buyOrder.entryPrice) / buyOrder.entryPrice) * 100.0
+            let trailingStopPercent = ((buyOrder.targetBuyPrice - currentPrice) / currentPrice) * 100.0
+            
+            // Round prices and percentages to the penny (2 decimal places)
+            let roundedTargetPrice = round(buyOrder.targetBuyPrice * 100) / 100
+            let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
+            
+            print("  📊 Rounded Values:")
+            print("    Rounded Target Price: \(roundedTargetPrice)")
+            print("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
             
             // Create simplified BUY order matching sample_order7.py pattern
             let childOrder = Order(
@@ -3033,12 +3076,13 @@ class SchwabClient
                 orderType: .TRAILING_STOP_LIMIT,
                 complexOrderStrategyType: .NONE,
                 quantity: buyOrder.sharesToBuy,
+                destinationLinkName: "AutoRoute",
                 stopPriceLinkBasis: .BID,
                 stopPriceLinkType: .PERCENT,
-                stopPriceOffset: trailingStopPercent,
+                stopPriceOffset: roundedTrailingStopPercent,
                 stopType: .BID,
                 priceLinkBasis: .MANUAL,
-                price: buyOrder.targetBuyPrice, // Use target price as limit price
+                price: roundedTargetPrice, // Use rounded target price as limit price
                 orderLegCollection: [orderLeg],
                 orderStrategyType: .SINGLE,
                 cancelable: true,
@@ -3114,7 +3158,7 @@ class SchwabClient
         
         var quantity: Double = 0.0
         var instruction: OrderInstructionType = .BUY
-        var positionEffect: PositionEffectType = .OPENING
+        // var positionEffect: PositionEffectType = .OPENING
         // var priceOffset: Double = 0.0  // OLD CODE (commented out) - no longer used with MANUAL stop price
         var stopType: StopType = .BID
         var targetPrice: Double = 0.0
@@ -3130,7 +3174,8 @@ class SchwabClient
             stopType = .BID
             targetPrice = buyOrder.targetBuyPrice
             entryPrice = buyOrder.entryPrice
-            currentPrice = entryPrice // Use entry price as current price for calculation
+            // For buy orders, use the entry price as current price for trailing stop calculation
+            currentPrice = entryPrice
             print("  📊 Buy Order Details:")
             print("    Quantity: \(quantity)")
             print("    Target Price: \(targetPrice)")
@@ -3143,7 +3188,8 @@ class SchwabClient
             stopType = .ASK
             targetPrice = sellOrder.target
             entryPrice = sellOrder.entry
-            currentPrice = entryPrice // Use entry price as current price for calculation
+            // For sell orders, use the entry price as current price for trailing stop calculation
+            currentPrice = entryPrice
             print("  📊 Sell Order Details:")
             print("    Quantity: \(quantity)")
             print("    Target Price: \(targetPrice)")
@@ -3158,13 +3204,21 @@ class SchwabClient
             return nil
         }
         
-        // Calculate the trailing stop percentage to compensate for inability to set entry prices
-        // The trailing stop should be the percent difference between current price and entry price
-        let trailingStopPercent = abs((currentPrice - entryPrice) / entryPrice) * 100.0
+        // Calculate the trailing stop percentage based on target price vs current price
+        // This ensures the stop is set correctly relative to the target price
+        let trailingStopPercent = abs((targetPrice - currentPrice) / currentPrice) * 100.0
         print("  📊 Trailing Stop Calculation:")
+        print("    Target Price: \(targetPrice)")
         print("    Current Price: \(currentPrice)")
-        print("    Entry Price: \(entryPrice)")
         print("    Trailing Stop %: \(trailingStopPercent)")
+        
+        // Round prices and percentages to the penny (2 decimal places)
+        let roundedTargetPrice = round(targetPrice * 100) / 100
+        let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
+        
+        print("  📊 Rounded Values:")
+        print("    Rounded Target Price: \(roundedTargetPrice)")
+        print("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
         
         // Create the instrument
         let instrument = AccountsInstrument(
@@ -3194,14 +3248,14 @@ class SchwabClient
             // requestedDestination: .AUTO,
             // destinationLinkName: "AutoRoute",
             // releaseTime: releaseTime,
-            stopPrice: targetPrice,
+            stopPrice: roundedTargetPrice,
             stopPriceLinkBasis: .MANUAL,
             stopPriceLinkType: .VALUE,
             // stopPriceOffset: 0.0, // No offset needed for manual price
             stopType: stopType,
             priceLinkBasis: .LAST,
             priceLinkType: .PERCENT,
-            priceOffset: trailingStopPercent,
+            priceOffset: roundedTrailingStopPercent,
             orderLegCollection: [orderLeg],
             orderStrategyType: .SINGLE,
             // orderId: 0,

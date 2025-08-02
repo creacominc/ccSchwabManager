@@ -25,6 +25,29 @@ For detailed build instructions and iOS compilation fixes, see [`IOS_BUILD_FIXES
 
 ## Features
 
+### Enhanced Buy Order Logic
+
+The application now includes sophisticated buy order logic for positions that are below target gain:
+
+- **Smart Target Price Calculation**: When a position is below the target gain (33% for most positions), the system calculates a target price that is 33% above the current price
+- **Intelligent Entry Pricing**: Buy orders are set to enter at 1 ATR% below the target price, ensuring we don't buy until the position is sufficiently profitable
+- **Precise Trailing Stops**: Trailing stop percentages are calculated based on the target price vs current price, ensuring accurate stop placement
+- **Price Rounding**: All prices and percentages are rounded to the penny (2 decimal places) for precise order execution
+- **Single vs OCO Orders**: The system intelligently creates single orders when only one order is selected, and OCO orders when multiple orders are selected
+
+#### Buy Order Example
+For a position with:
+- Current price: $40.14
+- Average cost: $43.77 (8% under)
+- ATR: 4.76%
+- Target gain: 33% (7 × ATR)
+
+The system will:
+- Set target price to $53.51 (33% above current price)
+- Set entry price to $50.97 (1 ATR% below target)
+- Set trailing stop to 33.31% (target vs current price)
+- Round all values to the penny for precise execution
+
 ### CSV Export Functionality
 
 The application now supports exporting transaction history and tax lot data to CSV files:
