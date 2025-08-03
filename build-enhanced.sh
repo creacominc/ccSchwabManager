@@ -282,6 +282,10 @@ find_project_derived_data() {
 
 # Function to launch the app
 launch_app() {
+    local log_file="$HOME/Library/Containers/com.creacom.ccSchwabManager/Data/Documents/ccSchwabManager.log"
+    print_status "Truncating log file... $log_file"
+    truncate -s 0  $log_file
+
     print_status "Launching app..."
     
     local project_derived_data=$(find_project_derived_data)

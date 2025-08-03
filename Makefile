@@ -28,6 +28,10 @@ help:
 	@echo "  BUILD_CONFIG=Release  - Set build configuration"
 	@echo "  DESTINATION=platform=iOS  - Set destination"
 
+update-build-config:
+	@./update-build-config.sh
+
+
 # Build the app
 build:
 	@./build-enhanced.sh build
