@@ -2265,8 +2265,9 @@ class SchwabClient
                 if let index = updatedLots.firstIndex(where: { $0.id == earliestLot.id }) {
                     updatedLots[index].costPerShare = receivedCostPerShare
                     updatedLots[index].costBasis = receivedCostPerShare * earliestLot.quantity
-                    updatedLots[index].gainLossDollar = (earliestLot.price - receivedCostPerShare) * earliestLot.quantity
-                    updatedLots[index].gainLossPct = ((earliestLot.price - receivedCostPerShare) / receivedCostPerShare) * 100.0
+                    // Gain/loss will be recalculated at the end
+                    updatedLots[index].gainLossDollar = 0.0
+                    updatedLots[index].gainLossPct = 0.0
                     
                     AppLogger.shared.debug("  --- Updated earliest lot with computed cost: $\(receivedCostPerShare)")
                 }
@@ -2324,8 +2325,10 @@ class SchwabClient
                         adjustedLots[j].costPerShare /= splitRatio
                         adjustedLots[j].marketValue = adjustedLots[j].quantity * adjustedLots[j].price
                         adjustedLots[j].costBasis = adjustedLots[j].quantity * adjustedLots[j].costPerShare
-                        adjustedLots[j].gainLossDollar = (adjustedLots[j].price - adjustedLots[j].costPerShare) * adjustedLots[j].quantity
-                        adjustedLots[j].gainLossPct = ((adjustedLots[j].price - adjustedLots[j].costPerShare) / adjustedLots[j].costPerShare) * 100.0
+                        // Gain/loss will be recalculated at the end
+                        adjustedLots[j].gainLossDollar = 0.0
+                        adjustedLots[j].gainLossPct = 0.0
+                        
                         adjustedLots[j].splitMultiple *= splitRatio
                         
                         AppLogger.shared.debug("    Adjusted lot \(j): \(adjustedLots[j].openDate), shares: \(adjustedLots[j].quantity), cost: \(adjustedLots[j].costPerShare), basis: \(adjustedLots[j].costBasis), multiple: \(adjustedLots[j].splitMultiple)")
@@ -2424,8 +2427,9 @@ class SchwabClient
                     totalSharesFound += numberOfShares
                     AppLogger.shared.debug("  --- Found transferItem: \(numberOfShares) shares at $\(transferItem.price ?? 0) on \(transaction.tradeDate ?? "unknown")")
                     
-                    let gainLossDollar = (lastPrice - transferItem.price!) * numberOfShares
-                    let gainLossPct = ((lastPrice - transferItem.price!) / transferItem.price!) * 100.0
+                    // Don't calculate gain/loss here - it will be calculated after adjustments
+                    let gainLossDollar = 0.0  // Will be recalculated after adjustments
+                    let gainLossPct = 0.0     // Will be recalculated after adjustments
                     
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
@@ -2618,6 +2622,25 @@ class SchwabClient
         
         // Apply stock split adjustments
         m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords)
+        
+        // Calculate gain/loss for each tax lot based on current price and remaining shares
+        let finalPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+        
+        for i in 0..<m_lastFilteredPositionRecords.count {
+            let lot = m_lastFilteredPositionRecords[i]
+            let remainingShares = lot.quantity
+            let costPerShare = lot.costPerShare
+            let costBasis = remainingShares * costPerShare
+            let marketValue = remainingShares * finalPrice
+            let gainLossDollar = marketValue - costBasis
+            let gainLossPct = costBasis != 0 ? ((finalPrice - costPerShare) / costPerShare) * 100.0 : 0.0
+            
+            m_lastFilteredPositionRecords[i].gainLossDollar = gainLossDollar
+            m_lastFilteredPositionRecords[i].gainLossPct = gainLossPct
+            m_lastFilteredPositionRecords[i].marketValue = marketValue
+            m_lastFilteredPositionRecords[i].costBasis = costBasis
+            m_lastFilteredPositionRecords[i].price = finalPrice
+        }
         
 //        if debug { AppLogger.shared.debug("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
         return m_lastFilteredPositionRecords

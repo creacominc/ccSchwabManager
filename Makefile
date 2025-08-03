@@ -17,6 +17,7 @@ help:
 	@echo "  make ui-test   - Build UI tests and show instructions"
 	@echo "  make test-all  - Build all tests and show instructions"
 	@echo "  make test-all-scheme - Run all tests (scheme method)"
+	@echo "  make update-build-config - Update build configuration"
 	@echo "  make all       - Build app and run all tests"
 	@echo "  make clean     - Clean build artifacts"
 	@echo "  make launch    - Launch the built app"
