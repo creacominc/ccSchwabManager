@@ -209,5 +209,63 @@ class Order: Codable, Identifiable
         self.statusDescription = statusDescription
     }
     
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Decode all other properties normally
+        session = try container.decodeIfPresent(SessionType.self, forKey: .session)
+        duration = try container.decodeIfPresent(DurationType.self, forKey: .duration)
+        orderType = try container.decodeIfPresent(OrderType.self, forKey: .orderType)
+        complexOrderStrategyType = try container.decodeIfPresent(ComplexOrderStrategyType.self, forKey: .complexOrderStrategyType)
+        quantity = try container.decodeIfPresent(Double.self, forKey: .quantity)
+        filledQuantity = try container.decodeIfPresent(Double.self, forKey: .filledQuantity)
+        remainingQuantity = try container.decodeIfPresent(Double.self, forKey: .remainingQuantity)
+        requestedDestination = try container.decodeIfPresent(RequestedDestinationType.self, forKey: .requestedDestination)
+        destinationLinkName = try container.decodeIfPresent(String.self, forKey: .destinationLinkName)
+        releaseTime = try container.decodeIfPresent(String.self, forKey: .releaseTime)
+        stopPrice = try container.decodeIfPresent(Double.self, forKey: .stopPrice)
+        stopPriceLinkBasis = try container.decodeIfPresent(PriceLinkBasis.self, forKey: .stopPriceLinkBasis)
+        stopPriceLinkType = try container.decodeIfPresent(PriceLinkType.self, forKey: .stopPriceLinkType)
+        stopPriceOffset = try container.decodeIfPresent(Double.self, forKey: .stopPriceOffset)
+        stopType = try container.decodeIfPresent(StopType.self, forKey: .stopType)
+        priceLinkBasis = try container.decodeIfPresent(PriceLinkBasis.self, forKey: .priceLinkBasis)
+        priceLinkType = try container.decodeIfPresent(PriceLinkType.self, forKey: .priceLinkType)
+        priceOffset = try container.decodeIfPresent(Double.self, forKey: .priceOffset)
+        price = try container.decodeIfPresent(Double.self, forKey: .price)
+        taxLotMethod = try container.decodeIfPresent(TaxLotMethod.self, forKey: .taxLotMethod)
+        orderLegCollection = try container.decodeIfPresent([OrderLegCollection].self, forKey: .orderLegCollection)
+        activationPrice = try container.decodeIfPresent(Double.self, forKey: .activationPrice)
+        specialInstruction = try container.decodeIfPresent(SpecialInstruction.self, forKey: .specialInstruction)
+        orderStrategyType = try container.decodeIfPresent(OrderStrategyType.self, forKey: .orderStrategyType)
+        orderId = try container.decodeIfPresent(Int64.self, forKey: .orderId)
+        cancelable = try container.decodeIfPresent(Bool.self, forKey: .cancelable)
+        editable = try container.decodeIfPresent(Bool.self, forKey: .editable)
+        status = try container.decodeIfPresent(OrderStatus.self, forKey: .status)
+        enteredTime = try container.decodeIfPresent(String.self, forKey: .enteredTime)
+        closeTime = try container.decodeIfPresent(String.self, forKey: .closeTime)
+        tag = try container.decodeIfPresent(String.self, forKey: .tag)
+        accountNumber = try container.decodeIfPresent(Int64.self, forKey: .accountNumber)
+        orderActivityCollection = try container.decodeIfPresent([OrderActivity].self, forKey: .orderActivityCollection)
+        childOrderStrategies = try container.decodeIfPresent([Order].self, forKey: .childOrderStrategies)
+        statusDescription = try container.decodeIfPresent(String.self, forKey: .statusDescription)
+        
+        // Handle cancelTime which might be a string, null, or missing
+        if let cancelTimeString = try container.decodeIfPresent(String.self, forKey: .cancelTime) {
+            // Try to parse the string as a date
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+            
+            if let date = dateFormatter.date(from: cancelTimeString) {
+                cancelTime = date
+            } else {
+                // Try alternative format without milliseconds
+                dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+                cancelTime = dateFormatter.date(from: cancelTimeString)
+            }
+        } else {
+            cancelTime = nil
+        }
+    }
+    
 }
 

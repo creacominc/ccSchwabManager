@@ -55,6 +55,33 @@ struct DebugLogView: View {
                             .font(.headline)
                         Text("Accounts Count: \(SchwabClient.shared.getAccounts().count)")
                         Text("Orders Count: \(SchwabClient.shared.getOrderList().count)")
+                        Text("Symbols with Orders: \(SchwabClient.shared.getSymbolsWithOrders().count)")
+                    }
+                    
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Order State:")
+                            .font(.headline)
+                        Button("Debug Order State") {
+                            SchwabClient.shared.debugPrintOrderState()
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        // Show some sample symbols with orders
+                        let symbolsWithOrders = SchwabClient.shared.getSymbolsWithOrders()
+                        if !symbolsWithOrders.isEmpty {
+                            Text("Sample symbols with orders:")
+                                .font(.subheadline)
+                            ForEach(Array(symbolsWithOrders.prefix(5)), id: \.key) { symbol, statuses in
+                                Text("  \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
+                                    .font(.caption)
+                            }
+                        } else {
+                            Text("No symbols with orders found")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
                     
                     Divider()

@@ -531,7 +531,12 @@ struct HoldingsView: View {
         // PRIORITY 2: Fetch order history in parallel (needed for "Orders" column)
         Task {
             print("🚀 PRIORITY 2: Fetching order history in parallel")
+            print("🔍 Before fetchOrderHistory: orderStatusCache has \(orderStatusCache.count) entries")
             await SchwabClient.shared.fetchOrderHistory()
+            print("🔍 After fetchOrderHistory: SchwabClient has \(SchwabClient.shared.getOrderList().count) orders")
+            
+            // Debug: Print the current order state
+            SchwabClient.shared.debugPrintOrderState()
             
             // Check for cancellation before updating UI
             guard !Task.isCancelled else { return }
@@ -539,12 +544,16 @@ struct HoldingsView: View {
             // Update order information in UI and populate cache
             await MainActor.run {
                 // Populate order status cache
-                for position in holdings {
+                print("🔍 === Populating order status cache ===")
+                print("🔍 Processing \(holdings.count) positions to populate order status cache")
+                for (index, position) in holdings.enumerated() {
                     if let symbol = position.instrument?.symbol {
-                        orderStatusCache[symbol] = SchwabClient.shared.getPrimaryOrderStatus(symbol: symbol)
+                        let orderStatus = SchwabClient.shared.getPrimaryOrderStatus(for: symbol)
+                        orderStatusCache[symbol] = orderStatus
+                        print("📋 [\(index + 1)/\(holdings.count)] Cached order status for \(symbol): \(orderStatus?.shortDisplayName ?? "nil")")
                     }
                 }
-                print("✅ Order history loaded and cache populated")
+                print("✅ Order history loaded and cache populated with \(orderStatusCache.count) entries")
             }
         }
         

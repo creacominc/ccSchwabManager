@@ -133,26 +133,27 @@ class ServiceError: Codable, Identifiable
     
     public func printErrors( prefix: String = "" )
     {
-        print( "\(prefix) --- ServiceError:" )
-        if let errors = errors {
-            print( "\t\terrors:" )
+        AppLogger.shared.error( "\(prefix) --- ServiceError:" )
+        if let errors: [ServiceError.ErrorDetail] = errors {
+            AppLogger.shared.error( "\t\terrors:" )
+            // swiftlint:disable:next type_name
             for (index, error) in errors.enumerated() {
-                print( "\t\t[\(index)]:" )
+                AppLogger.shared.error( "\t\t[\(index)]:" )
                 for (key, value) in error.details {
                     switch value {
                     case .string(let str):
-                        print( "\t\t\t\(key): \(str)" )
+                        AppLogger.shared.error( "\t\t\t\(key): \(str)" )
                     case .integer(let num):
-                        print( "\t\t\t\(key): \(num)" )
+                        AppLogger.shared.error( "\t\t\t\(key): \(num)" )
                     }
                 }
             }
         }
-        if let error = error {
-            print( "\t\terror: \(error)" )
+        if let error: String = error {
+            AppLogger.shared.error( "\t\terror: \(error)" )
         }
-        if let errorDescription = errorDescription {
-            print( "\t\terrorDescription: \(errorDescription)" )
+        if let errorDescription: String = errorDescription {
+            AppLogger.shared.error( "\t\terrorDescription: \(errorDescription)" )
         }
     }
     

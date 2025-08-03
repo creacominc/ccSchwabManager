@@ -161,7 +161,7 @@ class SchwabClient
 
 
     func configure(with secrets: inout Secrets) {
-        print( "=== configure - starting refresh thread. ===" )
+        AppLogger.shared.debug( "=== configure - starting refresh thread. ===" )
         self.m_secrets = secrets
         self.refreshAccessToken()
         self.startRefreshAccessTokenThread()
@@ -174,24 +174,24 @@ class SchwabClient
     
     public func getAccounts() -> [AccountContent]
     {
-        print( "=== getAccounts: accounts: \(self.m_accounts.count) ===" )
+        AppLogger.shared.debug( "=== getAccounts: accounts: \(self.m_accounts.count) ===" )
         return self.m_accounts
     }
     
     public func hasSymbols() -> Bool
     {
-        print( "=== hasSymbols: accounts: \(self.m_accounts.count) ===" )
+        AppLogger.shared.debug( "=== hasSymbols: accounts: \(self.m_accounts.count) ===" )
         var symbolCount : Int = 0
         for account in self.m_accounts
         {
             symbolCount += account.securitiesAccount?.positions.count ?? 0
         }
-        print( "=== hasSymbols symbols: \(symbolCount) ===" )
+        AppLogger.shared.debug( "=== hasSymbols symbols: \(symbolCount) ===" )
         return (symbolCount > 0)
     }
 
     private func getShareCount(symbol: String) -> Double {
-        print("=== getShareCount \(symbol) ===")
+        AppLogger.shared.debug("=== getShareCount \(symbol) ===")
 
         // lock last share count
         m_lastShareCountLock.lock()
@@ -217,12 +217,12 @@ class SchwabClient
                 }
             }
         }
-        // print( "  -- getShareCount: returning \(shareCount) shares for symbol \(symbol)" )
+        // AppLogger.shared.debug( "  -- getShareCount: returning \(shareCount) shares for symbol \(symbol)" )
         return shareCount
     }
 
     private func getAveragePrice(symbol: String) -> Double {
-        print("=== getAveragePrice \(symbol) ===")
+        AppLogger.shared.debug("=== getAveragePrice \(symbol) ===")
 
         var averagePrice: Double = 0.0
         
@@ -232,14 +232,14 @@ class SchwabClient
                 for position in positions {
                     if position.instrument?.symbol == symbol {
                         averagePrice = position.averagePrice ?? 0.0
-                        print("  --- Found average price: $\(averagePrice)")
+                        AppLogger.shared.debug("  --- Found average price: $\(averagePrice)")
                         return averagePrice
                     }
                 }
             }
         }
         
-        print("  --- No position found for symbol \(symbol), returning 0.0")
+        AppLogger.shared.debug("  --- No position found for symbol \(symbol), returning 0.0")
         return averagePrice
     }
 
@@ -251,34 +251,34 @@ class SchwabClient
      * otherwise returns the original price from the transaction.
      */
     public func getComputedPriceForTransaction(_ transaction: Transaction, symbol: String) -> Double {
-        print("=== getComputedPriceForTransaction ===")
+        AppLogger.shared.debug("=== getComputedPriceForTransaction ===")
         
         // Get the original price from the transaction
         guard let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) else {
-            print("  --- No transfer item found for symbol \(symbol)")
+            AppLogger.shared.debug("  --- No transfer item found for symbol \(symbol)")
             return 0.0
         }
         
         let originalPrice = transferItem.price ?? 0.0
-        print("  --- Original price: $\(originalPrice)")
+        AppLogger.shared.debug("  --- Original price: $\(originalPrice)")
         
         // If the original price is not zero, return it
         if originalPrice > 0.0 {
-            print("  --- Returning original price: $\(originalPrice)")
+            AppLogger.shared.debug("  --- Returning original price: $\(originalPrice)")
             return originalPrice
         }
         
         // For zero-price transactions, check if we have computed tax lots
         let taxLots = computeTaxLots(symbol: symbol)
         guard !taxLots.isEmpty else {
-            print("  --- No tax lots available")
+            AppLogger.shared.debug("  --- No tax lots available")
             return originalPrice
         }
         
         // Parse the transaction date to match with tax lots
         guard let tradeDate = transaction.tradeDate,
               let date = ISO8601DateFormatter().date(from: tradeDate) else {
-            print("  --- Could not parse transaction date")
+            AppLogger.shared.debug("  --- Could not parse transaction date")
             return originalPrice
         }
         
@@ -286,21 +286,21 @@ class SchwabClient
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let transactionDateString = formatter.string(from: date)
         
-        print("  --- Transaction date: \(transactionDateString)")
+        AppLogger.shared.debug("  --- Transaction date: \(transactionDateString)")
         
         // Find the matching tax lot by date and quantity
         let transferItemAmount = transferItem.amount ?? 0.0
         for taxLot in taxLots {
-            print("  --- Checking tax lot: \(taxLot.openDate), quantity: \(taxLot.quantity)")
+            AppLogger.shared.debug("  --- Checking tax lot: \(taxLot.openDate), quantity: \(taxLot.quantity)")
             
             // Check if this tax lot matches the transaction
             if taxLot.openDate == transactionDateString && abs(taxLot.quantity - transferItemAmount) < 0.01 {
-                print("  --- Found matching tax lot with computed cost: $\(taxLot.costPerShare)")
+                AppLogger.shared.debug("  --- Found matching tax lot with computed cost: $\(taxLot.costPerShare)")
                 return taxLot.costPerShare
             }
         }
         
-        print("  --- No matching tax lot found, returning original price: $\(originalPrice)")
+        AppLogger.shared.debug("  --- No matching tax lot found, returning original price: $\(originalPrice)")
         return originalPrice
     }
 
@@ -311,7 +311,7 @@ class SchwabClient
     
     public func setSecrets( secrets: inout Secrets )
     {
-        //print( "client setting secrets to: \(secrets.dump())")
+        //AppLogger.shared.debug( "client setting secrets to: \(secrets.dump())")
         m_secrets = secrets
     }
     
@@ -322,7 +322,7 @@ class SchwabClient
     
     public func setSelectedAccountName( name: String )
     {
-        print( "setSelectedAccountName to \(name)" )
+        AppLogger.shared.debug( "setSelectedAccountName to \(name)" )
         self.m_selectedAccountName = name
     }
     
@@ -332,7 +332,7 @@ class SchwabClient
      */
     func getAuthorizationUrl(completion: @escaping (Result<URL, ErrorCodes>) -> Void)
     {
-        print( "=== getAuthorizationUrl ===" )
+        AppLogger.shared.debug( "=== getAuthorizationUrl ===" )
         // provide the URL for authentication.
         let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.appId )&redirect_uri=\( self.m_secrets.redirectUrl )"
         guard let url = URL( string: AUTHORIZE_URL ) else {
@@ -345,21 +345,21 @@ class SchwabClient
     
     public func extractCodeFromURL( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
-        print( "=== extractCodeFromURL from \(url) ===" )
+        AppLogger.shared.debug( "=== extractCodeFromURL from \(url) ===" )
         // extract the code and session from the URL
         let urlComponents = URLComponents(string: url )!
         let queryItems = urlComponents.queryItems
         self.m_secrets.code = String( queryItems?.first(where: { $0.name == "code" })?.value ?? "" )
         self.m_secrets.session = String( queryItems?.first(where: { $0.name == "session" })?.value ?? "" )
-        //print( "secrets with session: \(self.m_secrets.dump())" )
+        //AppLogger.shared.debug( "secrets with session: \(self.m_secrets.dump())" )
         if( KeychainManager.saveSecrets(secrets: &self.m_secrets) )
         {
-            print( "extractCodeFromURL upated secrets with code and session. " )
+            AppLogger.shared.debug( "extractCodeFromURL upated secrets with code and session. " )
             completion( .success( Void() ) )
         }
         else
         {
-            print( "Failed to save secrets." )
+            AppLogger.shared.debug( "Failed to save secrets." )
             completion(.failure(ErrorCodes.failedToSaveSecrets))
         }
     }
@@ -371,12 +371,12 @@ class SchwabClient
     func getAccessToken( completion: @escaping (Result<Void, ErrorCodes>) -> Void )
     {
         // Access Token Request
-        print( "=== getAccessToken ===" )
-        //print("🔍 getAccessToken - Setting loading to TRUE")
+        AppLogger.shared.debug( "=== getAccessToken ===" )
+        //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         
         let url = URL( string: "\(accessTokenWeb)" )!
-        //print( "accessTokenUrl: \(url)" )
+        //AppLogger.shared.debug( "accessTokenUrl: \(url)" )
         var accessTokenRequest = URLRequest( url: url )
         // set a 10 second timeout on this request
         accessTokenRequest.timeoutInterval = self.requestTimeout
@@ -389,7 +389,7 @@ class SchwabClient
         accessTokenRequest.setValue( "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type" )
         // body
         accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.code )&redirect_uri=\( self.m_secrets.redirectUrl )").data(using: .utf8)!
-        print( "Posting access token request:  \(accessTokenRequest)" )
+        AppLogger.shared.debug( "Posting access token request:  \(accessTokenRequest)" )
         
         let semaphore = DispatchSemaphore(value: 0)
         var result: Result<Void, ErrorCodes> = .failure(.notAuthenticated)
@@ -398,7 +398,7 @@ class SchwabClient
         { [weak self] data, response, error in
             defer {
                 DispatchQueue.main.async {
-                    //print("🔍 getAccessToken - Setting loading to FALSE")
+                    //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to FALSE")
                     self?.loadingDelegate?.setLoading(false)
                 }
                 semaphore.signal()
@@ -407,7 +407,7 @@ class SchwabClient
             guard let data = data, ( (error == nil) && ( response != nil ) )
             else
             {
-                print( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
+                AppLogger.shared.debug( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
                 result = .failure(ErrorCodes.notAuthenticated)
                 return
             }
@@ -421,7 +421,7 @@ class SchwabClient
                     self?.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
                     if( !KeychainManager.saveSecrets(secrets: &self!.m_secrets) )
                     {
-                        print( "Failed to save secrets with access and refresh tokens." )
+                        AppLogger.shared.debug( "Failed to save secrets with access and refresh tokens." )
                         result = .failure(ErrorCodes.failedToSaveSecrets)
                         return
                     }
@@ -429,13 +429,13 @@ class SchwabClient
                 }
                 else
                 {
-                    print( "Failed to parse token response" )
+                    AppLogger.shared.debug( "Failed to parse token response" )
                     result = .failure(ErrorCodes.notAuthenticated)
                 }
             }
             else
             {
-                print( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
+                AppLogger.shared.debug( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
                 result = .failure(ErrorCodes.notAuthenticated)
             }
         }.resume()
@@ -443,7 +443,7 @@ class SchwabClient
         // Wait for completion with timeout to prevent deadlock
         let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
         if timeoutResult == .timedOut {
-            print("getAccessToken timed out")
+            AppLogger.shared.debug("getAccessToken timed out")
             result = .failure(ErrorCodes.notAuthenticated)
         }
         
@@ -482,17 +482,17 @@ class SchwabClient
      *
      */
     private func refreshAccessToken() {
-        print("=== refreshAccessToken: Refreshing access token...")
+        AppLogger.shared.debug("=== refreshAccessToken: Refreshing access token...")
 
         // if the accessToken or refreshToken are empty, call getAccessToken instead
         if ( self.m_secrets.accessToken == "" ) || ( self.m_secrets.refreshToken == "" ) {
-            print("Access token or refresh token is empty, getting initial access token...")
+            AppLogger.shared.debug("Access token or refresh token is empty, getting initial access token...")
             self.getAccessToken{ result in
                 switch result {
                 case .success:
-                    print(" refreshAccessToken - Successfully got access token")
+                    AppLogger.shared.debug(" refreshAccessToken - Successfully got access token")
                 case .failure(let error):
-                    print(" refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
+                    AppLogger.shared.debug(" refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
                     // resetting code
                     self.m_secrets.code = ""
                 }
@@ -501,16 +501,16 @@ class SchwabClient
             return
         }
         
-        //print("🔍 refreshAccessToken - Setting loading to TRUE")
+        //AppLogger.shared.debug("🔍 refreshAccessToken - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 refreshAccessToken - Setting loading to FALSE")
+            //AppLogger.shared.debug("🔍 refreshAccessToken - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
 
         // Access Token Refresh Request
         guard let url = URL(string: "\(accessTokenWeb)") else {
-            print("Invalid URL for refreshing access token")
+            AppLogger.shared.debug("Invalid URL for refreshing access token")
             return
         }
 
@@ -540,18 +540,18 @@ class SchwabClient
             }
             
             guard let self = self else {
-                print("SchwabClient deallocated during token refresh")
+                AppLogger.shared.debug("SchwabClient deallocated during token refresh")
                 return
             }
             
             do {
                 if let error = error {
-                    print("Network error during token refresh: \(error.localizedDescription)")
+                    AppLogger.shared.debug("Network error during token refresh: \(error.localizedDescription)")
                     return
                 }
                 
                 guard let data = data else {
-                    print("No data received during token refresh")
+                    AppLogger.shared.debug("No data received during token refresh")
                     return
                 }
                 
@@ -563,15 +563,15 @@ class SchwabClient
                             self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
                             
                             if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
-                                print("Successfully refreshed and saved access token.")
+                                AppLogger.shared.debug("Successfully refreshed and saved access token.")
                             } else {
-                                print("Failed to save refreshed tokens.")
+                                AppLogger.shared.debug("Failed to save refreshed tokens.")
                             }
                         } else {
-                            print("Failed to parse token response.")
+                            AppLogger.shared.debug("Failed to parse token response.")
                         }
                     } else {
-                        print("Token refresh failed with status code: \(httpResponse.statusCode)")
+                        AppLogger.shared.debug("Token refresh failed with status code: \(httpResponse.statusCode)")
                         if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                             serviceError.printErrors(prefix: "refreshAccessToken ")
                         }
@@ -583,13 +583,13 @@ class SchwabClient
         // Wait for completion with timeout to prevent deadlock
         let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
         if timeoutResult == .timedOut {
-            print("Token refresh timed out")
+            AppLogger.shared.debug("Token refresh timed out")
         }
     }
     
     private func startRefreshAccessTokenThread() {
         guard !m_refreshAccessToken_running else {
-            print("Refresh token thread already running")
+            AppLogger.shared.debug("Refresh token thread already running")
             return
         }
         
@@ -656,16 +656,16 @@ class SchwabClient
      */
     func fetchAccountNumbers() async
     {
-        print(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
-        //print("🔍 fetchAccountNumbers - Setting loading to TRUE")
+        AppLogger.shared.debug(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
+        //AppLogger.shared.debug("🔍 fetchAccountNumbers - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 fetchAccountNumbers - Setting loading to FALSE")
+            //AppLogger.shared.debug("🔍 fetchAccountNumbers - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
         guard let url = URL(string: accountNumbersWeb) else {
-            print("Invalid URL")
+            AppLogger.shared.debug("Invalid URL")
             return
         }
         
@@ -682,15 +682,15 @@ class SchwabClient
             let httpResponse = response as! HTTPURLResponse
             if( httpResponse.statusCode != 200 )
             {
-                print( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode).  Error: \(httpResponse.description)" )
+                AppLogger.shared.debug( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode).  Error: \(httpResponse.description)" )
                 return
             }
-            // print( "response: \(response)" )
-            //            print( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
+            // AppLogger.shared.debug( "response: \(response)" )
+            //            AppLogger.shared.debug( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
             
             let decoder = JSONDecoder()
             let accountNumberHashes = try decoder.decode([AccountNumberHash].self, from: data)
-            print("accountNumberHashes: \(accountNumberHashes.count)")
+            AppLogger.shared.debug("accountNumberHashes: \(accountNumberHashes.count)")
             
             if !accountNumberHashes.isEmpty
             {
@@ -699,19 +699,19 @@ class SchwabClient
                     self.m_secrets.acountNumberHash = accountNumberHashes
                     if KeychainManager.saveSecrets(secrets: &self.m_secrets)
                     {
-                        print("Save \(self.m_secrets.acountNumberHash.count)  account numbers")
+                        AppLogger.shared.debug("Save \(self.m_secrets.acountNumberHash.count)  account numbers")
                     }
                     else
                     {
-                        print("Error saving account numbers")
+                        AppLogger.shared.debug("Error saving account numbers")
                     }
                 }
             } else {
-                print("No account numbers returned")
+                AppLogger.shared.debug("No account numbers returned")
             }
         } catch {
-            print("fetchAccountNumbers Error: \(error.localizedDescription)")
-            print("   detail:  \(error)")
+            AppLogger.shared.debug("fetchAccountNumbers Error: \(error.localizedDescription)")
+            AppLogger.shared.debug("   detail:  \(error)")
         }
     }
     
@@ -720,24 +720,24 @@ class SchwabClient
      */
     func fetchAccounts( retry : Bool = false ) async
     {
-        print("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
-        //print("🔍 fetchAccounts - Setting loading to TRUE")
+        AppLogger.shared.debug("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
+        //AppLogger.shared.debug("🔍 fetchAccounts - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 fetchAccounts - Setting loading to FALSE")
+            //AppLogger.shared.debug("🔍 fetchAccounts - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
         var accountUrl = accountWeb
         if self.m_selectedAccountName != "All"
         {
-            print( "fetching for account: \(self.m_selectedAccountName)" )
+            AppLogger.shared.debug( "fetching for account: \(self.m_selectedAccountName)" )
             accountUrl += "/\(self.m_selectedAccountName)"
         }
         accountUrl += "?fields=positions"
         
         guard let url = URL(string: accountUrl) else {
-            print("Invalid URL")
+            AppLogger.shared.debug("Invalid URL")
             return
         }
 
@@ -752,36 +752,36 @@ class SchwabClient
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("Invalid response type")
+                AppLogger.shared.debug("Invalid response type")
                 return
             }
             
             if httpResponse.statusCode != 200 {
                 // decode data as a ServiceError
-                print( "fetchAccounts: decoding json as ServiceError" )
+                AppLogger.shared.debug( "fetchAccounts: decoding json as ServiceError" )
                 let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
                 serviceError.printErrors(prefix: "fetchAccounts ")
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
                 if httpResponse.statusCode == 401 && retry {
-                    print( "=== retrying fetchAccounts after refreshing access token ===" )
+                    AppLogger.shared.debug( "=== retrying fetchAccounts after refreshing access token ===" )
                     refreshAccessToken()
                     // Add a small delay to prevent rapid retries
                     try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                     await fetchAccounts(retry: false)
                 } else {
                     // Log the error for debugging
-                    print("fetchAccounts failed with status code: \(httpResponse.statusCode)")
+                    AppLogger.shared.debug("fetchAccounts failed with status code: \(httpResponse.statusCode)")
                     if let errorData = String(data: data, encoding: .utf8) {
-                        print("Error response: \(errorData)")
+                        AppLogger.shared.debug("Error response: \(errorData)")
                     }
                 }
                 return
             }
             
             let decoder = JSONDecoder()
-            print( "=== decoding accounts ===" )
+            AppLogger.shared.debug( "=== decoding accounts ===" )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
-            print( "  decoded \(m_accounts.count) accounts" )
+            AppLogger.shared.debug( "  decoded \(m_accounts.count) accounts" )
             // search the positions in the accounts to build a map of symbolsWithContracts
             // Build map of symbols with option contracts
             m_symbolsWithContracts.removeAll()
@@ -808,7 +808,7 @@ class SchwabClient
                                     }
                                     if !positionExists {
                                         positionsByUnderlying[underlyingSymbol]!.append(position)
-                                        // print("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
+                                        // AppLogger.shared.debug("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
                                     }
                                 }
                         }
@@ -820,16 +820,16 @@ class SchwabClient
             for (underlyingSymbol, positions) in positionsByUnderlying {
                 let summary = SymbolContractSummary(contracts: positions)
                 m_symbolsWithContracts[underlyingSymbol] = summary
-                // print("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
+                // AppLogger.shared.debug("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
             }
             
-            print("Built contracts map with \(m_symbolsWithContracts.count) underlying symbols")
+            AppLogger.shared.debug("Built contracts map with \(m_symbolsWithContracts.count) underlying symbols")
             return
         }
         catch
         {
-            print("fetchAccounts Error: \(error.localizedDescription)")
-            print("   detail:  \(error)")
+            AppLogger.shared.debug("fetchAccounts Error: \(error.localizedDescription)")
+            AppLogger.shared.debug("   detail:  \(error)")
             return
         }
     }
@@ -840,19 +840,19 @@ class SchwabClient
      */
     func fetchPriceHistory( symbol : String )  -> CandleList?
     {
-        print("=== fetchPriceHistory \(symbol) ===")
+        AppLogger.shared.debug("=== fetchPriceHistory \(symbol) ===")
 
         // Check cache first without holding lock
         if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
         {
-            print( "  fetchPriceHistory - returning cached." )
+            AppLogger.shared.debug( "  fetchPriceHistory - returning cached." )
             return m_lastFilteredPriceHistory
         }
 
-        //print("🔍 fetchPriceHistory - Setting loading to TRUE")
+        //AppLogger.shared.debug("🔍 fetchPriceHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 fetchPriceHistory - Setting loading to FALSE")
+            //AppLogger.shared.debug("🔍 fetchPriceHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -865,7 +865,7 @@ class SchwabClient
         // Double-check cache after acquiring lock
         if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
         {
-            print( "  fetchPriceHistory - returning cached (after lock)." )
+            AppLogger.shared.debug( "  fetchPriceHistory - returning cached (after lock)." )
             return m_lastFilteredPriceHistory
         }
         
@@ -873,8 +873,8 @@ class SchwabClient
         m_lastFilteredPriceHistory?.candles.removeAll(keepingCapacity: true)
 
         let millisecondsSinceEpoch : Int64 = Int64(Date().timeIntervalSince1970 * 1000)
-        // print date
-        print( "      endDate = \(Date( timeIntervalSince1970: Double(millisecondsSinceEpoch)/1000.0 ) )")
+        // AppLogger.shared.debug date
+        AppLogger.shared.debug( "      endDate = \(Date( timeIntervalSince1970: Double(millisecondsSinceEpoch)/1000.0 ) )")
 
         var priceHistoryUrl = "\(priceHistoryWeb)"
         priceHistoryUrl += "?symbol=\(symbol)"
@@ -882,10 +882,10 @@ class SchwabClient
         priceHistoryUrl += "&period=1"
         priceHistoryUrl += "&frequencyType=daily"
 //        priceHistoryUrl += "&endDate=\(millisecondsSinceEpoch)"
-        //print( "     priceHistoryUrl: \(priceHistoryUrl)" )
+        //AppLogger.shared.debug( "     priceHistoryUrl: \(priceHistoryUrl)" )
         
         guard let url = URL( string: priceHistoryUrl ) else {
-            print("fetchPriceHistory. Invalid URL for \(symbol)")
+            AppLogger.shared.debug("fetchPriceHistory. Invalid URL for \(symbol)")
             return nil
         }
         
@@ -911,20 +911,20 @@ class SchwabClient
         semaphore.wait()
         
         if let error = responseError {
-            print("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
+            AppLogger.shared.debug("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
             return nil
         }
         
         guard let data = responseData else {
-            print("fetchPriceHistory. No data received for \(symbol)")
+            AppLogger.shared.debug("fetchPriceHistory. No data received for \(symbol)")
             return nil
         }
         
         if httpResponse?.statusCode != 200 {
-            print("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(httpResponse?.statusCode ?? -1)")
+            AppLogger.shared.debug("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(httpResponse?.statusCode ?? -1)")
             // Try to decode error response for debugging
             if let errorString = String(data: data, encoding: .utf8) {
-                print("fetchPriceHistory - Error response for \(symbol): \(errorString)")
+                AppLogger.shared.debug("fetchPriceHistory - Error response for \(symbol): \(errorString)")
             }
             return nil
         }
@@ -935,7 +935,7 @@ class SchwabClient
             
             // Validate the returned data
             guard let candleList = m_lastFilteredPriceHistory else {
-                print("fetchPriceHistory - Failed to decode CandleList for \(symbol)")
+                AppLogger.shared.debug("fetchPriceHistory - Failed to decode CandleList for \(symbol)")
                 return nil
             }
             
@@ -947,16 +947,16 @@ class SchwabClient
                 return high > 0 && low > 0 && close > 0 && high >= low
             }
             
-            print("fetchPriceHistory - Fetched \(candleList.candles.count) total candles, \(validCandles.count) valid candles for \(symbol)")
+            AppLogger.shared.debug("fetchPriceHistory - Fetched \(candleList.candles.count) total candles, \(validCandles.count) valid candles for \(symbol)")
             
             if validCandles.count < 2 {
-                print("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
+                AppLogger.shared.debug("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
             }
             
             return m_lastFilteredPriceHistory
         } catch {
-            print("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
-            print("   detail:  \(error)")
+            AppLogger.shared.debug("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
+            AppLogger.shared.debug("   detail:  \(error)")
             return nil
         }
     }
@@ -965,13 +965,13 @@ class SchwabClient
      * fetchQuote - get quote data including fundamental information for a symbol
      */
     func fetchQuote(symbol: String) -> QuoteData? {
-        print("=== fetchQuote \(symbol) ===")
+        AppLogger.shared.debug("=== fetchQuote \(symbol) ===")
         
         let quoteUrl = "\(marketdataAPI)/\(symbol)/quotes"
-//        print("     quoteUrl: \(quoteUrl)")
+//        AppLogger.shared.debug("     quoteUrl: \(quoteUrl)")
         
         guard let url = URL(string: quoteUrl) else {
-            print("fetchQuote. Invalid URL")
+            AppLogger.shared.debug("fetchQuote. Invalid URL")
             return nil
         }
         
@@ -996,17 +996,17 @@ class SchwabClient
         semaphore.wait()
         
         if let error = responseError {
-            print("fetchQuote - Error: \(error.localizedDescription)")
+            AppLogger.shared.debug("fetchQuote - Error: \(error.localizedDescription)")
             return nil
         }
         
         guard let data = responseData else {
-            print("fetchQuote. No data received")
+            AppLogger.shared.debug("fetchQuote. No data received")
             return nil
         }
         
         if httpResponse?.statusCode != 200 {
-            print("fetchQuote - Failed to fetch quote. code = \(httpResponse?.statusCode ?? -1)")
+            AppLogger.shared.debug("fetchQuote - Failed to fetch quote. code = \(httpResponse?.statusCode ?? -1)")
             return nil
         }
         
@@ -1016,33 +1016,33 @@ class SchwabClient
             
             // Get the quote data for the requested symbol
             guard let quoteData = quoteResponse.quotes[symbol] else {
-                print("fetchQuote - No quote data found for symbol \(symbol)")
+                AppLogger.shared.debug("fetchQuote - No quote data found for symbol \(symbol)")
                 return nil
             }
             
-            // print("fetchQuote - Successfully fetched quote for \(symbol)")
+            // AppLogger.shared.debug("fetchQuote - Successfully fetched quote for \(symbol)")
             //
             // // Log detailed fundamental information
             // if let fundamental = quoteData.fundamental {
-            //     print("fetchQuote - Fundamental data for \(symbol):")
-            //     print("  divYield: \(fundamental.divYield ?? 0)")
-            //     print("  divAmount: \(fundamental.divAmount ?? 0)")
-            //     print("  divFreq: \(fundamental.divFreq ?? 0)")
-            //     print("  eps: \(fundamental.eps ?? 0)")
-            //     print("  peRatio: \(fundamental.peRatio ?? 0)")
+            //     AppLogger.shared.debug("fetchQuote - Fundamental data for \(symbol):")
+            //     AppLogger.shared.debug("  divYield: \(fundamental.divYield ?? 0)")
+            //     AppLogger.shared.debug("  divAmount: \(fundamental.divAmount ?? 0)")
+            //     AppLogger.shared.debug("  divFreq: \(fundamental.divFreq ?? 0)")
+            //     AppLogger.shared.debug("  eps: \(fundamental.eps ?? 0)")
+            //     AppLogger.shared.debug("  peRatio: \(fundamental.peRatio ?? 0)")
             //
             //     if let divYield = fundamental.divYield {
-            //         print("fetchQuote - Raw dividend yield for \(symbol): \(divYield)%")
-            //         print("fetchQuote - Dividend yield is already a percentage value")
+            //         AppLogger.shared.debug("fetchQuote - Raw dividend yield for \(symbol): \(divYield)%")
+            //         AppLogger.shared.debug("fetchQuote - Dividend yield is already a percentage value")
             //     }
             // } else {
-            //     print("fetchQuote - No fundamental data available for \(symbol)")
+            //     AppLogger.shared.debug("fetchQuote - No fundamental data available for \(symbol)")
             // }
             
             return quoteData
         } catch {
-            print("fetchQuote - Error: \(error.localizedDescription)")
-            print("   detail: \(error)")
+            AppLogger.shared.debug("fetchQuote - Error: \(error.localizedDescription)")
+            AppLogger.shared.debug("   detail: \(error)")
             return nil
         }
     }
@@ -1052,12 +1052,12 @@ class SchwabClient
      */
     public func computeATR( symbol : String )  -> Double
     {
-        print("=== computeATR \(symbol) ===")
+        AppLogger.shared.debug("=== computeATR \(symbol) ===")
 
         // Check cache first without holding lock
         if( symbol == m_lastFilteredATRSymbol )
         {
-            print( "  computeATR - returning cached." )
+            AppLogger.shared.debug( "  computeATR - returning cached." )
             return m_lastFilteredATR
         }
  
@@ -1070,12 +1070,12 @@ class SchwabClient
         // Double-check cache after acquiring lock
         if( symbol == m_lastFilteredATRSymbol )
         {
-            print( "  computeATR - returning cached (after lock)." )
+            AppLogger.shared.debug( "  computeATR - returning cached (after lock)." )
             return m_lastFilteredATR
         }
 
         guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
-            print("computeATR Failed to fetch price history for \(symbol).")
+            AppLogger.shared.debug("computeATR Failed to fetch price history for \(symbol).")
             // Don't set the symbol if we failed to get data
             return 0.0
         }
@@ -1086,7 +1086,7 @@ class SchwabClient
         
         // Need at least 2 candles to compute ATR
         guard candlesCount > 1 else {
-            print("computeATR: Need at least 2 candles, got \(candlesCount) for \(symbol)")
+            AppLogger.shared.debug("computeATR: Need at least 2 candles, got \(candlesCount) for \(symbol)")
             // Don't set the symbol if we don't have enough data
             return 0.0
         }
@@ -1100,7 +1100,7 @@ class SchwabClient
         }
         
         guard validCandles.count > 1 else {
-            print("computeATR: Need at least 2 valid candles, got \(validCandles.count) for \(symbol)")
+            AppLogger.shared.debug("computeATR: Need at least 2 valid candles, got \(validCandles.count) for \(symbol)")
             // Don't set the symbol if we don't have valid data
             return 0.0
         }
@@ -1117,7 +1117,7 @@ class SchwabClient
         
         // Additional safety check
         guard startIndex >= 0 && startIndex < validCandles.count else {
-            print("computeATR: Invalid startIndex \(startIndex) for validCandlesCount \(validCandles.count) for \(symbol)")
+            AppLogger.shared.debug("computeATR: Invalid startIndex \(startIndex) for validCandlesCount \(validCandles.count) for \(symbol)")
             return 0.0
         }
         
@@ -1127,7 +1127,7 @@ class SchwabClient
             
             // Bounds check for current position - recheck validCandles.count in case array was modified
             guard position >= 0 && position < validCandles.count else {
-                print("computeATR: Position \(position) out of bounds for validCandlesCount \(validCandles.count) for \(symbol)")
+                AppLogger.shared.debug("computeATR: Position \(position) out of bounds for validCandlesCount \(validCandles.count) for \(symbol)")
                 continue
             }
             
@@ -1140,7 +1140,7 @@ class SchwabClient
             } else {
                 let prevPosition = position - 1
                 guard prevPosition >= 0 && prevPosition < validCandles.count else {
-                    print("computeATR: Previous position \(prevPosition) out of bounds for validCandlesCount \(validCandles.count) for \(symbol)")
+                    AppLogger.shared.debug("computeATR: Previous position \(prevPosition) out of bounds for validCandlesCount \(validCandles.count) for \(symbol)")
                     continue
                 }
                 prevClose = validCandles[prevPosition].close ?? 0.0
@@ -1155,7 +1155,7 @@ class SchwabClient
         
         // Validate final values before returning
         guard close > 0 && m_lastFilteredATR > 0 else {
-            print("computeATR: Invalid final values - close: \(close), ATR: \(m_lastFilteredATR) for \(symbol)")
+            AppLogger.shared.debug("computeATR: Invalid final values - close: \(close), ATR: \(m_lastFilteredATR) for \(symbol)")
             return 0.0
         }
         
@@ -1163,7 +1163,7 @@ class SchwabClient
         m_lastFilteredATRSymbol = symbol
         m_lastFilteredATR = (m_lastFilteredATR * 1.08 / close * 100.0)
         
-        print("computeATR: Successfully calculated ATR: \(m_lastFilteredATR)% for \(symbol)")
+        AppLogger.shared.debug("computeATR: Successfully calculated ATR: \(m_lastFilteredATR)% for \(symbol)")
         
         // return the ATR as a percent.
         return m_lastFilteredATR
@@ -1178,7 +1178,7 @@ class SchwabClient
         
         m_lastFilteredATRSymbol = ""
         m_lastFilteredATR = 0.0
-        print("computeATR: Cleared ATR cache")
+        AppLogger.shared.debug("computeATR: Cleared ATR cache")
     }
     
     /**
@@ -1190,7 +1190,7 @@ class SchwabClient
         
         m_lastFilteredPriceHistorySymbol = ""
         m_lastFilteredPriceHistory = nil
-        print("fetchPriceHistory: Cleared price history cache")
+        AppLogger.shared.debug("fetchPriceHistory: Cleared price history cache")
     }
     
     /**
@@ -1199,14 +1199,14 @@ class SchwabClient
     public func clearAllCaches() {
         clearATRCache()
         clearPriceHistoryCache()
-        print("SchwabClient: Cleared all caches")
+        AppLogger.shared.debug("SchwabClient: Cleared all caches")
     }
     
     /**
      * testATRCalculation - test ATR calculation with sample data
      */
     public func testATRCalculation() {
-        print("=== testATRCalculation ===")
+        AppLogger.shared.debug("=== testATRCalculation ===")
         
         // Create sample candle data
         let sampleCandles = [
@@ -1230,7 +1230,7 @@ class SchwabClient
         
         // Test ATR calculation
         let atrValue = computeATR(symbol: "TEST")
-        print("Test ATR value: \(atrValue)%")
+        AppLogger.shared.debug("Test ATR value: \(atrValue)%")
         
         // Clear test data
         clearAllCaches()
@@ -1241,7 +1241,7 @@ class SchwabClient
      * Note: This method should be avoided in favor of async versions
      */
     public func fetchTransactionHistorySync() {
-        print("=== fetchTransactionHistorySync  ===")
+        AppLogger.shared.debug("=== fetchTransactionHistorySync  ===")
         
         // Check if we're already at the limit
         let currentQuarterDelta = m_quarterDeltaLock.withLock {
@@ -1263,7 +1263,7 @@ class SchwabClient
         }
         
         if maxQuarterDelta <= currentQuarterDelta {
-            print(" --- fetchTransactionHistorySync -  maxQuarterDelta reached")
+            AppLogger.shared.debug(" --- fetchTransactionHistorySync -  maxQuarterDelta reached")
             return
         }
 
@@ -1283,11 +1283,11 @@ class SchwabClient
         
         let result = group.wait(timeout: .now() + 60.0) // 60 second timeout
         if result == .timedOut {
-            print("fetchTransactionHistorySync timed out")
+            AppLogger.shared.debug("fetchTransactionHistorySync timed out")
             task.cancel()
         }
         
-        print(" --- fetchTransactionHistorySync done ---")
+        AppLogger.shared.debug(" --- fetchTransactionHistorySync done ---")
     }
 
     /**
@@ -1311,11 +1311,11 @@ class SchwabClient
         let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
             return m_quarterDelta
         }
-        print("=== fetchTransactionHistory -  quarterDelta: \(quarterDeltaForLogging) ===")
-        //print("🔍 fetchTransactionHistory - Setting loading to TRUE")
+        AppLogger.shared.debug("=== fetchTransactionHistory -  quarterDelta: \(quarterDeltaForLogging) ===")
+        //AppLogger.shared.debug("🔍 fetchTransactionHistory - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 fetchTransactionHistory - Setting loading to FALSE")
+            //AppLogger.shared.debug("🔍 fetchTransactionHistory - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -1339,7 +1339,7 @@ class SchwabClient
         }
         
         if maxQuarterDelta <= currentQuarterDelta {
-            print(" --- fetchTransactionHistory -  maxQuarterDelta reached")
+            AppLogger.shared.debug(" --- fetchTransactionHistory -  maxQuarterDelta reached")
             return
         }
         
@@ -1349,7 +1349,7 @@ class SchwabClient
         let endDate = getDateNQuartersAgoStrForEndDate(quarterDelta: newQuarterDelta - 1)
         let startDate = getDateNQuartersAgoStr(quarterDelta: newQuarterDelta)
 
-        print("  -- processing quarter delta: \(newQuarterDelta)")
+        AppLogger.shared.debug("  -- processing quarter delta: \(newQuarterDelta)")
 
         // Create a task group to handle multiple account requests concurrently
         await withTaskGroup(of: [Transaction]?.self) { group in
@@ -1363,7 +1363,7 @@ class SchwabClient
                                 transactionHistoryUrl += "&types=\(transactionType.rawValue)"
                         
                         guard let url = URL(string: transactionHistoryUrl) else {
-                            print("fetchTransactionHistory. Invalid URL")
+                            AppLogger.shared.debug("fetchTransactionHistory. Invalid URL")
                             return nil
                         }
                         
@@ -1378,12 +1378,12 @@ class SchwabClient
                             let (data, response) = try await URLSession.shared.data(for: request)
                             
                             guard let httpResponse = response as? HTTPURLResponse else {
-                                print("Invalid response type")
+                                AppLogger.shared.debug("Invalid response type")
                                 return nil
                             }
                             
                             if httpResponse.statusCode != 200 {
-                                print("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
+                                AppLogger.shared.debug("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
                                 if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                                     serviceError.printErrors(prefix: "  fetchTransactionHistory ")
                                 }
@@ -1395,8 +1395,8 @@ class SchwabClient
 
                             return transactions
                         } catch {
-                            print("fetchTransactionHistory Error: \(error.localizedDescription)")
-                            print("   detail:  \(error)")
+                            AppLogger.shared.debug("fetchTransactionHistory Error: \(error.localizedDescription)")
+                            AppLogger.shared.debug("   detail:  \(error)")
                             return nil
                         }
                     } // group.addTask
@@ -1415,7 +1415,7 @@ class SchwabClient
             }
         } // await withTaskGroup
 
-        print("Fetched \(m_transactionList.count - initialSize) transactions")
+        AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions")
         
         // Sort all transactions once at the end for better efficiency
         // This is much more efficient than sorting after each batch:
@@ -1437,11 +1437,11 @@ class SchwabClient
         let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
             return m_quarterDelta
         }
-//        print( "    ==== getTransactionsFor \(symbol ?? "nil")  quarters: \(quarterDeltaForLogging) ====" )
-//        print("    ==== getTransactionsFor Current transaction list size: \(m_transactionList.count)")
+//        AppLogger.shared.debug( "    ==== getTransactionsFor \(symbol ?? "nil")  quarters: \(quarterDeltaForLogging) ====" )
+//        AppLogger.shared.debug("    ==== getTransactionsFor Current transaction list size: \(m_transactionList.count)")
         
         if( nil == symbol ) {
-            print( "getTransactionsFor \(symbol ?? "nil")  -  No symbol provided" )
+            AppLogger.shared.debug( "getTransactionsFor \(symbol ?? "nil")  -  No symbol provided" )
             m_transactionListLock.lock()
             defer { m_transactionListLock.unlock() }
             return m_transactionList
@@ -1462,14 +1462,14 @@ class SchwabClient
             m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
             m_lastFilteredTransactions.removeAll(keepingCapacity: true)
             m_lastFilteredTransactionSharesAvailableToTrade = 0.0
-            // print( "    ==== getTransactionsFor   !!!!! cleared filtered transactions" )
+            // AppLogger.shared.debug( "    ==== getTransactionsFor   !!!!! cleared filtered transactions" )
             // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
             m_lastFilteredTransactions =  m_transactionList.filter { transaction in
                 // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
                 let matches = transaction.transferItems.contains { $0.instrument?.symbol == symbol }
                 return matches // return from closure, not from the method
             }
-            // print("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  Quarter: \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
+            // AppLogger.shared.debug("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  Quarter: \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
 
             // Fetch more records if needed, but with proper termination conditions
             var fetchAttempts = 0
@@ -1478,7 +1478,7 @@ class SchwabClient
             while( (self.maxQuarterDelta > quarterDeltaForLogging) && 
                    (self.m_lastFilteredTransactions.count == 0) && 
                    (fetchAttempts < maxFetchAttempts) ) {
-                print( "     -- getTransactionsFor \(symbol ?? "nil")  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
+                AppLogger.shared.debug( "     -- getTransactionsFor \(symbol ?? "nil")  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
                 fetchAttempts += 1
                 
                 // Use DispatchGroup to wait for the async operation with timeout
@@ -1494,7 +1494,7 @@ class SchwabClient
                 // Wait for completion or timeout
                 let result = group.wait(timeout: .now() + m_fetchTimeout)
                 if result == .timedOut {
-                    print("     -- getTransactionsFor \(symbol ?? "nil")  - fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds for  \(symbol ?? "nil")")
+                    AppLogger.shared.debug("     -- getTransactionsFor \(symbol ?? "nil")  - fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds for  \(symbol ?? "nil")")
                 }
                 else {
                     // Re-filter after potential new data
@@ -1503,28 +1503,28 @@ class SchwabClient
                         let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
                         return matches
                     }
-                    print("  -- getTransactionsFor \(symbol ?? "nil")  - Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
+                    AppLogger.shared.debug("  -- getTransactionsFor \(symbol ?? "nil")  - Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
                 }
             }
             
             if fetchAttempts >= maxFetchAttempts && m_lastFilteredTransactions.count == 0 {
-                print("Reached maximum fetch attempts without finding transactions for symbol: \(symbol ?? "nil")")
+                AppLogger.shared.debug("Reached maximum fetch attempts without finding transactions for symbol: \(symbol ?? "nil")")
             }
             
             // Calculate shares available for trading
             if let symbol = symbol {
                 // We'll compute shares available for trading separately to avoid circular dependency
                 // This will be done after tax lots are computed
-                print("=== Shares Available for Trading Calculation ===")
-                print("Symbol: \(symbol)")
-                print("Shares available for trading will be computed after tax lots")
+                AppLogger.shared.debug("=== Shares Available for Trading Calculation ===")
+                AppLogger.shared.debug("Symbol: \(symbol)")
+                AppLogger.shared.debug("Shares available for trading will be computed after tax lots")
             }
         }
         else {
-            print( "  -- getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
+            AppLogger.shared.debug( "  -- getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
         }
         // return the transactionlist where the symbol matches what is provided
-        print( " --- getTransactionsFor \(symbol ?? "nil")  returning \(m_lastFilteredTransactions.count) transactions -- " )
+        AppLogger.shared.debug( " --- getTransactionsFor \(symbol ?? "nil")  returning \(m_lastFilteredTransactions.count) transactions -- " )
         return m_lastFilteredTransactions
     } // getTransactionsFor
     
@@ -1534,7 +1534,7 @@ class SchwabClient
 
     private func setLatestTradeDates()
     {
-        print( "--- setLatestTradeDates ---" )
+        AppLogger.shared.debug( "--- setLatestTradeDates ---" )
         m_latestDateForSymbolLock.lock()
         defer { m_latestDateForSymbolLock.unlock() }
         
@@ -1554,21 +1554,21 @@ class SchwabClient
                         dateDte = try Date( transaction.tradeDate ?? "1970-01-01 00:00:00", strategy: .iso8601.year().month().day()
                             .time(includingFractionalSeconds: false)
                         )
-                        // print( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
+                        // AppLogger.shared.debug( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
                     }
                     catch {
-                        print( "Error parsing date: \(error)" )
+                        AppLogger.shared.debug( "Error parsing date: \(error)" )
                         continue
                     }
                     // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
                     if m_latestDateForSymbol[symbol] == nil || dateDte > m_latestDateForSymbol[symbol]! {
                         m_latestDateForSymbol[symbol] = dateDte
-                        // print( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
+                        // AppLogger.shared.debug( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
                     }
                 }
             }
         }
-        print( " ! setLatestTradeDates - set dates for \(m_latestDateForSymbol.count) symbols !" )
+        AppLogger.shared.debug( " ! setLatestTradeDates - set dates for \(m_latestDateForSymbol.count) symbols !" )
     }
     
     /**
@@ -1595,15 +1595,15 @@ class SchwabClient
      * This should be called after computeTaxLots to avoid circular dependency
      */
     public func computeSharesAvailableForTrading(symbol: String, taxLots: [SalesCalcPositionsRecord]) -> Double {
-        print("=== computeSharesAvailableForTrading for \(symbol) ===")
-        print("  Using provided tax lots for accurate share calculation")
-        print("  Found \(taxLots.count) tax lots for \(symbol)")
+        AppLogger.shared.debug("=== computeSharesAvailableForTrading for \(symbol) ===")
+        AppLogger.shared.debug("  Using provided tax lots for accurate share calculation")
+        AppLogger.shared.debug("  Found \(taxLots.count) tax lots for \(symbol)")
         
         // Calculate shares held for over 30 days from tax lots
         var sharesOver30Days: Double = 0.0
         let currentDate = Date()
         
-        print("  === Processing Tax Lots ===")
+        AppLogger.shared.debug("  === Processing Tax Lots ===")
         for (index, taxLot) in taxLots.enumerated() {
             // Parse tax lot date - format is "2024-12-03 14:34:41"
             let dateFormatter = DateFormatter()
@@ -1612,7 +1612,7 @@ class SchwabClient
             
             guard let date = dateFormatter.date(from: taxLot.openDate)
             else {
-                print("    Tax lot \(index): Skipping invalid date: \(taxLot.openDate)")
+                AppLogger.shared.debug("    Tax lot \(index): Skipping invalid date: \(taxLot.openDate)")
                 continue
             }
             
@@ -1621,27 +1621,27 @@ class SchwabClient
             
             if daysSinceTaxLot > 30 {
                 sharesOver30Days += taxLot.quantity
-                print("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
+                AppLogger.shared.debug("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
             } else {
-                print("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
+                AppLogger.shared.debug("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
             }
         }
         
-        print("  Total shares held for over 30 days: \(sharesOver30Days)")
+        AppLogger.shared.debug("  Total shares held for over 30 days: \(sharesOver30Days)")
         
         // Get shares under contract
         let sharesUnderContract = getContractCountForSymbol(symbol) * 100.0
-        print("  Shares under contract: \(sharesUnderContract) (contracts: \(getContractCountForSymbol(symbol)))")
+        AppLogger.shared.debug("  Shares under contract: \(sharesUnderContract) (contracts: \(getContractCountForSymbol(symbol)))")
         
         // Calculate available shares
         let availableShares = sharesOver30Days - sharesUnderContract
         let finalAvailableShares = max(0.0, availableShares)
         
-        print("  === Final Calculation ===")
-        print("    Shares over 30 days: \(sharesOver30Days)")
-        print("    Shares under contract: \(sharesUnderContract)")
-        print("    Available shares: \(finalAvailableShares)")
-        print("    Total shares owned: \(taxLots.reduce(0.0) { $0 + $1.quantity })")
+        AppLogger.shared.debug("  === Final Calculation ===")
+        AppLogger.shared.debug("    Shares over 30 days: \(sharesOver30Days)")
+        AppLogger.shared.debug("    Shares under contract: \(sharesUnderContract)")
+        AppLogger.shared.debug("    Available shares: \(finalAvailableShares)")
+        AppLogger.shared.debug("    Total shares owned: \(taxLots.reduce(0.0) { $0 + $1.quantity })")
         
         // Store the result for later retrieval
         m_lastFilteredTransactionSharesAvailableToTrade = finalAvailableShares
@@ -1656,49 +1656,47 @@ class SchwabClient
      */
     public func fetchOrderHistory( retry : Bool = false ) async
     {
-        print("=== fetchOrderHistory  ===")
-        //print("🔍 fetchOrderHistory - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
-        defer {
-            //print("🔍 fetchOrderHistory - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
-        }
+        AppLogger.shared.info("fetchOrderHistory === fetchOrderHistory  ===")
+        AppLogger.shared.info("fetchOrderHistory 🚀 Starting fetchOrderHistory")
         
+        // Clear existing orders
         m_orderList.removeAll(keepingCapacity: true)
-        // get current date/time in YYYY-MM-DDThh:mm:ss.000Z format
-        let todayStr : String = Date().formatted(.iso8601
-            .year()
-            .month()
-            .day()
-            .timeZone(separator: .omitted)
-            .time(includingFractionalSeconds: true)
-            .timeSeparator(.colon)
-        )
-
-        m_symbolsWithOrders.removeAll(keepingCapacity: true)
-
-        // get date one year ago
-        let dateOneYearAgoStr : String = getDateNYearsAgoStr( yearDelta: 1 )
-
-        // Fetch orders from all accounts in parallel
+        
+        // Get date range for the last year
+        let today: Date = Date()
+        let oneYearAgo: Date = Calendar.current.date(byAdding: .year, value: -1, to: today) ?? today
+        
+        let dateFormatter: DateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        let todayStr: String = dateFormatter.string(from: today)
+        let dateOneYearAgoStr: String = dateFormatter.string(from: oneYearAgo)
+        
+        AppLogger.shared.info("fetchOrderHistory 📅 Date range: \(dateOneYearAgoStr) to \(todayStr)")
+        
+        // Fetch orders for each active status
+        // let ordersWeb = "\(accountWeb)/\(m_secrets.acountNumberHash)/orders"
+        
         await withTaskGroup(of: [Order]?.self) { group in
-            // loop over the OrderStatus types to request the orders for each status
-            for status: OrderStatus in OrderStatus.allCases {
+            for status in [OrderStatus.working, OrderStatus.queued, OrderStatus.awaitingParentOrder, OrderStatus.awaitingCondition] {
                 // ignore order status values that are not active orders
                 if status == .rejected || status == .canceled || status == .replaced || status == .expired || status == .filled {
                     continue
                 }
+                AppLogger.shared.info("fetchOrderHistory 🔍 Fetching orders for status: \(status.rawValue)")
                 // for accountNumberHash in self.m_secrets.acountNumberHash {
                     group.addTask {
-                        // print("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash),  status: \(status.rawValue) ===" )
+                        // AppLogger.shared.debug("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash),  status: \(status.rawValue) ===" )
 
                         var orderHistoryUrl = "\(ordersWeb)"
                         orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
                         orderHistoryUrl += "&toEnteredTime=\(todayStr)"
                         orderHistoryUrl += "&status=\(status.rawValue)"
+                        
+                        AppLogger.shared.info("fetchOrderHistory 🔍 Requesting URL: \(orderHistoryUrl)")
 
                         guard let url = URL( string: orderHistoryUrl ) else {
-                            print("fetchOrderHistory. Invalid URL")
+                            AppLogger.shared.error("fetchOrderHistory ❌ fetchOrderHistory. Invalid URL")
                             return nil
                         }
 
@@ -1711,36 +1709,52 @@ class SchwabClient
                         
                         do {
                             let (data, response) = try await URLSession.shared.data(for: request)
-                            
+
                             guard let httpResponse = response as? HTTPURLResponse else {
-                                print("Invalid response type")
+                                AppLogger.shared.error("fetchOrderHistory ❌ Invalid response type")
                                 return nil
                             }
-                            
+
                             if httpResponse.statusCode != 200 {
                                 if httpResponse.statusCode == 401 && retry {
-                                    print("=== retrying fetchOrderHistory after refreshing access token ===")
+                                    AppLogger.shared.warning("fetchOrderHistory === retrying fetchOrderHistory after refreshing access token ===")
                                     self.refreshAccessToken()
                                     // Note: We can't recursively call async function from within task group
                                     // The retry will be handled by the caller
                                     return nil
                                 }
-                                
-                                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+
+                                AppLogger.shared.error("fetchOrderHistory ❌ HTTP \(httpResponse.statusCode) for status \(status.rawValue)")
+                                if let serviceError: ServiceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                                     // print data as string
-                                    print( "  ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
+                                    AppLogger.shared.error("fetchOrderHistory ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")")
                                     serviceError.printErrors(prefix: "fetchOrderHistory ")
                                 }
                                 return nil
                             }
-                            
-                            let decoder = JSONDecoder()
-                            let orders = try decoder.decode([Order].self, from: data)
 
-                            return orders
+                            // Try to decode, but if it fails, print the raw JSON
+                            do {
+                                let decoder = JSONDecoder()
+                                let orders = try decoder.decode([Order].self, from: data)
+
+                                AppLogger.shared.info("fetchOrderHistory ✅ Received \(orders.count) orders for status \(status.rawValue)")
+                                for order in orders {
+                                    if let orderId = order.orderId, let symbol = order.orderLegCollection?.first?.instrument?.symbol {
+                                        AppLogger.shared.debug("fetchOrderHistory   📋 Order ID: \(orderId), Symbol: \(symbol), Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
+                                    }
+                                }
+
+                                return orders
+                            } catch {
+                                AppLogger.shared.error("fetchOrderHistory ❌ Decoding error for status \(status.rawValue): \(error.localizedDescription)")
+                                AppLogger.shared.error("fetchOrderHistory   detail:  \(error)")
+                                AppLogger.shared.error("fetchOrderHistory ❌ Raw JSON data received:")
+                                AppLogger.shared.error("fetchOrderHistory \(String(data: data, encoding: .utf8) ?? "Could not decode as UTF-8")")
+                                return nil
+                            }
                         } catch {
-                            print("fetchOrderHistory Error: \(error.localizedDescription)")
-                            print("   detail:  \(error)")
+                            AppLogger.shared.error("fetchOrderHistory ❌ Network error for status \(status.rawValue): \(error.localizedDescription)")
                             return nil
                         }
                     } // addTask
@@ -1748,70 +1762,109 @@ class SchwabClient
             } // for all orderStatus values
 
             // Collect results from all tasks
+            var totalOrdersReceived = 0
             for await orders in group {
                 if let orders = orders {
-//                    print("Adding \(orders.count) orders from status query")
-//                    for order in orders {
-//                        if let orderId = order.orderId {
-//                            print("  Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
-//                        }
-//                    }
+                    totalOrdersReceived += orders.count
+                    AppLogger.shared.info("fetchOrderHistory 📦 Adding \(orders.count) orders from status query (total so far: \(totalOrdersReceived))")
+                    for order in orders {
+                        if let orderId = order.orderId {
+                            AppLogger.shared.debug("fetchOrderHistory   📋 Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
+                        }
+                    }
                     m_orderList.append(contentsOf: orders)
                 }
             } // append orders
         } // await
         
-        print("Fetched \(m_orderList.count) orders for all accounts")
+        AppLogger.shared.info("fetchOrderHistory 📊 Fetched \(m_orderList.count) orders for all accounts")
         
         // Deduplicate orders by orderId to ensure uniqueness
         let uniqueOrders = Dictionary(grouping: m_orderList, by: { $0.orderId })
-            .compactMap { (orderId, orders) in
+            .compactMap { (orderId, orders) -> Order? in
                 // If there are multiple orders with the same ID, take the first one
                 // This could happen if the same order appears in multiple status queries
-                // guard let orderId = orderId else { return orders.first }
-                // print("Found \(orders.count) orders with ID \(orderId), keeping first one")
+                if orders.count > 1 {
+                    AppLogger.shared.warning("fetchOrderHistory ⚠️ Found \(orders.count) orders with ID \(orderId?.description ?? "nil"), keeping first one")
+                }
                 return orders.first
             }
         
         m_orderList = uniqueOrders
-        print("After deduplication: \(m_orderList.count) unique orders")
+        AppLogger.shared.info("fetchOrderHistory 📊 After deduplication: \(m_orderList.count) unique orders")
+        
+        // Debug: Print all unique orders with their details
+        AppLogger.shared.debug("fetchOrderHistory 🔍 All unique orders:")
+        for order in m_orderList {
+            if let orderId = order.orderId {
+                let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
+                AppLogger.shared.debug("fetchOrderHistory   📋 ID: \(orderId), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
+            }
+        }
         
         updateSymbolsWithOrders()
     }
     
     private func updateSymbolsWithOrders() {
+        AppLogger.shared.info("🔍 === updateSymbolsWithOrders ===")
         // Clear existing symbols with orders
         m_symbolsWithOrders.removeAll(keepingCapacity: true)
         
+        AppLogger.shared.info("🔍 Processing \(m_orderList.count) orders to categorize by symbol...")
+        
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
-        for order in m_orderList {
+        for (index, order) in m_orderList.enumerated() {
+            AppLogger.shared.debug("🔍 Processing order \(index + 1)/\(m_orderList.count): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), Strategy=\(order.orderStrategyType?.rawValue ?? "nil")")
+            
             if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
+                AppLogger.shared.debug("  ✅ Order has active status: \(activeStatus.shortDisplayName)")
+                
                 if( ( order.orderStrategyType == .SINGLE )
                     || ( order.orderStrategyType == .TRIGGER ) ) {
-                    for leg in order.orderLegCollection ?? [] {
+                    AppLogger.shared.debug("  📋 Processing SINGLE/TRIGGER order")
+                    for (legIndex, leg) in (order.orderLegCollection ?? []).enumerated() {
                         if let symbol = leg.instrument?.symbol {
+                            AppLogger.shared.debug("    📊 Leg \(legIndex + 1): Symbol=\(symbol)")
                             if m_symbolsWithOrders[symbol] == nil {
                                 m_symbolsWithOrders[symbol] = []
+                                AppLogger.shared.debug("      ➕ Created new entry for symbol \(symbol)")
                             }
                             if !m_symbolsWithOrders[symbol]!.contains(activeStatus) {
                                 m_symbolsWithOrders[symbol]!.append(activeStatus)
+                                AppLogger.shared.debug("      ➕ Added status \(activeStatus.shortDisplayName) to symbol \(symbol)")
+                            } else {
+                                AppLogger.shared.debug("      ⚠️ Status \(activeStatus.shortDisplayName) already exists for symbol \(symbol)")
                             }
+                        } else {
+                            AppLogger.shared.warning("    ⚠️ Leg \(legIndex + 1): No symbol found")
                         }
                     }
                 }
                 if ( order.orderStrategyType == .OCO ) {
-                    for childOrder in order.childOrderStrategies ?? [] {
+                    AppLogger.shared.debug("  📋 Processing OCO order")
+                    for (childIndex, childOrder) in (order.childOrderStrategies ?? []).enumerated() {
+                        AppLogger.shared.debug("    🔍 Child order \(childIndex + 1): ID=\(childOrder.orderId?.description ?? "nil"), Status=\(childOrder.status?.rawValue ?? "nil")")
                         if let childActiveStatus = ActiveOrderStatus(from: childOrder.status ?? .unknown, order: childOrder) {
-                            for leg in childOrder.orderLegCollection ?? [] {
+                            AppLogger.shared.debug("      ✅ Child order has active status: \(childActiveStatus.shortDisplayName)")
+                            for (legIndex, leg) in (childOrder.orderLegCollection ?? []).enumerated() {
                                 if let symbol = leg.instrument?.symbol {
+                                    AppLogger.shared.debug("        📊 Child Leg \(legIndex + 1): Symbol=\(symbol)")
                                     if m_symbolsWithOrders[symbol] == nil {
                                         m_symbolsWithOrders[symbol] = []
+                                        AppLogger.shared.debug("          ➕ Created new entry for symbol \(symbol)")
                                     }
                                     if !m_symbolsWithOrders[symbol]!.contains(childActiveStatus) {
                                         m_symbolsWithOrders[symbol]!.append(childActiveStatus)
+                                        AppLogger.shared.debug("          ➕ Added status \(childActiveStatus.shortDisplayName) to symbol \(symbol)")
+                                    } else {
+                                        AppLogger.shared.debug("          ⚠️ Status \(childActiveStatus.shortDisplayName) already exists for symbol \(symbol)")
                                     }
+                                } else {
+                                    AppLogger.shared.warning("        ⚠️ Child Leg \(legIndex + 1): No symbol found")
                                 }
                             }
+                        } else {
+                            AppLogger.shared.warning("      ❌ Child order does not have active status: \(childOrder.status?.rawValue ?? "nil")")
                         }
                     }
                 }
@@ -1821,23 +1874,25 @@ class SchwabClient
                       order.status != OrderStatus.expired &&
                       order.status != OrderStatus.replaced &&
                       order.status != OrderStatus.rejected ){
-                print( "... orders NOT in awaiting states \(order.status ?? OrderStatus.unknown)" )
+                AppLogger.shared.warning("  ❌ Order NOT in awaiting states: \(order.status ?? OrderStatus.unknown)")
+            } else {
+                AppLogger.shared.debug("  ❌ Order is completed/cancelled: \(order.status?.rawValue ?? "nil")")
             }
         }
         
-        // Sort the order statuses by priority for each symbol
-        for symbol in m_symbolsWithOrders.keys {
-            m_symbolsWithOrders[symbol]?.sort { $0.priority < $1.priority }
+        AppLogger.shared.info("🔍 Final symbols with orders: \(m_symbolsWithOrders.count)")
+        for (symbol, statuses) in m_symbolsWithOrders {
+            let statusNames = statuses.map { $0.shortDisplayName }.joined(separator: ", ")
+            AppLogger.shared.debug("  📋 \(symbol): \(statusNames)")
         }
-        
-        print("\(m_symbolsWithOrders.count) symbols have orders in awaiting states")
+        AppLogger.shared.info("🔍 === END updateSymbolsWithOrders ===")
     }
 
     // cancel select order 
     public func cancelOrders( orderIds: [Int64] ) async -> (success: Bool, errorMessage: String?) {
-        print("=== cancelOrders ===")
-        print("🎯 Cancelling \(orderIds.count) orders: \(orderIds)")
-        print("📋 Order IDs to cancel: \(orderIds.map { String($0) }.joined(separator: ", "))")
+        AppLogger.shared.info("=== cancelOrders ===")
+        AppLogger.shared.debug("🎯 Cancelling \(orderIds.count) orders: \(orderIds)")
+        AppLogger.shared.debug("📋 Order IDs to cancel: \(orderIds.map { String($0) }.joined(separator: ", "))")
         
         loadingDelegate?.setLoading(true)
         defer {
@@ -1898,18 +1953,18 @@ class SchwabClient
                     request.timeoutInterval = self.requestTimeout
                     
                     // Log the request details for verification
-                    print("🔍 DELETE REQUEST VERIFICATION:")
-                    print("  📍 URL: \(cancelOrderUrl)")
-                    print("  🆔 Order ID: \(orderId)")
-                    print("  🏦 Order Account Number: \(orderAccountNumber)")
-                    print("  🔑 Account Hash: \(hashValue)")
-                    print("  🏷️  HTTP Method: \(request.httpMethod ?? "nil")")
-                    print("  📋 Headers:")
-                    print("    Authorization: Bearer \(String(self.m_secrets.accessToken.prefix(20)))...")
-                    print("    Accept: \(request.value(forHTTPHeaderField: "Accept") ?? "nil")")
-                    print("  ⏱️  Timeout: \(request.timeoutInterval) seconds")
-                    print("  📊 Request would delete order \(orderId) from account \(orderAccountNumber) (hash: \(hashValue))")
-                    print("  ✅ Request verification complete - ready to execute DELETE")
+                    AppLogger.shared.debug("🔍 DELETE REQUEST VERIFICATION:")
+                    AppLogger.shared.debug("  📍 URL: \(cancelOrderUrl)")
+                    AppLogger.shared.debug("  🆔 Order ID: \(orderId)")
+                    AppLogger.shared.debug("  🏦 Order Account Number: \(orderAccountNumber)")
+                    AppLogger.shared.debug("  🔑 Account Hash: \(hashValue)")
+                    AppLogger.shared.debug("  🏷️  HTTP Method: \(request.httpMethod ?? "nil")")
+                    AppLogger.shared.debug("  📋 Headers:")
+                    AppLogger.shared.debug("    Authorization: Bearer \(String(self.m_secrets.accessToken.prefix(20)))...")
+                    AppLogger.shared.debug("    Accept: \(request.value(forHTTPHeaderField: "Accept") ?? "nil")")
+                    AppLogger.shared.debug("  ⏱️  Timeout: \(request.timeoutInterval) seconds")
+                    AppLogger.shared.debug("  📊 Request would delete order \(orderId) from account \(orderAccountNumber) (hash: \(hashValue))")
+                    AppLogger.shared.debug("  ✅ Request verification complete - ready to execute DELETE")
                     
                     
                     do {
@@ -1920,7 +1975,7 @@ class SchwabClient
                         }
                         
                         if httpResponse.statusCode == 200 || httpResponse.statusCode == 204 {
-                            print("✅ Successfully cancelled order \(orderId)")
+                            AppLogger.shared.warning("✅ Successfully cancelled order \(orderId)")
                             return (orderId: orderId, success: true, errorMessage: nil)
                         } else {
                             // Try to decode error response
@@ -1931,12 +1986,12 @@ class SchwabClient
                                 errorMessage = "HTTP \(httpResponse.statusCode): Unknown error"
                             }
                             
-                            print("❌ Failed to cancel order \(orderId): \(errorMessage)")
+                            AppLogger.shared.warning("❌ Failed to cancel order \(orderId): \(errorMessage)")
                             return (orderId: orderId, success: false, errorMessage: errorMessage)
                         }
                     } catch {
                         let errorMessage = "Network error: \(error.localizedDescription)"
-                        print("❌ Error cancelling order \(orderId): \(errorMessage)")
+                        AppLogger.shared.warning("❌ Error cancelling order \(orderId): \(errorMessage)")
                         return (orderId: orderId, success: false, errorMessage: errorMessage)
                     }
                 }
@@ -1966,51 +2021,51 @@ class SchwabClient
             // Update symbols with orders
             updateSymbolsWithOrders()
             
-            print("✅ SUCCESS: Cancelled all \(orderIds.count) orders successfully")
-            print("📊 Final Results:")
-            print("  🎯 Total orders requested: \(orderIds.count)")
-            print("  ✅ Successfully cancelled: \(orderIds.count)")
-            print("  ❌ Failed to cancel: 0")
+            AppLogger.shared.warning("✅ SUCCESS: Cancelled all \(orderIds.count) orders successfully")
+            AppLogger.shared.warning("📊 Final Results:")
+            AppLogger.shared.warning("  🎯 Total orders requested: \(orderIds.count)")
+            AppLogger.shared.warning("  ✅ Successfully cancelled: \(orderIds.count)")
+            AppLogger.shared.warning("  ❌ Failed to cancel: 0")
             return (success: true, errorMessage: nil)
         } else {
             // Some orders failed to cancel
             let errorMessage = "Failed to cancel \(failedOrders.count) orders:\n" + errorMessages.joined(separator: "\n")
-            print("❌ FAILURE: Cancellation failed")
-            print("📊 Final Results:")
-            print("  🎯 Total orders requested: \(orderIds.count)")
-            print("  ✅ Successfully cancelled: \(orderIds.count - failedOrders.count)")
-            print("  ❌ Failed to cancel: \(failedOrders.count)")
-            print("  📝 Error details: \(errorMessage)")
+            AppLogger.shared.warning("❌ FAILURE: Cancellation failed")
+            AppLogger.shared.warning("📊 Final Results:")
+            AppLogger.shared.warning("  🎯 Total orders requested: \(orderIds.count)")
+            AppLogger.shared.warning("  ✅ Successfully cancelled: \(orderIds.count - failedOrders.count)")
+            AppLogger.shared.warning("  ❌ Failed to cancel: \(failedOrders.count)")
+            AppLogger.shared.warning("  📝 Error details: \(errorMessage)")
             return (success: false, errorMessage: errorMessage)
         }
     }
 
     // place an order
     public func placeOrder( order: Order ) async -> (success: Bool, errorMessage: String?) {
-        print("📤 [PLACE-ORDER] === placeOrder  ===")
+        AppLogger.shared.debug("📤 [PLACE-ORDER] === placeOrder  ===")
         
         // Get the account hash for the order's account number
         guard let orderAccountNumber = order.accountNumber else {
-            print("📤 [PLACE-ORDER] ❌ Order does not have account number")
+            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ Order does not have account number")
             return (false, "Order does not have account number")
         }
         
         guard let accountNumberHash = m_secrets.acountNumberHash.first(where: { 
             $0.accountNumber == String(orderAccountNumber) 
         }) else {
-            print("📤 [PLACE-ORDER] ❌ Account hash not found for account number \(orderAccountNumber)")
+            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ Account hash not found for account number \(orderAccountNumber)")
             return (false, "Account hash not found for account number \(orderAccountNumber)")
         }
         
         guard let hashValue = accountNumberHash.hashValue else {
-            print("📤 [PLACE-ORDER] ❌ Invalid account hash value")
+            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ Invalid account hash value")
             return (false, "Invalid account hash value")
         }
         
         let placeOrderUrl = "\(accountWeb)/\(hashValue)/orders"
         
         guard let url = URL(string: placeOrderUrl) else {
-            print("📤 [PLACE-ORDER] ❌ Invalid URL for order placement")
+            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ Invalid URL for order placement")
             return (false, "Invalid URL for order placement")
         }
         
@@ -2022,12 +2077,12 @@ class SchwabClient
             let jsonData = try encoder.encode(order)
             let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
             
-            print("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
-            // print("📤 [PLACE-ORDER]   📍 URL: \(placeOrderUrl)")
-            // print("📤 [PLACE-ORDER]   🏦 Account Number: \(orderAccountNumber)")
-            // print("📤 [PLACE-ORDER]   🔑 Account Hash: \(hashValue)")
-            print("📤 [PLACE-ORDER]   📋 JSON Body:")
-            print("📤 [PLACE-ORDER] \(jsonString)")
+            AppLogger.shared.debug("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
+            // AppLogger.shared.debug("📤 [PLACE-ORDER]   📍 URL: \(placeOrderUrl)")
+            // AppLogger.shared.debug("📤 [PLACE-ORDER]   🏦 Account Number: \(orderAccountNumber)")
+            // AppLogger.shared.debug("📤 [PLACE-ORDER]   🔑 Account Hash: \(hashValue)")
+            AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 JSON Body:")
+            AppLogger.shared.debug("📤 [PLACE-ORDER] \(jsonString)")
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -2042,18 +2097,18 @@ class SchwabClient
                 let (data, response) = try await URLSession.shared.data(for: request)
                 
                 if let httpResponse = response as? HTTPURLResponse {
-                    print("📤 [PLACE-ORDER] 📥 RESPONSE:")
-                    print("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
-                    print("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
-                    print(" [PLACE-ORDER]  \(httpResponse.description)")
-                    print(" [PLACE-ORDER]  \(httpResponse.debugDescription)")
+                    AppLogger.shared.debug("📤 [PLACE-ORDER] 📥 RESPONSE:")
+                    AppLogger.shared.debug("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
+                    AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
+                    AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.description)")
+                    AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.debugDescription)")
 
                     if let responseString = String(data: data, encoding: .utf8) {
-                        print("📤 [PLACE-ORDER]   📄 Response Body: \(responseString)")
+                        AppLogger.shared.debug("📤 [PLACE-ORDER]   📄 Response Body: \(responseString)")
                     }
                     
                     if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
-                        print("📤 [PLACE-ORDER] ✅ Order placed successfully")
+                        AppLogger.shared.debug("📤 [PLACE-ORDER] ✅ Order placed successfully")
                         // Refresh orders list
                         await fetchOrderHistory()
                         return (true, nil)
@@ -2073,23 +2128,23 @@ class SchwabClient
                             }
                         }
                         
-                        print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+                        AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ \(errorMessage)")
                         return (false, errorMessage)
                     }
                 } else {
                     let errorMessage = "Invalid response type"
-                    print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+                    AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ \(errorMessage)")
                     return (false, errorMessage)
                 }
             } catch {
                 let errorMessage = "Error placing order: \(error.localizedDescription)"
-                print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+                AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ \(errorMessage)")
                 return (false, errorMessage)
             }
             
         } catch {
             let errorMessage = "Error encoding order to JSON: \(error.localizedDescription)"
-            print("📤 [PLACE-ORDER] ❌ \(errorMessage)")
+            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ \(errorMessage)")
             return (false, errorMessage)
         }
     }
@@ -2115,10 +2170,26 @@ class SchwabClient
     /**
      * getPrimaryOrderStatus - return the highest priority order status for a given symbol
      */
-    public func getPrimaryOrderStatus( symbol: String? = nil ) -> ActiveOrderStatus?
-    {
-        guard let symbol = symbol else { return nil }
-        return m_symbolsWithOrders[symbol]?.first
+    public func getPrimaryOrderStatus(for symbol: String) -> ActiveOrderStatus? {
+        AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
+        AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
+        
+        guard let statuses = m_symbolsWithOrders[symbol], !statuses.isEmpty else {
+            AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
+            AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
+            return nil
+        }
+        
+        // Sort by priority and return the highest priority status
+        let sortedStatuses = statuses.sorted { $0.priority < $1.priority }
+        let primaryStatus = sortedStatuses.first
+        
+        AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
+        AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
+        AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
+        AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
+        
+        return primaryStatus
     }
     
     /**
@@ -2126,19 +2197,19 @@ class SchwabClient
      */
     public func getOrderList() -> [Order]
     {
-        print("[SchwabClient] getOrderList() called, returning \(m_orderList.count) orders")
+        AppLogger.shared.debug("[SchwabClient] getOrderList() called, returning \(m_orderList.count) orders")
         
         // Debug: Print all order IDs to check for duplicates
         let orderIds = m_orderList.compactMap { $0.orderId }
         let uniqueOrderIds = Set(orderIds)
-        print("[SchwabClient] Total order IDs: \(orderIds.count), Unique order IDs: \(uniqueOrderIds.count)")
+        AppLogger.shared.debug("[SchwabClient] Total order IDs: \(orderIds.count), Unique order IDs: \(uniqueOrderIds.count)")
         
         if orderIds.count != uniqueOrderIds.count {
-            print("[SchwabClient] WARNING: Found duplicate order IDs!")
+            AppLogger.shared.debug("[SchwabClient] WARNING: Found duplicate order IDs!")
             let duplicates = Dictionary(grouping: orderIds, by: { $0 })
                 .filter { $0.value.count > 1 }
                 .map { $0.key }
-            print("[SchwabClient] Duplicate order IDs: \(duplicates)")
+            AppLogger.shared.debug("[SchwabClient] Duplicate order IDs: \(duplicates)")
         }
         
         return m_orderList
@@ -2153,10 +2224,10 @@ class SchwabClient
      * the later tax lots and the overall cost.
      */
     private func handleMergedRenamedSecurities(_ taxLots: [SalesCalcPositionsRecord], symbol: String) -> [SalesCalcPositionsRecord] {
-        print("=== handleMergedRenamedSecurities - processing \(taxLots.count) tax lots ===")
+        AppLogger.shared.debug("=== handleMergedRenamedSecurities - processing \(taxLots.count) tax lots ===")
         
         guard !taxLots.isEmpty else {
-            print("  --- No tax lots to process")
+            AppLogger.shared.debug("  --- No tax lots to process")
             return taxLots
         }
         
@@ -2166,28 +2237,28 @@ class SchwabClient
         
         // Check if the earliest transaction has cost = 0 (indicating a merge/rename)
         if earliestLot.costPerShare == 0.0 && earliestLot.quantity > 0 {
-            print("  --- Found potential merged/renamed security: \(earliestLot.openDate), shares: \(earliestLot.quantity), cost: \(earliestLot.costPerShare)")
+            AppLogger.shared.debug("  --- Found potential merged/renamed security: \(earliestLot.openDate), shares: \(earliestLot.quantity), cost: \(earliestLot.costPerShare)")
             
             // Get current share count from position
             let currentShareCount = getShareCount(symbol: symbol)
-            print("  --- Current share count: \(currentShareCount)")
+            AppLogger.shared.debug("  --- Current share count: \(currentShareCount)")
             
             // Check if the earliest transaction matches the current share count
             if abs(earliestLot.quantity - currentShareCount) < 0.01 {
-                print("  --- Earliest transaction matches current share count - computing cost-per-share")
+                AppLogger.shared.debug("  --- Earliest transaction matches current share count - computing cost-per-share")
                 
                 // Calculate sum of later tax lots costs
                 let laterTaxLots = sortedLots.dropFirst()
                 let sumOfLaterTaxLotsCosts = laterTaxLots.reduce(0.0) { $0 + $1.costBasis }
-                print("  --- Sum of later tax lots costs: $\(sumOfLaterTaxLotsCosts)")
+                AppLogger.shared.debug("  --- Sum of later tax lots costs: $\(sumOfLaterTaxLotsCosts)")
                 
                 // Get average price from position
                 let averagePrice = getAveragePrice(symbol: symbol)
-                print("  --- Average price from position: $\(averagePrice)")
+                AppLogger.shared.debug("  --- Average price from position: $\(averagePrice)")
                 
                 // Compute the cost-per-share using the formula from README
                 let receivedCostPerShare = ((averagePrice * earliestLot.quantity) - sumOfLaterTaxLotsCosts) / currentShareCount
-                print("  --- Computed cost-per-share: $\(receivedCostPerShare)")
+                AppLogger.shared.debug("  --- Computed cost-per-share: $\(receivedCostPerShare)")
                 
                 // Update the earliest lot with the computed cost
                 var updatedLots = taxLots
@@ -2197,15 +2268,15 @@ class SchwabClient
                     updatedLots[index].gainLossDollar = (earliestLot.price - receivedCostPerShare) * earliestLot.quantity
                     updatedLots[index].gainLossPct = ((earliestLot.price - receivedCostPerShare) / receivedCostPerShare) * 100.0
                     
-                    print("  --- Updated earliest lot with computed cost: $\(receivedCostPerShare)")
+                    AppLogger.shared.debug("  --- Updated earliest lot with computed cost: $\(receivedCostPerShare)")
                 }
                 
                 return updatedLots
             } else {
-                print("  --- Earliest transaction does not match current share count - skipping")
+                AppLogger.shared.debug("  --- Earliest transaction does not match current share count - skipping")
             }
         } else {
-            print("  --- No merged/renamed security detected")
+            AppLogger.shared.debug("  --- No merged/renamed security detected")
         }
         
         return taxLots
@@ -2219,7 +2290,7 @@ class SchwabClient
      * by the split ratio and removes the zero-cost split transaction.
      */
     private func adjustForStockSplits(_ taxLots: [SalesCalcPositionsRecord]) -> [SalesCalcPositionsRecord] {
-        print("=== adjustForStockSplits - processing \(taxLots.count) tax lots ===")
+        AppLogger.shared.debug("=== adjustForStockSplits - processing \(taxLots.count) tax lots ===")
         
         // Sort by date (oldest first)
         let sortedLots = taxLots.sorted { $0.openDate < $1.openDate }
@@ -2231,7 +2302,7 @@ class SchwabClient
             
             // Check if this is a zero-cost transaction (potential split)
             if currentLot.costPerShare == 0.0 && currentLot.quantity > 0 {
-                print("  --- Found potential split transaction: \(currentLot.openDate), shares: \(currentLot.quantity), cost: \(currentLot.costPerShare)")
+                AppLogger.shared.debug("  --- Found potential split transaction: \(currentLot.openDate), shares: \(currentLot.quantity), cost: \(currentLot.costPerShare)")
                 
                 // Calculate total shares before this split
                 let sharesBeforeSplit = adjustedLots.reduce(0.0) { $0 + $1.quantity }
@@ -2241,11 +2312,11 @@ class SchwabClient
                 if sharesBeforeSplit > 0 {
                     // Calculate split ratio
                     let splitRatio = totalSharesAfterSplit / sharesBeforeSplit
-                    print("  --- Split calculation:")
-                    print("    Shares before split: \(sharesBeforeSplit)")
-                    print("    Shares from split: \(sharesFromSplit)")
-                    print("    Total shares after split: \(totalSharesAfterSplit)")
-                    print("    Split ratio: \(splitRatio)")
+                    AppLogger.shared.debug("  --- Split calculation:")
+                    AppLogger.shared.debug("    Shares before split: \(sharesBeforeSplit)")
+                    AppLogger.shared.debug("    Shares from split: \(sharesFromSplit)")
+                    AppLogger.shared.debug("    Total shares after split: \(totalSharesAfterSplit)")
+                    AppLogger.shared.debug("    Split ratio: \(splitRatio)")
                     
                     // Adjust all prior holdings by the split ratio
                     for j in 0..<adjustedLots.count {
@@ -2257,12 +2328,12 @@ class SchwabClient
                         adjustedLots[j].gainLossPct = ((adjustedLots[j].price - adjustedLots[j].costPerShare) / adjustedLots[j].costPerShare) * 100.0
                         adjustedLots[j].splitMultiple *= splitRatio
                         
-                        print("    Adjusted lot \(j): \(adjustedLots[j].openDate), shares: \(adjustedLots[j].quantity), cost: \(adjustedLots[j].costPerShare), basis: \(adjustedLots[j].costBasis), multiple: \(adjustedLots[j].splitMultiple)")
+                        AppLogger.shared.debug("    Adjusted lot \(j): \(adjustedLots[j].openDate), shares: \(adjustedLots[j].quantity), cost: \(adjustedLots[j].costPerShare), basis: \(adjustedLots[j].costBasis), multiple: \(adjustedLots[j].splitMultiple)")
                     }
                     
-                    print("  --- Removed split transaction and adjusted \(adjustedLots.count) prior lots")
+                    AppLogger.shared.debug("  --- Removed split transaction and adjusted \(adjustedLots.count) prior lots")
                 } else {
-                    print("  --- No prior shares to adjust, skipping split transaction")
+                    AppLogger.shared.debug("  --- No prior shares to adjust, skipping split transaction")
                 }
                 
                 // Skip this zero-cost transaction (don't add it to adjustedLots)
@@ -2278,7 +2349,7 @@ class SchwabClient
         // Sort by highest cost basis (descending)
         adjustedLots.sort { $0.costBasis > $1.costBasis }
         
-        print("=== adjustForStockSplits - returning \(adjustedLots.count) adjusted lots ===")
+        AppLogger.shared.debug("=== adjustForStockSplits - returning \(adjustedLots.count) adjusted lots ===")
         return adjustedLots
     }
 
@@ -2290,23 +2361,23 @@ class SchwabClient
     public func computeTaxLots(symbol: String, currentPrice: Double? = nil) -> [SalesCalcPositionsRecord] {
 //        let debug : Bool = true
         // display the busy indicator
-//        if debug { print("🔍 computeTaxLots - Setting loading to TRUE") }
+//        if debug { AppLogger.shared.debug("🔍 computeTaxLots - Setting loading to TRUE") }
         loadingDelegate?.setLoading(true)
         defer {
-//            if debug { print("🔍 computeTaxLots - Setting loading to FALSE") }
+//            if debug { AppLogger.shared.debug("🔍 computeTaxLots - Setting loading to FALSE") }
             loadingDelegate?.setLoading(false)
         }
 
-        print("=== computeTaxLots \(symbol) ===")
+        AppLogger.shared.debug("=== computeTaxLots \(symbol) ===")
 
         // Return cached results if available
         if symbol == m_lastFilteredTaxLotSymbol {
-            print("=== computeTaxLots \(symbol) - returning \(m_lastFilteredPositionRecords.count) cached ===")
+            AppLogger.shared.debug("=== computeTaxLots \(symbol) - returning \(m_lastFilteredPositionRecords.count) cached ===")
             return m_lastFilteredPositionRecords
         }
         m_lastFilteredTaxLotSymbol = symbol
 
-        print( " --- computeTaxLots() - seeking zero ---" )
+        AppLogger.shared.debug( " --- computeTaxLots() - seeking zero ---" )
 
         var fetchAttempts = 0
         let maxFetchAttempts = 5  // Limit fetch attempts to prevent infinite loops
@@ -2316,7 +2387,7 @@ class SchwabClient
         // Process transactions until we find zero shares or reach max quarters
         while fetchAttempts < maxFetchAttempts {
             fetchAttempts += 1
-            print("  --- computeTaxLots iteration \(fetchAttempts)/\(maxFetchAttempts) ---")
+            AppLogger.shared.debug("  --- computeTaxLots iteration \(fetchAttempts)/\(maxFetchAttempts) ---")
 
             // Clear previous results
             m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
@@ -2327,18 +2398,18 @@ class SchwabClient
             let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
                 return m_quarterDelta
             }
-            print("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
+            AppLogger.shared.debug("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
 
             // get last price for this security
             let lastPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
             showIncompleteDataWarning = true
             // Process all trade transactions - only process again if the number of transactions changes
-            print( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )
+            AppLogger.shared.debug( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )
             for transaction in self.getTransactionsFor(symbol: symbol)
             where ( (transaction.type == .trade) || (transaction.type == .receiveAndDeliver))
             {
                 totalTransactionsFound += 1
-                print("  --- Processing transaction \(totalTransactionsFound): \(transaction.tradeDate ?? "unknown"), type: \(transaction.type?.rawValue ?? "n/a"), activity: \(transaction.activityType ?? .UNKNOWN)")
+                AppLogger.shared.debug("  --- Processing transaction \(totalTransactionsFound): \(transaction.tradeDate ?? "unknown"), type: \(transaction.type?.rawValue ?? "n/a"), activity: \(transaction.activityType ?? .UNKNOWN)")
                 
                 for transferItem in transaction.transferItems {
                     // find transferItems where the shares, value, and cost are not 0
@@ -2346,12 +2417,12 @@ class SchwabClient
                           numberOfShares != 0.0,
                           transferItem.instrument?.symbol == symbol
                     else {
-                        print("  --- Skipping transferItem: shares=\(transferItem.amount ?? 0), cost=\(transferItem.price ?? 0), symbol=\(transferItem.instrument?.symbol ?? "nil")")
+                        AppLogger.shared.debug("  --- Skipping transferItem: shares=\(transferItem.amount ?? 0), cost=\(transferItem.price ?? 0), symbol=\(transferItem.instrument?.symbol ?? "nil")")
                         continue
                     }
                     
                     totalSharesFound += numberOfShares
-                    print("  --- Found transferItem: \(numberOfShares) shares at $\(transferItem.price ?? 0) on \(transaction.tradeDate ?? "unknown")")
+                    AppLogger.shared.debug("  --- Found transferItem: \(numberOfShares) shares at $\(transferItem.price ?? 0) on \(transaction.tradeDate ?? "unknown")")
                     
                     let gainLossDollar = (lastPrice - transferItem.price!) * numberOfShares
                     let gainLossPct = ((lastPrice - transferItem.price!) / transferItem.price!) * 100.0
@@ -2359,7 +2430,7 @@ class SchwabClient
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                                   strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
-                        print( " -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
+                        AppLogger.shared.debug( " -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
                         continue
                     }
                     
@@ -2375,7 +2446,7 @@ class SchwabClient
                     }
                     
                     // Log the balance after each transaction
-                    print("  --- Balance after transaction: \(numberOfShares) shares -> currentShareCount: \(currentShareCount)")
+                    AppLogger.shared.debug("  --- Balance after transaction: \(numberOfShares) shares -> currentShareCount: \(currentShareCount)")
                     
                     // Add position record for this transaction
                     m_lastFilteredPositionRecords.append(
@@ -2397,8 +2468,8 @@ class SchwabClient
                 // break if we find zero
                 if isNearZero( currentShareCount ) {
                     showIncompleteDataWarning = false
-                    print( "  -- computeTaxLots:  -- Found zero -- " )
-                    print( "  -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
+                    AppLogger.shared.debug( "  -- computeTaxLots:  -- Found zero -- " )
+                    AppLogger.shared.debug( "  -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
                     break
                 }
                 // Don't break on negative share count - continue processing to find all buy transactions
@@ -2409,8 +2480,8 @@ class SchwabClient
             
             // Break if we've found zero shares or reached max quarters
             if ( isNearZero(currentShareCount) ) {
-                print( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
-                print( "  -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
+                AppLogger.shared.debug( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
+                AppLogger.shared.debug( "  -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
                 showIncompleteDataWarning = false
                 break
             }
@@ -2419,19 +2490,19 @@ class SchwabClient
             // but we need to continue to find all the buy transactions that account for our current position
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
 //                showIncompleteDataWarning = true
-                print( " -- Reached max quarter delta --" )
-                print( " -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
+                AppLogger.shared.debug( " -- Reached max quarter delta --" )
+                AppLogger.shared.debug( " -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else if fetchAttempts >= maxFetchAttempts {
 //                showIncompleteDataWarning = true
-                print( " -- Reached max fetch attempts --" )
-                print( " -- WARNING: Incomplete data - reached max fetch attempts. Setting showIncompleteDataWarning = true --" )
+                AppLogger.shared.debug( " -- Reached max fetch attempts --" )
+                AppLogger.shared.debug( " -- WARNING: Incomplete data - reached max fetch attempts. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else
             {
-                print( " -- Fetching more records (attempt \(fetchAttempts)) --" )
+                AppLogger.shared.debug( " -- Fetching more records (attempt \(fetchAttempts)) --" )
                 // Use DispatchGroup to wait for the async operation with timeout
                 let group = DispatchGroup()
                 group.enter()
@@ -2445,14 +2516,14 @@ class SchwabClient
                 // Wait for completion or timeout
                 let result = group.wait(timeout: .now() + m_fetchTimeout)
                 if result == .timedOut {
-                    print("   !!! fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
+                    AppLogger.shared.debug("   !!! fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
                 }
             }
             
         }
         
         if fetchAttempts >= maxFetchAttempts {
-            print("Warning: computeTaxLots reached maximum fetch attempts for symbol: \(symbol)")
+            AppLogger.shared.debug("Warning: computeTaxLots reached maximum fetch attempts for symbol: \(symbol)")
             // invalid or incomplete warning
         }
         
@@ -2462,25 +2533,25 @@ class SchwabClient
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
-//        if debug {  print( "  -- computeTaxLots:  -- removing sold shares -- " ) }
+//        if debug {  AppLogger.shared.debug( "  -- computeTaxLots:  -- removing sold shares -- " ) }
         for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
-//                if debug {  print( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" ) }
+//                if debug {  AppLogger.shared.debug( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" ) }
                 // Add buy record to queue
                 buyQueue.append(record)
             } else {
-//                if debug {  print( "  -- computeTaxLots:     ----   processing sell.  buy queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" ) }
+//                if debug {  AppLogger.shared.debug( "  -- computeTaxLots:     ----   processing sell.  buy queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" ) }
                 // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
                 buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
 
-//                // print the buy queue for debugging
+//                // AppLogger.shared.debug the buy queue for debugging
 //                if debug
 //                {
-//                    // print each record in the buy queue
+//                    // AppLogger.shared.debug each record in the buy queue
 //                    for buyRecord in buyQueue
 //                    {
-//                        print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
+//                        AppLogger.shared.debug( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)")
 //                    }
 //                }
 
@@ -2493,8 +2564,8 @@ class SchwabClient
                     var buyRecord = buyQueue.removeFirst()
                     let buyQuantity = buyRecord.quantity
 
-//                    if debug {  print( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" ) }
-//                    if debug {  print( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)") }
+//                    if debug {  AppLogger.shared.debug( "  -- computeTaxLots:         remainingSellQuantity: \(remainingSellQuantity),  buyQuantity: \(buyQuantity),  queue size: \(buyQueue.count)" ) }
+//                    if debug {  AppLogger.shared.debug( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)") }
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
                         remainingSellQuantity -= buyQuantity
@@ -2533,22 +2604,22 @@ class SchwabClient
         // Handle merged/renamed securities where the earliest transaction has cost = 0
         remainingRecords = handleMergedRenamedSecurities(remainingRecords, symbol: symbol)
 
-        print("=== computeTaxLots Summary for \(symbol) ===")
-        print("Total transactions processed: \(totalTransactionsFound)")
-        print("Total shares found in transactions: \(totalSharesFound)")
-        print("Current share count from position: \(getShareCount(symbol: symbol))")
-        print("Final tax lots created: \(remainingRecords.count)")
+        AppLogger.shared.debug("=== computeTaxLots Summary for \(symbol) ===")
+        AppLogger.shared.debug("Total transactions processed: \(totalTransactionsFound)")
+        AppLogger.shared.debug("Total shares found in transactions: \(totalSharesFound)")
+        AppLogger.shared.debug("Current share count from position: \(getShareCount(symbol: symbol))")
+        AppLogger.shared.debug("Final tax lots created: \(remainingRecords.count)")
         for (index, record) in remainingRecords.enumerated() {
-            print("  Lot \(index): \(record.quantity) shares at $\(record.costPerShare) on \(record.openDate)")
+            AppLogger.shared.debug("  Lot \(index): \(record.quantity) shares at $\(record.costPerShare) on \(record.openDate)")
         }
-        print("=== End computeTaxLots Summary ===")
+        AppLogger.shared.debug("=== End computeTaxLots Summary ===")
 
         m_lastFilteredPositionRecords = remainingRecords
         
         // Apply stock split adjustments
         m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords)
         
-//        if debug { print("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
+//        if debug { AppLogger.shared.debug("  -- computeTaxLots: returning \(m_lastFilteredPositionRecords.count) records for symbol \(symbol)") }
         return m_lastFilteredPositionRecords
     } // computeTaxLots
     
@@ -2601,11 +2672,11 @@ class SchwabClient
      * This is used for initial display when we don't need the full 3 years of history
      */
     public func fetchTransactionHistoryReduced(quarters: Int = 4) async {
-        print("=== fetchTransactionHistoryReduced - quarters: \(quarters) ===")
-        //print("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
+        AppLogger.shared.debug("=== fetchTransactionHistoryReduced - quarters: \(quarters) ===")
+        //AppLogger.shared.debug("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         defer {
-            //print("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
+            //AppLogger.shared.debug("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
             loadingDelegate?.setLoading(false)
         }
         
@@ -2626,7 +2697,7 @@ class SchwabClient
                                     let endDate = getDateNQuartersAgoStrForEndDate(quarterDelta: quarter - 1)
                 let startDate = getDateNQuartersAgoStr(quarterDelta: quarter)
                     
-                    print("  -- processing quarter: \(quarter)")
+                    AppLogger.shared.debug("  -- processing quarter: \(quarter)")
                     
                     // Fetch for all accounts in parallel
                     await withTaskGroup(of: [Transaction]?.self) { accountGroup in
@@ -2639,7 +2710,7 @@ class SchwabClient
                                     transactionHistoryUrl += "&types=\(transactionType.rawValue)"
                                     
                                     guard let url = URL(string: transactionHistoryUrl) else {
-                                        print("fetchTransactionHistoryReduced. Invalid URL")
+                                        AppLogger.shared.error("fetchTransactionHistoryReduced. Invalid URL")
                                         return nil
                                     }
                                     
@@ -2653,14 +2724,14 @@ class SchwabClient
                                         let (data, response) = try await URLSession.shared.data(for: request)
                                         
                                         guard let httpResponse = response as? HTTPURLResponse else {
-                                            print("Invalid response type")
+                                            AppLogger.shared.error("Invalid response type")
                                             return nil
                                         }
                                         
                                         if httpResponse.statusCode != 200 {
-                                            print("response code: \(httpResponse.statusCode)")
+                                            AppLogger.shared.error("response code: \(httpResponse.statusCode)")
                                             // print data as a string
-                                            print( "response data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
+                                            AppLogger.shared.error( "response data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
                                             if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                                                 serviceError.printErrors(prefix: "  fetchTransactionHistoryReduced ")
                                             }
@@ -2671,7 +2742,7 @@ class SchwabClient
                                         let transactions = try decoder.decode([Transaction].self, from: data)
                                         return transactions
                                     } catch {
-                                        print("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
+                                        AppLogger.shared.error("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
                                         return nil
                                     }
                                 }
@@ -2702,7 +2773,7 @@ class SchwabClient
             m_quarterDelta = quarters
         }
         
-        print("Fetched \(m_transactionList.count - initialSize) transactions in \(quarters) quarters")
+        AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions in \(quarters) quarters")
         
         // Sort all transactions once at the end for better efficiency
         // This is much more efficient than sorting after each batch:
@@ -2720,9 +2791,9 @@ class SchwabClient
      */
     public func getContractsForSymbol(_ symbol: String) -> [Position]? {
         let summary = m_symbolsWithContracts[symbol]
-        print("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(summary?.contractCount ?? 0) contracts")
+        AppLogger.shared.debug("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(summary?.contractCount ?? 0) contracts")
         if let summary = summary {
-            print("  📋 Summary: \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1), total quantity: \(summary.totalQuantity)")
+            AppLogger.shared.debug("  📋 Summary: \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1), total quantity: \(summary.totalQuantity)")
         }
         // Since we no longer store individual positions, return nil
         return nil
@@ -2799,7 +2870,7 @@ class SchwabClient
         }
         
         if uniqueNewTransactions.count != newTransactions.count {
-            print("  -- Removed \(newTransactions.count - uniqueNewTransactions.count) duplicate transactions")
+            AppLogger.shared.debug("  -- Removed \(newTransactions.count - uniqueNewTransactions.count) duplicate transactions")
         }
         
         m_transactionList.append(contentsOf: uniqueNewTransactions)
@@ -2873,15 +2944,15 @@ class SchwabClient
         selectedOrders: [(String, Any)],
         releaseTime: String
     ) -> Order? {
-        print("=== createOrder ===")
-        print("Symbol: \(symbol)")
-        print("Account Number: \(accountNumber)")
-        print("Selected Orders Count: \(selectedOrders.count)")
-        print("Release Time: \(releaseTime)")
+        AppLogger.shared.debug("=== createOrder ===")
+        AppLogger.shared.debug("Symbol: \(symbol)")
+        AppLogger.shared.debug("Account Number: \(accountNumber)")
+        AppLogger.shared.debug("Selected Orders Count: \(selectedOrders.count)")
+        AppLogger.shared.debug("Release Time: \(releaseTime)")
         
         // If there's only one order, return it directly without OCO wrapper
         if selectedOrders.count == 1 {
-            print("📝 Single order detected - creating direct order without OCO wrapper")
+            AppLogger.shared.debug("📝 Single order detected - creating direct order without OCO wrapper")
             
             let (orderType, order) = selectedOrders[0]
             if let singleOrder = createSimplifiedChildOrder(
@@ -2892,16 +2963,16 @@ class SchwabClient
                 legId: 1,
                 currentPrice: 40.14 // TODO: Get actual current price from order
             ) {
-                print("✅ Created single order directly")
+                AppLogger.shared.debug("✅ Created single order directly")
                 return singleOrder
             } else {
-                print("❌ Failed to create single order")
+                AppLogger.shared.warning("❌ Failed to create single order")
                 return nil
             }
         }
         
         // For multiple orders, create OCO structure
-        print("📝 Multiple orders detected - creating OCO structure")
+        AppLogger.shared.debug("📝 Multiple orders detected - creating OCO structure")
         
         // Create child order strategies based on the working sample_order7.py pattern
         var childOrderStrategies: [Order] = []
@@ -2916,14 +2987,14 @@ class SchwabClient
                 currentPrice: 40.14 // TODO: Get actual current price from order
             ) {
                 childOrderStrategies.append(childOrder)
-                print("✅ Created simplified child order \(index + 1): \(orderType)")
+                AppLogger.shared.debug("✅ Created simplified child order \(index + 1): \(orderType)")
             } else {
-                print("❌ Failed to create simplified child order \(index + 1): \(orderType)")
+                AppLogger.shared.warning("❌ Failed to create simplified child order \(index + 1): \(orderType)")
             }
         }
         
         guard !childOrderStrategies.isEmpty else {
-            print("❌ No valid child orders created")
+            AppLogger.shared.warning("❌ No valid child orders created")
             return nil
         }
         
@@ -2935,7 +3006,7 @@ class SchwabClient
             statusDescription: "Simplified OCO order"
         )
         
-        print("✅ Created simplified OCO order with \(childOrderStrategies.count) child orders")
+        AppLogger.shared.debug("✅ Created simplified OCO order with \(childOrderStrategies.count) child orders")
         return ocoOrder
     }
     
@@ -2959,15 +3030,15 @@ class SchwabClient
         
         if orderType == "SELL" {
             guard let sellOrder = order as? SalesCalcResultsRecord else {
-                print("❌ Invalid sell order type")
+                AppLogger.shared.warning("❌ Invalid sell order type")
                 return nil
             }
             
-            print("Creating simplified SELL order:")
-            print("  Shares: \(sellOrder.sharesToSell)")
-            print("  Target: \(sellOrder.target)")
-            print("  Entry: \(sellOrder.entry)")
-            print("  Cancel: \(sellOrder.cancel)")
+            AppLogger.shared.debug("Creating simplified SELL order:")
+            AppLogger.shared.debug("  Shares: \(sellOrder.sharesToSell)")
+            AppLogger.shared.debug("  Target: \(sellOrder.target)")
+            AppLogger.shared.debug("  Entry: \(sellOrder.entry)")
+            AppLogger.shared.debug("  Cancel: \(sellOrder.cancel)")
             
             // Create the order leg collection for SELL
             let orderLeg = OrderLegCollection(
@@ -2986,9 +3057,9 @@ class SchwabClient
             let roundedTargetPrice = round(sellOrder.target * 100) / 100
             let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
             
-            print("  📊 Rounded Values:")
-            print("    Rounded Target Price: \(roundedTargetPrice)")
-            print("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
+            AppLogger.shared.debug("  📊 Rounded Values:")
+            AppLogger.shared.debug("    Rounded Target Price: \(roundedTargetPrice)")
+            AppLogger.shared.debug("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
             
             // Create simplified SELL order matching sample_order7.py pattern
             let childOrder = Order(
@@ -3015,14 +3086,14 @@ class SchwabClient
             
         } else if orderType == "BUY" {
             guard let buyOrder = order as? BuyOrderRecord else {
-                print("❌ Invalid buy order type")
+                AppLogger.shared.warning("❌ Invalid buy order type")
                 return nil
             }
             
-            print("Creating simplified BUY order:")
-            print("  Shares: \(buyOrder.sharesToBuy)")
-            print("  Target: \(buyOrder.targetBuyPrice)")
-            print("  Entry: \(buyOrder.entryPrice)")
+            AppLogger.shared.debug("Creating simplified BUY order:")
+            AppLogger.shared.debug("  Shares: \(buyOrder.sharesToBuy)")
+            AppLogger.shared.debug("  Target: \(buyOrder.targetBuyPrice)")
+            AppLogger.shared.debug("  Entry: \(buyOrder.entryPrice)")
             
             // Create the order leg collection for BUY
             let orderLeg = OrderLegCollection(
@@ -3041,9 +3112,9 @@ class SchwabClient
             let roundedTargetPrice = round(buyOrder.targetBuyPrice * 100) / 100
             let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
             
-            print("  📊 Rounded Values:")
-            print("    Rounded Target Price: \(roundedTargetPrice)")
-            print("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
+            AppLogger.shared.debug("  📊 Rounded Values:")
+            AppLogger.shared.debug("    Rounded Target Price: \(roundedTargetPrice)")
+            AppLogger.shared.debug("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
             
             // Create simplified BUY order matching sample_order7.py pattern
             let childOrder = Order(
@@ -3069,9 +3140,43 @@ class SchwabClient
             return childOrder
         }
         
-        print("❌ Unknown order type: \(orderType)")
+        AppLogger.shared.warning("❌ Unknown order type: \(orderType)")
         return nil
     }
 
+    /**
+     * debugPrintOrderState - print the current state of all orders for debugging
+     */
+    public func debugPrintOrderState() {
+        AppLogger.shared.debug("🔍 === DEBUG: Current Order State ===")
+        AppLogger.shared.debug("📊 Total orders loaded: \(m_orderList.count)")
+        
+        if m_orderList.isEmpty {
+            AppLogger.shared.warning("⚠️ No orders loaded!")
+            return
+        }
+        
+        AppLogger.shared.debug("📋 All orders:")
+        for (index, order) in m_orderList.enumerated() {
+            let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
+            AppLogger.shared.debug("  [\(index + 1)] ID: \(order.orderId?.description ?? "nil"), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
+        }
+        
+        AppLogger.shared.debug("📊 Symbols with orders: \(m_symbolsWithOrders.count)")
+        for (symbol, statuses) in m_symbolsWithOrders {
+            AppLogger.shared.debug("  📋 \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
+        }
+        
+        AppLogger.shared.debug("🔍 === END DEBUG ===")
+    }
+
+    /**
+     * getSymbolsWithOrders - return the symbols with orders dictionary for debugging
+     */
+    public func getSymbolsWithOrders() -> [String: [ActiveOrderStatus]] {
+        return m_symbolsWithOrders
+    }
 
 } // SchwabClient
+
+
