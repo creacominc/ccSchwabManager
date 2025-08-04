@@ -48,23 +48,23 @@ struct RecommendedOCOOrdersSection: View {
     private var allOrders: [(String, Any)] {
         var orders: [(String, Any)] = []
         
-        print("=== allOrders computed property ===")
-        print("currentRecommendedSellOrders count: \(currentRecommendedSellOrders.count)")
-        print("currentRecommendedBuyOrders count: \(currentRecommendedBuyOrders.count)")
+        AppLogger.shared.debug("=== allOrders computed property ===")
+        AppLogger.shared.debug("currentRecommendedSellOrders count: \(currentRecommendedSellOrders.count)")
+        AppLogger.shared.debug("currentRecommendedBuyOrders count: \(currentRecommendedBuyOrders.count)")
         
         // Add sell orders first
         for (index, order) in currentRecommendedSellOrders.enumerated() {
-            print("  Adding SELL order \(index + 1): sharesToSell=\(order.sharesToSell), entry=\(order.entry), target=\(order.target), cancel=\(order.cancel)")
+            AppLogger.shared.debug("  Adding SELL order \(index + 1): sharesToSell=\(order.sharesToSell), entry=\(order.entry), target=\(order.target), cancel=\(order.cancel)")
             orders.append(("SELL", order))
         }
         
         // Add buy orders
         for (index, order) in currentRecommendedBuyOrders.enumerated() {
-            print("  Adding BUY order \(index + 1): sharesToBuy=\(order.sharesToBuy), targetBuyPrice=\(order.targetBuyPrice), entryPrice=\(order.entryPrice), targetGainPercent=\(order.targetGainPercent)")
+            AppLogger.shared.debug("  Adding BUY order \(index + 1): sharesToBuy=\(order.sharesToBuy), targetBuyPrice=\(order.targetBuyPrice), entryPrice=\(order.entryPrice), targetGainPercent=\(order.targetGainPercent)")
             orders.append(("BUY", order))
         }
         
-        print("Total orders created: \(orders.count)")
+        AppLogger.shared.debug("Total orders created: \(orders.count)")
         return orders
     }
     
@@ -72,39 +72,39 @@ struct RecommendedOCOOrdersSection: View {
         var recommended: [SalesCalcResultsRecord] = []
         
         guard let currentPrice = getCurrentPrice() else {
-            print("❌ No current price available for \(symbol)")
+            AppLogger.shared.debug("❌ No current price available for \(symbol)")
             return recommended
         }
         
         let sortedTaxLots = taxLotData.sorted { $0.costPerShare > $1.costPerShare }
         
-        print("=== calculateRecommendedSellOrders ===")
-        print("Symbol: \(symbol)")
-        print("ATR: \(atrValue)%")
-        print("Tax lots count: \(taxLotData.count)")
-        print("Shares available for trading: \(sharesAvailableForTrading)")
-        print("Current price: $\(currentPrice)")
-        print("Sorted tax lots by cost per share (highest first): \(sortedTaxLots.count) lots")
+        AppLogger.shared.debug("=== calculateRecommendedSellOrders ===")
+        AppLogger.shared.debug("Symbol: \(symbol)")
+        AppLogger.shared.debug("ATR: \(atrValue)%")
+        AppLogger.shared.debug("Tax lots count: \(taxLotData.count)")
+        AppLogger.shared.debug("Shares available for trading: \(sharesAvailableForTrading)")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Sorted tax lots by cost per share (highest first): \(sortedTaxLots.count) lots")
         
         // Calculate Top 100 Order
         if let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
-            print("✅ Top 100 order created: \(top100Order.description)")
+            AppLogger.shared.debug("✅ Top 100 order created: \(top100Order.description)")
             recommended.append(top100Order)
         }
         
         // Calculate Min Shares Order
         if let minSharesOrder = calculateMinSharesFor5PercentProfit(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
-            print("✅ Min shares order created: \(minSharesOrder.description)")
+            AppLogger.shared.debug("✅ Min shares order created: \(minSharesOrder.description)")
             recommended.append(minSharesOrder)
         }
         
         // Calculate Min Break Even Order
         if let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
-            print("✅ Min break even order created: \(minBreakEvenOrder.description)")
+            AppLogger.shared.debug("✅ Min break even order created: \(minBreakEvenOrder.description)")
             recommended.append(minBreakEvenOrder)
         }
         
-        print("=== Final result: \(recommended.count) recommended orders ===")
+        AppLogger.shared.debug("=== Final result: \(recommended.count) recommended orders ===")
         return recommended
     }
     
@@ -112,7 +112,7 @@ struct RecommendedOCOOrdersSection: View {
         var recommended: [BuyOrderRecord] = []
         
         guard let currentPrice = getCurrentPrice() else {
-            print("❌ No current price available for \(symbol)")
+            AppLogger.shared.debug("❌ No current price available for \(symbol)")
             return recommended
         }
         
@@ -122,26 +122,26 @@ struct RecommendedOCOOrdersSection: View {
         let avgCostPerShare = totalCost / totalShares
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
         
-        print("=== calculateRecommendedBuyOrders ===")
-        print("Symbol: \(symbol)")
-        print("ATR: \(atrValue)%")
-        print("Tax lots count: \(taxLotData.count)")
-        print("Shares available for trading: \(sharesAvailableForTrading)")
-        print("Current price: $\(currentPrice)")
-        print("Current position - Shares: \(totalShares), Avg Cost: $\(avgCostPerShare), Current P/L%: \(currentProfitPercent)%")
+        AppLogger.shared.debug("=== calculateRecommendedBuyOrders ===")
+        AppLogger.shared.debug("Symbol: \(symbol)")
+        AppLogger.shared.debug("ATR: \(atrValue)%")
+        AppLogger.shared.debug("Tax lots count: \(taxLotData.count)")
+        AppLogger.shared.debug("Shares available for trading: \(sharesAvailableForTrading)")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Current position - Shares: \(totalShares), Avg Cost: $\(avgCostPerShare), Current P/L%: \(currentProfitPercent)%")
         
         // Only show buy orders if we have an existing position (shares > 0)
         guard totalShares > 0 else {
-            print("❌ No existing position for \(symbol), skipping buy orders")
+            AppLogger.shared.debug("❌ No existing position for \(symbol), skipping buy orders")
             return recommended
         }
         
         // Calculate target gain percent based on ATR
         let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue)
-        print("Target gain percent: \(targetGainPercent)% (ATR: \(atrValue)%)")
+        AppLogger.shared.debug("Target gain percent: \(targetGainPercent)% (ATR: \(atrValue)%)")
         
-        // Calculate buy order
-        let buyOrder = calculateBuyOrder(
+        // Calculate primary buy order
+        let primaryBuyOrder = calculateBuyOrder(
             currentPrice: currentPrice,
             avgCostPerShare: avgCostPerShare,
             currentProfitPercent: currentProfitPercent,
@@ -149,14 +149,38 @@ struct RecommendedOCOOrdersSection: View {
             totalShares: totalShares
         )
         
-        if let order = buyOrder {
-            print("✅ Buy order created: \(order.description)")
+        if let order = primaryBuyOrder {
+            AppLogger.shared.debug("✅ Primary buy order created: \(order.description)")
             recommended.append(order)
+            
+            // Check if we need a second buy order (trailing stop > 20%)
+            if order.trailingStop > 20.0 {
+                AppLogger.shared.debug("🔄 Trailing stop \(order.trailingStop)% is above 20%, creating second buy order")
+                
+                // Calculate second buy order with half the shares and half the trailing stop
+                let secondBuyOrder = calculateSecondBuyOrder(
+                    primaryOrder: order,
+                    currentPrice: currentPrice,
+                    avgCostPerShare: avgCostPerShare,
+                    currentProfitPercent: currentProfitPercent,
+                    targetGainPercent: targetGainPercent,
+                    totalShares: totalShares
+                )
+                
+                if let secondOrder = secondBuyOrder {
+                    AppLogger.shared.debug("✅ Second buy order created: \(secondOrder.description)")
+                    recommended.append(secondOrder)
+                } else {
+                    AppLogger.shared.debug("❌ Second buy order not created")
+                }
+            } else {
+                AppLogger.shared.debug("ℹ️ Trailing stop \(order.trailingStop)% is not above 20%, skipping second buy order")
+            }
         } else {
-            print("❌ Buy order not created")
+            AppLogger.shared.debug("❌ Primary buy order not created")
         }
         
-        print("=== Final result: \(recommended.count) recommended buy orders ===")
+        AppLogger.shared.debug("=== Final result: \(recommended.count) recommended buy orders ===")
         return recommended
     }
     
@@ -165,25 +189,25 @@ struct RecommendedOCOOrdersSection: View {
     private func getCurrentPrice() -> Double? {
         // First try to get the real-time quote price
         if let quote = quoteData?.quote?.lastPrice {
-            print("✅ Using real-time quote price: $\(quote)")
+            AppLogger.shared.debug("✅ Using real-time quote price: $\(quote)")
             return quote
         }
         
         // Fallback to extended market price if available
         if let extendedPrice = quoteData?.extended?.lastPrice {
-            print("✅ Using extended market price: $\(extendedPrice)")
+            AppLogger.shared.debug("✅ Using extended market price: $\(extendedPrice)")
             return extendedPrice
         }
         
         // Fallback to regular market price if available
         if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
-            print("✅ Using regular market price: $\(regularPrice)")
+            AppLogger.shared.debug("✅ Using regular market price: $\(regularPrice)")
             return regularPrice
         }
         
         // Last resort: use the price from tax lot data (may be yesterday's close)
         let fallbackPrice = taxLotData.first?.price
-        print("⚠️ Using fallback price from tax lot data: $\(fallbackPrice ?? 0)")
+        AppLogger.shared.debug("⚠️ Using fallback price from tax lot data: $\(fallbackPrice ?? 0)")
         return fallbackPrice
     }
     
@@ -228,7 +252,7 @@ struct RecommendedOCOOrdersSection: View {
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         
         guard totalShares >= 100.0 else {
-            print("❌ Top 100 order: Position has only \(totalShares) shares, need at least 100")
+            AppLogger.shared.debug("❌ Top 100 order: Position has only \(totalShares) shares, need at least 100")
             return nil
         }
         
@@ -260,9 +284,9 @@ struct RecommendedOCOOrdersSection: View {
         
         actualCostPerShare = totalCostOfTop100 / finalSharesToConsider
         
-        print("Top 100 order calculation:")
-        print("  Total shares in position: \(totalShares)")
-        print("  Cost per share for 100 most expensive shares: $\(actualCostPerShare)")
+        AppLogger.shared.debug("Top 100 order calculation:")
+        AppLogger.shared.debug("  Total shares in position: \(totalShares)")
+        AppLogger.shared.debug("  Cost per share for 100 most expensive shares: $\(actualCostPerShare)")
         
         // Calculate target price - ensure it's above cost per share
         let target = actualCostPerShare * 1.0325
@@ -272,9 +296,9 @@ struct RecommendedOCOOrdersSection: View {
         // let totalGain = finalSharesToConsider * (target - actualCostPerShare)
         
         if isTargetProfitable {
-            print("✅ Top 100 order: Target price $\(target) is above cost per share $\(actualCostPerShare)")
+            AppLogger.shared.debug("✅ Top 100 order: Target price $\(target) is above cost per share $\(actualCostPerShare)")
         } else {
-            print("⚠️ Top 100 order: Target price $\(target) is below cost per share $\(actualCostPerShare)")
+            AppLogger.shared.debug("⚠️ Top 100 order: Target price $\(target) is below cost per share $\(actualCostPerShare)")
         }
         
         // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
@@ -294,9 +318,9 @@ struct RecommendedOCOOrdersSection: View {
         let isProfitable = isTargetProfitable && !isEntryAboveCurrent
         
         if isEntryAboveCurrent {
-            print("⚠️ Top 100 order: Entry price $\(entry) is above current price $\(currentPrice)")
+            AppLogger.shared.debug("⚠️ Top 100 order: Entry price $\(entry) is above current price $\(currentPrice)")
         } else {
-            print("✅ Top 100 order: Entry price $\(entry) is below current price $\(currentPrice)")
+            AppLogger.shared.debug("✅ Top 100 order: Entry price $\(entry) is below current price $\(currentPrice)")
         }
         
         // Calculate gain based on adjusted target
@@ -334,22 +358,22 @@ struct RecommendedOCOOrdersSection: View {
         let minProfitPercent = max(6.0, 3.5 * getLimitedATR())
         guard currentProfitPercent >= minProfitPercent else { return nil }
 
-        print("=== calculateMinSharesFor5PercentProfit ===")
-        print("Current price: $\(currentPrice)")
-        print("Avg cost per share: $\(avgCostPerShare)")
-        print("Current P/L%: \(currentProfitPercent)%")
-        print("Min profit % required: \(minProfitPercent)%")
-        print("Total shares: \(totalShares)")
-        print("Total cost: $\(totalCost)")
-        print("Adjusted ATR: \(adjustedATR)%")
+        AppLogger.shared.debug("=== calculateMinSharesFor5PercentProfit ===")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Avg cost per share: $\(avgCostPerShare)")
+        AppLogger.shared.debug("Current P/L%: \(currentProfitPercent)%")
+        AppLogger.shared.debug("Min profit % required: \(minProfitPercent)%")
+        AppLogger.shared.debug("Total shares: \(totalShares)")
+        AppLogger.shared.debug("Total cost: $\(totalCost)")
+        AppLogger.shared.debug("Adjusted ATR: \(adjustedATR)%")
 
         // Target: 3.25% above breakeven (avg cost per share) - accounting for wash sale adjustments
         let target = avgCostPerShare * 1.0325
-        print("Target price: $\(target) (3.25% above breakeven)")
+        AppLogger.shared.debug("Target price: $\(target) (3.25% above breakeven)")
         
         // Entry: Below current price by 1.5 * AATR
         let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
-        print("Entry price: $\(entry) (below current by \(adjustedATR)%)")
+        AppLogger.shared.debug("Entry price: $\(entry) (below current by \(adjustedATR)%)")
         
         // Use the helper function to calculate minimum shares needed to maintain 5% profit on remaining position
         guard let result = calculateMinimumSharesForRemainingProfit(
@@ -357,7 +381,7 @@ struct RecommendedOCOOrdersSection: View {
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots
         ) else {
-            print("❌ Min ATR order: Could not achieve 5% profit on remaining position")
+            AppLogger.shared.debug("❌ Min ATR order: Could not achieve 5% profit on remaining position")
             return nil
         }
         
@@ -365,24 +389,24 @@ struct RecommendedOCOOrdersSection: View {
         let totalGain = result.totalGain
         let actualCostPerShare = result.actualCostPerShare
         
-        print("Final calculation:")
-        print("  Shares to sell: \(sharesToSell)")
-        print("  Total gain: $\(totalGain)")
-        print("  Actual cost per share: $\(actualCostPerShare)")
+        AppLogger.shared.debug("Final calculation:")
+        AppLogger.shared.debug("  Shares to sell: \(sharesToSell)")
+        AppLogger.shared.debug("  Total gain: $\(totalGain)")
+        AppLogger.shared.debug("  Actual cost per share: $\(actualCostPerShare)")
         
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
-            print("❌ Min ATR order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
+            AppLogger.shared.debug("❌ Min ATR order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
             return nil
         }
         
         // Exit: 0.9% below target, but never below the actual cost per share of the shares being sold
         let exit = max(target * 0.991, actualCostPerShare)
-        print("Exit price: $\(exit) (0.9% below target, but never below actual cost per share $\(actualCostPerShare))")
+        AppLogger.shared.debug("Exit price: $\(exit) (0.9% below target, but never below actual cost per share $\(actualCostPerShare))")
         
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, symbol, target, adjustedATR, actualCostPerShare)
-        print("✅ Min ATR order created: \(formattedDescription)")
+        AppLogger.shared.debug("✅ Min ATR order created: \(formattedDescription)")
         return SalesCalcResultsRecord(
             shares: sharesToSell,
             rollingGainLoss: totalGain,
@@ -410,22 +434,22 @@ struct RecommendedOCOOrdersSection: View {
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
         guard currentProfitPercent >= 1.0 else { return nil }
 
-        print("=== calculateMinBreakEvenOrder ===")
-        print("=== calculateMinBreakEvenOrder Current price: $\(currentPrice)")
-        print("=== calculateMinBreakEvenOrder Avg cost per share: $\(avgCostPerShare)")
-        print("=== calculateMinBreakEvenOrder Current P/L%: \(currentProfitPercent)%")
-        print("=== calculateMinBreakEvenOrder Total shares: \(totalShares)")
-        print("=== calculateMinBreakEvenOrder Total cost: $\(totalCost)")
-        print("=== calculateMinBreakEvenOrder ATR: \(atrValue)%")
-        print("=== calculateMinBreakEvenOrder AATR (ATR/5): \(adjustedATR)%")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder ===")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Current price: $\(currentPrice)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Avg cost per share: $\(avgCostPerShare)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Current P/L%: \(currentProfitPercent)%")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Total shares: \(totalShares)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Total cost: $\(totalCost)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder ATR: \(atrValue)%")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder AATR (ATR/5): \(adjustedATR)%")
 
         // Check if the highest cost-per-share tax lot is profitable
         guard let highestCostLot = sortedTaxLots.first else { return nil }
         let highestCostProfitPercent = ((currentPrice - highestCostLot.costPerShare) / highestCostLot.costPerShare) * 100.0
         let isHighestCostLotProfitable = highestCostProfitPercent > 0
         
-        print("=== calculateMinBreakEvenOrder Highest cost lot: $\(highestCostLot.costPerShare), profit: \(highestCostProfitPercent)%")
-        print("=== calculateMinBreakEvenOrder Is highest cost lot profitable: \(isHighestCostLotProfitable)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Highest cost lot: $\(highestCostLot.costPerShare), profit: \(highestCostProfitPercent)%")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Is highest cost lot profitable: \(isHighestCostLotProfitable)")
         
         let entry: Double
         let target: Double
@@ -434,7 +458,7 @@ struct RecommendedOCOOrdersSection: View {
         
         if isHighestCostLotProfitable {
             // New logic: If highest cost lot is profitable
-            print("=== calculateMinBreakEvenOrder Using new profitable logic")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Using new profitable logic")
             
             // Set shares to 50% of the highest tax lot
             sharesToSell = ceil(highestCostLot.quantity * 0.5)
@@ -453,22 +477,22 @@ struct RecommendedOCOOrdersSection: View {
             // Trailing stop = 1/4 of the amount from entry to target
             let trailingStopValue = ((entry - target) / target) * 100.0
             
-            print("=== calculateMinBreakEvenOrder Cost per share: $\(costPerShare)")
-            print("=== calculateMinBreakEvenOrder Last price: $\(lastPrice)")
-            print("=== calculateMinBreakEvenOrder Target price: $\(target) = (lastPrice + costPerShare)/2")
-            print("=== calculateMinBreakEvenOrder Entry price: $\(entry) = (lastPrice - costPerShare)/4 + target")
-            print("=== calculateMinBreakEvenOrder Shares to sell: \(sharesToSell) (50% of highest lot)")
-            print("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 from entry to target)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Cost per share: $\(costPerShare)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Last price: $\(lastPrice)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Target price: $\(target) = (lastPrice + costPerShare)/2")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry price: $\(entry) = (lastPrice - costPerShare)/4 + target")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Shares to sell: \(sharesToSell) (50% of highest lot)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 from entry to target)")
             
         } else {
             // Original logic: Entry = Last - 1 AATR%, Target = Entry - 2 AATR%
-            print("=== calculateMinBreakEvenOrder Using original break-even logic")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Using original break-even logic")
             
             entry = currentPrice * (1.0 - adjustedATR / 100.0)
             target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
             
-            print("=== calculateMinBreakEvenOrder Entry price: $\(entry) (Last - 1 AATR%)")
-            print("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry price: $\(entry) (Last - 1 AATR%)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
             
             // Use the helper function to calculate minimum shares needed to achieve 1% gain at target price
             guard let result = calculateMinimumSharesForGain(
@@ -476,21 +500,21 @@ struct RecommendedOCOOrdersSection: View {
                 targetPrice: target,
                 sortedTaxLots: sortedTaxLots
             ) else {
-                print("❌ Min Break Even order: Could not achieve 1% gain at target price")
+                AppLogger.shared.debug("❌ Min Break Even order: Could not achieve 1% gain at target price")
                 return nil
             }
             
             sharesToSell = result.sharesToSell
             actualCostPerShare = result.actualCostPerShare
             
-            print("=== calculateMinBreakEvenOrder Final calculation:")
-            print("=== calculateMinBreakEvenOrder  Shares to sell: \(sharesToSell)")
-            print("=== calculateMinBreakEvenOrder  Actual cost per share: $\(actualCostPerShare)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Final calculation:")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder  Shares to sell: \(sharesToSell)")
+            AppLogger.shared.debug("=== calculateMinBreakEvenOrder  Actual cost per share: $\(actualCostPerShare)")
         }
         
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
-            print("❌ Min Break Even order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
+            AppLogger.shared.debug("❌ Min Break Even order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
             return nil
         }
         
@@ -506,14 +530,14 @@ struct RecommendedOCOOrdersSection: View {
             exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
         }
         
-        print("=== calculateMinBreakEvenOrder Exit price: $\(exit) = target - (lastPrice - costPerShare)/4")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Exit price: $\(exit) = target - (lastPrice - costPerShare)/4")
         
         // Verify the ordering: Entry > Target > Exit > Cost-per-share for sell orders
-        print("=== calculateMinBreakEvenOrder Ordering verification:")
-        print("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > CostPerShare ($\(actualCostPerShare))")
-        print("=== calculateMinBreakEvenOrder Entry > Target: \(entry > target)")
-        print("=== calculateMinBreakEvenOrder Target > Exit: \(target > exit)")
-        print("=== calculateMinBreakEvenOrder Exit > CostPerShare: \(exit > actualCostPerShare)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Ordering verification:")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > CostPerShare ($\(actualCostPerShare))")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry > Target: \(entry > target)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Target > Exit: \(target > exit)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Exit > CostPerShare: \(exit > actualCostPerShare)")
         
         let totalGain = sharesToSell * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
@@ -525,7 +549,7 @@ struct RecommendedOCOOrdersSection: View {
         // Simplified description without timing constraints
         let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
                                           sharesToSell, symbol, target, trailingStopValue, actualCostPerShare)
-        print("=== calculateMinBreakEvenOrder ✅ Min break even order created: \(formattedDescription)")
+        AppLogger.shared.debug("=== calculateMinBreakEvenOrder ✅ Min break even order created: \(formattedDescription)")
         
         return SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -542,7 +566,6 @@ struct RecommendedOCOOrdersSection: View {
         )
     }
     
-    // MARK: - Buy Order Calculations (copied from RecommendedBuyOrdersSection)
     
     private func calculateBuyOrder(
         currentPrice: Double,
@@ -552,13 +575,13 @@ struct RecommendedOCOOrdersSection: View {
         totalShares: Double
     ) -> BuyOrderRecord? {
         
-        print("=== calculateBuyOrder (OCO) ===")
-        print("Current price: $\(currentPrice)")
-        print("Avg cost per share: $\(avgCostPerShare)")
-        print("Current P/L%: \(currentProfitPercent)%")
-        print("Target gain %: \(targetGainPercent)%")
-        print("Total shares: \(totalShares)")
-        print("ATR: \(atrValue)%")
+        AppLogger.shared.debug("=== calculateBuyOrder (OCO) ===")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Avg cost per share: $\(avgCostPerShare)")
+        AppLogger.shared.debug("Current P/L%: \(currentProfitPercent)%")
+        AppLogger.shared.debug("Target gain %: \(targetGainPercent)%")
+        AppLogger.shared.debug("Total shares: \(totalShares)")
+        AppLogger.shared.debug("ATR: \(atrValue)%")
         
         // Calculate total cost of current position
         let totalCost = avgCostPerShare * totalShares
@@ -580,11 +603,12 @@ struct RecommendedOCOOrdersSection: View {
             // This means: currentPrice * (1 + trailingStopPercent/100) = targetBuyPrice
             // So: trailingStopPercent = ((targetBuyPrice / currentPrice) - 1) * 100
             trailingStopPercent = ((targetBuyPrice / currentPrice) - 1.0) * 100.0
-            
-            print("Position below target gain - using new strategy:")
-            print("  Target price (33% above current): $\(targetBuyPrice)")
-            print("  Entry price (1 ATR% below target): $\(entryPrice)")
-            print("  Trailing stop %: \(trailingStopPercent)%")
+            AppLogger.shared.debug("=== calculateBuyOrder (OCO) trailingStopPercent: \(trailingStopPercent) = (( targetBuyPrice: \(targetBuyPrice) / currentPrice: \(currentPrice) ) -1 ) * 100.0")
+
+            AppLogger.shared.debug("Position below target gain - using new strategy:")
+            AppLogger.shared.debug("  Target price (33% above current): $\(targetBuyPrice)")
+            AppLogger.shared.debug("  Entry price (1 ATR% below target): $\(entryPrice)")
+            AppLogger.shared.debug("  Trailing stop %: \(trailingStopPercent)%")
         } else {
             // Current position is already above target gain
             // Use the original logic for positions already profitable
@@ -593,59 +617,60 @@ struct RecommendedOCOOrdersSection: View {
             entryPrice = (minEntryPrice + maxEntryPrice) / 2.0
             targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
             trailingStopPercent = atrValue
-            
-            print("Position above target gain - using original logic:")
-            print("  Entry price: $\(entryPrice)")
-            print("  Target price: $\(targetBuyPrice)")
-            print("  Trailing stop %: \(trailingStopPercent)%")
+            AppLogger.shared.debug("=== calculateBuyOrder (OCO) trailingStopPercent: \(trailingStopPercent) = (( atrValue: \(atrValue) ) )")
+
+            AppLogger.shared.debug("Position above target gain - using original logic:")
+            AppLogger.shared.debug("  Entry price: $\(entryPrice)")
+            AppLogger.shared.debug("  Target price: $\(targetBuyPrice)")
+            AppLogger.shared.debug("  Trailing stop %: \(trailingStopPercent)%")
         }
         
-        print("Current P/L%: \(currentProfitPercent)%")
-        print("Target gain %: \(targetGainPercent)%")
-        print("Current price: $\(currentPrice)")
-        print("Target buy price: $\(targetBuyPrice)")
-        print("Entry price: $\(entryPrice)")
-        print("Trailing stop %: \(trailingStopPercent)%")
+        AppLogger.shared.debug("Current P/L%: \(currentProfitPercent)%")
+        AppLogger.shared.debug("Target gain %: \(targetGainPercent)%")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Target buy price: $\(targetBuyPrice)")
+        AppLogger.shared.debug("Entry price: $\(entryPrice)")
+        AppLogger.shared.debug("Trailing stop %: \(trailingStopPercent)%")
         
         // Calculate how many shares we need to buy to bring the combined position to the target gain percentage
         // We want the new average cost to be such that the target buy price represents the target gain percentage
         let sharesToBuy = (totalShares * targetBuyPrice - totalCost) / (targetBuyPrice - avgCostPerShare)
         
-        print("Calculated shares to buy: \(sharesToBuy)")
+        AppLogger.shared.debug("Calculated shares to buy: \(sharesToBuy)")
         
         // Apply limits
         var finalSharesToBuy = max(1.0, ceil(sharesToBuy))
         let orderCost = finalSharesToBuy * targetBuyPrice
         
-        print("Initial calculation: \(finalSharesToBuy) shares at $\(targetBuyPrice) = $\(orderCost)")
+        AppLogger.shared.debug("Initial calculation: \(finalSharesToBuy) shares at $\(targetBuyPrice) = $\(orderCost)")
         
         // Limit to $500 maximum investment
         if orderCost > 500.0 {
             finalSharesToBuy = floor(500.0 / targetBuyPrice)
-            print("Order cost \(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
+            AppLogger.shared.debug("Order cost \(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
         }
         
         // Ensure at least 1 share
         if finalSharesToBuy < 1.0 {
             finalSharesToBuy = 1.0
-            print("Ensuring minimum of 1 share")
+            AppLogger.shared.debug("Ensuring minimum of 1 share")
         }
         
         // Recalculate final order cost
         let finalOrderCost = finalSharesToBuy * targetBuyPrice
         
-        print("Final shares to buy: \(finalSharesToBuy)")
-        print("Final order cost: $\(finalOrderCost)")
+        AppLogger.shared.debug("Final shares to buy: \(finalSharesToBuy)")
+        AppLogger.shared.debug("Final order cost: $\(finalOrderCost)")
         
         // Check if order is reasonable
         guard finalSharesToBuy > 0 else {
-            print("❌ Buy order not reasonable - shares: \(finalSharesToBuy)")
+            AppLogger.shared.debug("❌ Buy order not reasonable - shares: \(finalSharesToBuy)")
             return nil
         }
         
         // Warn if order cost exceeds $500 but don't reject
         if finalOrderCost > 500.0 {
-            print("⚠️ Warning: Order cost $\(finalOrderCost) exceeds $500 limit, but allowing 1 share minimum")
+            AppLogger.shared.debug("⚠️ Warning: Order cost $\(finalOrderCost) exceeds $500 limit, but allowing 1 share minimum")
         }
         
         // Simplified order description without timing constraints
@@ -666,6 +691,69 @@ struct RecommendedOCOOrdersSection: View {
             currentGainPercent: currentProfitPercent,
             sharesToBuy: finalSharesToBuy,
             orderCost: finalOrderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "", // No submit date for simplified orders
+            isImmediate: false // No immediate submission for simplified orders
+        )
+    }
+    
+    private func calculateSecondBuyOrder(
+        primaryOrder: BuyOrderRecord,
+        currentPrice: Double,
+        avgCostPerShare: Double,
+        currentProfitPercent: Double,
+        targetGainPercent: Double,
+        totalShares: Double
+    ) -> BuyOrderRecord? {
+        
+        AppLogger.shared.debug("=== calculateSecondBuyOrder ===")
+        AppLogger.shared.debug("Primary order trailing stop: \(primaryOrder.trailingStop)%")
+        AppLogger.shared.debug("Primary order shares: \(primaryOrder.sharesToBuy)")
+        
+        // Calculate half the shares and half the trailing stop
+        let secondOrderShares = max(1.0, ceil(primaryOrder.sharesToBuy / 2.0))
+        let secondOrderTrailingStop = primaryOrder.trailingStop / 2.0
+        
+        AppLogger.shared.debug("Second order shares: \(secondOrderShares) (half of \(primaryOrder.sharesToBuy))")
+        AppLogger.shared.debug("Second order trailing stop: \(secondOrderTrailingStop)% (half of \(primaryOrder.trailingStop)%)")
+        
+        // Use the same target price as the primary order
+        let targetBuyPrice = primaryOrder.targetBuyPrice
+        let entryPrice = primaryOrder.entryPrice
+        
+        // Calculate order cost
+        let orderCost = secondOrderShares * targetBuyPrice
+        
+        AppLogger.shared.debug("Second order cost: $\(orderCost)")
+        
+        // Check if order is reasonable
+        guard secondOrderShares > 0 else {
+            AppLogger.shared.debug("❌ Second buy order not reasonable - shares: \(secondOrderShares)")
+            return nil
+        }
+        
+        // Simplified order description for second order
+        let formattedDescription = String(
+            format: "BUY %.0f %@ Target = %.2f TS = %.1f%% TargetGain = %.1f%%",
+            secondOrderShares,
+            symbol,
+            targetBuyPrice,
+            secondOrderTrailingStop,
+            targetGainPercent
+        )
+        
+        AppLogger.shared.debug("✅ Second buy order created: \(formattedDescription)")
+        
+        return BuyOrderRecord(
+            shares: secondOrderShares,
+            targetBuyPrice: targetBuyPrice,
+            entryPrice: entryPrice,
+            trailingStop: secondOrderTrailingStop,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: currentProfitPercent,
+            sharesToBuy: secondOrderShares,
+            orderCost: orderCost,
             description: formattedDescription,
             orderType: "BUY",
             submitDate: "", // No submit date for simplified orders
@@ -695,35 +783,35 @@ struct RecommendedOCOOrdersSection: View {
         // Debug logging
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        print("DEBUG: calculateSubmitDate (OCO) for \(symbol)")
-        print("DEBUG:   now = \(formatter.string(from: now))")
-        print("DEBUG:   lastBuyDate = \(formatter.string(from: lastBuyDate))")
-        print("DEBUG:   sevenDaysAfterLastBuy = \(formatter.string(from: sevenDaysAfterLastBuy))")
-        print("DEBUG:   nextTradingDay = \(formatter.string(from: nextTradingDay))")
-        print("DEBUG:   today = \(formatter.string(from: today))")
-        print("DEBUG:   sevenDaysDate = \(formatter.string(from: sevenDaysDate))")
-        print("DEBUG:   isSevenDaysToday = \(calendar.isDate(sevenDaysDate, inSameDayAs: today))")
+        AppLogger.shared.debug("DEBUG: calculateSubmitDate (OCO) for \(symbol)")
+        AppLogger.shared.debug("DEBUG:   now = \(formatter.string(from: now))")
+        AppLogger.shared.debug("DEBUG:   lastBuyDate = \(formatter.string(from: lastBuyDate))")
+        AppLogger.shared.debug("DEBUG:   sevenDaysAfterLastBuy = \(formatter.string(from: sevenDaysAfterLastBuy))")
+        AppLogger.shared.debug("DEBUG:   nextTradingDay = \(formatter.string(from: nextTradingDay))")
+        AppLogger.shared.debug("DEBUG:   today = \(formatter.string(from: today))")
+        AppLogger.shared.debug("DEBUG:   sevenDaysDate = \(formatter.string(from: sevenDaysDate))")
+        AppLogger.shared.debug("DEBUG:   isSevenDaysToday = \(calendar.isDate(sevenDaysDate, inSameDayAs: today))")
         
         let baseDate: Date
         if calendar.isDate(sevenDaysDate, inSameDayAs: today) {
             // 7-day rule says today, so use the next trading day logic (which handles 09:30 adjustment)
             baseDate = nextTradingDay
-            print("DEBUG:   using nextTradingDay (7-day rule says today)")
+            AppLogger.shared.debug("DEBUG:   using nextTradingDay (7-day rule says today)")
         } else {
             // 7-day rule says a future date, so use that date directly (no 09:30 adjustment)
             baseDate = sevenDaysAfterLastBuy
-            print("DEBUG:   using sevenDaysAfterLastBuy (7-day rule says future date)")
+            AppLogger.shared.debug("DEBUG:   using sevenDaysAfterLastBuy (7-day rule says future date)")
         }
         
-        print("DEBUG:   baseDate = \(formatter.string(from: baseDate))")
+        AppLogger.shared.debug("DEBUG:   baseDate = \(formatter.string(from: baseDate))")
         
         // Set the time to 09:40:00 using calendar components
         var targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: baseDate) ?? baseDate
-        print("DEBUG:   initial targetDate = \(formatter.string(from: targetDate))")
+        AppLogger.shared.debug("DEBUG:   initial targetDate = \(formatter.string(from: targetDate))")
         
         // Check if the target date is in the past
         if targetDate <= now {
-            print("DEBUG:   targetDate is in the past, moving to next weekday at 09:40")
+            AppLogger.shared.debug("DEBUG:   targetDate is in the past, moving to next weekday at 09:40")
             // Move to the next weekday at 09:40
             var nextWeekday = calendar.date(byAdding: .day, value: 1, to: now) ?? now
             while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
@@ -731,13 +819,13 @@ struct RecommendedOCOOrdersSection: View {
                 nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
             }
             targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: nextWeekday) ?? nextWeekday
-            print("DEBUG:   adjusted targetDate = \(formatter.string(from: targetDate))")
+            AppLogger.shared.debug("DEBUG:   adjusted targetDate = \(formatter.string(from: targetDate))")
         }
         
         let outputFormatter = DateFormatter()
         outputFormatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
         let submitDate = outputFormatter.string(from: targetDate)
-        print("DEBUG:   submitDate = \(submitDate)")
+        AppLogger.shared.debug("DEBUG:   submitDate = \(submitDate)")
         
         // Check if we can submit immediately (target date is today and it's before 09:30)
         let nineThirtyToday = today.addingTimeInterval(9 * 3600 + 30 * 60) // 9 hours and 30 minutes
@@ -821,7 +909,7 @@ struct RecommendedOCOOrdersSection: View {
     
     private func checkAndUpdateSymbol() {
         if symbol != lastSymbol {
-            print("Symbol changed from \(lastSymbol) to \(symbol)")
+            AppLogger.shared.debug("Symbol changed from \(lastSymbol) to \(symbol)")
             lastSymbol = symbol
             copiedValue = "TBD"
             selectedOrderIndices.removeAll()
@@ -899,10 +987,10 @@ struct RecommendedOCOOrdersSection: View {
         }
         .onChange(of: showingConfirmationDialog) { _, isPresented in
             if isPresented {
-                print("=== Sheet is being presented ===")
-                print("orderDescriptions count: \(orderDescriptions.count)")
-                print("orderJson length: \(orderJson.count)")
-                print("orderToSubmit is nil: \(orderToSubmit == nil)")
+                AppLogger.shared.debug("=== Sheet is being presented ===")
+                AppLogger.shared.debug("orderDescriptions count: \(orderDescriptions.count)")
+                AppLogger.shared.debug("orderJson length: \(orderJson.count)")
+                AppLogger.shared.debug("orderToSubmit is nil: \(orderToSubmit == nil)")
             }
         }
         .alert("Order Submission Error", isPresented: $showingErrorAlert) {
@@ -1067,12 +1155,12 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func submitOCOOrders() {
-        print("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
-        print("🔄 [OCO-SUBMIT] Selected order indices: \(selectedOrderIndices)")
-        print("🔄 [OCO-SUBMIT] All orders count: \(allOrders.count)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected order indices: \(selectedOrderIndices)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(allOrders.count)")
         
         guard !selectedOrderIndices.isEmpty else { 
-            print("🔄 [OCO-SUBMIT] ❌ No orders selected")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ No orders selected")
             return 
         }
         
@@ -1080,28 +1168,28 @@ struct RecommendedOCOOrdersSection: View {
             index < allOrders.count ? allOrders[index] : nil
         }
         
-        print("🔄 [OCO-SUBMIT] Selected orders count: \(selectedOrders.count)")
-        print("🔄 [OCO-SUBMIT] Selected orders details:")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders count: \(selectedOrders.count)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders details:")
         for (index, (orderType, order)) in selectedOrders.enumerated() {
-            print("🔄 [OCO-SUBMIT]   Order \(index + 1): type=\(orderType), order=\(type(of: order))")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT]   Order \(index + 1): type=\(orderType), order=\(type(of: order))")
             if let sellOrder = order as? SalesCalcResultsRecord {
-                print("🔄 [OCO-SUBMIT]     SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+                AppLogger.shared.debug("🔄 [OCO-SUBMIT]     SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
             } else if let buyOrder = order as? BuyOrderRecord {
-                print("🔄 [OCO-SUBMIT]     BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+                AppLogger.shared.debug("🔄 [OCO-SUBMIT]     BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
             } else {
-                print("🔄 [OCO-SUBMIT]     Unknown order type: \(type(of: order))")
+                AppLogger.shared.debug("🔄 [OCO-SUBMIT]     Unknown order type: \(type(of: order))")
             }
         }
         
         // Get account number from the position
         guard let accountNumberInt = getAccountNumber() else {
-            print("🔄 [OCO-SUBMIT] ❌ Could not get account number for position")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Could not get account number for position")
             return
         }
-        print("🔄 [OCO-SUBMIT] Account number: \(accountNumberInt)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Account number: \(accountNumberInt)")
         
         // Simplified OCO order creation - no timing constraints
-        print("🔄 [OCO-SUBMIT] Creating simplified OCO order without timing constraints")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Creating simplified OCO order without timing constraints")
         
         // Create order using SchwabClient (single order or OCO)
         guard let orderToSubmit = SchwabClient.shared.createOrder(
@@ -1110,16 +1198,16 @@ struct RecommendedOCOOrdersSection: View {
             selectedOrders: selectedOrders,
             releaseTime: "" // No release time for simplified orders
         ) else {
-            print("🔄 [OCO-SUBMIT] ❌ Failed to create order")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Failed to create order")
             return
         }
-        print("🔄 [OCO-SUBMIT] ✅ Order created successfully")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] ✅ Order created successfully")
         
         // Create order descriptions for confirmation dialog
         orderDescriptions = createOrderDescriptions(orders: selectedOrders)
-        print("🔄 [OCO-SUBMIT] Created \(orderDescriptions.count) order descriptions:")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Created \(orderDescriptions.count) order descriptions:")
         for (index, description) in orderDescriptions.enumerated() {
-            print("🔄 [OCO-SUBMIT]   \(index + 1): \(description)")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT]   \(index + 1): \(description)")
         }
         
         // Create JSON preview
@@ -1128,42 +1216,42 @@ struct RecommendedOCOOrdersSection: View {
             encoder.outputFormatting = .prettyPrinted
             let jsonData = try encoder.encode(orderToSubmit)
             orderJson = String(data: jsonData, encoding: .utf8) ?? "{}"
-            print("🔄 [OCO-SUBMIT] JSON created successfully, length: \(orderJson.count)")
-            print("🔄 [OCO-SUBMIT] JSON preview : \(String(orderJson))")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] JSON created successfully, length: \(orderJson.count)")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] JSON preview : \(String(orderJson))")
         } catch {
             orderJson = "Error encoding order: \(error)"
-            print("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
         }
         
         // Store the order and show confirmation dialog
         self.orderToSubmit = orderToSubmit
         showingConfirmationDialog = true
-        print("🔄 [OCO-SUBMIT] ✅ Showing confirmation dialog")
-        print("🔄 [OCO-SUBMIT] === submitOCOOrders END ===")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] ✅ Showing confirmation dialog")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders END ===")
     }
     
     private func getAccountNumber() -> Int64? {
         // Get the full account number from SchwabClient instead of using the truncated version
         let accounts = SchwabClient.shared.getAccounts()
-        print("=== getAccountNumber ===")
-        print("Total accounts found: \(accounts.count)")
+        AppLogger.shared.debug("=== getAccountNumber ===")
+        AppLogger.shared.debug("Total accounts found: \(accounts.count)")
         
         for (index, accountContent) in accounts.enumerated() {
-            print("Account \(index + 1):")
-            print("  Securities account: \(accountContent.securitiesAccount?.accountNumber ?? "nil")")
-            print("  Positions count: \(accountContent.securitiesAccount?.positions.count ?? 0)")
+            AppLogger.shared.debug("Account \(index + 1):")
+            AppLogger.shared.debug("  Securities account: \(accountContent.securitiesAccount?.accountNumber ?? "nil")")
+            AppLogger.shared.debug("  Positions count: \(accountContent.securitiesAccount?.positions.count ?? 0)")
             
             // Check if this account contains the current symbol
             if let positions = accountContent.securitiesAccount?.positions {
                 for position in positions {
                     if position.instrument?.symbol == symbol {
-                        print("  ✅ Found position for symbol \(symbol) in this account")
+                        AppLogger.shared.debug("  ✅ Found position for symbol \(symbol) in this account")
                         if let fullAccountNumber = accountContent.securitiesAccount?.accountNumber,
                            let accountNumberInt = Int64(fullAccountNumber) {
-                            print("  ✅ Using full account number: \(fullAccountNumber)")
+                            AppLogger.shared.debug("  ✅ Using full account number: \(fullAccountNumber)")
                             return accountNumberInt
                         } else {
-                            print("  ❌ Could not convert account number to Int64")
+                            AppLogger.shared.debug("  ❌ Could not convert account number to Int64")
                         }
                     }
                 }
@@ -1171,7 +1259,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         // Fallback to the truncated version if full account number not found
-        print("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
+        AppLogger.shared.debug("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
         return Int64(accountNumber)
     }
     
@@ -1209,31 +1297,31 @@ struct RecommendedOCOOrdersSection: View {
     */
     
     private func createOrderDescriptions(orders: [(String, Any)]) -> [String] {
-        print("=== createOrderDescriptions ===")
-        print("Input orders count: \(orders.count)")
+        AppLogger.shared.debug("=== createOrderDescriptions ===")
+        AppLogger.shared.debug("Input orders count: \(orders.count)")
         
         var descriptions: [String] = []
         for (index, (orderType, order)) in orders.enumerated() {
-            print("Processing order \(index + 1): type=\(orderType), order=\(type(of: order))")
+            AppLogger.shared.debug("Processing order \(index + 1): type=\(orderType), order=\(type(of: order))")
             
             if let sellOrder = order as? SalesCalcResultsRecord {
-                print("  Found SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+                AppLogger.shared.debug("  Found SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
                 let description = sellOrder.description.isEmpty ? 
                     "SELL \(sellOrder.sharesToSell) shares at \(sellOrder.entry) (Target: \(sellOrder.target), Cancel: \(sellOrder.cancel))" :
                     sellOrder.description
                 descriptions.append("Order \(index + 1) (SELL): \(description)")
             } else if let buyOrder = order as? BuyOrderRecord {
-                print("  Found BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+                AppLogger.shared.debug("  Found BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
                 let description = buyOrder.description.isEmpty ?
                     "BUY \(buyOrder.sharesToBuy) shares at \(buyOrder.targetBuyPrice) (Entry: \(buyOrder.entryPrice), Target: \(buyOrder.targetGainPercent)%)" :
                     buyOrder.description
                 descriptions.append("Order \(index + 1) (BUY): \(description)")
             } else {
-                print("  ❌ Unknown order type: \(type(of: order))")
+                AppLogger.shared.debug("  ❌ Unknown order type: \(type(of: order))")
             }
         }
         
-        print("Created \(descriptions.count) descriptions")
+        AppLogger.shared.debug("Created \(descriptions.count) descriptions")
         return descriptions
     }
     
@@ -1423,10 +1511,10 @@ struct RecommendedOCOOrdersSection: View {
         sortedTaxLots: [SalesCalcPositionsRecord]
     ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
         
-        print("=== calculateMinimumSharesForGain ===")
-        print("Target gain %: \(targetGainPercent)%")
-        print("Target price: $\(targetPrice)")
-        print("Tax lots count: \(sortedTaxLots.count)")
+        AppLogger.shared.debug("=== calculateMinimumSharesForGain ===")
+        AppLogger.shared.debug("Target gain %: \(targetGainPercent)%")
+        AppLogger.shared.debug("Target price: $\(targetPrice)")
+        AppLogger.shared.debug("Tax lots count: \(sortedTaxLots.count)")
         
         // First, separate profitable and unprofitable lots
         var profitableLots: [SalesCalcPositionsRecord] = []
@@ -1434,19 +1522,19 @@ struct RecommendedOCOOrdersSection: View {
         
         for (index, lot) in sortedTaxLots.enumerated() {
             let gainAtTarget = ((targetPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain at target: \(gainAtTarget)%)")
+            AppLogger.shared.debug("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain at target: \(gainAtTarget)%)")
             
             if gainAtTarget > 0 {
                 profitableLots.append(lot)
-                print("  ✅ Profitable lot: \(lot.quantity) shares")
+                AppLogger.shared.debug("  ✅ Profitable lot: \(lot.quantity) shares")
             } else {
                 unprofitableLots.append(lot)
-                print("  ❌ Unprofitable lot: \(lot.quantity) shares")
+                AppLogger.shared.debug("  ❌ Unprofitable lot: \(lot.quantity) shares")
             }
         }
         
-        print("Profitable lots: \(profitableLots.count)")
-        print("Unprofitable lots: \(unprofitableLots.count)")
+        AppLogger.shared.debug("Profitable lots: \(profitableLots.count)")
+        AppLogger.shared.debug("Unprofitable lots: \(unprofitableLots.count)")
         
         // Always start with unprofitable shares first (FIFO-like selling)
         // Then add minimum profitable shares needed to achieve target gain
@@ -1455,7 +1543,7 @@ struct RecommendedOCOOrdersSection: View {
         
         // First, add all unprofitable shares
         for (index, lot) in unprofitableLots.enumerated() {
-            print("Unprofitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+            AppLogger.shared.debug("Unprofitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
             
             let sharesFromLot = lot.quantity
             let costFromLot = sharesFromLot * lot.costPerShare
@@ -1464,11 +1552,11 @@ struct RecommendedOCOOrdersSection: View {
             cumulativeCost += costFromLot
             let avgCost = cumulativeCost / cumulativeShares
             
-            print("  Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            AppLogger.shared.debug("  Adding \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
             
             // Check if this combination achieves the target gain at target price
             let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
-            print("  Cumulative gain at target price: \(gainPercent)%")
+            AppLogger.shared.debug("  Cumulative gain at target price: \(gainPercent)%")
             
             if gainPercent >= targetGainPercent {
                 // We found the minimum shares needed to achieve target gain
@@ -1476,18 +1564,18 @@ struct RecommendedOCOOrdersSection: View {
                 let totalGain = cumulativeShares * (targetPrice - avgCost)
                 let actualCostPerShare = avgCost
                 
-                print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
-                print("  Total gain: $\(totalGain)")
+                AppLogger.shared.debug("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                AppLogger.shared.debug("  Total gain: $\(totalGain)")
                 
                 return (sharesToSell, totalGain, actualCostPerShare)
             } else {
-                print("  ⚠️ Not enough gain yet, continuing with unprofitable shares...")
+                AppLogger.shared.debug("  ⚠️ Not enough gain yet, continuing with unprofitable shares...")
             }
         }
         
         // If we still need more shares, add profitable shares one by one
         for (index, lot) in profitableLots.enumerated() {
-            print("Profitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
+            AppLogger.shared.debug("Profitable lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare)")
             
             // Try adding shares from this lot one by one
             for sharesToAdd in stride(from: 1.0, through: lot.quantity, by: 1.0) {
@@ -1496,8 +1584,8 @@ struct RecommendedOCOOrdersSection: View {
                 let testAvgCost = testCost / testShares
                 let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
                 
-                print("  Testing with \(sharesToAdd) shares from this lot, cumulative: \(testShares) shares, avg cost: $\(testAvgCost)")
-                print("  Test gain at target price: \(testGainPercent)%")
+                AppLogger.shared.debug("  Testing with \(sharesToAdd) shares from this lot, cumulative: \(testShares) shares, avg cost: $\(testAvgCost)")
+                AppLogger.shared.debug("  Test gain at target price: \(testGainPercent)%")
                 
                 if testGainPercent >= targetGainPercent {
                     // We found the minimum shares needed to achieve target gain
@@ -1505,8 +1593,8 @@ struct RecommendedOCOOrdersSection: View {
                     let totalGain = testShares * (targetPrice - testAvgCost)
                     let actualCostPerShare = testAvgCost
                     
-                    print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
-                    print("  Total gain: $\(totalGain)")
+                    AppLogger.shared.debug("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                    AppLogger.shared.debug("  Total gain: $\(totalGain)")
                     
                     return (sharesToSell, totalGain, actualCostPerShare)
                 }
@@ -1520,11 +1608,11 @@ struct RecommendedOCOOrdersSection: View {
             cumulativeCost += costFromLot
             let avgCost = cumulativeCost / cumulativeShares
             
-            print("  Adding all \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+            AppLogger.shared.debug("  Adding all \(sharesFromLot) shares, cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
             
             // Check if this combination achieves the target gain at target price
             let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
-            print("  Cumulative gain at target price: \(gainPercent)%")
+            AppLogger.shared.debug("  Cumulative gain at target price: \(gainPercent)%")
             
             if gainPercent >= targetGainPercent {
                 // We found the minimum shares needed to achieve target gain
@@ -1532,16 +1620,16 @@ struct RecommendedOCOOrdersSection: View {
                 let totalGain = cumulativeShares * (targetPrice - avgCost)
                 let actualCostPerShare = avgCost
                 
-                print("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
-                print("  Total gain: $\(totalGain)")
+                AppLogger.shared.debug("  ✅ Found minimum shares: \(sharesToSell) shares with avg cost $\(actualCostPerShare)")
+                AppLogger.shared.debug("  Total gain: $\(totalGain)")
                 
                 return (sharesToSell, totalGain, actualCostPerShare)
             } else {
-                print("  ⚠️ Not enough gain yet, continuing with profitable shares...")
+                AppLogger.shared.debug("  ⚠️ Not enough gain yet, continuing with profitable shares...")
             }
         }
         
-        print("❌ Could not achieve target gain of \(targetGainPercent)%")
+        AppLogger.shared.debug("❌ Could not achieve target gain of \(targetGainPercent)%")
         return nil
     }
     
@@ -1601,16 +1689,16 @@ struct RecommendedOCOOrdersSection: View {
         sortedTaxLots: [SalesCalcPositionsRecord]
     ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
         
-        print("=== calculateMinimumSharesForRemainingProfit ===")
-        print("Target profit %: \(targetProfitPercent)%")
-        print("Current price: $\(currentPrice)")
-        print("Tax lots count: \(sortedTaxLots.count)")
+        AppLogger.shared.debug("=== calculateMinimumSharesForRemainingProfit ===")
+        AppLogger.shared.debug("Target profit %: \(targetProfitPercent)%")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Tax lots count: \(sortedTaxLots.count)")
         
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
         
-        print("Total shares: \(totalShares)")
-        print("Total cost: $\(totalCost)")
+        AppLogger.shared.debug("Total shares: \(totalShares)")
+        AppLogger.shared.debug("Total cost: $\(totalCost)")
         
         var sharesToSell: Double = 0
         var totalGain: Double = 0
@@ -1619,15 +1707,15 @@ struct RecommendedOCOOrdersSection: View {
         
         for (index, lot) in sortedTaxLots.enumerated() {
             let lotGainPercent = ((currentPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-            print("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
+            AppLogger.shared.debug("Lot \(index + 1): \(lot.quantity) shares at $\(lot.costPerShare) (gain: \(lotGainPercent)%)")
             
             if lotGainPercent >= targetProfitPercent {
                 // Calculate how many shares from this lot we need to sell
                 let sharesFromLot = min(lot.quantity, remainingShares)
                 let costFromLot = sharesFromLot * lot.costPerShare
                 
-                print("  Considering selling \(sharesFromLot) shares from this lot")
-                print("  Cost from lot: $\(costFromLot)")
+                AppLogger.shared.debug("  Considering selling \(sharesFromLot) shares from this lot")
+                AppLogger.shared.debug("  Cost from lot: $\(costFromLot)")
                 
                 // Check if selling these shares would achieve target profit overall
                 let newRemainingShares = remainingShares - sharesFromLot
@@ -1635,14 +1723,14 @@ struct RecommendedOCOOrdersSection: View {
                 let newAvgCost = newRemainingCost / newRemainingShares
                 let newProfitPercent = ((currentPrice - newAvgCost) / newAvgCost) * 100.0
                 
-                print("  New remaining shares: \(newRemainingShares)")
-                print("  New remaining cost: $\(newRemainingCost)")
-                print("  New avg cost: $\(newAvgCost)")
-                print("  New P/L%: \(newProfitPercent)%")
+                AppLogger.shared.debug("  New remaining shares: \(newRemainingShares)")
+                AppLogger.shared.debug("  New remaining cost: $\(newRemainingCost)")
+                AppLogger.shared.debug("  New avg cost: $\(newAvgCost)")
+                AppLogger.shared.debug("  New P/L%: \(newProfitPercent)%")
                 
                 if newProfitPercent >= targetProfitPercent {
                     // We can sell these shares and still maintain target profit
-                    print("  ✅ Can sell all \(sharesFromLot) shares and maintain \(targetProfitPercent)% profit")
+                    AppLogger.shared.debug("  ✅ Can sell all \(sharesFromLot) shares and maintain \(targetProfitPercent)% profit")
                     sharesToSell += sharesFromLot
                     totalGain += sharesFromLot * (currentPrice - lot.costPerShare)
                     remainingShares = newRemainingShares
@@ -1650,38 +1738,38 @@ struct RecommendedOCOOrdersSection: View {
                 } else {
                     // Selling these shares would drop us below target profit
                     // Only sell enough to maintain target profit
-                    print("  ⚠️ Selling all shares would drop P/L% below \(targetProfitPercent)%")
+                    AppLogger.shared.debug("  ⚠️ Selling all shares would drop P/L% below \(targetProfitPercent)%")
                     let targetRemainingCost = (currentPrice * remainingShares) / (1.0 + targetProfitPercent / 100.0)
                     let maxCostToSell = remainingCost - targetRemainingCost
                     let maxSharesToSell = maxCostToSell / lot.costPerShare
                     
-                    print("  Target remaining cost for \(targetProfitPercent)% profit: $\(targetRemainingCost)")
-                    print("  Max cost to sell: $\(maxCostToSell)")
-                    print("  Max shares to sell: \(maxSharesToSell)")
+                    AppLogger.shared.debug("  Target remaining cost for \(targetProfitPercent)% profit: $\(targetRemainingCost)")
+                    AppLogger.shared.debug("  Max cost to sell: $\(maxCostToSell)")
+                    AppLogger.shared.debug("  Max shares to sell: \(maxSharesToSell)")
                     
                     if maxSharesToSell > 0 {
                         let actualSharesToSell = min(maxSharesToSell, lot.quantity)
-                        print("  ✅ Selling \(actualSharesToSell) shares to maintain \(targetProfitPercent)% profit")
+                        AppLogger.shared.debug("  ✅ Selling \(actualSharesToSell) shares to maintain \(targetProfitPercent)% profit")
                         sharesToSell += actualSharesToSell
                         totalGain += actualSharesToSell * (currentPrice - lot.costPerShare)
                     } else {
-                        print("  ❌ Cannot sell any shares from this lot")
+                        AppLogger.shared.debug("  ❌ Cannot sell any shares from this lot")
                     }
                     break
                 }
             } else {
-                print("  ❌ Lot gain \(lotGainPercent)% is below \(targetProfitPercent)% threshold")
+                AppLogger.shared.debug("  ❌ Lot gain \(lotGainPercent)% is below \(targetProfitPercent)% threshold")
             }
         }
         
-        print("Final calculation:")
-        print("  Shares to sell: \(sharesToSell)")
-        print("  Total gain: $\(totalGain)")
-        print("  Remaining shares: \(remainingShares)")
-        print("  Remaining cost: $\(remainingCost)")
+        AppLogger.shared.debug("Final calculation:")
+        AppLogger.shared.debug("  Shares to sell: \(sharesToSell)")
+        AppLogger.shared.debug("  Total gain: $\(totalGain)")
+        AppLogger.shared.debug("  Remaining shares: \(remainingShares)")
+        AppLogger.shared.debug("  Remaining cost: $\(remainingCost)")
         
         guard sharesToSell > 0 else { 
-            print("❌ No shares to sell")
+            AppLogger.shared.debug("❌ No shares to sell")
             return nil 
         }
         

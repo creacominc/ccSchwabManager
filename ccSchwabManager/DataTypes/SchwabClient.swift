@@ -2973,6 +2973,33 @@ class SchwabClient
         AppLogger.shared.debug("Selected Orders Count: \(selectedOrders.count)")
         AppLogger.shared.debug("Release Time: \(releaseTime)")
         
+        // Extract current price from the first order (they should all have the same current price)
+        let currentPrice: Double
+        if let firstOrder = selectedOrders.first {
+            let (orderType, order) = firstOrder
+            if orderType == "BUY", let buyOrder = order as? BuyOrderRecord {
+                // For buy orders, we can calculate current price from the trailing stop calculation
+                // The trailing stop was calculated as: ((targetBuyPrice / currentPrice) - 1.0) * 100.0
+                // So: currentPrice = targetBuyPrice / (1.0 + trailingStopPercent / 100.0)
+                let targetBuyPrice = buyOrder.targetBuyPrice
+                let trailingStopPercent = buyOrder.trailingStop
+                currentPrice = targetBuyPrice / (1.0 + trailingStopPercent / 100.0)
+                AppLogger.shared.debug("📊 Calculated current price from BUY order: $\(currentPrice)")
+            } else if orderType == "SELL", let sellOrder = order as? SalesCalcResultsRecord {
+                // For sell orders, we can estimate current price from the entry price
+                // The entry price is typically close to current price for sell orders
+                currentPrice = sellOrder.entry
+                AppLogger.shared.debug("📊 Using entry price as current price for SELL order: $\(currentPrice)")
+            } else {
+                // Fallback to a reasonable default
+                currentPrice = 50.0
+                AppLogger.shared.debug("⚠️ Using fallback current price: $\(currentPrice)")
+            }
+        } else {
+            currentPrice = 50.0
+            AppLogger.shared.debug("⚠️ No orders provided, using fallback current price: $\(currentPrice)")
+        }
+        
         // If there's only one order, return it directly without OCO wrapper
         if selectedOrders.count == 1 {
             AppLogger.shared.debug("📝 Single order detected - creating direct order without OCO wrapper")
@@ -2984,7 +3011,7 @@ class SchwabClient
                 orderType: orderType,
                 order: order,
                 legId: 1,
-                currentPrice: 40.14 // TODO: Get actual current price from order
+                currentPrice: currentPrice
             ) {
                 AppLogger.shared.debug("✅ Created single order directly")
                 return singleOrder
@@ -3007,7 +3034,7 @@ class SchwabClient
                 orderType: orderType,
                 order: order,
                 legId: index + 1,
-                currentPrice: 40.14 // TODO: Get actual current price from order
+                currentPrice: currentPrice
             ) {
                 childOrderStrategies.append(childOrder)
                 AppLogger.shared.debug("✅ Created simplified child order \(index + 1): \(orderType)")
@@ -3057,7 +3084,7 @@ class SchwabClient
                 return nil
             }
             
-            AppLogger.shared.debug("Creating simplified SELL order:")
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  Creating simplified SELL order:")
             AppLogger.shared.debug("  Shares: \(sellOrder.sharesToSell)")
             AppLogger.shared.debug("  Target: \(sellOrder.target)")
             AppLogger.shared.debug("  Entry: \(sellOrder.entry)")
@@ -3074,8 +3101,9 @@ class SchwabClient
             
             // Calculate trailing stop as 90% of the percentage from target to current price
             // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0 * 0.90
-            
+            let trailingStopPercent: Double = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0 * 0.90
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  trailingStopPercent: \(trailingStopPercent) = (( entry: \(sellOrder.entry) - target: \(sellOrder.target) ) / entry: \(sellOrder.entry) ) * 100.0 * 0.90")
+
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(sellOrder.target * 100) / 100
             let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
@@ -3129,8 +3157,9 @@ class SchwabClient
             
             // Calculate trailing stop as 90% of the percentage from current price to target
             // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent = ((buyOrder.targetBuyPrice - currentPrice) / currentPrice) * 100.0 * 0.90
-            
+            let trailingStopPercent: Double = ((buyOrder.targetBuyPrice - currentPrice) / currentPrice) * 100.0 * 0.90
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  Trailing Stop Percent: \(trailingStopPercent) = (( targetBuyPrice: \(buyOrder.targetBuyPrice) - currentPrice: \(currentPrice) ) / currentPrice: \(currentPrice) ) * 100.0 * 0.90")
+
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(buyOrder.targetBuyPrice * 100) / 100
             let roundedTrailingStopPercent = round(trailingStopPercent * 100) / 100
