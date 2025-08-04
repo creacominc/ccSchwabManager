@@ -2,11 +2,11 @@ import XCTest
 @testable import ccSchwabManager
 
 class CSVValidationTests: XCTestCase {
-    
+
     func testBuyOrderCSVValidation() {
         // Test with the provided CSV data
         let csvData = """
-        Scenario,Ticker,ATR,Last Trade Date,,Total Quantity,Total Cost,Last Price,Average Price,Gain %,7 x ATR,"Target Gain, Minimum 15",Greater of last and breakeven,Entry Price = 1 ATR above the last/breakeven ,Target Price another ATR above the entry,7 days after last trade,Submit Date/Time,Shares to buy at Target Price,Limit shares,,Description
+        Scenario,Ticker,ATR,Last Trade Date,,Total Quantity,Total Cost,Last Price,Average Price,Gain %,5 x ATR,"Target Gain, Minimum 15",Greater of last and breakeven,Entry Price = 1 ATR above the last/breakeven ,Target Price another ATR above the entry,7 days after last trade,Submit Date/Time,Shares to buy at Target Price,Limit shares,,Description
         Buy Order Workflow,AAOI,1.2,2025-07-01,,868,$21408.32,$28.63,$24.66,16.1,8.4,15,$28.63,$28.97,$29.32,2025-07-08,2025-07-23,920,18,"Buy 18 AAOI Submit: 2025-07-23 09:40:00   BID >= $28.97, TS = 1.2 %,  Target: $29.32"
         Buy Order Workflow,ACHR,1.2,2025-07-01,,100,$2500.00,$25.00,$25.00,0.0,8.4,15,$25.00,$25.30,$25.60,2025-07-08,2025-07-23,100,10,"Buy 10 ACHR Submit: 2025-07-23 09:40:00   BID >= $25.30, TS = 1.2 %,  Target: $25.60"
         """
@@ -40,7 +40,7 @@ class CSVValidationTests: XCTestCase {
     func testBuyOrderLogicAgainstCurrentImplementation() {
         // Test that current implementation matches CSV logic
         let csvData = """
-        Scenario,Ticker,ATR,Last Trade Date,,Total Quantity,Total Cost,Last Price,Average Price,Gain %,7 x ATR,"Target Gain, Minimum 15",Greater of last and breakeven,Entry Price = 1 ATR above the last/breakeven ,Target Price another ATR above the entry,7 days after last trade,Submit Date/Time,Shares to buy at Target Price,Limit shares,,Description
+        Scenario,Ticker,ATR,Last Trade Date,,Total Quantity,Total Cost,Last Price,Average Price,Gain %,5 x ATR,"Target Gain, Minimum 15",Greater of last and breakeven,Entry Price = 1 ATR above the last/breakeven ,Target Price another ATR above the entry,7 days after last trade,Submit Date/Time,Shares to buy at Target Price,Limit shares,,Description
         Buy Order Workflow,AAOI,1.2,2025-07-01,,868,$21408.32,$28.63,$24.66,16.1,8.4,15,$28.63,$28.97,$29.32,2025-07-08,2025-07-23,920,18,"Buy 18 AAOI Submit: 2025-07-23 09:40:00   BID >= $28.97, TS = 1.2 %,  Target: $29.32"
         """
         
@@ -62,8 +62,8 @@ class CSVValidationTests: XCTestCase {
         XCTAssertEqual(expectedTargetPrice, record.targetPrice, accuracy: 0.01,
                       "Target price calculation should match CSV logic")
         
-        // Test target gain calculation: Target Gain = max(15%, 7 * ATR)
-        let expectedTargetGain = max(15.0, 7.0 * record.atr)
+        // Test target gain calculation: Target Gain = max(15%, 5 * ATR)
+                    let expectedTargetGain = max(15.0, TradingConfig.atrMultiplier * record.atr)
         XCTAssertEqual(expectedTargetGain, record.targetGainMin15, accuracy: 0.1,
                       "Target gain calculation should match CSV logic")
     }

@@ -9,6 +9,7 @@ import XCTest
 @testable import ccSchwabManager
 
 class BuyOrderCalculationTests: XCTestCase {
+
     
     func testBuyOrderCalculationWithSpreadsheetData() {
         // Test data from the spreadsheet
@@ -84,10 +85,10 @@ class BuyOrderCalculationTests: XCTestCase {
     func testNewBuyOrderLogicForBelowTargetGain() {
         // Test the new logic for positions below target gain
         // Using the user's example: FCX with current price 40.14, avg cost 43.77, ATR 4.76%
-        let currentPrice = 40.14
-        let avgCostPerShare = 43.77
-        let atrValue = 4.76
-        let targetGainPercent = 33.0 // 7 * ATR
+        let currentPrice: Double = 40.14
+        let avgCostPerShare: Double = 43.77
+        let atrValue: Double = 4.76
+        let targetGainPercent: Double = TradingConfig.atrMultiplier * atrValue
         
         // Calculate current profit percent
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0

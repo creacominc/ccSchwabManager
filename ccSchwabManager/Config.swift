@@ -6,6 +6,13 @@ import UIKit
 import AppKit
 #endif
 
+// MARK: - Trading Algorithm Configuration
+public struct TradingConfig {
+    /// Multiplier for ATR (Average True Range) calculations in trading algorithms
+    /// Used to determine target gain percentages and trailing stop calculations
+    public static let atrMultiplier: Double = 5.0
+}
+
 // MARK: - Deployment Target Configuration
 // This file explicitly declares our deployment targets to help the linter understand
 // that we're targeting the latest macOS and iOS versions.

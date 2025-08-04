@@ -2,7 +2,8 @@ import XCTest
 @testable import ccSchwabManager
 
 class OrderLogicTests: XCTestCase {
-    
+
+
     // MARK: - Test Data from CSV Examples
     
     struct CSVExample {
@@ -111,8 +112,8 @@ class OrderLogicTests: XCTestCase {
     
     func testBuyOrderTargetGainCalculation() {
         for example in csvExamples {
-            // Test target gain calculation: Target Gain = max(15%, 7 * ATR)
-            let expectedTargetGain = max(15.0, 7.0 * example.atr)
+            // Test target gain calculation: Target Gain = max(15%, 5 * ATR)
+            let expectedTargetGain = max(15.0, TradingConfig.atrMultiplier * example.atr)
             
             XCTAssertEqual(expectedTargetGain, example.targetGainMin15, accuracy: 0.1,
                          "Target gain calculation failed for \(example.ticker)")
@@ -373,7 +374,7 @@ class OrderLogicTests: XCTestCase {
         let atrValue = 3.32 // From the image
         
         // Calculate the Minimum BreakEven order
-        let adjustedATR = atrValue / 5.0
+        let adjustedATR = atrValue / TradingConfig.atrMultiplier
         let entry = currentPrice * (1.0 - adjustedATR / 100.0)
         let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
         
@@ -421,7 +422,7 @@ class OrderLogicTests: XCTestCase {
         
         let currentPrice = 20.79
         let atrValue = 2.5 // From the image
-        let adjustedATR = atrValue / 5.0 // 0.5%
+        let adjustedATR = atrValue / TradingConfig.atrMultiplier
         
         // Calculate entry and target prices
         let entry = currentPrice * (1.0 - adjustedATR / 100.0)
@@ -465,7 +466,7 @@ class OrderLogicTests: XCTestCase {
     func testEGOMinimumSharesCalculation() {
         let currentPrice = 20.79
         let atrValue = 2.5
-        let adjustedATR = atrValue / 5.0
+        let adjustedATR = atrValue / TradingConfig.atrMultiplier
         let entry = currentPrice * (1.0 - adjustedATR / 100.0)
         let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
         
@@ -524,7 +525,7 @@ class OrderLogicTests: XCTestCase {
     func testEGOIterativeCalculation() {
         let currentPrice = 20.79
         let atrValue = 2.5
-        let adjustedATR = atrValue / 5.0
+        let adjustedATR = atrValue / TradingConfig.atrMultiplier
         let entry = currentPrice * (1.0 - adjustedATR / 100.0)
         let target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
         

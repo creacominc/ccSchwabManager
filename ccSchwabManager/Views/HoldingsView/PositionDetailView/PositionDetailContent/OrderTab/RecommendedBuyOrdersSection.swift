@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RecommendedBuyOrdersSection: View {
+
     let symbol: String
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
@@ -54,7 +55,7 @@ struct RecommendedBuyOrdersSection: View {
         }
         
         // Calculate target gain percent based on ATR
-        let targetGainPercent = max(15.0, 7.0 * atrValue)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue)
         print("Target gain percent: \(targetGainPercent)% (ATR: \(atrValue)%)")
         
         // Calculate buy order

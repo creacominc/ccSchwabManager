@@ -1,7 +1,7 @@
 import Foundation
 
 struct CSVOrderValidator {
-    
+
     // MARK: - CSV Data Structures
     
     struct BuyOrderCSVRecord {
@@ -187,7 +187,7 @@ struct CSVOrderValidator {
         }
         
         // Validate target gain calculation
-        let expectedTargetGain = max(15.0, 7.0 * record.atr)
+                    let expectedTargetGain = max(15.0, TradingConfig.atrMultiplier * record.atr)
         if abs(expectedTargetGain - record.targetGainMin15) > 0.1 {
             errors.append("Target gain calculation error: expected \(expectedTargetGain), got \(record.targetGainMin15)")
         }

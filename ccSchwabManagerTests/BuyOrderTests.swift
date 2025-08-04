@@ -10,6 +10,7 @@ import Foundation
 @testable import ccSchwabManager
 
 struct BuyOrderTests {
+
     
     @Test func testBuyOrderCalculation() async throws {
         // Test data setup
@@ -36,7 +37,7 @@ struct BuyOrderTests {
         
         // Calculate expected values based on the buy order workflow
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
-        let targetGainPercent = max(15.0, 7.0 * atrValue) // Should be 17.5% (7 * 2.5)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 17.5% (5 * 2.5)
         
         // Verify current profit is less than target (should trigger buy order)
         #expect(currentProfitPercent < targetGainPercent, "Current profit should be less than target to trigger buy order")
@@ -67,7 +68,7 @@ struct BuyOrderTests {
         finalSharesToBuy = max(finalSharesToBuy, 1.0)
         
         // Verify calculations
-        #expect(targetGainPercent == 17.5, "Target gain percent should be 17.5% (7 * 2.5)")
+        #expect(targetGainPercent == 12.5, "Target gain percent should be 12.5% (5 * 2.5)")
         #expect(targetPrice > avgCostPerShare, "Target price should be above average cost")
         #expect(entryPrice > targetPrice, "Entry price should be above target price")
         #expect(targetBuyPrice > entryPrice, "Target buy price should be above entry price")
@@ -90,9 +91,9 @@ struct BuyOrderTests {
     }
     
     @Test func testBuyOrderWithHighATR() async throws {
-        // Test with high ATR (should use 7 * ATR as target)
+        // Test with high ATR (should use atrMultiplier * ATR as target)
         let atrValue = 4.0 // 4% ATR
-        let targetGainPercent = max(15.0, 7.0 * atrValue) // Should be 28% (7 * 4)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 28% (5 * 4)
         
         #expect(targetGainPercent == 28.0, "Target gain percent should be 28% for 4% ATR")
     }
@@ -100,7 +101,7 @@ struct BuyOrderTests {
     @Test func testBuyOrderWithLowATR() async throws {
         // Test with low ATR (should use minimum 15% as target)
         let atrValue = 1.0 // 1% ATR
-        let targetGainPercent = max(15.0, 7.0 * atrValue) // Should be 15% (minimum)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 15% (minimum)
         
         #expect(targetGainPercent == 15.0, "Target gain percent should be 15% minimum for 1% ATR")
     }

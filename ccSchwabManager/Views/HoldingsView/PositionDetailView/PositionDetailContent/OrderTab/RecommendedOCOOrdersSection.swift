@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RecommendedOCOOrdersSection: View {
+
     let symbol: String
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
@@ -136,7 +137,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         // Calculate target gain percent based on ATR
-        let targetGainPercent = max(15.0, 7.0 * atrValue)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue)
         print("Target gain percent: \(targetGainPercent)% (ATR: \(atrValue)%)")
         
         // Calculate buy order
@@ -187,7 +188,7 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func getLimitedATR() -> Double {
-        return max(1.0, min(7.0, atrValue))
+        return max(1.0, min(TradingConfig.atrMultiplier, atrValue))
     }
     
     // OLD CODE - COMMENTED OUT FOR REFERENCE

@@ -40,7 +40,7 @@ For a position with:
 - Current price: $40.14
 - Average cost: $43.77 (8% under)
 - ATR: 4.76%
-- Target gain: 33% (7 × ATR)
+- Target gain: 33% (5 × ATR)
 
 The system will:
 - Set target price to $53.51 (33% above current price)
@@ -290,7 +290,7 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
 
   The goal of the buy order workflow is to increase our holdings of positions that are profitable.  All positions should have standing buy orders if they are not performing so badly that we just want to sell them.  Orders should be structured so that they are submitted on or after a certain date and time and above (or in some cases below) a certain price.  The increase in holdings should be done slowly so that we never invest more than $500 a week in a security or the price of 1 share if it the cost-per-share exceeds $500.  The number of shares bought and the target buy price should be such that we can maintain at least a certain target percent gain.  
   
-  The target percent gain depends on the ATR of the security.  The ATR indicates the volatility and how quickly the price could rise or fall.  The target precent gain should be the greater of 15% or 7 * ATR%.  If a security has a 2% ATR, the traget would be 15%.  If it has a 3% ATR, the target would be 21%.  For the first example, we would want to always have at least 15% gain on our current holdings. For the second, 21%.  If the current P/L% is less than the target gain, we should compute the price at which it would meet the target gain and use that (plus 1*ATR) for the order entry price.
+  The target percent gain depends on the ATR of the security.  The ATR indicates the volatility and how quickly the price could rise or fall.  The target precent gain should be the greater of 15% or 5 * ATR%.  If a security has a 2% ATR, the traget would be 15%.  If it has a 3% ATR, the target would be 21%.  For the first example, we would want to always have at least 15% gain on our current holdings. For the second, 21%.  If the current P/L% is less than the target gain, we should compute the price at which it would meet the target gain and use that (plus 1*ATR) for the order entry price.
   
   The order submission date/time is when the order should be submitted.  It should be at 09:40 local time at least 7 days since the last buy.  If the last buy was more than 7 days ago, the order can be submitted without a submit time/date which will cause it to start right away.  If the current local time is outside of trading hours, the order should be entered on the next trading day at least 10 minutes after market open (09:40).  
   
