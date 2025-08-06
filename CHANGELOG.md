@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added comprehensive test coverage for new buy order logic including FCX example calculations
   - Updated order creation to include missing session and duration fields in JSON serialization
   - Fixed compiler warnings by removing unused variables
+- **NEW**: Share validation for sell orders to ensure proper order sizing
+  - Added validation to ensure sell orders never have less than 1 share
+  - Added validation to ensure sell orders don't exceed available shares (except Top-100 orders)
+  - Enhanced logging to show validation results with clear success/failure messages
+  - Top-100 orders remain exempt from available shares validation as requested
+  - Improved order reliability by preventing invalid share quantities
 
 ### Changed
 - **ENHANCED**: Break-even calculation logic for profitable positions
@@ -79,6 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Moved copyToClipboard functions to TableContent struct with proper @Binding for state updates
   - Ensures copy-to-clipboard works consistently on both iOS and macOS platforms
   - Users can now click on any field in the sales calc table to copy values to clipboard
+- **FIXED**: Min ATR sell order logic inconsistency
+  - Updated Min ATR order to use consistent calculation methodology with other sell orders
+  - Replaced fixed target calculation (3.25% above cost) with dynamic logic based on trailing stop
+  - Now uses same trailing stop calculation as other orders (`atrValue / 5.0`)
+  - Calculates target price using `entry / (1.0 + trailingStop / 100.0)` like additional orders
+  - Uses same entry price calculation as Min Break Even (`currentPrice * (1.0 - adjustedATR / 100.0)`)
+  - Maintains same exit price calculation as other sell orders
+  - Fixes inconsistency where Min ATR had lower trailing stop but higher target than +1.5ATR orders
+  - Ensures all sell orders follow consistent logic pattern for predictable behavior
 
 ### Added
 - **NEW**: Added copy-to-clipboard functionality to HoldingsTable for consistent UX across all tables

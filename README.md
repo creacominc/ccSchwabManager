@@ -31,9 +31,16 @@ The application now includes sophisticated sell order logic with multiple order 
 
 - **Multiple Sell Order Types**: The system now generates up to four different sell order types:
   - **Minimum Break-Even**: Sells minimum shares needed to achieve 1% gain at target price
+  - **Min ATR**: Sells shares to maintain 5% profit on remaining position with consistent trailing stop logic
   - **+0.5ATR**: Additional sell order with trailing stop = min break-even + 0.5 × ATR%
   - **+1.0ATR**: Additional sell order with trailing stop = min break-even + 1.0 × ATR%
   - **+1.5ATR**: Additional sell order with trailing stop = min break-even + 1.5 × ATR%
+
+- **Consistent Logic Across All Sell Orders**: All sell orders now use the same calculation methodology:
+  - **Trailing Stop**: Uses `atrValue / 5.0` for Min ATR and Min Break Even, with incremental additions for additional orders
+  - **Target Price**: Calculated dynamically based on trailing stop and entry price using `entry / (1.0 + trailingStop / 100.0)`
+  - **Entry Price**: Uses consistent calculation `currentPrice * (1.0 - adjustedATR / 100.0)`
+  - **Exit Price**: All orders use the same exit price calculation logic
 
 - **Smart Tax Lot Integration**: Additional sell orders iterate through available tax lots to find suitable shares for each order type, ensuring optimal share allocation
 
@@ -41,9 +48,12 @@ The application now includes sophisticated sell order logic with multiple order 
 
 - **Intelligent Share Allocation**: The system continues through tax lots until all four recommendations are met or until it runs out of tax lots
 
+- **Share Validation**: All sell orders ensure they have at least 1 share and don't exceed available shares (except Top-100 orders which require 100+ shares)
+
 #### Sell Order Example
 For a position with multiple tax lots:
 - **Min BE Order**: Sells 7 shares with 0.38% trailing stop
+- **Min ATR Order**: Sells 13 shares with 0.80% trailing stop (consistent with other orders)
 - **+0.5ATR Order**: Sells 12 shares with 1.32% trailing stop (includes shares from multiple tax lots)
 - **+1.0ATR Order**: Sells 10 shares with 2.27% trailing stop (continues through tax lots)
 - **+1.5ATR Order**: May sell additional shares with even higher trailing stops
