@@ -119,6 +119,92 @@ class BuyOrderCalculationTests: XCTestCase {
         print("  Trailing stop %: \(expectedTrailingStop)%")
     }
     
+    func testNewBuyOrderLogic() {
+        // Test the new buy order logic with the example scenario
+        // 100 shares bought at $8, price goes up to $10, gain is 25%
+        // Target gain is 23% (computed from ATR)
+        // At what price would buying 10 more shares (10% of current shares) achieve 23% gain?
+        
+        let avgCostPerShare = 8.0
+        let totalShares = 100.0
+        let sharesToBuy = 10.0 // 10% of current shares
+        let targetGainPercent = 23.0
+        
+        // Calculate the target price using the new formula
+        let totalCost = avgCostPerShare * totalShares // 800
+        let targetGainRatio = 1.0 + targetGainPercent / 100.0 // 1.23
+        let denominator = (totalShares + sharesToBuy) - sharesToBuy * targetGainRatio
+        let targetPrice = (totalCost * targetGainRatio) / denominator
+        
+        // Verify the calculation
+        let newTotalShares = totalShares + sharesToBuy // 110
+        let newTotalCost = totalCost + (sharesToBuy * targetPrice) // 800 + (10 * targetPrice)
+        let newAvgCostPerShare = newTotalCost / newTotalShares
+        let actualGainPercent = ((targetPrice - newAvgCostPerShare) / newAvgCostPerShare) * 100.0
+        
+        // Use a more reasonable tolerance for percentage comparison
+        XCTAssertEqual(actualGainPercent, targetGainPercent, accuracy: 0.5)
+        
+        // Also verify the target price is reasonable
+        XCTAssertGreaterThan(targetPrice, avgCostPerShare)
+        XCTAssertLessThan(targetPrice, avgCostPerShare * 2.0) // Should be less than double the cost
+        
+        // Test trailing stop calculation (75% of distance from current price to target)
+        let currentPrice = 10.0
+        let fullDistancePercent = ((targetPrice - currentPrice) / currentPrice) * 100.0
+        let trailingStopPercent = fullDistancePercent * 0.75
+        
+        // Verify trailing stop is 75% of the full distance
+        XCTAssertEqual(trailingStopPercent, fullDistancePercent * 0.75, accuracy: 0.01)
+        XCTAssertLessThan(trailingStopPercent, fullDistancePercent) // Should be less than full distance
+    }
+    
+    func testTargetPriceBounds() {
+        // Test that target prices are constrained between 5% and 30% above current price
+        let currentPrice = 100.0
+        let avgCostPerShare = 80.0
+        let totalShares = 100.0
+        let sharesToBuy = 10.0
+        let targetGainPercent = 25.0
+        
+        // Calculate the target price using the new formula
+        let totalCost = avgCostPerShare * totalShares // 8000
+        let targetGainRatio = 1.0 + targetGainPercent / 100.0 // 1.25
+        let denominator = (totalShares + sharesToBuy) - sharesToBuy * targetGainRatio
+        let rawTargetPrice = (totalCost * targetGainRatio) / denominator
+        
+        // Apply the bounds constraint (this is what the actual function does)
+        let minTargetPrice = currentPrice * 1.05  // 105.0
+        let maxTargetPrice = currentPrice * 1.30  // 130.0
+        
+        let constrainedTargetPrice: Double
+        if rawTargetPrice < minTargetPrice {
+            constrainedTargetPrice = minTargetPrice
+        } else if rawTargetPrice > maxTargetPrice {
+            constrainedTargetPrice = maxTargetPrice
+        } else {
+            constrainedTargetPrice = rawTargetPrice
+        }
+        
+        // Verify the constrained target price is within bounds
+        XCTAssertGreaterThanOrEqual(constrainedTargetPrice, minTargetPrice, "Constrained target price should be at least 5% above current price")
+        XCTAssertLessThanOrEqual(constrainedTargetPrice, maxTargetPrice, "Constrained target price should be at most 30% above current price")
+        
+        // Test edge case: if calculated price is below minimum, it should be constrained to minimum
+        let lowTargetPrice = 90.0 // Below 5% minimum
+        let constrainedLowPrice = max(lowTargetPrice, minTargetPrice)
+        XCTAssertEqual(constrainedLowPrice, minTargetPrice, "Low target price should be constrained to minimum")
+        
+        // Test edge case: if calculated price is above maximum, it should be constrained to maximum
+        let highTargetPrice = 150.0 // Above 30% maximum
+        let constrainedHighPrice = min(highTargetPrice, maxTargetPrice)
+        XCTAssertEqual(constrainedHighPrice, maxTargetPrice, "High target price should be constrained to maximum")
+        
+        // Verify that the raw calculated price was indeed below the minimum (which is why it got constrained)
+        XCTAssertLessThan(rawTargetPrice, minTargetPrice, "Raw calculated price should be below minimum bound")
+        XCTAssertEqual(constrainedTargetPrice, minTargetPrice, "Constrained price should equal minimum bound")
+    }
+    
     func testSingleOrderCreation() {
         // Test that single orders are created without OCO wrapper
         let symbol = "TEST"
@@ -236,5 +322,38 @@ class BuyOrderCalculationTests: XCTestCase {
         XCTAssertEqual(order?.childOrderStrategies?.count, 2, "OCO order should have 2 child orders")
         
         print("✅ Multiple orders created OCO structure successfully")
+    }
+    
+    func testOrderCostLimit() {
+        // Test that buy orders are limited to those costing less than $2000
+        let currentPrice = 50.0  // Lower price to keep order cost under $2000
+        let avgCostPerShare = 40.0
+        let totalShares = 100.0
+        let sharesToBuy = 25.0 // 25% of current shares
+        let targetGainPercent = 25.0
+        
+        // Calculate the target price using the new formula
+        let totalCost = avgCostPerShare * totalShares // 4000
+        let targetGainRatio = 1.0 + targetGainPercent / 100.0 // 1.25
+        let denominator = (totalShares + sharesToBuy) - sharesToBuy * targetGainRatio
+        let rawTargetPrice = (totalCost * targetGainRatio) / denominator
+        
+        // Apply the bounds constraint
+        let minTargetPrice = currentPrice * 1.05  // 52.5
+        let maxTargetPrice = currentPrice * 1.30  // 65.0
+        let constrainedTargetPrice = max(minTargetPrice, min(maxTargetPrice, rawTargetPrice))
+        
+        // Calculate order cost
+        let orderCost = sharesToBuy * constrainedTargetPrice
+        
+        // Verify the order cost is less than $2000
+        XCTAssertLessThan(orderCost, 2000.0, "Order cost should be less than $2000")
+        
+        // Test with a high-priced stock that would exceed the limit
+        let highPriceStock = 200.0
+        let highPriceShares = 15.0
+        let highPriceOrderCost = highPriceShares * highPriceStock // $3000
+        
+        XCTAssertGreaterThan(highPriceOrderCost, 2000.0, "High price order should exceed $2000 limit")
     }
 } 

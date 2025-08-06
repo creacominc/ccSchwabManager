@@ -25,8 +25,22 @@ struct RecommendedOCOOrdersSection: View {
     @State private var showingErrorAlert = false
     @State private var errorMessage = ""
     
+    // Cache for calculated orders to avoid repeated expensive calculations
+    @State private var cachedSellOrders: [SalesCalcResultsRecord] = []
+    @State private var cachedBuyOrders: [BuyOrderRecord] = []
+    @State private var lastCalculatedSymbol: String = ""
+    
     private var currentRecommendedSellOrders: [SalesCalcResultsRecord] {
+        // Return cached results if symbol hasn't changed
+        if symbol == lastCalculatedSymbol && !cachedSellOrders.isEmpty {
+            return cachedSellOrders
+        }
+        
+        // Calculate new results
         let orders = calculateRecommendedSellOrders()
+        cachedSellOrders = orders
+        lastCalculatedSymbol = symbol
+        
         if symbol != lastSymbol {
             DispatchQueue.main.async {
                 self.checkAndUpdateSymbol()
@@ -36,7 +50,16 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private var currentRecommendedBuyOrders: [BuyOrderRecord] {
+        // Return cached results if symbol hasn't changed
+        if symbol == lastCalculatedSymbol && !cachedBuyOrders.isEmpty {
+            return cachedBuyOrders
+        }
+        
+        // Calculate new results
         let orders = calculateRecommendedBuyOrders()
+        cachedBuyOrders = orders
+        lastCalculatedSymbol = symbol
+        
         if symbol != lastSymbol {
             DispatchQueue.main.async {
                 self.checkAndUpdateSymbol()
@@ -122,7 +145,7 @@ struct RecommendedOCOOrdersSection: View {
         let avgCostPerShare = totalCost / totalShares
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
         
-        AppLogger.shared.debug("=== calculateRecommendedBuyOrders ===")
+        AppLogger.shared.debug("=== calculateRecommendedBuyOrders (NEW LOGIC) ===")
         AppLogger.shared.debug("Symbol: \(symbol)")
         AppLogger.shared.debug("ATR: \(atrValue)%")
         AppLogger.shared.debug("Tax lots count: \(taxLotData.count)")
@@ -136,52 +159,206 @@ struct RecommendedOCOOrdersSection: View {
             return recommended
         }
         
-        // Calculate target gain percent based on ATR
-        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue)
-        AppLogger.shared.debug("Target gain percent: \(targetGainPercent)% (ATR: \(atrValue)%)")
+        // Calculate target gain percent based on ATR (limited to 5% to 35%)
+        let targetGainPercent = max(5.0, min(35.0, TradingConfig.atrMultiplier * atrValue))
+        AppLogger.shared.debug("Target gain percent: \(targetGainPercent)% (ATR: \(atrValue)%, limited to 5%-35%)")
         
-        // Calculate primary buy order
-        let primaryBuyOrder = calculateBuyOrder(
-            currentPrice: currentPrice,
-            avgCostPerShare: avgCostPerShare,
-            currentProfitPercent: currentProfitPercent,
-            targetGainPercent: targetGainPercent,
-            totalShares: totalShares
-        )
+        // Define the share percentages to consider
+        let sharePercentages: [Double] = [1.0, 5.0, 10.0, 15.0, 25.0, 50.0] // 1 share, then percentages
         
-        if let order = primaryBuyOrder {
-            AppLogger.shared.debug("✅ Primary buy order created: \(order.description)")
-            recommended.append(order)
+        // Track unique share counts to avoid duplicates
+        var uniqueShareCounts: Set<Int> = []
+        
+        for percentage in sharePercentages {
+            let sharesToBuy: Double
             
-            // Check if we need a second buy order (trailing stop > 20%)
-            if order.trailingStop > 20.0 {
-                AppLogger.shared.debug("🔄 Trailing stop \(order.trailingStop)% is above 20%, creating second buy order")
-                
-                // Calculate second buy order with half the shares and half the trailing stop
-                let secondBuyOrder = calculateSecondBuyOrder(
-                    primaryOrder: order,
-                    currentPrice: currentPrice,
-                    avgCostPerShare: avgCostPerShare,
-                    currentProfitPercent: currentProfitPercent,
-                    targetGainPercent: targetGainPercent,
-                    totalShares: totalShares
-                )
-                
-                if let secondOrder = secondBuyOrder {
-                    AppLogger.shared.debug("✅ Second buy order created: \(secondOrder.description)")
-                    recommended.append(secondOrder)
-                } else {
-                    AppLogger.shared.debug("❌ Second buy order not created")
-                }
+            if percentage == 1.0 {
+                // Single share
+                sharesToBuy = 1.0
             } else {
-                AppLogger.shared.debug("ℹ️ Trailing stop \(order.trailingStop)% is not above 20%, skipping second buy order")
+                // Calculate as percentage of current shares
+                sharesToBuy = ceil(totalShares * percentage / 100.0)
             }
-        } else {
-            AppLogger.shared.debug("❌ Primary buy order not created")
+            
+            // Convert to integer for uniqueness check
+            let shareCount = Int(sharesToBuy)
+            
+            // Skip if we already have this share count
+            if uniqueShareCounts.contains(shareCount) {
+                AppLogger.shared.debug("⚠️ Skipping \(percentage)% (\(sharesToBuy) shares) - duplicate share count")
+                continue
+            }
+            
+            uniqueShareCounts.insert(shareCount)
+            
+            // Calculate target price that maintains current gain level
+            let targetPrice = calculateTargetPriceForGain(
+                currentPrice: currentPrice,
+                avgCostPerShare: avgCostPerShare,
+                currentProfitPercent: currentProfitPercent,
+                targetGainPercent: targetGainPercent,
+                totalShares: totalShares,
+                sharesToBuy: sharesToBuy
+            )
+            
+            guard let targetBuyPrice = targetPrice else {
+                AppLogger.shared.debug("❌ Could not calculate target price for \(sharesToBuy) shares")
+                continue
+            }
+            
+            // Calculate entry price (1 ATR below target)
+            let entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
+            
+            // Calculate trailing stop (75% of the distance from current price to target)
+            let trailingStopPercent = ((targetBuyPrice - currentPrice) / currentPrice) * 100.0 * 0.75
+            
+            // Calculate order cost
+            let orderCost = sharesToBuy * targetBuyPrice
+            
+            AppLogger.shared.debug("✅ Buy order for \(sharesToBuy) shares (\(percentage)%):")
+            AppLogger.shared.debug("  Target price: $\(targetBuyPrice)")
+            AppLogger.shared.debug("  Entry price: $\(entryPrice)")
+            AppLogger.shared.debug("  Trailing stop: \(trailingStopPercent)%")
+            AppLogger.shared.debug("  Order cost: $\(orderCost)")
+            
+            // Skip orders that cost more than $2000
+            guard orderCost < 2000.0 else {
+                AppLogger.shared.debug("⚠️ Skipping order - cost $\(orderCost) exceeds $2000 limit")
+                continue
+            }
+            
+            // Create the buy order
+            let formattedDescription = String(
+                format: "BUY %.0f %@ (%.0f%%) Target=%.2f TS=%.1f%% Gain=%.1f%%",
+                sharesToBuy,
+                symbol,
+                percentage,
+                targetBuyPrice,
+                trailingStopPercent,
+                targetGainPercent
+            )
+            
+            let buyOrder = BuyOrderRecord(
+                shares: sharesToBuy,
+                targetBuyPrice: targetBuyPrice,
+                entryPrice: entryPrice,
+                trailingStop: trailingStopPercent,
+                targetGainPercent: targetGainPercent,
+                currentGainPercent: currentProfitPercent,
+                sharesToBuy: sharesToBuy,
+                orderCost: orderCost,
+                description: formattedDescription,
+                orderType: "BUY",
+                submitDate: "",
+                isImmediate: false
+            )
+            
+            recommended.append(buyOrder)
         }
         
         AppLogger.shared.debug("=== Final result: \(recommended.count) recommended buy orders ===")
         return recommended
+    }
+    
+    /// Calculate the target price that would result in the target gain percentage
+    /// when buying the specified number of shares
+    private func calculateTargetPriceForGain(
+        currentPrice: Double,
+        avgCostPerShare: Double,
+        currentProfitPercent: Double,
+        targetGainPercent: Double,
+        totalShares: Double,
+        sharesToBuy: Double
+    ) -> Double? {
+        
+        AppLogger.shared.debug("=== calculateTargetPriceForGain ===")
+        AppLogger.shared.debug("Current price: $\(currentPrice)")
+        AppLogger.shared.debug("Avg cost per share: $\(avgCostPerShare)")
+        AppLogger.shared.debug("Current P/L%: \(currentProfitPercent)%")
+        AppLogger.shared.debug("Target gain %: \(targetGainPercent)%")
+        AppLogger.shared.debug("Total shares: \(totalShares)")
+        AppLogger.shared.debug("Shares to buy: \(sharesToBuy)")
+        
+        // Calculate total cost of current position
+        let totalCost = avgCostPerShare * totalShares
+        
+        // We want to find a target price where:
+        // (targetPrice - newAvgCost) / newAvgCost = targetGainPercent / 100
+        // where newAvgCost = (totalCost + sharesToBuy * targetPrice) / (totalShares + sharesToBuy)
+        
+        // Rearranging the equation:
+        // targetPrice = newAvgCost * (1 + targetGainPercent/100)
+        // newAvgCost = (totalCost + sharesToBuy * targetPrice) / (totalShares + sharesToBuy)
+        // 
+        // Substituting:
+        // targetPrice = ((totalCost + sharesToBuy * targetPrice) / (totalShares + sharesToBuy)) * (1 + targetGainPercent/100)
+        //
+        // Solving for targetPrice:
+        // targetPrice * (totalShares + sharesToBuy) = (totalCost + sharesToBuy * targetPrice) * (1 + targetGainPercent/100)
+        // targetPrice * (totalShares + sharesToBuy) = totalCost * (1 + targetGainPercent/100) + sharesToBuy * targetPrice * (1 + targetGainPercent/100)
+        // targetPrice * (totalShares + sharesToBuy) - sharesToBuy * targetPrice * (1 + targetGainPercent/100) = totalCost * (1 + targetGainPercent/100)
+        // targetPrice * ((totalShares + sharesToBuy) - sharesToBuy * (1 + targetGainPercent/100)) = totalCost * (1 + targetGainPercent/100)
+        // targetPrice = totalCost * (1 + targetGainPercent/100) / ((totalShares + sharesToBuy) - sharesToBuy * (1 + targetGainPercent/100))
+        
+        let targetGainRatio = 1.0 + targetGainPercent / 100.0
+        let denominator = (totalShares + sharesToBuy) - sharesToBuy * targetGainRatio
+        
+        guard denominator > 0 else {
+            AppLogger.shared.debug("❌ Denominator is zero or negative, cannot calculate target price")
+            return nil
+        }
+        
+        let targetPrice = totalCost * targetGainRatio / denominator
+        
+        AppLogger.shared.debug("Target gain ratio: \(targetGainRatio)")
+        AppLogger.shared.debug("Denominator: \(denominator)")
+        AppLogger.shared.debug("Calculated target price: $\(targetPrice)")
+        
+        // Constrain target price to be between 5% and 30% above current price
+        let minTargetPrice = currentPrice * 1.05  // 5% above current price
+        let maxTargetPrice = currentPrice * 1.30  // 30% above current price
+        
+        let constrainedTargetPrice: Double
+        if targetPrice < minTargetPrice {
+            constrainedTargetPrice = minTargetPrice
+            AppLogger.shared.debug("⚠️ Target price $\(targetPrice) below minimum, constrained to $\(constrainedTargetPrice) (5% above current)")
+        } else if targetPrice > maxTargetPrice {
+            constrainedTargetPrice = maxTargetPrice
+            AppLogger.shared.debug("⚠️ Target price $\(targetPrice) above maximum, constrained to $\(constrainedTargetPrice) (30% above current)")
+        } else {
+            constrainedTargetPrice = targetPrice
+            AppLogger.shared.debug("✅ Target price $\(targetPrice) within bounds")
+        }
+        
+        // Verify the calculation with the constrained target price
+        let newTotalCost = totalCost + sharesToBuy * constrainedTargetPrice
+        let newTotalShares = totalShares + sharesToBuy
+        let newAvgCost = newTotalCost / newTotalShares
+        let actualGainPercent = ((constrainedTargetPrice - newAvgCost) / newAvgCost) * 100.0
+        
+        AppLogger.shared.debug("Verification with constrained price:")
+        AppLogger.shared.debug("  New total cost: $\(newTotalCost)")
+        AppLogger.shared.debug("  New total shares: \(newTotalShares)")
+        AppLogger.shared.debug("  New avg cost: $\(newAvgCost)")
+        AppLogger.shared.debug("  Actual gain %: \(actualGainPercent)%")
+        AppLogger.shared.debug("  Target gain %: \(targetGainPercent)%")
+        AppLogger.shared.debug("  Difference: \(abs(actualGainPercent - targetGainPercent))%")
+        
+        // Check if the target price is reasonable
+        guard constrainedTargetPrice > 0 else {
+            AppLogger.shared.debug("❌ Target price is not positive")
+            return nil
+        }
+        
+        // Check if target price is within bounds (5% to 30% above current price)
+        let priceRatio = constrainedTargetPrice / currentPrice
+        guard priceRatio >= 1.05 && priceRatio <= 1.30 else {
+            AppLogger.shared.debug("❌ Target price $\(constrainedTargetPrice) is outside bounds (ratio: \(priceRatio))")
+            return nil
+        }
+        
+        AppLogger.shared.debug("✅ Target price calculation successful")
+        return constrainedTargetPrice
     }
     
     // MARK: - Sell Order Calculations (copied from RecommendedSellOrdersSection)
@@ -567,199 +744,9 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     
-    private func calculateBuyOrder(
-        currentPrice: Double,
-        avgCostPerShare: Double,
-        currentProfitPercent: Double,
-        targetGainPercent: Double,
-        totalShares: Double
-    ) -> BuyOrderRecord? {
-        
-        AppLogger.shared.debug("=== calculateBuyOrder (OCO) ===")
-        AppLogger.shared.debug("Current price: $\(currentPrice)")
-        AppLogger.shared.debug("Avg cost per share: $\(avgCostPerShare)")
-        AppLogger.shared.debug("Current P/L%: \(currentProfitPercent)%")
-        AppLogger.shared.debug("Target gain %: \(targetGainPercent)%")
-        AppLogger.shared.debug("Total shares: \(totalShares)")
-        AppLogger.shared.debug("ATR: \(atrValue)%")
-        
-        // Calculate total cost of current position
-        let totalCost = avgCostPerShare * totalShares
-        
-        // Calculate the entry and target buy prices
-        let entryPrice: Double
-        let targetBuyPrice: Double
-        let trailingStopPercent: Double
-        
-        if currentProfitPercent < targetGainPercent {
-            // Current position is below target gain
-            // Target price should be 33% above current price (1.333 * currentPrice)
-            targetBuyPrice = currentPrice * 1.333
-            
-            // Entry price should be 1 ATR% below the target price
-            entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
-            
-            // Trailing stop should be set so that from current price, the stop would be at target price
-            // This means: currentPrice * (1 + trailingStopPercent/100) = targetBuyPrice
-            // So: trailingStopPercent = ((targetBuyPrice / currentPrice) - 1) * 100
-            trailingStopPercent = ((targetBuyPrice / currentPrice) - 1.0) * 100.0
-            AppLogger.shared.debug("=== calculateBuyOrder (OCO) trailingStopPercent: \(trailingStopPercent) = (( targetBuyPrice: \(targetBuyPrice) / currentPrice: \(currentPrice) ) -1 ) * 100.0")
-
-            AppLogger.shared.debug("Position below target gain - using new strategy:")
-            AppLogger.shared.debug("  Target price (33% above current): $\(targetBuyPrice)")
-            AppLogger.shared.debug("  Entry price (1 ATR% below target): $\(entryPrice)")
-            AppLogger.shared.debug("  Trailing stop %: \(trailingStopPercent)%")
-        } else {
-            // Current position is already above target gain
-            // Use the original logic for positions already profitable
-            let minEntryPrice = currentPrice * (1.0 + (2.0 * atrValue / 100.0))
-            let maxEntryPrice = currentPrice * (1.0 + (4.0 * atrValue / 100.0))
-            entryPrice = (minEntryPrice + maxEntryPrice) / 2.0
-            targetBuyPrice = entryPrice * (1.0 + atrValue / 100.0)
-            trailingStopPercent = atrValue
-            AppLogger.shared.debug("=== calculateBuyOrder (OCO) trailingStopPercent: \(trailingStopPercent) = (( atrValue: \(atrValue) ) )")
-
-            AppLogger.shared.debug("Position above target gain - using original logic:")
-            AppLogger.shared.debug("  Entry price: $\(entryPrice)")
-            AppLogger.shared.debug("  Target price: $\(targetBuyPrice)")
-            AppLogger.shared.debug("  Trailing stop %: \(trailingStopPercent)%")
-        }
-        
-        AppLogger.shared.debug("Current P/L%: \(currentProfitPercent)%")
-        AppLogger.shared.debug("Target gain %: \(targetGainPercent)%")
-        AppLogger.shared.debug("Current price: $\(currentPrice)")
-        AppLogger.shared.debug("Target buy price: $\(targetBuyPrice)")
-        AppLogger.shared.debug("Entry price: $\(entryPrice)")
-        AppLogger.shared.debug("Trailing stop %: \(trailingStopPercent)%")
-        
-        // Calculate how many shares we need to buy to bring the combined position to the target gain percentage
-        // We want the new average cost to be such that the target buy price represents the target gain percentage
-        let sharesToBuy = (totalShares * targetBuyPrice - totalCost) / (targetBuyPrice - avgCostPerShare)
-        
-        AppLogger.shared.debug("Calculated shares to buy: \(sharesToBuy)")
-        
-        // Apply limits
-        var finalSharesToBuy = max(1.0, ceil(sharesToBuy))
-        let orderCost = finalSharesToBuy * targetBuyPrice
-        
-        AppLogger.shared.debug("Initial calculation: \(finalSharesToBuy) shares at $\(targetBuyPrice) = $\(orderCost)")
-        
-        // Limit to $500 maximum investment
-        if orderCost > 500.0 {
-            finalSharesToBuy = floor(500.0 / targetBuyPrice)
-            AppLogger.shared.debug("Order cost \(orderCost) exceeds $500 limit, reducing to \(finalSharesToBuy) shares")
-        }
-        
-        // Ensure at least 1 share
-        if finalSharesToBuy < 1.0 {
-            finalSharesToBuy = 1.0
-            AppLogger.shared.debug("Ensuring minimum of 1 share")
-        }
-        
-        // Recalculate final order cost
-        let finalOrderCost = finalSharesToBuy * targetBuyPrice
-        
-        AppLogger.shared.debug("Final shares to buy: \(finalSharesToBuy)")
-        AppLogger.shared.debug("Final order cost: $\(finalOrderCost)")
-        
-        // Check if order is reasonable
-        guard finalSharesToBuy > 0 else {
-            AppLogger.shared.debug("❌ Buy order not reasonable - shares: \(finalSharesToBuy)")
-            return nil
-        }
-        
-        // Warn if order cost exceeds $500 but don't reject
-        if finalOrderCost > 500.0 {
-            AppLogger.shared.debug("⚠️ Warning: Order cost $\(finalOrderCost) exceeds $500 limit, but allowing 1 share minimum")
-        }
-        
-        // Simplified order description without timing constraints
-        let formattedDescription = String(
-            format: "BUY %.0f %@ Target = %.2f TS = %.1f%% TargetGain = %.1f%%",
-            finalSharesToBuy,
-            symbol,
-            targetBuyPrice,
-            trailingStopPercent,
-            targetGainPercent
-        )
-        return BuyOrderRecord(
-            shares: finalSharesToBuy,
-            targetBuyPrice: targetBuyPrice,
-            entryPrice: entryPrice,
-            trailingStop: trailingStopPercent,
-            targetGainPercent: targetGainPercent,
-            currentGainPercent: currentProfitPercent,
-            sharesToBuy: finalSharesToBuy,
-            orderCost: finalOrderCost,
-            description: formattedDescription,
-            orderType: "BUY",
-            submitDate: "", // No submit date for simplified orders
-            isImmediate: false // No immediate submission for simplified orders
-        )
-    }
+    // OLD CODE - REMOVED: calculateBuyOrder function replaced with new logic
     
-    private func calculateSecondBuyOrder(
-        primaryOrder: BuyOrderRecord,
-        currentPrice: Double,
-        avgCostPerShare: Double,
-        currentProfitPercent: Double,
-        targetGainPercent: Double,
-        totalShares: Double
-    ) -> BuyOrderRecord? {
-        
-        AppLogger.shared.debug("=== calculateSecondBuyOrder ===")
-        AppLogger.shared.debug("Primary order trailing stop: \(primaryOrder.trailingStop)%")
-        AppLogger.shared.debug("Primary order shares: \(primaryOrder.sharesToBuy)")
-        
-        // Calculate half the shares and half the trailing stop
-        let secondOrderShares = max(1.0, ceil(primaryOrder.sharesToBuy / 2.0))
-        let secondOrderTrailingStop = primaryOrder.trailingStop / 2.0
-        
-        AppLogger.shared.debug("Second order shares: \(secondOrderShares) (half of \(primaryOrder.sharesToBuy))")
-        AppLogger.shared.debug("Second order trailing stop: \(secondOrderTrailingStop)% (half of \(primaryOrder.trailingStop)%)")
-        
-        // Use the same target price as the primary order
-        let targetBuyPrice = primaryOrder.targetBuyPrice
-        let entryPrice = primaryOrder.entryPrice
-        
-        // Calculate order cost
-        let orderCost = secondOrderShares * targetBuyPrice
-        
-        AppLogger.shared.debug("Second order cost: $\(orderCost)")
-        
-        // Check if order is reasonable
-        guard secondOrderShares > 0 else {
-            AppLogger.shared.debug("❌ Second buy order not reasonable - shares: \(secondOrderShares)")
-            return nil
-        }
-        
-        // Simplified order description for second order
-        let formattedDescription = String(
-            format: "BUY %.0f %@ Target = %.2f TS = %.1f%% TargetGain = %.1f%%",
-            secondOrderShares,
-            symbol,
-            targetBuyPrice,
-            secondOrderTrailingStop,
-            targetGainPercent
-        )
-        
-        AppLogger.shared.debug("✅ Second buy order created: \(formattedDescription)")
-        
-        return BuyOrderRecord(
-            shares: secondOrderShares,
-            targetBuyPrice: targetBuyPrice,
-            entryPrice: entryPrice,
-            trailingStop: secondOrderTrailingStop,
-            targetGainPercent: targetGainPercent,
-            currentGainPercent: currentProfitPercent,
-            sharesToBuy: secondOrderShares,
-            orderCost: orderCost,
-            description: formattedDescription,
-            orderType: "BUY",
-            submitDate: "", // No submit date for simplified orders
-            isImmediate: false // No immediate submission for simplified orders
-        )
-    }
+    // OLD CODE - REMOVED: calculateSecondBuyOrder function no longer needed
     
     // OLD CODE - COMMENTED OUT FOR REFERENCE
     // The following timing-related functions are no longer needed for simplified orders
@@ -913,6 +900,10 @@ struct RecommendedOCOOrdersSection: View {
             lastSymbol = symbol
             copiedValue = "TBD"
             selectedOrderIndices.removeAll()
+            // Clear cache when symbol changes
+            cachedSellOrders.removeAll()
+            cachedBuyOrders.removeAll()
+            lastCalculatedSymbol = ""
             updateRecommendedOrders()
         }
     }
@@ -1093,19 +1084,6 @@ struct RecommendedOCOOrdersSection: View {
                 .font(.headline)
             
             Spacer()
-            
-            Button(selectedOrderIndices.count == allOrders.count ? "Deselect All" : "Select All") {
-                if selectedOrderIndices.count == allOrders.count {
-                    // Deselect all
-                    selectedOrderIndices.removeAll()
-                } else {
-                    // Select all
-                    selectedOrderIndices = Set(0..<allOrders.count)
-                }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(allOrders.isEmpty)
         }
         .padding(.horizontal)
     }
