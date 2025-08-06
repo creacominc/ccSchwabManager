@@ -2403,8 +2403,19 @@ class SchwabClient
             }
             AppLogger.shared.debug("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
 
-            // get last price for this security
-            let lastPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+            // get last price for this security - use real-time quote data if available, fallback to price history
+            let lastPrice: Double
+            if let currentPrice = currentPrice {
+                lastPrice = currentPrice
+            } else if let quote = fetchQuote(symbol: symbol)?.quote?.lastPrice {
+                lastPrice = quote
+            } else if let extended = fetchQuote(symbol: symbol)?.extended?.lastPrice {
+                lastPrice = extended
+            } else if let regular = fetchQuote(symbol: symbol)?.regular?.regularMarketLastPrice {
+                lastPrice = regular
+            } else {
+                lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+            }
             showIncompleteDataWarning = true
             // Process all trade transactions - only process again if the number of transactions changes
             AppLogger.shared.debug( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )

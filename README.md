@@ -48,6 +48,17 @@ The system will:
 - Set trailing stop to 33.31% (target vs current price)
 - Round all values to the penny for precise execution
 
+### Real-Time Price Synchronization
+
+The application now ensures consistent real-time pricing across all displays:
+
+- **Position Summary**: Shows current "Last" price from real-time quote data
+- **Tax Lot Table**: Displays current price in the "Price" column using the same real-time source
+- **Order Calculations**: All buy and sell order calculations use consistent real-time pricing
+- **Price Source Hierarchy**: Both displays use the same priority: quote data → extended quote → regular market price → price history fallback
+
+This ensures that the position summary and tax lot table always show the same current price, eliminating discrepancies between different parts of the interface.
+
 ### CSV Export Functionality
 
 The application now supports exporting transaction history and tax lot data to CSV files:

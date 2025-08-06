@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Real-time price synchronization across all displays
+  - Position summary "Last" price and tax lot table "Price" column now use identical real-time quote data
+  - Eliminated price discrepancies between position summary and tax lot displays
+  - Updated tax lot calculation to use real-time quote data instead of cached price history
+  - Modified SalesCalcTableView to display current price from quote data instead of cached tax lot price
+  - Added consistent price source hierarchy: quote data → extended quote → regular market price → price history fallback
+  - Enhanced getCurrentPrice() function to prioritize real-time quote data over historical data
+  - Updated computeTaxLots() to accept and use real-time current price parameter
+  - Modified SalesCalcView to pass real-time price to table display components
 - **NEW**: Enhanced buy order logic for positions below target gain
   - Implemented smart target price calculation that sets target to 33% above current price when position is below target gain
   - Added intelligent entry pricing that sets buy orders to enter at 1 ATR% below target price

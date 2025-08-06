@@ -628,13 +628,6 @@ struct RecommendedOCOOrdersSection: View {
         guard currentProfitPercent >= 1.0 else { return nil }
 
         AppLogger.shared.debug("=== calculateMinBreakEvenOrder ===")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Current price: $\(currentPrice)")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Avg cost per share: $\(avgCostPerShare)")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Current P/L%: \(currentProfitPercent)%")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Total shares: \(totalShares)")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Total cost: $\(totalCost)")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder ATR: \(atrValue)%")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder AATR (ATR/5): \(adjustedATR)%")
 
         // Check if the highest cost-per-share tax lot is profitable
         guard let highestCostLot = sortedTaxLots.first else { return nil }
@@ -642,7 +635,6 @@ struct RecommendedOCOOrdersSection: View {
         let isHighestCostLotProfitable = highestCostProfitPercent > 0
         
         AppLogger.shared.debug("=== calculateMinBreakEvenOrder Highest cost lot: $\(highestCostLot.costPerShare), profit: \(highestCostProfitPercent)%")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Is highest cost lot profitable: \(isHighestCostLotProfitable)")
         
         let entry: Double
         let target: Double
@@ -651,7 +643,7 @@ struct RecommendedOCOOrdersSection: View {
         
         if isHighestCostLotProfitable {
             // New logic: If highest cost lot is profitable
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Using new profitable logic")
+    
             
             // Set shares to 50% of the highest tax lot
             sharesToSell = ceil(highestCostLot.quantity * 0.5)
@@ -670,22 +662,16 @@ struct RecommendedOCOOrdersSection: View {
             // Trailing stop = 1/4 of the amount from entry to target
             let trailingStopValue = ((entry - target) / target) * 100.0
             
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Cost per share: $\(costPerShare)")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Last price: $\(lastPrice)")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Target price: $\(target) = (lastPrice + costPerShare)/2")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry price: $\(entry) = (lastPrice - costPerShare)/4 + target")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Shares to sell: \(sharesToSell) (50% of highest lot)")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Trailing stop: \(trailingStopValue)% (1/4 from entry to target)")
+            
             
         } else {
             // Original logic: Entry = Last - 1 AATR%, Target = Entry - 2 AATR%
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Using original break-even logic")
+    
             
             entry = currentPrice * (1.0 - adjustedATR / 100.0)
             target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
             
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry price: $\(entry) (Last - 1 AATR%)")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Target price: $\(target) (Entry - 2 AATR%)")
+            
             
             // Use the helper function to calculate minimum shares needed to achieve 1% gain at target price
             guard let result = calculateMinimumSharesForGain(
@@ -700,9 +686,7 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell = result.sharesToSell
             actualCostPerShare = result.actualCostPerShare
             
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder Final calculation:")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder  Shares to sell: \(sharesToSell)")
-            AppLogger.shared.debug("=== calculateMinBreakEvenOrder  Actual cost per share: $\(actualCostPerShare)")
+            
         }
         
         // Validate that target is above the actual cost per share of the shares being sold
@@ -723,14 +707,10 @@ struct RecommendedOCOOrdersSection: View {
             exit = max(target * (1.0 - 2.0 * adjustedATR / 100.0), actualCostPerShare)
         }
         
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Exit price: $\(exit) = target - (lastPrice - costPerShare)/4")
+
         
         // Verify the ordering: Entry > Target > Exit > Cost-per-share for sell orders
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Ordering verification:")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry ($\(entry)) > Target ($\(target)) > Exit ($\(exit)) > CostPerShare ($\(actualCostPerShare))")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Entry > Target: \(entry > target)")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Target > Exit: \(target > exit)")
-        AppLogger.shared.debug("=== calculateMinBreakEvenOrder Exit > CostPerShare: \(exit > actualCostPerShare)")
+
         
         let totalGain = sharesToSell * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
@@ -1404,20 +1384,20 @@ struct RecommendedOCOOrdersSection: View {
     private var orderRows: some View {
         let orders = getAllOrders() // Get the cached orders once
         return ForEach(Array(orders.enumerated()), id: \.offset) { index, order in
-            orderRow(index: index, orderType: order.0, order: order.1)
+            orderRow(index: index, orderType: order.0, order: order.1, isSelected: selectedOrderIndices.contains(index))
         }
     }
     
-    private func orderRow(index: Int, orderType: String, order: Any) -> some View {
+    private func orderRow(index: Int, orderType: String, order: Any, isSelected: Bool) -> some View {
         HStack {
             Button(action: {
-                if selectedOrderIndices.contains(index) {
+                if isSelected {
                     selectedOrderIndices.remove(index)
                 } else {
                     selectedOrderIndices.insert(index)
                 }
             }) {
-                Image(systemName: selectedOrderIndices.contains(index) ? "checkmark.square.fill" : "square")
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .foregroundColor(.blue)
             }
             .buttonStyle(PlainButtonStyle())
@@ -1491,7 +1471,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 2)
-        .background(selectedOrderIndices.contains(index) ? Color.blue.opacity(0.2) : rowStyle(for: orderType, item: order).opacity(0.1))
+        .background(isSelected ? Color.blue.opacity(0.2) : rowStyle(for: orderType, item: order).opacity(0.1))
         .cornerRadius(4)
     }
     

@@ -64,6 +64,7 @@ struct SalesCalcTable: View {
     @Binding var currentSort: SalesCalcSortConfig?
     let viewSize: CGSize
     let symbol: String
+    let currentPrice: Double
     @State private var copiedValue: String = "TBD"
     
     // Define proportional widths for columns
@@ -132,6 +133,7 @@ struct SalesCalcTable: View {
                 positionsData: sortedData,
                 viewSize: viewSize,
                 columnWidths: columnWidths,
+                currentPrice: currentPrice,
                 copiedValue: $copiedValue,
                 copyToClipboard: copyToClipboard,
                 copyToClipboardValue: copyToClipboard
@@ -212,6 +214,7 @@ private struct TableContent: View {
     let positionsData: [SalesCalcPositionsRecord]
     let viewSize: CGSize
     let columnWidths: [CGFloat]
+    let currentPrice: Double
     @Binding var copiedValue: String
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
@@ -224,6 +227,7 @@ private struct TableContent: View {
                         item: item,
                         viewSize: viewSize,
                         columnWidths: columnWidths,
+                        currentPrice: currentPrice,
                         copyToClipboard: { text in
                             copyToClipboard(text)
                         },
@@ -244,6 +248,7 @@ private struct TableRow: View {
     let item: SalesCalcPositionsRecord
     let viewSize: CGSize
     let columnWidths: [CGFloat]
+    let currentPrice: Double
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
     let isEvenRow: Bool
@@ -277,12 +282,12 @@ private struct TableRow: View {
                     copyToClipboardValue(item.quantity, "%.2f")
                 }
             
-            Text(String(format: "%.2f", item.price))
+            Text(String(format: "%.2f", currentPrice))
                 .frame(width: columnWidths[2] * viewSize.width, alignment: .trailing)
                 .monospacedDigit()
                 .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Price: \(item.price)")
-                    copyToClipboardValue(item.price, "%.2f")
+                    print("SalesCalcTableView: Tap detected on Price: \(currentPrice)")
+                    copyToClipboardValue(currentPrice, "%.2f")
                 }
             
             Text(String(format: "%.2f", item.costPerShare))

@@ -16,6 +16,20 @@ struct SalesCalcView: View {
     @State private var viewSize: CGSize = .zero
     @State private var showIncompleteDataWarning = false
     
+    private func getCurrentPrice() -> Double {
+        // Use quote data for current price, fallback to price history if quote is not available
+        if let quote = quoteData?.quote?.lastPrice {
+            return quote
+        } else if let extended = quoteData?.extended?.lastPrice {
+            return extended
+        } else if let regular = quoteData?.regular?.regularMarketLastPrice {
+            return regular
+        } else {
+            // Fallback to a default value if no quote data is available
+            return 0.0
+        }
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             VStack {
@@ -23,7 +37,8 @@ struct SalesCalcView: View {
                     positionsData: taxLotData,
                     currentSort: $currentSort,
                     viewSize: geometry.size,
-                    symbol: symbol
+                    symbol: symbol,
+                    currentPrice: getCurrentPrice()
                 )
                 .onAppear {
                     viewSize = geometry.size
