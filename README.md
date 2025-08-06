@@ -59,6 +59,17 @@ The application now ensures consistent real-time pricing across all displays:
 
 This ensures that the position summary and tax lot table always show the same current price, eliminating discrepancies between different parts of the interface.
 
+### Performance Optimizations
+
+The application includes several performance optimizations to ensure smooth user experience:
+
+- **Order Calculation Caching**: Recommended orders are cached and only recalculated when underlying data changes (symbol, quote data, tax lot data), not when selecting items in the UI
+- **Efficient State Management**: Checkbox selections in the recommended orders list no longer trigger expensive recalculations
+- **Smart Data Updates**: Orders are only recalculated when the actual data that affects calculations changes, not on UI interactions
+- **Responsive UI**: The interface remains responsive even when working with large datasets or complex calculations
+
+This ensures that selecting orders for submission is fast and responsive, while still maintaining accurate calculations when market data changes.
+
 ### CSV Export Functionality
 
 The application now supports exporting transaction history and tax lot data to CSV files:

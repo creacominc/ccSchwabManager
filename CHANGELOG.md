@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Performance optimizations for recommended orders interface
+  - Implemented order calculation caching to prevent unnecessary recomputation when selecting checkboxes
+  - Added state management to cache calculated orders and only update when underlying data changes
+  - Enhanced UI responsiveness by eliminating expensive recalculations during checkbox interactions
+  - Added smart data change detection using data hash comparison to trigger updates only when necessary
+  - Orders are now only recalculated when symbol, quote data, or tax lot data actually changes
+  - Improved user experience by making order selection fast and responsive
 - **NEW**: Real-time price synchronization across all displays
   - Position summary "Last" price and tax lot table "Price" column now use identical real-time quote data
   - Eliminated price discrepancies between position summary and tax lot displays

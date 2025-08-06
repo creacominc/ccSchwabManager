@@ -30,10 +30,23 @@ struct RecommendedOCOOrdersSection: View {
     @State private var cachedBuyOrders: [BuyOrderRecord] = []
     @State private var cachedAllOrders: [(String, Any)] = []
     @State private var lastCalculatedSymbol: String = ""
+    @State private var lastCalculatedDataHash: String = ""
+    
+    // State to hold the current orders to avoid recomputation on selection changes
+    @State private var currentOrders: [(String, Any)] = []
+    
+    private func getDataHash() -> String {
+        // Create a hash of the data that affects calculations
+        let taxLotHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
+        let quoteHash = quoteData?.quote?.lastPrice?.description ?? "nil"
+        return "\(symbol)-\(atrValue)-\(sharesAvailableForTrading)-\(taxLotHash)-\(quoteHash)"
+    }
     
     private func getRecommendedSellOrders() -> [SalesCalcResultsRecord] {
-        // Return cached results if symbol hasn't changed
-        if symbol == lastCalculatedSymbol && !cachedSellOrders.isEmpty {
+        let currentDataHash = getDataHash()
+        
+        // Return cached results if data hasn't changed
+        if currentDataHash == lastCalculatedDataHash && !cachedSellOrders.isEmpty {
             return cachedSellOrders
         }
         
@@ -41,18 +54,16 @@ struct RecommendedOCOOrdersSection: View {
         let orders = calculateRecommendedSellOrders()
         cachedSellOrders = orders
         lastCalculatedSymbol = symbol
+        lastCalculatedDataHash = currentDataHash
         
-        if symbol != lastSymbol {
-            DispatchQueue.main.async {
-                self.checkAndUpdateSymbol()
-            }
-        }
         return orders
     }
     
     private func getRecommendedBuyOrders() -> [BuyOrderRecord] {
-        // Return cached results if symbol hasn't changed
-        if symbol == lastCalculatedSymbol && !cachedBuyOrders.isEmpty {
+        let currentDataHash = getDataHash()
+        
+        // Return cached results if data hasn't changed
+        if currentDataHash == lastCalculatedDataHash && !cachedBuyOrders.isEmpty {
             return cachedBuyOrders
         }
         
@@ -60,18 +71,16 @@ struct RecommendedOCOOrdersSection: View {
         let orders = calculateRecommendedBuyOrders()
         cachedBuyOrders = orders
         lastCalculatedSymbol = symbol
+        lastCalculatedDataHash = currentDataHash
         
-        if symbol != lastSymbol {
-            DispatchQueue.main.async {
-                self.checkAndUpdateSymbol()
-            }
-        }
         return orders
     }
     
     private func getAllOrders() -> [(String, Any)] {
-        // Return cached results if symbol hasn't changed
-        if symbol == lastCalculatedSymbol && !cachedAllOrders.isEmpty {
+        let currentDataHash = getDataHash()
+        
+        // Return cached results if data hasn't changed
+        if currentDataHash == lastCalculatedDataHash && !cachedAllOrders.isEmpty {
             return cachedAllOrders
         }
         
@@ -103,6 +112,7 @@ struct RecommendedOCOOrdersSection: View {
         
         // Cache the result
         cachedAllOrders = orders
+        lastCalculatedDataHash = currentDataHash
         return orders
     }
     
@@ -643,8 +653,7 @@ struct RecommendedOCOOrdersSection: View {
         
         if isHighestCostLotProfitable {
             // New logic: If highest cost lot is profitable
-    
-            
+       
             // Set shares to 50% of the highest tax lot
             sharesToSell = ceil(highestCostLot.quantity * 0.5)
             actualCostPerShare = highestCostLot.costPerShare
@@ -660,7 +669,7 @@ struct RecommendedOCOOrdersSection: View {
             entry = (lastPrice - costPerShare) / 4.0 + target
             
             // Trailing stop = 1/4 of the amount from entry to target
-            let trailingStopValue = ((entry - target) / target) * 100.0
+            // let trailingStopValue = ((entry - target) / target) * 100.0
             
             
             
@@ -888,6 +897,8 @@ struct RecommendedOCOOrdersSection: View {
     private func updateRecommendedOrders() {
         recommendedSellOrders = calculateRecommendedSellOrders()
         recommendedBuyOrders = calculateRecommendedBuyOrders()
+        // Update current orders when underlying data changes
+        currentOrders = getAllOrders()
     }
     
     private func checkAndUpdateSymbol() {
@@ -901,7 +912,10 @@ struct RecommendedOCOOrdersSection: View {
             cachedBuyOrders.removeAll()
             cachedAllOrders.removeAll()
             lastCalculatedSymbol = ""
+            lastCalculatedDataHash = ""
             updateRecommendedOrders()
+            // Update current orders when symbol changes
+            currentOrders = getAllOrders()
         }
     }
     
@@ -969,6 +983,19 @@ struct RecommendedOCOOrdersSection: View {
                     .foregroundColor(.green)
                     .padding(.horizontal)
             }
+        }
+        .onChange(of: symbol) { _, newSymbol in
+            checkAndUpdateSymbol()
+        }
+        .onAppear {
+            // Initialize current orders if not already set
+            if currentOrders.isEmpty {
+                currentOrders = getAllOrders()
+            }
+        }
+        .onChange(of: getDataHash()) { _, _ in
+            // Update orders when underlying data changes
+            currentOrders = getAllOrders()
         }
         .sheet(isPresented: $showingConfirmationDialog) {
             confirmationDialogView
@@ -1087,8 +1114,7 @@ struct RecommendedOCOOrdersSection: View {
     
     private var contentView: some View {
         Group {
-            let orders = getAllOrders()
-            if orders.isEmpty {
+            if currentOrders.isEmpty {
                 Text("No recommended OCO orders available")
                     .foregroundColor(.secondary)
                     .padding()
@@ -1132,9 +1158,8 @@ struct RecommendedOCOOrdersSection: View {
     
     private func submitOCOOrders() {
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
-        let orders = getAllOrders()
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected order indices: \(selectedOrderIndices)")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(orders.count)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(currentOrders.count)")
         
         guard !selectedOrderIndices.isEmpty else { 
             AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ No orders selected")
@@ -1142,7 +1167,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         let selectedOrders = selectedOrderIndices.compactMap { index in
-            index < orders.count ? orders[index] : nil
+            index < currentOrders.count ? currentOrders[index] : nil
         }
         
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders count: \(selectedOrders.count)")
@@ -1382,8 +1407,7 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private var orderRows: some View {
-        let orders = getAllOrders() // Get the cached orders once
-        return ForEach(Array(orders.enumerated()), id: \.offset) { index, order in
+        return ForEach(Array(currentOrders.enumerated()), id: \.offset) { index, order in
             orderRow(index: index, orderType: order.0, order: order.1, isSelected: selectedOrderIndices.contains(index))
         }
     }
