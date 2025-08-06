@@ -1550,16 +1550,16 @@ struct RecommendedOCOOrdersSection: View {
         
         var descriptions: [String] = []
         for (index, (orderType, order)) in orders.enumerated() {
-            AppLogger.shared.debug("Processing order \(index + 1): type=\(orderType), order=\(type(of: order))")
+            AppLogger.shared.debug("createOrderDescriptions - Processing order \(index + 1): type=\(orderType), order=\(type(of: order))")
             
             if let sellOrder = order as? SalesCalcResultsRecord {
-                AppLogger.shared.debug("  Found SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+                AppLogger.shared.debug("createOrderDescriptions -   Found SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
                 let description = sellOrder.description.isEmpty ? 
                     "SELL \(sellOrder.sharesToSell) shares at \(sellOrder.entry) (Target: \(sellOrder.target), Cancel: \(sellOrder.cancel))" :
                     sellOrder.description
                 descriptions.append("Order \(index + 1) (SELL): \(description)")
             } else if let buyOrder = order as? BuyOrderRecord {
-                AppLogger.shared.debug("  Found BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+                AppLogger.shared.debug("createOrderDescriptions -   Found BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
                 let description = buyOrder.description.isEmpty ?
                     "BUY \(buyOrder.sharesToBuy) shares at \(buyOrder.targetBuyPrice) (Entry: \(buyOrder.entryPrice), Target: \(buyOrder.targetGainPercent)%)" :
                     buyOrder.description
@@ -1569,7 +1569,7 @@ struct RecommendedOCOOrdersSection: View {
             }
         }
         
-        AppLogger.shared.debug("Created \(descriptions.count) descriptions")
+        AppLogger.shared.debug("createOrderDescriptions - Created \(descriptions.count) descriptions")
         return descriptions
     }
     

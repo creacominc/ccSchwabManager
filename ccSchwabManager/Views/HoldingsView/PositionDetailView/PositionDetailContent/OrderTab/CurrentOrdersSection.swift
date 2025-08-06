@@ -88,11 +88,11 @@ struct CurrentOrdersSection: View {
         
         print("[OrderTab] Found \(filteredOrders.count) open orders for symbol \(symbol)")
         
-        // Debug: Print all order IDs being returned
-        print("[OrderTab] Order IDs being returned:")
-        for (index, order) in filteredOrders.enumerated() {
-            print("[OrderTab]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
-        }
+        // // Debug: Print all order IDs being returned
+        // print("[OrderTab] Order IDs being returned:")
+        // for (index, order) in filteredOrders.enumerated() {
+        //     print("[OrderTab]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
+        // }
         
         return filteredOrders
     }

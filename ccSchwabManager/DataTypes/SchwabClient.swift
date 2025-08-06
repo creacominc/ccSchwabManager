@@ -10,6 +10,30 @@ import os.log
 @_exported import class Foundation.NSError
 @_exported import var Foundation.NSLocalizedDescriptionKey
 
+// MARK: - Extract Strike Price from Symbol or Description
+func extractStrike(from symbol: String?) -> Double? {
+    // Primary method: Extract strike price from option symbol
+    if let symbol: String = symbol {
+        // Look for 8 consecutive digits after the 'C' or 'P'
+        // Example: "B     250808C00025000" -> extract "00025000"
+        let pattern: String = #"[CP](\d{8})"#
+        if let regex: NSRegularExpression = try? NSRegularExpression(pattern: pattern),
+           let match: NSTextCheckingResult = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+            let strikeString: String = String(symbol[Range(match.range(at: 1), in: symbol)!])
+            if var strike: Double = Double(strikeString) {
+                strike = strike / 1000.00
+                // AppLogger.shared.debug("🔍 extractStrike: \(strike)  for symbol: \(symbol)")
+                return strike
+            }
+            else {
+                AppLogger.shared.warning("🔍 extractStrike: failed to convert \(strikeString)  for symbol: \(symbol)")
+            }
+        }
+    }
+    return nil
+}
+
+
 // MARK: - DateFormatter Extension for Schwab API
 
 extension DateFormatter {
@@ -25,26 +49,34 @@ extension DateFormatter {
 
 struct SymbolContractSummary {
     let minimumDTE: Int?
+    let minimumStrike: Double?
     let contractCount: Int
     let totalQuantity: Double
     
     init(contracts: [Position]) {
         var minDTE: Int?
+        var minStrike: Double?
         var totalQty: Double = 0.0
         
-        for position in contracts {
+        for position: Position in contracts {
             // Calculate DTE for this contract
-            if let dte = extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description) {
+            if let dte: Int = extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description) {
                 if minDTE == nil || dte < minDTE! {
                     minDTE = dte
                 }
             }
-            
+            // Calculate Strike for this contract
+            if let strike: Double = extractStrike(from: position.instrument?.symbol) {
+                if minStrike == nil || strike < minStrike! {
+                    minStrike = strike
+                }
+            }
             // Sum up quantities
             totalQty += (position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0)
         }
         
         self.minimumDTE = minDTE
+        self.minimumStrike = minStrike
         self.contractCount = contracts.count
         self.totalQuantity = totalQty
     }
@@ -818,7 +850,7 @@ class SchwabClient
             
             // Now create SymbolContractSummary for each underlying symbol
             for (underlyingSymbol, positions) in positionsByUnderlying {
-                let summary = SymbolContractSummary(contracts: positions)
+                let summary: SymbolContractSummary = SymbolContractSummary(contracts: positions)
                 m_symbolsWithContracts[underlyingSymbol] = summary
                 // AppLogger.shared.debug("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
             }
@@ -1739,11 +1771,11 @@ class SchwabClient
                                 let orders = try decoder.decode([Order].self, from: data)
 
                                 AppLogger.shared.info("fetchOrderHistory ✅ Received \(orders.count) orders for status \(status.rawValue)")
-                                for order in orders {
-                                    if let orderId = order.orderId, let symbol = order.orderLegCollection?.first?.instrument?.symbol {
-                                        AppLogger.shared.debug("fetchOrderHistory   📋 Order ID: \(orderId), Symbol: \(symbol), Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-                                    }
-                                }
+                                // for order in orders {
+                                //     if let orderId = order.orderId, let symbol = order.orderLegCollection?.first?.instrument?.symbol {
+                                //         AppLogger.shared.debug("fetchOrderHistory   📋 Order ID: \(orderId), Symbol: \(symbol), Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
+                                //     }
+                                // }
 
                                 return orders
                             } catch {
@@ -1767,11 +1799,11 @@ class SchwabClient
                 if let orders = orders {
                     totalOrdersReceived += orders.count
                     AppLogger.shared.info("fetchOrderHistory 📦 Adding \(orders.count) orders from status query (total so far: \(totalOrdersReceived))")
-                    for order in orders {
-                        if let orderId = order.orderId {
-                            AppLogger.shared.debug("fetchOrderHistory   📋 Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
-                        }
-                    }
+                    // for order in orders {
+                    //     if let orderId = order.orderId {
+                    //         AppLogger.shared.debug("fetchOrderHistory   📋 Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
+                    //     }
+                    // }
                     m_orderList.append(contentsOf: orders)
                 }
             } // append orders
@@ -1793,14 +1825,14 @@ class SchwabClient
         m_orderList = uniqueOrders
         AppLogger.shared.info("fetchOrderHistory 📊 After deduplication: \(m_orderList.count) unique orders")
         
-        // Debug: Print all unique orders with their details
-        AppLogger.shared.debug("fetchOrderHistory 🔍 All unique orders:")
-        for order in m_orderList {
-            if let orderId = order.orderId {
-                let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
-                AppLogger.shared.debug("fetchOrderHistory   📋 ID: \(orderId), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-            }
-        }
+        // // Debug: Print all unique orders with their details
+        // AppLogger.shared.debug("fetchOrderHistory 🔍 All unique orders:")
+        // for order in m_orderList {
+        //     if let orderId = order.orderId {
+        //         let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
+        //         AppLogger.shared.debug("fetchOrderHistory   📋 ID: \(orderId), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
+        //     }
+        // }
         
         updateSymbolsWithOrders()
     }
@@ -1814,26 +1846,26 @@ class SchwabClient
         
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
         for (index, order) in m_orderList.enumerated() {
-            AppLogger.shared.debug("🔍 Processing order \(index + 1)/\(m_orderList.count): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), Strategy=\(order.orderStrategyType?.rawValue ?? "nil")")
+            // AppLogger.shared.debug("🔍 Processing order \(index + 1)/\(m_orderList.count): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), Strategy=\(order.orderStrategyType?.rawValue ?? "nil")")
             
             if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
-                AppLogger.shared.debug("  ✅ Order has active status: \(activeStatus.shortDisplayName)")
-                
+                // AppLogger.shared.debug("  ✅ Order has active status: \(activeStatus.shortDisplayName)")
+
                 if( ( order.orderStrategyType == .SINGLE )
                     || ( order.orderStrategyType == .TRIGGER ) ) {
-                    AppLogger.shared.debug("  📋 Processing SINGLE/TRIGGER order")
+                    // AppLogger.shared.debug("  📋 Processing SINGLE/TRIGGER order")
                     for (legIndex, leg) in (order.orderLegCollection ?? []).enumerated() {
                         if let symbol = leg.instrument?.symbol {
-                            AppLogger.shared.debug("    📊 Leg \(legIndex + 1): Symbol=\(symbol)")
+                            // AppLogger.shared.debug("    📊 Leg \(legIndex + 1): Symbol=\(symbol)")
                             if m_symbolsWithOrders[symbol] == nil {
                                 m_symbolsWithOrders[symbol] = []
-                                AppLogger.shared.debug("      ➕ Created new entry for symbol \(symbol)")
+                                // AppLogger.shared.debug("      ➕ Created new entry for symbol \(symbol)")
                             }
                             if !m_symbolsWithOrders[symbol]!.contains(activeStatus) {
                                 m_symbolsWithOrders[symbol]!.append(activeStatus)
-                                AppLogger.shared.debug("      ➕ Added status \(activeStatus.shortDisplayName) to symbol \(symbol)")
-                            } else {
-                                AppLogger.shared.debug("      ⚠️ Status \(activeStatus.shortDisplayName) already exists for symbol \(symbol)")
+                                // AppLogger.shared.debug("      ➕ Added status \(activeStatus.shortDisplayName) to symbol \(symbol)")
+                            // } else {
+                            //     AppLogger.shared.debug("      ⚠️ Status \(activeStatus.shortDisplayName) already exists for symbol \(symbol)")
                             }
                         } else {
                             AppLogger.shared.warning("    ⚠️ Leg \(legIndex + 1): No symbol found")
@@ -1841,30 +1873,30 @@ class SchwabClient
                     }
                 }
                 if ( order.orderStrategyType == .OCO ) {
-                    AppLogger.shared.debug("  📋 Processing OCO order")
+                    // AppLogger.shared.debug("  📋 Processing OCO order")
                     for (childIndex, childOrder) in (order.childOrderStrategies ?? []).enumerated() {
-                        AppLogger.shared.debug("    🔍 Child order \(childIndex + 1): ID=\(childOrder.orderId?.description ?? "nil"), Status=\(childOrder.status?.rawValue ?? "nil")")
+                        // AppLogger.shared.debug("    🔍 Child order \(childIndex + 1): ID=\(childOrder.orderId?.description ?? "nil"), Status=\(childOrder.status?.rawValue ?? "nil")")
                         if let childActiveStatus = ActiveOrderStatus(from: childOrder.status ?? .unknown, order: childOrder) {
-                            AppLogger.shared.debug("      ✅ Child order has active status: \(childActiveStatus.shortDisplayName)")
+                            // AppLogger.shared.debug("      ✅ Child order has active status: \(childActiveStatus.shortDisplayName)")
                             for (legIndex, leg) in (childOrder.orderLegCollection ?? []).enumerated() {
                                 if let symbol = leg.instrument?.symbol {
-                                    AppLogger.shared.debug("        📊 Child Leg \(legIndex + 1): Symbol=\(symbol)")
+                                    // AppLogger.shared.debug("        📊 Child Leg \(legIndex + 1): Symbol=\(symbol)")
                                     if m_symbolsWithOrders[symbol] == nil {
                                         m_symbolsWithOrders[symbol] = []
-                                        AppLogger.shared.debug("          ➕ Created new entry for symbol \(symbol)")
+                                        // AppLogger.shared.debug("          ➕ Created new entry for symbol \(symbol)")
                                     }
                                     if !m_symbolsWithOrders[symbol]!.contains(childActiveStatus) {
                                         m_symbolsWithOrders[symbol]!.append(childActiveStatus)
-                                        AppLogger.shared.debug("          ➕ Added status \(childActiveStatus.shortDisplayName) to symbol \(symbol)")
-                                    } else {
-                                        AppLogger.shared.debug("          ⚠️ Status \(childActiveStatus.shortDisplayName) already exists for symbol \(symbol)")
+                                    //     AppLogger.shared.debug("          ➕ Added status \(childActiveStatus.shortDisplayName) to symbol \(symbol)")
+                                    // } else {
+                                    //     AppLogger.shared.debug("          ⚠️ Status \(childActiveStatus.shortDisplayName) already exists for symbol \(symbol)")
                                     }
                                 } else {
                                     AppLogger.shared.warning("        ⚠️ Child Leg \(legIndex + 1): No symbol found")
                                 }
                             }
-                        } else {
-                            AppLogger.shared.warning("      ❌ Child order does not have active status: \(childOrder.status?.rawValue ?? "nil")")
+                        // } else {
+                        //     AppLogger.shared.warning("      ❌ Child order does not have active status: \(childOrder.status?.rawValue ?? "nil")")
                         }
                     }
                 }
@@ -1880,11 +1912,11 @@ class SchwabClient
             }
         }
         
-        AppLogger.shared.info("🔍 Final symbols with orders: \(m_symbolsWithOrders.count)")
-        for (symbol, statuses) in m_symbolsWithOrders {
-            let statusNames = statuses.map { $0.shortDisplayName }.joined(separator: ", ")
-            AppLogger.shared.debug("  📋 \(symbol): \(statusNames)")
-        }
+        // AppLogger.shared.info("🔍 Final symbols with orders: \(m_symbolsWithOrders.count)")
+        // for (symbol, statuses) in m_symbolsWithOrders {
+        //     let statusNames = statuses.map { $0.shortDisplayName }.joined(separator: ", ")
+        //     AppLogger.shared.debug("  📋 \(symbol): \(statusNames)")
+        // }
         AppLogger.shared.info("🔍 === END updateSymbolsWithOrders ===")
     }
 
@@ -2171,23 +2203,19 @@ class SchwabClient
      * getPrimaryOrderStatus - return the highest priority order status for a given symbol
      */
     public func getPrimaryOrderStatus(for symbol: String) -> ActiveOrderStatus? {
-        AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
-        AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
+        // AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
         
         guard let statuses = m_symbolsWithOrders[symbol], !statuses.isEmpty else {
-            AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
-            AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
+            // AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
             return nil
         }
         
         // Sort by priority and return the highest priority status
         let sortedStatuses = statuses.sorted { $0.priority < $1.priority }
         let primaryStatus = sortedStatuses.first
-        
-        AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
-        AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
-        AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
-        AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
+       
+        // AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
+        // AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
         
         return primaryStatus
     }
@@ -2824,9 +2852,9 @@ class SchwabClient
      * Note: This method now returns nil since we no longer store individual positions
      */
     public func getContractsForSymbol(_ symbol: String) -> [Position]? {
-        let summary = m_symbolsWithContracts[symbol]
+        let summary: SymbolContractSummary? = m_symbolsWithContracts[symbol]
         AppLogger.shared.debug("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(summary?.contractCount ?? 0) contracts")
-        if let summary = summary {
+        if let summary: SymbolContractSummary = summary {
             AppLogger.shared.debug("  📋 Summary: \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1), total quantity: \(summary.totalQuantity)")
         }
         // Since we no longer store individual positions, return nil
@@ -2837,7 +2865,7 @@ class SchwabClient
      * get the number of contracts for the given symbol
      */
     public func getContractCountForSymbol(_ symbol: String) -> Double {
-        guard let summary = m_symbolsWithContracts[symbol] else {
+        guard let summary: SymbolContractSummary = m_symbolsWithContracts[symbol] else {
             return 0.0
         }
         return summary.totalQuantity
@@ -2847,10 +2875,20 @@ class SchwabClient
      * getMinimumDTEForSymbol - return the minimum DTE for a given underlying symbol
      */
     public func getMinimumDTEForSymbol(_ symbol: String) -> Int? {
-        guard let summary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
+        guard let summary: SymbolContractSummary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
             return nil
         }
         return summary.minimumDTE
+    }
+
+    /**
+     * getMinimumStrikeForSymbol - return the minimum Strike Price for a given underlying symbol
+     */
+    public func getMinimumStrikeForSymbol(_ symbol: String) -> Double? {
+        guard let summary: SymbolContractSummary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
+            return nil
+        }
+        return summary.minimumStrike
     }
 
 

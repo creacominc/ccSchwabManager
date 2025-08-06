@@ -535,8 +535,8 @@ struct HoldingsView: View {
             await SchwabClient.shared.fetchOrderHistory()
             print("🔍 After fetchOrderHistory: SchwabClient has \(SchwabClient.shared.getOrderList().count) orders")
             
-            // Debug: Print the current order state
-            SchwabClient.shared.debugPrintOrderState()
+            // // Debug: Print the current order state
+            // SchwabClient.shared.debugPrintOrderState()
             
             // Check for cancellation before updating UI
             guard !Task.isCancelled else { return }

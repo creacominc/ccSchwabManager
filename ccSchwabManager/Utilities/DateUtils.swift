@@ -130,39 +130,39 @@ func daysSinceDate( date: Date ) -> Int?
 // Helper function to extract expiration date from option symbol or description
 func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
     // Primary method: Extract 6-digit date from option symbol
-    if let symbol = symbol {
+    if let symbol: String = symbol {
         // Look for 6 consecutive digits after the underlying symbol
         // Example: "INTC  250516C00025000" -> extract "250516"
-        let pattern = #"(\d{6})"#
-        if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
-            let dateString = String(symbol[Range(match.range(at: 1), in: symbol)!])
+        let pattern: String = #"(\d{6})"#
+        if let regex: NSRegularExpression = try? NSRegularExpression(pattern: pattern),
+           let match: NSTextCheckingResult = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+            let dateString: String = String(symbol[Range(match.range(at: 1), in: symbol)!])
             
             // Parse the date (format: YYMMDD)
-            let formatter = DateFormatter()
+            let formatter: DateFormatter = DateFormatter()
             formatter.dateFormat = "yyMMdd"
             formatter.timeZone = TimeZone.current
             
-            if let date = formatter.date(from: dateString) {
+            if let date: Date = formatter.date(from: dateString) {
                 // Set the expiration time to 23:59:59 (end of day) in Eastern Time
-                let easternTimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+                let easternTimeZone: TimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
                 
                 // Convert the date to Eastern Time and set to 23:59:59
-                var easternCalendar = Calendar.current
+                var easternCalendar: Calendar = Calendar.current
                 easternCalendar.timeZone = easternTimeZone
                 
-                guard let expirationDate = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: date) else {
+                guard let expirationDate: Date = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: date) else {
                     return nil
                 }
                 
-                let today = Date()
-                let timeInterval = expirationDate.timeIntervalSince(today)
-                let daysDifference = timeInterval / (24 * 60 * 60)
+                let today: Date = Date()
+                let timeInterval: TimeInterval = expirationDate.timeIntervalSince(today)
+                let daysDifference: Double = timeInterval / (24 * 60 * 60)
                 
                 // Round to nearest day, but be more conservative
                 // If we're more than halfway through a day, round up
-                let fractionalPart = daysDifference - floor(daysDifference)
-                let roundedDays = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
+                let fractionalPart: Double = daysDifference - floor(daysDifference)
+                let roundedDays: Int = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
                 
                 return roundedDays
             }
@@ -170,18 +170,18 @@ func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
     }
     
     // Secondary method: Extract date from description
-    if let description = description {
+    if let description: String = description {
         // Look for date pattern like "05/16/2025" or "2025-01-16"
-        let patterns = [
+        let patterns: [String] = [
             #"(\d{1,2})/(\d{1,2})/(\d{4})"#,  // MM/DD/YYYY
             #"(\d{4})-(\d{1,2})-(\d{1,2})"#   // YYYY-MM-DD
         ]
         
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
+        for pattern: String in patterns {
+            if let regex: NSRegularExpression = try? NSRegularExpression(pattern: pattern),
+               let match: NSTextCheckingResult = regex.firstMatch(in: description, range: NSRange(description.startIndex..., in: description)) {
                 
-                let formatter = DateFormatter()
+                let formatter: DateFormatter = DateFormatter()
                 if pattern.contains("/") {
                     formatter.dateFormat = "MM/dd/yyyy"
                 } else {
@@ -189,27 +189,27 @@ func extractExpirationDate(from symbol: String?, description: String?) -> Int? {
                 }
                 formatter.timeZone = TimeZone.current
                 
-                let dateString = String(description[Range(match.range, in: description)!])
-                if let date = formatter.date(from: dateString) {
+                let dateString: String = String(description[Range(match.range, in: description)!])
+                if let date: Date = formatter.date(from: dateString) {
                     // Set the expiration time to 23:59:59 (end of day) in Eastern Time
-                    let easternTimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+                    let easternTimeZone: TimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
                     
                     // Convert the date to Eastern Time and set to 23:59:59
-                    var easternCalendar = Calendar.current
+                    var easternCalendar: Calendar = Calendar.current
                     easternCalendar.timeZone = easternTimeZone
                     
-                    guard let expirationDate = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: date) else {
+                    guard let expirationDate: Date = easternCalendar.date(bySettingHour: 23, minute: 59, second: 59, of: date) else {
                         return nil
                     }
                     
-                    let today = Date()
-                    let timeInterval = expirationDate.timeIntervalSince(today)
-                    let daysDifference = timeInterval / (24 * 60 * 60)
+                    let today: Date = Date()
+                    let timeInterval: TimeInterval = expirationDate.timeIntervalSince(today)
+                    let daysDifference: Double = timeInterval / (24 * 60 * 60)
                     
                     // Round to nearest day, but be more conservative
                     // If we're more than halfway through a day, round up
-                    let fractionalPart = daysDifference - floor(daysDifference)
-                    let roundedDays = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
+                    let fractionalPart: Double = daysDifference - floor(daysDifference)
+                    let roundedDays: Int = fractionalPart > 0.5 ? Int(ceil(daysDifference)) : Int(floor(daysDifference))
                     
                     return roundedDays
                 }
