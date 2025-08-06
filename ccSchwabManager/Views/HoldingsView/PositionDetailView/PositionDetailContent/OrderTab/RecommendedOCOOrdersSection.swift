@@ -600,6 +600,19 @@ struct RecommendedOCOOrdersSection: View {
         AppLogger.shared.debug("  Total gain: $\(totalGain)")
         AppLogger.shared.debug("  Actual cost per share: $\(actualCostPerShare)")
         
+        // Validate that shares to sell is at least 1 and doesn't exceed available shares
+        guard sharesToSell >= 1.0 else {
+            AppLogger.shared.debug("❌ Min ATR order rejected: shares to sell (\(sharesToSell)) is less than 1")
+            return nil
+        }
+        
+        guard sharesToSell <= sharesAvailableForTrading else {
+            AppLogger.shared.debug("❌ Min ATR order rejected: shares to sell (\(sharesToSell)) exceeds available shares (\(sharesAvailableForTrading))")
+            return nil
+        }
+        
+        AppLogger.shared.debug("✅ Min ATR order: shares to sell (\(sharesToSell)) is valid (>= 1 and <= available shares)")
+        
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
             AppLogger.shared.debug("❌ Min ATR order rejected: target ($\(target)) is not above actual cost per share ($\(actualCostPerShare))")
@@ -698,8 +711,20 @@ struct RecommendedOCOOrdersSection: View {
             sharesToSell = result.sharesToSell
             actualCostPerShare = result.actualCostPerShare
             
-            
         }
+        
+        // Validate that shares to sell is at least 1 and doesn't exceed available shares
+        guard sharesToSell >= 1.0 else {
+            AppLogger.shared.debug("❌ Min Break Even order rejected: shares to sell (\(sharesToSell)) is less than 1")
+            return nil
+        }
+        
+        guard sharesToSell <= sharesAvailableForTrading else {
+            AppLogger.shared.debug("❌ Min Break Even order rejected: shares to sell (\(sharesToSell)) exceeds available shares (\(sharesAvailableForTrading))")
+            return nil
+        }
+        
+        AppLogger.shared.debug("✅ Min Break Even order: shares to sell (\(sharesToSell)) is valid (>= 1 and <= available shares)")
         
         // Validate that target is above the actual cost per share of the shares being sold
         guard target > actualCostPerShare else {
@@ -853,6 +878,21 @@ struct RecommendedOCOOrdersSection: View {
                     }
                     
                     let actualCostPerShare = costBasisResult.actualCostPerShare
+                    
+                    // Validate that shares to sell is at least 1 and doesn't exceed available shares
+                    guard sharesToUse >= 1.0 else {
+                        AppLogger.shared.debug("❌ Additional sell order rejected: shares to sell (\(sharesToUse)) is less than 1")
+                        currentTaxLotIndex += 1
+                        continue
+                    }
+                    
+                    guard sharesToUse <= sharesAvailableForTrading - cumulativeSharesUsed else {
+                        AppLogger.shared.debug("❌ Additional sell order rejected: shares to sell (\(sharesToUse)) exceeds remaining available shares (\(sharesAvailableForTrading - cumulativeSharesUsed))")
+                        currentTaxLotIndex += 1
+                        continue
+                    }
+                    
+                    AppLogger.shared.debug("✅ Additional sell order: shares to sell (\(sharesToUse)) is valid (>= 1 and <= remaining available shares)")
                     
                     // Validate that new target is above the weighted average cost per share
                     guard newTarget > actualCostPerShare else {
