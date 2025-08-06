@@ -462,15 +462,7 @@ struct RecommendedOCOOrdersSection: View {
             return nil
         }
         
-        // Calculate the minimum shares needed to achieve 3.25% gain at target price
-        // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
-        // let targetGainPercent = 3.25
-        
-        // We need to calculate the target price first, but we need the cost per share
-        // Let's start with a reasonable estimate and then refine
-        //let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
-        // let avgCostPerShare = totalCost / totalShares
-        // let estimatedTarget = avgCostPerShare * 1.0325
+        AppLogger.shared.debug("=== calculateTop100Order ===")
         
         // For Top-100 order, always use exactly 100 shares of the most expensive shares
         let finalSharesToConsider = 100.0
@@ -493,59 +485,82 @@ struct RecommendedOCOOrdersSection: View {
         AppLogger.shared.debug("Top 100 order calculation:")
         AppLogger.shared.debug("  Total shares in position: \(totalShares)")
         AppLogger.shared.debug("  Cost per share for 100 most expensive shares: $\(actualCostPerShare)")
+        AppLogger.shared.debug("  Current price: $\(currentPrice)")
         
-        // Calculate target price - ensure it's above cost per share
-        let target = actualCostPerShare * 1.0325
+        // Check if the top 100 shares are profitable at current price
+        let currentProfitPercent = ((currentPrice - actualCostPerShare) / actualCostPerShare) * 100.0
+        let isTop100Profitable = currentProfitPercent > 0
         
-        // Check if target is above cost per share
-        let isTargetProfitable = target > actualCostPerShare
-        // let totalGain = finalSharesToConsider * (target - actualCostPerShare)
+        AppLogger.shared.debug("  Current profit % for top 100: \(currentProfitPercent)%")
+        AppLogger.shared.debug("  Top 100 profitable at current price: \(isTop100Profitable)")
         
-        if isTargetProfitable {
-            AppLogger.shared.debug("✅ Top 100 order: Target price $\(target) is above cost per share $\(actualCostPerShare)")
+        let entry: Double
+        let target: Double
+        let trailingStop: Double
+        
+        if isTop100Profitable {
+            // If top 100 shares are profitable, use similar logic to Min Break Even
+            // Target price = (currentPrice + actualCostPerShare) / 2
+            target = (currentPrice + actualCostPerShare) / 2.0
+            
+            // Entry point = (currentPrice - actualCostPerShare) / 4 + target
+            entry = (currentPrice - actualCostPerShare) / 4.0 + target
+            
+            // Trailing stop = ((entry - target) / target) * 100.0
+            trailingStop = ((entry - target) / target) * 100.0
+            
+            AppLogger.shared.debug("✅ Top 100 profitable - using profit-based logic")
+            AppLogger.shared.debug("  Target: $\(target)")
+            AppLogger.shared.debug("  Entry: $\(entry)")
+            AppLogger.shared.debug("  Trailing stop: \(trailingStop)%")
         } else {
-            AppLogger.shared.debug("⚠️ Top 100 order: Target price $\(target) is below cost per share $\(actualCostPerShare)")
+            // If top 100 shares are not profitable, use similar logic to Min ATR
+            // Use ATR-based calculation like other sell orders
+            let adjustedATR = atrValue / 5.0 // Same as Min Break Even
+            
+            // Entry = Current - 1 AATR%
+            entry = currentPrice * (1.0 - adjustedATR / 100.0)
+            
+            // Target = Entry - 2 AATR%
+            target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+            
+            // Trailing stop = adjustedATR
+            trailingStop = adjustedATR
+            
+            AppLogger.shared.debug("⚠️ Top 100 not profitable - using ATR-based logic")
+            AppLogger.shared.debug("  Entry: $\(entry)")
+            AppLogger.shared.debug("  Target: $\(target)")
+            AppLogger.shared.debug("  Trailing stop: \(trailingStop)%")
         }
         
-        // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
-        let adjustedATR = 1.5 * 0.25
-        
-        // If target is below cost per share, raise it to be profitable
-        let adjustedTarget = max(target, actualCostPerShare * 1.01) // At least 1% above cost
-        
-        // Entry: Adjusted target + (1.5 * ATR) above target
-        let entry = adjustedTarget * (1.0 + (adjustedATR / 100.0))
-        
-        // Exit: 0.9% below adjusted target, but never below cost per share
-        let exit = max(adjustedTarget * 0.991, actualCostPerShare)
-        
-        // Check if entry price is above current price
-        let isEntryAboveCurrent = entry > currentPrice
-        let isProfitable = isTargetProfitable && !isEntryAboveCurrent
-        
-        if isEntryAboveCurrent {
-            AppLogger.shared.debug("⚠️ Top 100 order: Entry price $\(entry) is above current price $\(currentPrice)")
-        } else {
-            AppLogger.shared.debug("✅ Top 100 order: Entry price $\(entry) is below current price $\(currentPrice)")
+        // Validate that target is above the actual cost per share
+        guard target > actualCostPerShare else {
+            AppLogger.shared.debug("❌ Top 100 order rejected: target ($\(target)) is not above cost per share ($\(actualCostPerShare))")
+            return nil
         }
         
-        // Calculate gain based on adjusted target
-        let gain = ((adjustedTarget - actualCostPerShare) / actualCostPerShare) * 100.0
-        // let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        // Calculate exit price (same logic as other sell orders)
+        let exit = max(target * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), actualCostPerShare)
         
-        // Create simplified description without timing constraints
-        let profitIndicator = isProfitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
-        let formattedDescription = String(format: "%@ SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", profitIndicator, finalSharesToConsider, symbol, adjustedTarget, adjustedATR, actualCostPerShare)
+        let totalGain = finalSharesToConsider * (target - actualCostPerShare)
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        // Create description
+        let profitIndicator = isTop100Profitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
+        let formattedDescription = String(format: "%@ SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
+                                          profitIndicator, finalSharesToConsider, symbol, target, trailingStop, actualCostPerShare)
+        
+        AppLogger.shared.debug("✅ Top 100 order created: \(formattedDescription)")
         
         return SalesCalcResultsRecord(
             shares: finalSharesToConsider,
-            rollingGainLoss: (adjustedTarget - actualCostPerShare) * finalSharesToConsider,
+            rollingGainLoss: totalGain,
             breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: finalSharesToConsider,
-            trailingStop: adjustedATR,
+            trailingStop: trailingStop,
             entry: entry,
-            target: adjustedTarget,
+            target: target,
             cancel: exit,
             description: formattedDescription,
             openDate: "Top100"
