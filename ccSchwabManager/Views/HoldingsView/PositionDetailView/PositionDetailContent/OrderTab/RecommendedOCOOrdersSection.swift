@@ -569,8 +569,6 @@ struct RecommendedOCOOrdersSection: View {
 
     // --- Minimum ATR-based Standing Sell ---
     private func calculateMinSharesFor5PercentProfit(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        let adjustedATR = 1.5 * getLimitedATR()
-
         // Only show if position is at least 6% and at least (3.5 * ATR) profitable
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
@@ -586,15 +584,22 @@ struct RecommendedOCOOrdersSection: View {
         AppLogger.shared.debug("Min profit % required: \(minProfitPercent)%")
         AppLogger.shared.debug("Total shares: \(totalShares)")
         AppLogger.shared.debug("Total cost: $\(totalCost)")
-        AppLogger.shared.debug("Adjusted ATR: \(adjustedATR)%")
 
-        // Target: 3.25% above breakeven (avg cost per share) - accounting for wash sale adjustments
-        let target = avgCostPerShare * 1.0325
-        AppLogger.shared.debug("Target price: $\(target) (3.25% above breakeven)")
+        // Use the same logic as additional sell orders
+        // Calculate trailing stop based on ATR
+        let adjustedATR = atrValue / 5.0 // Same as Min Break Even
+        let targetTrailingStop = adjustedATR
         
-        // Entry: Below current price by 1.5 * AATR
-        let entry = currentPrice / (1.0 + (adjustedATR / 100.0))
-        AppLogger.shared.debug("Entry price: $\(entry) (below current by \(adjustedATR)%)")
+        AppLogger.shared.debug("Adjusted ATR: \(adjustedATR)%")
+        AppLogger.shared.debug("Target trailing stop: \(targetTrailingStop)%")
+        
+        // Calculate entry price (same as Min Break Even)
+        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        AppLogger.shared.debug("Entry price: $\(entry)")
+        
+        // Calculate target price based on trailing stop (same as additional orders)
+        let target = entry / (1.0 + targetTrailingStop / 100.0)
+        AppLogger.shared.debug("Target price: $\(target)")
         
         // Use the helper function to calculate minimum shares needed to maintain 5% profit on remaining position
         guard let result = calculateMinimumSharesForRemainingProfit(
@@ -634,12 +639,12 @@ struct RecommendedOCOOrdersSection: View {
             return nil
         }
         
-        // Exit: 0.9% below target, but never below the actual cost per share of the shares being sold
-        let exit = max(target * 0.991, actualCostPerShare)
-        AppLogger.shared.debug("Exit price: $\(exit) (0.9% below target, but never below actual cost per share $\(actualCostPerShare))")
+        // Calculate exit price (same logic as other sell orders)
+        let exit = max(target * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), actualCostPerShare)
+        AppLogger.shared.debug("Exit price: $\(exit)")
         
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, symbol, target, adjustedATR, actualCostPerShare)
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, symbol, target, targetTrailingStop, actualCostPerShare)
         AppLogger.shared.debug("✅ Min ATR order created: \(formattedDescription)")
         return SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -647,7 +652,7 @@ struct RecommendedOCOOrdersSection: View {
             breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: sharesToSell,
-            trailingStop: adjustedATR,
+            trailingStop: targetTrailingStop,
             entry: entry,
             target: target,
             cancel: exit,
