@@ -28,9 +28,10 @@ struct RecommendedOCOOrdersSection: View {
     // Cache for calculated orders to avoid repeated expensive calculations
     @State private var cachedSellOrders: [SalesCalcResultsRecord] = []
     @State private var cachedBuyOrders: [BuyOrderRecord] = []
+    @State private var cachedAllOrders: [(String, Any)] = []
     @State private var lastCalculatedSymbol: String = ""
     
-    private var currentRecommendedSellOrders: [SalesCalcResultsRecord] {
+    private func getRecommendedSellOrders() -> [SalesCalcResultsRecord] {
         // Return cached results if symbol hasn't changed
         if symbol == lastCalculatedSymbol && !cachedSellOrders.isEmpty {
             return cachedSellOrders
@@ -49,7 +50,7 @@ struct RecommendedOCOOrdersSection: View {
         return orders
     }
     
-    private var currentRecommendedBuyOrders: [BuyOrderRecord] {
+    private func getRecommendedBuyOrders() -> [BuyOrderRecord] {
         // Return cached results if symbol hasn't changed
         if symbol == lastCalculatedSymbol && !cachedBuyOrders.isEmpty {
             return cachedBuyOrders
@@ -68,26 +69,40 @@ struct RecommendedOCOOrdersSection: View {
         return orders
     }
     
-    private var allOrders: [(String, Any)] {
+    private func getAllOrders() -> [(String, Any)] {
+        // Return cached results if symbol hasn't changed
+        if symbol == lastCalculatedSymbol && !cachedAllOrders.isEmpty {
+            return cachedAllOrders
+        }
+        
         var orders: [(String, Any)] = []
         
-        AppLogger.shared.debug("=== allOrders computed property ===")
-        AppLogger.shared.debug("currentRecommendedSellOrders count: \(currentRecommendedSellOrders.count)")
-        AppLogger.shared.debug("currentRecommendedBuyOrders count: \(currentRecommendedBuyOrders.count)")
+        AppLogger.shared.debug("=== getAllOrders called ===")
+        
+        // Get sell orders
+        let sellOrders = getRecommendedSellOrders()
+        AppLogger.shared.debug("Sell orders count: \(sellOrders.count)")
         
         // Add sell orders first
-        for (index, order) in currentRecommendedSellOrders.enumerated() {
+        for (index, order) in sellOrders.enumerated() {
             AppLogger.shared.debug("  Adding SELL order \(index + 1): sharesToSell=\(order.sharesToSell), entry=\(order.entry), target=\(order.target), cancel=\(order.cancel)")
             orders.append(("SELL", order))
         }
         
+        // Get buy orders
+        let buyOrders = getRecommendedBuyOrders()
+        AppLogger.shared.debug("Buy orders count: \(buyOrders.count)")
+        
         // Add buy orders
-        for (index, order) in currentRecommendedBuyOrders.enumerated() {
+        for (index, order) in buyOrders.enumerated() {
             AppLogger.shared.debug("  Adding BUY order \(index + 1): sharesToBuy=\(order.sharesToBuy), targetBuyPrice=\(order.targetBuyPrice), entryPrice=\(order.entryPrice), targetGainPercent=\(order.targetGainPercent)")
             orders.append(("BUY", order))
         }
         
         AppLogger.shared.debug("Total orders created: \(orders.count)")
+        
+        // Cache the result
+        cachedAllOrders = orders
         return orders
     }
     
@@ -229,13 +244,14 @@ struct RecommendedOCOOrdersSection: View {
             
             // Create the buy order
             let formattedDescription = String(
-                format: "BUY %.0f %@ (%.0f%%) Target=%.2f TS=%.1f%% Gain=%.1f%%",
+                format: "BUY %.0f %@ (%.0f%%) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
                 sharesToBuy,
                 symbol,
                 percentage,
                 targetBuyPrice,
                 trailingStopPercent,
-                targetGainPercent
+                targetGainPercent,
+                orderCost
             )
             
             let buyOrder = BuyOrderRecord(
@@ -903,6 +919,7 @@ struct RecommendedOCOOrdersSection: View {
             // Clear cache when symbol changes
             cachedSellOrders.removeAll()
             cachedBuyOrders.removeAll()
+            cachedAllOrders.removeAll()
             lastCalculatedSymbol = ""
             updateRecommendedOrders()
         }
@@ -1090,7 +1107,8 @@ struct RecommendedOCOOrdersSection: View {
     
     private var contentView: some View {
         Group {
-            if allOrders.isEmpty {
+            let orders = getAllOrders()
+            if orders.isEmpty {
                 Text("No recommended OCO orders available")
                     .foregroundColor(.secondary)
                     .padding()
@@ -1134,8 +1152,9 @@ struct RecommendedOCOOrdersSection: View {
     
     private func submitOCOOrders() {
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
+        let orders = getAllOrders()
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected order indices: \(selectedOrderIndices)")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(allOrders.count)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(orders.count)")
         
         guard !selectedOrderIndices.isEmpty else { 
             AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ No orders selected")
@@ -1143,7 +1162,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         let selectedOrders = selectedOrderIndices.compactMap { index in
-            index < allOrders.count ? allOrders[index] : nil
+            index < orders.count ? orders[index] : nil
         }
         
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders count: \(selectedOrders.count)")
@@ -1383,7 +1402,8 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private var orderRows: some View {
-        ForEach(Array(allOrders.enumerated()), id: \.offset) { index, order in
+        let orders = getAllOrders() // Get the cached orders once
+        return ForEach(Array(orders.enumerated()), id: \.offset) { index, order in
             orderRow(index: index, orderType: order.0, order: order.1)
         }
     }
