@@ -25,6 +25,38 @@ For detailed build instructions and iOS compilation fixes, see [`IOS_BUILD_FIXES
 
 ## Features
 
+### Enhanced Sell Order Logic
+
+The application now includes sophisticated sell order logic with multiple order types and proper cost basis calculations:
+
+- **Multiple Sell Order Types**: The system now generates up to four different sell order types:
+  - **Minimum Break-Even**: Sells minimum shares needed to achieve 1% gain at target price
+  - **+0.5ATR**: Additional sell order with trailing stop = min break-even + 0.5 × ATR%
+  - **+1.0ATR**: Additional sell order with trailing stop = min break-even + 1.0 × ATR%
+  - **+1.5ATR**: Additional sell order with trailing stop = min break-even + 1.5 × ATR%
+
+- **Smart Tax Lot Integration**: Additional sell orders iterate through available tax lots to find suitable shares for each order type, ensuring optimal share allocation
+
+- **Accurate Cost Basis Calculation**: All sell orders now use weighted average cost basis across multiple tax lots, providing accurate profit/loss calculations
+
+- **Intelligent Share Allocation**: The system continues through tax lots until all four recommendations are met or until it runs out of tax lots
+
+#### Sell Order Example
+For a position with multiple tax lots:
+- **Min BE Order**: Sells 7 shares with 0.38% trailing stop
+- **+0.5ATR Order**: Sells 12 shares with 1.32% trailing stop (includes shares from multiple tax lots)
+- **+1.0ATR Order**: Sells 10 shares with 2.27% trailing stop (continues through tax lots)
+- **+1.5ATR Order**: May sell additional shares with even higher trailing stops
+
+### Dynamic Section Sizing
+
+The Orders tab now features intelligent space allocation between Current Orders and Recommended OCO Orders sections:
+
+- **Adaptive Layout**: Current Orders section shrinks to minimum height when empty, giving more space to Recommended Orders
+- **Minimum Height Guarantee**: Current Orders maintains minimum height (80 points) to accommodate header and cancel button
+- **Responsive Design**: Uses GeometryReader and preference keys to measure content and allocate space dynamically
+- **Better User Experience**: Reduces scrolling in Recommended Orders section when Current Orders doesn't need much space
+
 ### Enhanced Buy Order Logic
 
 The application now includes sophisticated buy order logic for positions that are below target gain:

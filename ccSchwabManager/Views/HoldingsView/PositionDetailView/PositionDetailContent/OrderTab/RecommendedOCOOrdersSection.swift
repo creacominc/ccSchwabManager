@@ -150,6 +150,9 @@ struct RecommendedOCOOrdersSection: View {
         if let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
             AppLogger.shared.debug("✅ Min break even order created: \(minBreakEvenOrder.description)")
             recommended.append(minBreakEvenOrder)
+            
+            // Calculate additional sell orders by iterating through tax lots
+            calculateAdditionalSellOrdersFromTaxLots(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots, minBreakEvenOrder: minBreakEvenOrder, recommended: &recommended)
         }
         
         AppLogger.shared.debug("=== Final result: \(recommended.count) recommended orders ===")
@@ -748,6 +751,205 @@ struct RecommendedOCOOrdersSection: View {
         )
     }
     
+
+    
+
+    
+    /// Calculate additional sell orders by iterating through tax lots to achieve higher trailing stops
+    private func calculateAdditionalSellOrdersFromTaxLots(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord], minBreakEvenOrder: SalesCalcResultsRecord, recommended: inout [SalesCalcResultsRecord]) {
+        AppLogger.shared.debug("=== calculateAdditionalSellOrdersFromTaxLots ===")
+        
+        // Define the additional trailing stop targets we want to achieve
+        let additionalTrailingStops = [0.5, 1.0, 1.5] // Multipliers of ATR
+        var ordersCreated = 0
+        var cumulativeSharesUsed = minBreakEvenOrder.sharesToSell
+        var currentTaxLotIndex = 0
+        
+        AppLogger.shared.debug("Starting with \(sortedTaxLots.count) tax lots")
+        AppLogger.shared.debug("Min break-even order used \(minBreakEvenOrder.sharesToSell) shares")
+        AppLogger.shared.debug("Shares available for trading: \(sharesAvailableForTrading)")
+        
+        // Try to create each additional order type
+        for atrMultiplier in additionalTrailingStops {
+            guard ordersCreated < 3 else { // We already have the min break-even order, so max 3 additional
+                AppLogger.shared.debug("✅ Maximum number of additional orders reached")
+                break
+            }
+            
+            let targetTrailingStop = minBreakEvenOrder.trailingStop + (atrMultiplier * atrValue)
+            AppLogger.shared.debug("Attempting to create order with trailing stop: \(targetTrailingStop)% (min BE + \(atrMultiplier) * ATR)")
+            
+            // Try to find shares from tax lots to create this order
+            if let additionalOrder = createAdditionalSellOrderFromTaxLots(
+                currentPrice: currentPrice,
+                sortedTaxLots: sortedTaxLots,
+                minBreakEvenOrder: minBreakEvenOrder,
+                targetTrailingStop: targetTrailingStop,
+                atrMultiplier: atrMultiplier,
+                cumulativeSharesUsed: cumulativeSharesUsed,
+                currentTaxLotIndex: &currentTaxLotIndex
+            ) {
+                AppLogger.shared.debug("✅ Additional sell order (+\(atrMultiplier)ATR) created: \(additionalOrder.description)")
+                recommended.append(additionalOrder)
+                cumulativeSharesUsed += additionalOrder.sharesToSell
+                ordersCreated += 1
+            } else {
+                AppLogger.shared.debug("❌ Could not create additional sell order (+\(atrMultiplier)ATR)")
+            }
+        }
+        
+        AppLogger.shared.debug("=== Final result: Created \(ordersCreated) additional sell orders ===")
+    }
+    
+    /// Create an additional sell order by finding shares from available tax lots
+    private func createAdditionalSellOrderFromTaxLots(
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord,
+        targetTrailingStop: Double,
+        atrMultiplier: Double,
+        cumulativeSharesUsed: Double,
+        currentTaxLotIndex: inout Int
+    ) -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("=== createAdditionalSellOrderFromTaxLots ===")
+        AppLogger.shared.debug("Target trailing stop: \(targetTrailingStop)%")
+        AppLogger.shared.debug("ATR multiplier: \(atrMultiplier)")
+        AppLogger.shared.debug("Current tax lot index: \(currentTaxLotIndex)")
+        AppLogger.shared.debug("Cumulative shares used: \(cumulativeSharesUsed)")
+        
+        // Calculate new target price based on the higher trailing stop
+        let newTarget = minBreakEvenOrder.entry / (1.0 + targetTrailingStop / 100.0)
+        AppLogger.shared.debug("New target price: $\(newTarget)")
+        
+        // Iterate through tax lots starting from the current index
+        while currentTaxLotIndex < sortedTaxLots.count {
+            let taxLot = sortedTaxLots[currentTaxLotIndex]
+            AppLogger.shared.debug("Examining tax lot \(currentTaxLotIndex + 1): \(taxLot.quantity) shares at $\(taxLot.costPerShare)")
+            
+            // Check if this tax lot is profitable at the new target price
+            let gainAtTarget = ((newTarget - taxLot.costPerShare) / taxLot.costPerShare) * 100.0
+            AppLogger.shared.debug("Gain at target price: \(gainAtTarget)%")
+            
+            if gainAtTarget > 0 {
+                // This tax lot is profitable, check if we have enough shares available
+                let remainingShares = sharesAvailableForTrading - cumulativeSharesUsed
+                let sharesToUse = min(taxLot.quantity, remainingShares)
+                
+                AppLogger.shared.debug("Tax lot is profitable. Available shares: \(remainingShares), tax lot shares: \(taxLot.quantity), shares to use: \(sharesToUse)")
+                
+                if sharesToUse > 0 {
+                    // Calculate the weighted average cost basis for these shares
+                    // We need to include all higher-cost tax lots that would be used
+                    guard let costBasisResult = calculateCostBasisForShares(
+                        sharesNeeded: sharesToUse,
+                        startingTaxLotIndex: 0, // Start from highest cost tax lots
+                        sortedTaxLots: sortedTaxLots,
+                        cumulativeSharesUsed: cumulativeSharesUsed
+                    ) else {
+                        AppLogger.shared.debug("❌ Could not calculate cost basis for \(sharesToUse) shares")
+                        currentTaxLotIndex += 1
+                        continue
+                    }
+                    
+                    let actualCostPerShare = costBasisResult.actualCostPerShare
+                    
+                    // Validate that new target is above the weighted average cost per share
+                    guard newTarget > actualCostPerShare else {
+                        AppLogger.shared.debug("❌ New target $\(newTarget) is not above weighted avg cost per share $\(actualCostPerShare)")
+                        currentTaxLotIndex += 1
+                        continue
+                    }
+                    
+                    // Calculate exit price (same logic as min break-even)
+                    let exit = max(newTarget * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), actualCostPerShare)
+                    
+                    let totalGain = sharesToUse * (newTarget - actualCostPerShare)
+                    let gain = actualCostPerShare > 0 ? ((newTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+                    
+                    let formattedDescription = String(format: "(+%.1fATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                                                      atrMultiplier, sharesToUse, symbol, newTarget, targetTrailingStop, actualCostPerShare)
+                    AppLogger.shared.debug("✅ Created additional sell order: \(formattedDescription)")
+                    
+                    // Move to next tax lot for future orders
+                    currentTaxLotIndex += 1
+                    
+                    return SalesCalcResultsRecord(
+                        shares: sharesToUse,
+                        rollingGainLoss: totalGain,
+                        breakEven: actualCostPerShare,
+                        gain: gain,
+                        sharesToSell: sharesToUse,
+                        trailingStop: targetTrailingStop,
+                        entry: minBreakEvenOrder.entry,
+                        target: newTarget,
+                        cancel: exit,
+                        description: formattedDescription,
+                        openDate: "Add\(Int(atrMultiplier * 10))ATR"
+                    )
+                }
+            } else {
+                AppLogger.shared.debug("Tax lot is not profitable at target price")
+            }
+            
+            // Move to next tax lot
+            currentTaxLotIndex += 1
+        }
+        
+        AppLogger.shared.debug("❌ No suitable tax lots found for additional sell order")
+        return nil
+    }
+    
+    /// Calculate the weighted average cost basis for a given number of shares
+    /// This function properly accounts for shares from multiple tax lots
+    private func calculateCostBasisForShares(
+        sharesNeeded: Double,
+        startingTaxLotIndex: Int,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        cumulativeSharesUsed: Double
+    ) -> (actualCostPerShare: Double, sharesUsed: Double)? {
+        
+        AppLogger.shared.debug("=== calculateCostBasisForShares ===")
+        AppLogger.shared.debug("Shares needed: \(sharesNeeded)")
+        AppLogger.shared.debug("Starting tax lot index: \(startingTaxLotIndex)")
+        AppLogger.shared.debug("Cumulative shares used: \(cumulativeSharesUsed)")
+        
+        var cumulativeShares: Double = 0
+        var cumulativeCost: Double = 0
+        var sharesRemaining = sharesNeeded
+        
+        // Start from the highest cost tax lots (index 0) and work down
+        for taxLotIndex in startingTaxLotIndex..<sortedTaxLots.count {
+            let taxLot = sortedTaxLots[taxLotIndex]
+            AppLogger.shared.debug("Examining tax lot \(taxLotIndex + 1): \(taxLot.quantity) shares at $\(taxLot.costPerShare)")
+            
+            // Calculate how many shares are available from this tax lot
+            let sharesAvailableFromLot = taxLot.quantity
+            let sharesToUseFromLot = min(sharesAvailableFromLot, sharesRemaining)
+            
+            if sharesToUseFromLot > 0 {
+                let costFromLot = sharesToUseFromLot * taxLot.costPerShare
+                
+                cumulativeShares += sharesToUseFromLot
+                cumulativeCost += costFromLot
+                let avgCost = cumulativeCost / cumulativeShares
+                
+                AppLogger.shared.debug("  Using \(sharesToUseFromLot) shares from this lot")
+                AppLogger.shared.debug("  Cumulative: \(cumulativeShares) shares, avg cost: $\(avgCost)")
+                
+                sharesRemaining -= sharesToUseFromLot
+                
+                if sharesRemaining <= 0 {
+                    // We have enough shares
+                    AppLogger.shared.debug("✅ Found enough shares: \(cumulativeShares) shares with avg cost $\(avgCost)")
+                    return (actualCostPerShare: avgCost, sharesUsed: cumulativeShares)
+                }
+            }
+        }
+        
+        AppLogger.shared.debug("❌ Not enough shares available")
+        return nil
+    }
     
     // OLD CODE - REMOVED: calculateBuyOrder function replaced with new logic
     

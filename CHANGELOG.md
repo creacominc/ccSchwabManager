@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Enhanced sell order logic with multiple order types and proper cost basis calculations
+  - Added four different sell order types: Minimum Break-Even, +0.5ATR, +1.0ATR, and +1.5ATR
+  - Implemented smart tax lot integration that iterates through available tax lots for optimal share allocation
+  - Added accurate cost basis calculation using weighted average across multiple tax lots
+  - Enhanced system to continue through tax lots until all four recommendations are met or until it runs out of tax lots
+  - Fixed cost basis calculation to properly include shares from higher-cost tax lots (e.g., 4 shares from first tax lot + 8 shares from second tax lot)
+  - Added helper function `calculateCostBasisForShares` to properly calculate weighted average cost basis across multiple tax lots
+  - Updated additional sell order logic to use proper cost basis calculation instead of single tax lot cost
+- **NEW**: Dynamic section sizing for Orders tab with intelligent space allocation
+  - Implemented adaptive layout where Current Orders section shrinks to minimum height when empty
+  - Added minimum height guarantee (80 points) for Current Orders to accommodate header and cancel button
+  - Used GeometryReader and preference keys to measure content and allocate space dynamically
+  - Enhanced user experience by reducing scrolling in Recommended Orders section when Current Orders doesn't need much space
+  - Added preference keys (`CurrentOrdersHeightKey` and `RecommendedOrdersHeightKey`) to track section heights
+  - Implemented responsive design that adapts automatically as content changes
 - **NEW**: Performance optimizations for recommended orders interface
   - Implemented order calculation caching to prevent unnecessary recomputation when selecting checkboxes
   - Added state management to cache calculated orders and only update when underlying data changes
