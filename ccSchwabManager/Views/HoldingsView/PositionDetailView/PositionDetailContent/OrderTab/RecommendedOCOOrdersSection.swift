@@ -230,7 +230,7 @@ struct RecommendedOCOOrdersSection: View {
             )
             
             guard let targetBuyPrice = targetPrice else {
-                AppLogger.shared.debug("❌ Could not calculate target price for \(sharesToBuy) shares")
+                AppLogger.shared.error("❌ Could not calculate target price for \(sharesToBuy) shares")
                 continue
             }
             
@@ -607,7 +607,7 @@ struct RecommendedOCOOrdersSection: View {
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots
         ) else {
-            AppLogger.shared.debug("❌ Min ATR order: Could not achieve 5% profit on remaining position")
+            AppLogger.shared.warning("❌ Min ATR order: Could not achieve 5% profit on remaining position")
             return nil
         }
         
@@ -724,7 +724,7 @@ struct RecommendedOCOOrdersSection: View {
                 targetPrice: target,
                 sortedTaxLots: sortedTaxLots
             ) else {
-                AppLogger.shared.debug("❌ Min Break Even order: Could not achieve 1% gain at target price")
+                AppLogger.shared.warning("❌ Min Break Even order: Could not achieve 1% gain at target price")
                 return nil
             }
             
@@ -839,7 +839,7 @@ struct RecommendedOCOOrdersSection: View {
                 cumulativeSharesUsed += additionalOrder.sharesToSell
                 ordersCreated += 1
             } else {
-                AppLogger.shared.debug("❌ Could not create additional sell order (+\(atrMultiplier)ATR)")
+                AppLogger.shared.error("❌ Could not create additional sell order (+\(atrMultiplier)ATR)")
             }
         }
         
@@ -887,7 +887,7 @@ struct RecommendedOCOOrdersSection: View {
                 sortedTaxLots: sortedTaxLots,
                 cumulativeSharesUsed: cumulativeSharesUsed
             ) else {
-                AppLogger.shared.debug("❌ Could not calculate cost basis for \(sharesToTry) shares")
+                AppLogger.shared.error("❌ Could not calculate cost basis for \(sharesToTry) shares")
                 continue
             }
             
@@ -1431,7 +1431,7 @@ struct RecommendedOCOOrdersSection: View {
         
         // Get account number from the position
         guard let accountNumberInt = getAccountNumber() else {
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Could not get account number for position")
+            AppLogger.shared.error("🔄 [OCO-SUBMIT] ❌ Could not get account number for position")
             return
         }
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] Account number: \(accountNumberInt)")
@@ -1446,7 +1446,7 @@ struct RecommendedOCOOrdersSection: View {
             selectedOrders: selectedOrders,
             releaseTime: "" // No release time for simplified orders
         ) else {
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Failed to create order")
+            AppLogger.shared.error("🔄 [OCO-SUBMIT] ❌ Failed to create order")
             return
         }
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] ✅ Order created successfully")
@@ -1468,7 +1468,7 @@ struct RecommendedOCOOrdersSection: View {
             AppLogger.shared.debug("🔄 [OCO-SUBMIT] JSON preview : \(String(orderJson))")
         } catch {
             orderJson = "Error encoding order: \(error)"
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
+            AppLogger.shared.error("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
         }
         
         // Store the order and show confirmation dialog
@@ -1499,7 +1499,7 @@ struct RecommendedOCOOrdersSection: View {
                             AppLogger.shared.debug("  ✅ Using full account number: \(fullAccountNumber)")
                             return accountNumberInt
                         } else {
-                            AppLogger.shared.debug("  ❌ Could not convert account number to Int64")
+                            AppLogger.shared.error("  ❌ Could not convert account number to Int64")
                         }
                     }
                 }
@@ -1507,7 +1507,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         // Fallback to the truncated version if full account number not found
-        AppLogger.shared.debug("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
+        AppLogger.shared.error("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
         return Int64(accountNumber)
     }
     
@@ -1877,7 +1877,7 @@ struct RecommendedOCOOrdersSection: View {
             }
         }
         
-        AppLogger.shared.debug("❌ Could not achieve target gain of \(targetGainPercent)%")
+        AppLogger.shared.error("❌ Could not achieve target gain of \(targetGainPercent)%")
         return nil
     }
     

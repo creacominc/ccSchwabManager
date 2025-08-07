@@ -26,7 +26,7 @@ func extractStrike(from symbol: String?) -> Double? {
                 return strike
             }
             else {
-                AppLogger.shared.warning("🔍 extractStrike: failed to convert \(strikeString)  for symbol: \(symbol)")
+                AppLogger.shared.error("🔍 extractStrike: failed to convert \(strikeString)  for symbol: \(symbol)")
             }
         }
     }
@@ -310,7 +310,7 @@ class SchwabClient
         // Parse the transaction date to match with tax lots
         guard let tradeDate = transaction.tradeDate,
               let date = ISO8601DateFormatter().date(from: tradeDate) else {
-            AppLogger.shared.debug("  --- Could not parse transaction date")
+            AppLogger.shared.error("  --- Could not parse transaction date")
             return originalPrice
         }
         
@@ -391,7 +391,7 @@ class SchwabClient
         }
         else
         {
-            AppLogger.shared.debug( "Failed to save secrets." )
+            AppLogger.shared.error( "Failed to save secrets." )
             completion(.failure(ErrorCodes.failedToSaveSecrets))
         }
     }
@@ -407,15 +407,15 @@ class SchwabClient
         //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to TRUE")
         loadingDelegate?.setLoading(true)
         
-        let url = URL( string: "\(accessTokenWeb)" )!
+        let url: URL = URL( string: "\(accessTokenWeb)" )!
         //AppLogger.shared.debug( "accessTokenUrl: \(url)" )
-        var accessTokenRequest = URLRequest( url: url )
+        var accessTokenRequest: URLRequest = URLRequest( url: url )
         // set a 10 second timeout on this request
         accessTokenRequest.timeoutInterval = self.requestTimeout
         accessTokenRequest.httpMethod = "POST"
         // headers
-        let authStringUnencoded = String("\( self.m_secrets.appId ):\( self.m_secrets.appSecret )")
-        let authStringEncoded = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
+        let authStringUnencoded: String = String("\( self.m_secrets.appId ):\( self.m_secrets.appSecret )")
+        let authStringEncoded: String = authStringUnencoded.data(using: .utf8)!.base64EncodedString()
         
         accessTokenRequest.setValue( "Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization" )
         accessTokenRequest.setValue( "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type" )
@@ -423,7 +423,7 @@ class SchwabClient
         accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.code )&redirect_uri=\( self.m_secrets.redirectUrl )").data(using: .utf8)!
         AppLogger.shared.debug( "Posting access token request:  \(accessTokenRequest)" )
         
-        let semaphore = DispatchSemaphore(value: 0)
+        let semaphore: DispatchSemaphore = DispatchSemaphore(value: 0)
         var result: Result<Void, ErrorCodes> = .failure(.notAuthenticated)
         
         URLSession.shared.dataTask(with: accessTokenRequest)
@@ -439,7 +439,7 @@ class SchwabClient
             guard let data = data, ( (error == nil) && ( response != nil ) )
             else
             {
-                AppLogger.shared.debug( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
+                AppLogger.shared.error( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
                 result = .failure(ErrorCodes.notAuthenticated)
                 return
             }
@@ -453,7 +453,7 @@ class SchwabClient
                     self?.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
                     if( !KeychainManager.saveSecrets(secrets: &self!.m_secrets) )
                     {
-                        AppLogger.shared.debug( "Failed to save secrets with access and refresh tokens." )
+                        AppLogger.shared.error( "Failed to save secrets with access and refresh tokens." )
                         result = .failure(ErrorCodes.failedToSaveSecrets)
                         return
                     }
@@ -461,13 +461,13 @@ class SchwabClient
                 }
                 else
                 {
-                    AppLogger.shared.debug( "Failed to parse token response" )
+                    AppLogger.shared.error( "Failed to parse token response" )
                     result = .failure(ErrorCodes.notAuthenticated)
                 }
             }
             else
             {
-                AppLogger.shared.debug( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
+                AppLogger.shared.error( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
                 result = .failure(ErrorCodes.notAuthenticated)
             }
         }.resume()
@@ -475,7 +475,7 @@ class SchwabClient
         // Wait for completion with timeout to prevent deadlock
         let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
         if timeoutResult == .timedOut {
-            AppLogger.shared.debug("getAccessToken timed out")
+            AppLogger.shared.error("getAccessToken timed out")
             result = .failure(ErrorCodes.notAuthenticated)
         }
         
@@ -524,7 +524,7 @@ class SchwabClient
                 case .success:
                     AppLogger.shared.debug(" refreshAccessToken - Successfully got access token")
                 case .failure(let error):
-                    AppLogger.shared.debug(" refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
+                    AppLogger.shared.error(" refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
                     // resetting code
                     self.m_secrets.code = ""
                 }
@@ -542,7 +542,7 @@ class SchwabClient
 
         // Access Token Refresh Request
         guard let url = URL(string: "\(accessTokenWeb)") else {
-            AppLogger.shared.debug("Invalid URL for refreshing access token")
+            AppLogger.shared.error("Invalid URL for refreshing access token")
             return
         }
 
@@ -572,18 +572,18 @@ class SchwabClient
             }
             
             guard let self = self else {
-                AppLogger.shared.debug("SchwabClient deallocated during token refresh")
+                AppLogger.shared.error("SchwabClient deallocated during token refresh")
                 return
             }
             
             do {
                 if let error = error {
-                    AppLogger.shared.debug("Network error during token refresh: \(error.localizedDescription)")
+                    AppLogger.shared.error("Network error during token refresh: \(error.localizedDescription)")
                     return
                 }
                 
                 guard let data = data else {
-                    AppLogger.shared.debug("No data received during token refresh")
+                    AppLogger.shared.error("No data received during token refresh")
                     return
                 }
                 
@@ -597,13 +597,13 @@ class SchwabClient
                             if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
                                 AppLogger.shared.debug("Successfully refreshed and saved access token.")
                             } else {
-                                AppLogger.shared.debug("Failed to save refreshed tokens.")
+                                AppLogger.shared.error("Failed to save refreshed tokens.")
                             }
                         } else {
-                            AppLogger.shared.debug("Failed to parse token response.")
+                            AppLogger.shared.error("Failed to parse token response.")
                         }
                     } else {
-                        AppLogger.shared.debug("Token refresh failed with status code: \(httpResponse.statusCode)")
+                        AppLogger.shared.error("Token refresh failed with status code: \(httpResponse.statusCode)")
                         if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                             serviceError.printErrors(prefix: "refreshAccessToken ")
                         }
@@ -615,7 +615,7 @@ class SchwabClient
         // Wait for completion with timeout to prevent deadlock
         let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
         if timeoutResult == .timedOut {
-            AppLogger.shared.debug("Token refresh timed out")
+            AppLogger.shared.error("Token refresh timed out")
         }
     }
     
@@ -714,7 +714,7 @@ class SchwabClient
             let httpResponse = response as! HTTPURLResponse
             if( httpResponse.statusCode != 200 )
             {
-                AppLogger.shared.debug( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode).  Error: \(httpResponse.description)" )
+                AppLogger.shared.error( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode).  Error: \(httpResponse.description)" )
                 return
             }
             // AppLogger.shared.debug( "response: \(response)" )
@@ -735,15 +735,15 @@ class SchwabClient
                     }
                     else
                     {
-                        AppLogger.shared.debug("Error saving account numbers")
+                        AppLogger.shared.error("Error saving account numbers")
                     }
                 }
             } else {
                 AppLogger.shared.debug("No account numbers returned")
             }
         } catch {
-            AppLogger.shared.debug("fetchAccountNumbers Error: \(error.localizedDescription)")
-            AppLogger.shared.debug("   detail:  \(error)")
+            AppLogger.shared.error("fetchAccountNumbers Error: \(error.localizedDescription)")
+            AppLogger.shared.error("   detail:  \(error)")
         }
     }
     
@@ -790,21 +790,21 @@ class SchwabClient
             
             if httpResponse.statusCode != 200 {
                 // decode data as a ServiceError
-                AppLogger.shared.debug( "fetchAccounts: decoding json as ServiceError" )
+                AppLogger.shared.warning( "fetchAccounts: decoding json as ServiceError" )
                 let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
                 serviceError.printErrors(prefix: "fetchAccounts ")
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
                 if httpResponse.statusCode == 401 && retry {
-                    AppLogger.shared.debug( "=== retrying fetchAccounts after refreshing access token ===" )
+                    AppLogger.shared.warning( "=== retrying fetchAccounts after refreshing access token ===" )
                     refreshAccessToken()
                     // Add a small delay to prevent rapid retries
                     try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                     await fetchAccounts(retry: false)
                 } else {
                     // Log the error for debugging
-                    AppLogger.shared.debug("fetchAccounts failed with status code: \(httpResponse.statusCode)")
+                    AppLogger.shared.error("fetchAccounts failed with status code: \(httpResponse.statusCode)")
                     if let errorData = String(data: data, encoding: .utf8) {
-                        AppLogger.shared.debug("Error response: \(errorData)")
+                        AppLogger.shared.error("Error response: \(errorData)")
                     }
                 }
                 return
@@ -860,8 +860,8 @@ class SchwabClient
         }
         catch
         {
-            AppLogger.shared.debug("fetchAccounts Error: \(error.localizedDescription)")
-            AppLogger.shared.debug("   detail:  \(error)")
+            AppLogger.shared.error("fetchAccounts Error: \(error.localizedDescription)")
+            AppLogger.shared.error("   detail:  \(error)")
             return
         }
     }
@@ -943,7 +943,7 @@ class SchwabClient
         semaphore.wait()
         
         if let error = responseError {
-            AppLogger.shared.debug("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
+            AppLogger.shared.error("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
             return nil
         }
         
@@ -953,10 +953,10 @@ class SchwabClient
         }
         
         if httpResponse?.statusCode != 200 {
-            AppLogger.shared.debug("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(httpResponse?.statusCode ?? -1)")
+            AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(httpResponse?.statusCode ?? -1)")
             // Try to decode error response for debugging
             if let errorString = String(data: data, encoding: .utf8) {
-                AppLogger.shared.debug("fetchPriceHistory - Error response for \(symbol): \(errorString)")
+                AppLogger.shared.error("fetchPriceHistory - Error response for \(symbol): \(errorString)")
             }
             return nil
         }
@@ -967,7 +967,7 @@ class SchwabClient
             
             // Validate the returned data
             guard let candleList = m_lastFilteredPriceHistory else {
-                AppLogger.shared.debug("fetchPriceHistory - Failed to decode CandleList for \(symbol)")
+                AppLogger.shared.error("fetchPriceHistory - Failed to decode CandleList for \(symbol)")
                 return nil
             }
             
@@ -982,13 +982,13 @@ class SchwabClient
             AppLogger.shared.debug("fetchPriceHistory - Fetched \(candleList.candles.count) total candles, \(validCandles.count) valid candles for \(symbol)")
             
             if validCandles.count < 2 {
-                AppLogger.shared.debug("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
+                AppLogger.shared.warning("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
             }
             
             return m_lastFilteredPriceHistory
         } catch {
-            AppLogger.shared.debug("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
-            AppLogger.shared.debug("   detail:  \(error)")
+            AppLogger.shared.error("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
+            AppLogger.shared.error("   detail:  \(error)")
             return nil
         }
     }
@@ -1028,7 +1028,7 @@ class SchwabClient
         semaphore.wait()
         
         if let error = responseError {
-            AppLogger.shared.debug("fetchQuote - Error: \(error.localizedDescription)")
+            AppLogger.shared.error("fetchQuote - Error: \(error.localizedDescription)")
             return nil
         }
         
@@ -1038,7 +1038,7 @@ class SchwabClient
         }
         
         if httpResponse?.statusCode != 200 {
-            AppLogger.shared.debug("fetchQuote - Failed to fetch quote. code = \(httpResponse?.statusCode ?? -1)")
+            AppLogger.shared.error("fetchQuote - Failed to fetch quote. code = \(httpResponse?.statusCode ?? -1)")
             return nil
         }
         
@@ -1073,8 +1073,8 @@ class SchwabClient
             
             return quoteData
         } catch {
-            AppLogger.shared.debug("fetchQuote - Error: \(error.localizedDescription)")
-            AppLogger.shared.debug("   detail: \(error)")
+            AppLogger.shared.error("fetchQuote - Error: \(error.localizedDescription)")
+            AppLogger.shared.error("   detail: \(error)")
             return nil
         }
     }
@@ -1107,7 +1107,7 @@ class SchwabClient
         }
 
         guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
-            AppLogger.shared.debug("computeATR Failed to fetch price history for \(symbol).")
+            AppLogger.shared.error("computeATR Failed to fetch price history for \(symbol).")
             // Don't set the symbol if we failed to get data
             return 0.0
         }
@@ -1427,8 +1427,8 @@ class SchwabClient
 
                             return transactions
                         } catch {
-                            AppLogger.shared.debug("fetchTransactionHistory Error: \(error.localizedDescription)")
-                            AppLogger.shared.debug("   detail:  \(error)")
+                            AppLogger.shared.error("fetchTransactionHistory Error: \(error.localizedDescription)")
+                            AppLogger.shared.error("   detail:  \(error)")
                             return nil
                         }
                     } // group.addTask
@@ -1589,7 +1589,7 @@ class SchwabClient
                         // AppLogger.shared.debug( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
                     }
                     catch {
-                        AppLogger.shared.debug( "Error parsing date: \(error)" )
+                        AppLogger.shared.error( "Error parsing date: \(error)" )
                         continue
                     }
                     // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
@@ -2018,12 +2018,12 @@ class SchwabClient
                                 errorMessage = "HTTP \(httpResponse.statusCode): Unknown error"
                             }
                             
-                            AppLogger.shared.warning("❌ Failed to cancel order \(orderId): \(errorMessage)")
+                            AppLogger.shared.error("❌ Failed to cancel order \(orderId): \(errorMessage)")
                             return (orderId: orderId, success: false, errorMessage: errorMessage)
                         }
                     } catch {
                         let errorMessage = "Network error: \(error.localizedDescription)"
-                        AppLogger.shared.warning("❌ Error cancelling order \(orderId): \(errorMessage)")
+                        AppLogger.shared.error("❌ Error cancelling order \(orderId): \(errorMessage)")
                         return (orderId: orderId, success: false, errorMessage: errorMessage)
                     }
                 }
@@ -2057,7 +2057,7 @@ class SchwabClient
             AppLogger.shared.warning("📊 Final Results:")
             AppLogger.shared.warning("  🎯 Total orders requested: \(orderIds.count)")
             AppLogger.shared.warning("  ✅ Successfully cancelled: \(orderIds.count)")
-            AppLogger.shared.warning("  ❌ Failed to cancel: 0")
+            AppLogger.shared.error("  ❌ Failed to cancel: 0")
             return (success: true, errorMessage: nil)
         } else {
             // Some orders failed to cancel
@@ -2066,7 +2066,7 @@ class SchwabClient
             AppLogger.shared.warning("📊 Final Results:")
             AppLogger.shared.warning("  🎯 Total orders requested: \(orderIds.count)")
             AppLogger.shared.warning("  ✅ Successfully cancelled: \(orderIds.count - failedOrders.count)")
-            AppLogger.shared.warning("  ❌ Failed to cancel: \(failedOrders.count)")
+            AppLogger.shared.error("  ❌ Failed to cancel: \(failedOrders.count)")
             AppLogger.shared.warning("  📝 Error details: \(errorMessage)")
             return (success: false, errorMessage: errorMessage)
         }
@@ -2473,7 +2473,7 @@ class SchwabClient
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                                   strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
-                        AppLogger.shared.debug( " -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
+                        AppLogger.shared.error( " -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
                         continue
                     }
                     
@@ -3065,7 +3065,7 @@ class SchwabClient
                 AppLogger.shared.debug("✅ Created single order directly")
                 return singleOrder
             } else {
-                AppLogger.shared.warning("❌ Failed to create single order")
+                AppLogger.shared.error("❌ Failed to create single order")
                 return nil
             }
         }
@@ -3088,7 +3088,7 @@ class SchwabClient
                 childOrderStrategies.append(childOrder)
                 AppLogger.shared.debug("✅ Created simplified child order \(index + 1): \(orderType)")
             } else {
-                AppLogger.shared.warning("❌ Failed to create simplified child order \(index + 1): \(orderType)")
+                AppLogger.shared.error("❌ Failed to create simplified child order \(index + 1): \(orderType)")
             }
         }
         

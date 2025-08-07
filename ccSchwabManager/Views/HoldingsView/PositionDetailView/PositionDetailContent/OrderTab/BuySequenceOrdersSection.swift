@@ -454,7 +454,7 @@ struct BuySequenceOrdersSection: View {
         
         // Get account number from the position
         guard let accountNumberInt = getAccountNumber() else {
-            AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] ❌ Could not get account number for position")
+            AppLogger.shared.error("🔄 [SEQUENCE-SUBMIT] ❌ Could not get account number for position")
             return
         }
         AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] Account number: \(accountNumberInt)")
@@ -465,7 +465,7 @@ struct BuySequenceOrdersSection: View {
             accountNumber: accountNumberInt,
             selectedOrders: selectedOrders
         ) else {
-            AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] ❌ Failed to create sequence order")
+            AppLogger.shared.error("🔄 [SEQUENCE-SUBMIT] ❌ Failed to create sequence order")
             return
         }
         AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] ✅ Sequence order created successfully")
@@ -490,7 +490,7 @@ struct BuySequenceOrdersSection: View {
             AppLogger.shared.debug(orderJson)
         } catch {
             orderJson = "Error encoding order: \(error)"
-            AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] ❌ JSON encoding error: \(error)")
+            AppLogger.shared.error("🔄 [SEQUENCE-SUBMIT] ❌ JSON encoding error: \(error)")
         }
         
         // Store the order and show confirmation dialog
@@ -532,7 +532,7 @@ struct BuySequenceOrdersSection: View {
                             AppLogger.shared.debug("  ✅ Using full account number: \(fullAccountNumber)")
                             return accountNumberInt
                         } else {
-                            AppLogger.shared.debug("  ❌ Could not convert account number to Int64")
+                            AppLogger.shared.error("  ❌ Could not convert account number to Int64")
                         }
                     }
                 }
@@ -540,7 +540,7 @@ struct BuySequenceOrdersSection: View {
         }
         
         // Fallback to the truncated version if full account number not found
-        AppLogger.shared.debug("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
+        AppLogger.shared.error("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
         return Int64(accountNumber)
     }
     
