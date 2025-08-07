@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Buy Sequence Orders for strategic position building
+  - Implemented nested order structure where each order includes the next as a child
+  - Added dynamic trailing stop calculation based on distance to minimum strike price:
+    - Standard 5% trailing stop when minimum strike is ≤25% above current price
+    - Conservative trailing stop (1/4 of percent difference less 4%) when minimum strike is >25% above current price
+  - Added smart order filtering to only create orders with entry prices above current market price
+  - Implemented maximum cost control ($1400 per order) and share limits (25 shares per order)
+  - Added 6% price intervals between orders for systematic position building
+  - Integrated minimum strike price from existing contracts as the highest target price
+  - Added "Select All" button for easy order selection
+  - Implemented proper nested order submission with TRIGGER and SINGLE order types
+  - Added comprehensive logging and JSON preview for order verification
+  - Enhanced UI with confirmation dialog showing order details and complete JSON
+  - Fixed order sequence to ensure lowest-priced order is the outermost trigger
+  - Removed debug messages from confirmation dialog for clean user experience
 - **NEW**: Enhanced sell order logic with multiple order types and proper cost basis calculations
   - Added four different sell order types: Minimum Break-Even, +0.5ATR, +1.0ATR, and +1.5ATR
   - Implemented smart tax lot integration that iterates through available tax lots for optimal share allocation

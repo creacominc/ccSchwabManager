@@ -90,6 +90,33 @@ The system will:
 - Set trailing stop to 33.31% (target vs current price)
 - Round all values to the penny for precise execution
 
+### Buy Sequence Orders
+
+The application now supports sophisticated Buy Sequence Orders for strategic position building:
+
+- **Nested Order Structure**: Each order in the sequence includes the next order as a child, creating a chain where the lowest-priced order is the outermost trigger
+- **Dynamic Trailing Stop Calculation**: Trailing stop percentage adapts based on distance to minimum strike price:
+  - **Standard**: 5% trailing stop when minimum strike is ≤25% above current price
+  - **Conservative**: 1/4 of percent difference (less 4%) when minimum strike is >25% above current price
+- **Smart Order Filtering**: Orders are only created if their entry price is above the current market price
+- **Maximum Cost Control**: Each order is limited to $1400 maximum cost or 25 shares, whichever is smaller
+- **6% Price Intervals**: Each subsequent order targets a price 6% below the previous order's target
+- **Minimum Strike Integration**: The highest-priced order targets the minimum strike price of existing contracts for the underlying symbol
+
+#### Buy Sequence Example
+For a position with:
+- Current price: $22.73
+- Minimum strike: $25.00 (from existing call contracts)
+- ATR: 2.5%
+
+The system creates:
+- **Order 3**: Target = $25.00 (minimum strike)
+- **Order 2**: Target = $23.50 (25 × 0.94)
+- **Order 1**: Target = $22.09 (23.50 × 0.94) - not entered (below current price)
+- **Order 0**: Target = $20.76 (22.09 × 0.94) - not entered (below current price)
+
+Only orders 3 and 2 would be entered since their entry prices are above the current market price.
+
 ### Real-Time Price Synchronization
 
 The application now ensures consistent real-time pricing across all displays:

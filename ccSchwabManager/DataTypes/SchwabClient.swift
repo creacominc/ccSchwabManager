@@ -1848,7 +1848,7 @@ class SchwabClient
         for (index, order) in m_orderList.enumerated() {
             // AppLogger.shared.debug("🔍 Processing order \(index + 1)/\(m_orderList.count): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), Strategy=\(order.orderStrategyType?.rawValue ?? "nil")")
             
-            if let activeStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
+            if let activeStatus: ActiveOrderStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
                 // AppLogger.shared.debug("  ✅ Order has active status: \(activeStatus.shortDisplayName)")
 
                 if( ( order.orderStrategyType == .SINGLE )
@@ -3107,6 +3107,157 @@ class SchwabClient
         
         AppLogger.shared.debug("✅ Created simplified OCO order with \(childOrderStrategies.count) child orders")
         return ocoOrder
+    }
+    
+    /**
+     * Create a sequence order with nested child orders (each order contains the next as a child)
+     */
+    public func createSequenceOrder(
+        symbol: String,
+        accountNumber: Int64,
+        selectedOrders: [BuySequenceOrder]
+    ) -> Order? {
+        AppLogger.shared.debug("=== createSequenceOrder ===")
+        AppLogger.shared.debug("Symbol: \(symbol)")
+        AppLogger.shared.debug("Account Number: \(accountNumber)")
+        AppLogger.shared.debug("Selected Orders Count: \(selectedOrders.count)")
+        
+        guard !selectedOrders.isEmpty else {
+            AppLogger.shared.warning("❌ No sequence orders provided")
+            return nil
+        }
+        
+        // Sort orders by order index to ensure proper sequence (lowest price first)
+        let sortedOrders = selectedOrders.sorted { $0.orderIndex < $1.orderIndex }
+        
+        // Create nested structure: each order contains the next as a child
+        // Start with the lowest-priced order (first in sequence) and work forwards
+        var currentOrder: Order? = nil
+        
+        for (index, sequenceOrder) in sortedOrders.enumerated() {
+            if let childOrder = createSequenceChildOrder(
+                symbol: symbol,
+                accountNumber: accountNumber,
+                sequenceOrder: sequenceOrder,
+                legId: index + 1,
+                childOrder: currentOrder
+            ) {
+                currentOrder = childOrder
+                AppLogger.shared.debug("✅ Created nested sequence order \(index + 1): shares=\(sequenceOrder.shares), target=\(sequenceOrder.targetPrice)")
+            } else {
+                AppLogger.shared.warning("❌ Failed to create sequence order \(index + 1)")
+                return nil
+            }
+        }
+        
+        guard let finalOrder = currentOrder else {
+            AppLogger.shared.warning("❌ No valid sequence order created")
+            return nil
+        }
+        
+        AppLogger.shared.debug("✅ Created nested sequence order structure")
+        return finalOrder
+    }
+    
+    /**
+     * Create a sequence child order with optional nested child order
+     */
+    private func createSequenceChildOrder(
+        symbol: String,
+        accountNumber: Int64,
+        sequenceOrder: BuySequenceOrder,
+        legId: Int,
+        childOrder: Order? = nil
+    ) -> Order? {
+        
+        // Create the instrument
+        let instrument = AccountsInstrument(
+            assetType: .EQUITY,
+            symbol: symbol
+        )
+        
+        AppLogger.shared.debug("=== createSequenceChildOrder: Creating sequence BUY order:")
+        AppLogger.shared.debug("  Shares: \(sequenceOrder.shares)")
+        AppLogger.shared.debug("  Target: \(sequenceOrder.targetPrice)")
+        AppLogger.shared.debug("  Entry: \(sequenceOrder.entryPrice)")
+        AppLogger.shared.debug("  Trailing Stop: \(sequenceOrder.trailingStop)%")
+        
+        // Create the order leg collection for BUY
+        let orderLeg = OrderLegCollection(
+            orderLegType: .EQUITY,
+            legId: Int64(legId),
+            instrument: instrument,
+            instruction: .BUY,
+            quantity: sequenceOrder.shares
+        )
+        
+        // Round prices and percentages to the penny (2 decimal places)
+        let roundedTargetPrice = round(sequenceOrder.targetPrice * 100) / 100
+        let roundedTrailingStopPercent = round(sequenceOrder.trailingStop * 100) / 100
+        
+        AppLogger.shared.debug("  📊 Rounded Values:")
+        AppLogger.shared.debug("    Rounded Target Price: \(roundedTargetPrice)")
+        AppLogger.shared.debug("    Rounded Trailing Stop %: \(roundedTrailingStopPercent)")
+        
+        // Create sequence BUY order
+        AppLogger.shared.debug("  🏗️ Creating Order with parameters:")
+        AppLogger.shared.debug("    session: .NORMAL")
+        AppLogger.shared.debug("    duration: .GOOD_TILL_CANCEL")
+        AppLogger.shared.debug("    orderType: .TRAILING_STOP_LIMIT")
+        AppLogger.shared.debug("    complexOrderStrategyType: .NONE")
+        AppLogger.shared.debug("    quantity: \(sequenceOrder.shares)")
+        AppLogger.shared.debug("    destinationLinkName: AutoRoute")
+        AppLogger.shared.debug("    stopPriceLinkBasis: .BID")
+        AppLogger.shared.debug("    stopPriceLinkType: .PERCENT")
+        AppLogger.shared.debug("    stopPriceOffset: \(roundedTrailingStopPercent)")
+        AppLogger.shared.debug("    stopType: .BID")
+        AppLogger.shared.debug("    priceLinkBasis: .MANUAL")
+        AppLogger.shared.debug("    price: \(roundedTargetPrice)")
+        AppLogger.shared.debug("    orderLegCollection: [orderLeg]")
+        AppLogger.shared.debug("    orderStrategyType: .SINGLE")
+        AppLogger.shared.debug("    cancelable: true")
+        AppLogger.shared.debug("    editable: false")
+        AppLogger.shared.debug("    accountNumber: \(accountNumber)")
+        
+        // Determine order strategy type and child orders
+        let orderStrategyType: OrderStrategyType
+        let childOrderStrategies: [Order]?
+        
+        if let childOrder = childOrder {
+            // This order has a child, so it's a TRIGGER order
+            orderStrategyType = .TRIGGER
+            childOrderStrategies = [childOrder]
+            AppLogger.shared.debug("  🔗 Creating TRIGGER order with child order")
+        } else {
+            // This is the final order (highest price), so it's a SINGLE order
+            orderStrategyType = .SINGLE
+            childOrderStrategies = nil
+            AppLogger.shared.debug("  🎯 Creating SINGLE order (final in sequence)")
+        }
+        
+        let childOrder = Order(
+            session: .NORMAL,
+            duration: .GOOD_TILL_CANCEL,
+            orderType: .TRAILING_STOP_LIMIT,
+            complexOrderStrategyType: .NONE,
+            quantity: sequenceOrder.shares,
+            destinationLinkName: "AutoRoute",
+            stopPriceLinkBasis: .BID,
+            stopPriceLinkType: .PERCENT,
+            stopPriceOffset: roundedTrailingStopPercent,
+            stopType: .BID,
+            priceLinkBasis: .MANUAL,
+            price: roundedTargetPrice, // Use rounded target price as limit price
+            orderLegCollection: [orderLeg],
+            orderStrategyType: orderStrategyType,
+            cancelable: true,
+            editable: false,
+            accountNumber: accountNumber,
+            childOrderStrategies: childOrderStrategies
+        )
+        
+        AppLogger.shared.debug("  ✅ Order created successfully")
+        return childOrder
     }
     
     /**

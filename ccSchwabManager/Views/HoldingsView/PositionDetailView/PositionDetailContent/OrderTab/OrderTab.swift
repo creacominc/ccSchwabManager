@@ -11,6 +11,7 @@ struct OrderTab: View {
     
     @State private var currentOrdersHeight: CGFloat = 0
     @State private var recommendedOrdersHeight: CGFloat = 0
+    @State private var buySequenceOrdersHeight: CGFloat = 0
     
     // Minimum height for Current Orders section (header + cancel button)
     private let minCurrentOrdersHeight: CGFloat = 80
@@ -50,6 +51,25 @@ struct OrderTab: View {
                     }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                Divider()
+                
+                // Section 3: Buy Sequence Orders
+                BuySequenceOrdersSection(
+                    symbol: symbol,
+                    atrValue: atrValue,
+                    taxLotData: taxLotData,
+                    sharesAvailableForTrading: sharesAvailableForTrading,
+                    quoteData: quoteData,
+                    accountNumber: accountNumber
+                )
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .preference(key: BuySequenceOrdersHeightKey.self, value: geo.size.height)
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(.horizontal, geometry.size.width * 0.02)
             .onPreferenceChange(CurrentOrdersHeightKey.self) { height in
@@ -57,6 +77,9 @@ struct OrderTab: View {
             }
             .onPreferenceChange(RecommendedOrdersHeightKey.self) { height in
                 recommendedOrdersHeight = height
+            }
+            .onPreferenceChange(BuySequenceOrdersHeightKey.self) { height in
+                buySequenceOrdersHeight = height
             }
         }
         .tabItem {
@@ -75,6 +98,13 @@ struct CurrentOrdersHeightKey: PreferenceKey {
 }
 
 struct RecommendedOrdersHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct BuySequenceOrdersHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
