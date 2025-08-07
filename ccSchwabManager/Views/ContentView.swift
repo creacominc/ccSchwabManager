@@ -53,12 +53,6 @@ struct ContentView: View
                             Label("Credentials", systemImage: "key.fill")
                         }
                         .tag(1)
-                    
-                    DebugLogView()
-                        .tabItem {
-                            Label("Debug", systemImage: "ladybug.fill")
-                        }
-                        .tag(2)
                 }
             }
         }

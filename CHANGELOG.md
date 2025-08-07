@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **REMOVED**: Debug tab and related debugging functionality
+  - Removed DebugLogView.swift file completely
+  - Removed debug tab from main ContentView tab interface
+  - Removed debugPrintOrderState() method from SchwabClient
+  - Removed getSymbolsWithOrders() debug helper method from SchwabClient
+  - Cleaned up commented debug calls in HoldingsView
+  - Simplified user interface to focus on core functionality with just Holdings and Credentials tabs
+  - Application now has a cleaner, more focused interface without debugging clutter
+
 ### Added
 - **NEW**: Buy Sequence Orders for strategic position building
   - Implemented nested order structure where each order includes the next as a child

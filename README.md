@@ -25,6 +25,11 @@ For detailed build instructions and iOS compilation fixes, see [`IOS_BUILD_FIXES
 
 ## Features
 
+### User Interface
+The application provides a clean, focused interface with two main tabs:
+- **Holdings**: View and manage your Schwab account positions with detailed analysis and order recommendations
+- **Credentials**: Manage your Schwab API credentials and authentication settings
+
 ### Enhanced Sell Order Logic
 
 The application now includes sophisticated sell order logic with multiple order types and proper cost basis calculations:

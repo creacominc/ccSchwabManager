@@ -3396,38 +3396,7 @@ class SchwabClient
         return nil
     }
 
-    /**
-     * debugPrintOrderState - print the current state of all orders for debugging
-     */
-    public func debugPrintOrderState() {
-        AppLogger.shared.debug("🔍 === DEBUG: Current Order State ===")
-        AppLogger.shared.debug("📊 Total orders loaded: \(m_orderList.count)")
-        
-        if m_orderList.isEmpty {
-            AppLogger.shared.warning("⚠️ No orders loaded!")
-            return
-        }
-        
-        AppLogger.shared.debug("📋 All orders:")
-        for (index, order) in m_orderList.enumerated() {
-            let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
-            AppLogger.shared.debug("  [\(index + 1)] ID: \(order.orderId?.description ?? "nil"), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-        }
-        
-        AppLogger.shared.debug("📊 Symbols with orders: \(m_symbolsWithOrders.count)")
-        for (symbol, statuses) in m_symbolsWithOrders {
-            AppLogger.shared.debug("  📋 \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
-        }
-        
-        AppLogger.shared.debug("🔍 === END DEBUG ===")
-    }
 
-    /**
-     * getSymbolsWithOrders - return the symbols with orders dictionary for debugging
-     */
-    public func getSymbolsWithOrders() -> [String: [ActiveOrderStatus]] {
-        return m_symbolsWithOrders
-    }
 
 } // SchwabClient
 
