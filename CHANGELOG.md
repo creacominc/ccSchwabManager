@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Buy order targets occasionally showing values from the previously viewed symbol when navigating between positions
+  - Ensured price/quote usage is symbol-safe: ignore `quoteData` if `quoteData.symbol` != current symbol
+  - Included `quoteData.symbol` in the internal data-hash so cached recommendations invalidate correctly on symbol change
+  - Cleared `currentOrders` and deferred recomputation until fresh data for the new symbol arrives
+  - Removed unsafe fallback to tax-lot price during symbol transition to prevent cross-symbol leakage
+
 ### Removed
 - **REMOVED**: Debug tab and related debugging functionality
   - Removed DebugLogView.swift file completely

@@ -39,7 +39,8 @@ struct RecommendedOCOOrdersSection: View {
         // Create a hash of the data that affects calculations
         let taxLotHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
         let quoteHash = quoteData?.quote?.lastPrice?.description ?? "nil"
-        return "\(symbol)-\(atrValue)-\(sharesAvailableForTrading)-\(taxLotHash)-\(quoteHash)"
+        let quoteSymbol = quoteData?.symbol ?? "nil"
+        return "\(symbol)-\(quoteSymbol)-\(atrValue)-\(sharesAvailableForTrading)-\(taxLotHash)-\(quoteHash)"
     }
     
     private func getRecommendedSellOrders() -> [SalesCalcResultsRecord] {
@@ -393,28 +394,40 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Sell Order Calculations (copied from RecommendedSellOrdersSection)
     
     private func getCurrentPrice() -> Double? {
-        // First try to get the real-time quote price
-        if let quote = quoteData?.quote?.lastPrice {
-            AppLogger.shared.debug("✅ Using real-time quote price: $\(quote)")
-            return quote
+        // Ensure we never use a quote for the wrong symbol (avoids stale carryover on navigation)
+        if let dataSymbol = quoteData?.symbol, dataSymbol != symbol {
+            AppLogger.shared.debug("❌ QuoteData symbol (\(dataSymbol)) does not match current symbol (\(symbol)); ignoring quote data and deferring price")
+            return nil
+        } else {
+            // First try to get the real-time quote price
+            if let quote = quoteData?.quote?.lastPrice {
+                AppLogger.shared.debug("✅ Using real-time quote price: $\(quote)")
+                return quote
+            }
+            
+            // Fallback to extended market price if available
+            if let extendedPrice = quoteData?.extended?.lastPrice {
+                AppLogger.shared.debug("✅ Using extended market price: $\(extendedPrice)")
+                return extendedPrice
+            }
+            
+            // Fallback to regular market price if available
+            if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
+                AppLogger.shared.debug("✅ Using regular market price: $\(regularPrice)")
+                return regularPrice
+            }
         }
         
-        // Fallback to extended market price if available
-        if let extendedPrice = quoteData?.extended?.lastPrice {
-            AppLogger.shared.debug("✅ Using extended market price: $\(extendedPrice)")
-            return extendedPrice
-        }
-        
-        // Fallback to regular market price if available
-        if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
-            AppLogger.shared.debug("✅ Using regular market price: $\(regularPrice)")
-            return regularPrice
-        }
-        
-        // Last resort: use the price from tax lot data (may be yesterday's close)
-        let fallbackPrice = taxLotData.first?.price
-        AppLogger.shared.debug("⚠️ Using fallback price from tax lot data: $\(fallbackPrice ?? 0)")
-        return fallbackPrice
+        // If we reach here and still don't have a quote, do not fallback to tax-lot price
+        // until we have confirmed data for the current symbol to avoid cross-symbol leakage.
+        AppLogger.shared.debug("⚠️ No valid quote available and symbol alignment unknown; returning nil to defer calculation")
+        return nil
+    }
+
+    private func isDataReadyForCurrentSymbol() -> Bool {
+        // We consider data ready only when quoteData is present and matches the current symbol
+        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol { return true }
+        return false
     }
     
     private func getLimitedATR() -> Double {
@@ -1159,9 +1172,10 @@ struct RecommendedOCOOrdersSection: View {
             cachedAllOrders.removeAll()
             lastCalculatedSymbol = ""
             lastCalculatedDataHash = ""
-            updateRecommendedOrders()
-            // Update current orders when symbol changes
-            currentOrders = getAllOrders()
+            // Avoid computing with stale data from the previous position. Clear UI and
+            // wait for new quote/tax-lot inputs to arrive; the onChange(getDataHash())
+            // handler will repopulate when fresh data is ready for this symbol.
+            currentOrders.removeAll()
         }
     }
     
@@ -1234,13 +1248,17 @@ struct RecommendedOCOOrdersSection: View {
             checkAndUpdateSymbol()
         }
         .onAppear {
-            // Initialize current orders if not already set
-            if currentOrders.isEmpty {
+            // Only populate when we have aligned data for this symbol
+            if currentOrders.isEmpty, isDataReadyForCurrentSymbol() {
                 currentOrders = getAllOrders()
             }
         }
         .onChange(of: getDataHash()) { _, _ in
-            // Update orders when underlying data changes
+            // Update orders when underlying data changes and belongs to this symbol
+            guard isDataReadyForCurrentSymbol() else {
+                AppLogger.shared.debug("⏳ Data not ready for symbol \(symbol); skipping recompute")
+                return
+            }
             currentOrders = getAllOrders()
         }
         .sheet(isPresented: $showingConfirmationDialog) {

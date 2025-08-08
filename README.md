@@ -133,6 +133,11 @@ The application now ensures consistent real-time pricing across all displays:
 
 This ensures that the position summary and tax lot table always show the same current price, eliminating discrepancies between different parts of the interface.
 
+### Correct targets when navigating between symbols
+
+- The Orders tab now guards against stale data during rapid navigation. Buy/sell recommendations only compute when the loaded `quoteData.symbol` matches the current position’s symbol.
+- The engine clears previously computed recommendations on symbol change and recomputes once fresh data arrives, preventing cases where a high-priced stock’s target appeared under a low-priced one.
+
 ### Performance Optimizations
 
 The application includes several performance optimizations to ensure smooth user experience:
