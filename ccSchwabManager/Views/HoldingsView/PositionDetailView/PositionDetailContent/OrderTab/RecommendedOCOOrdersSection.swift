@@ -546,11 +546,8 @@ struct RecommendedOCOOrdersSection: View {
             AppLogger.shared.debug("  Trailing stop: \(trailingStop)%")
         }
         
-        // Validate that target is above the actual cost per share
-        guard target > actualCostPerShare else {
-            AppLogger.shared.debug("❌ Top 100 order rejected: target ($\(target)) is not above cost per share ($\(actualCostPerShare))")
-            return nil
-        }
+        // Always create the Top-100 order if we have at least 100 shares, regardless of profitability
+        // The order description will indicate if it's unprofitable
         
         // Calculate exit price (same logic as other sell orders)
         let exit = max(target * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), actualCostPerShare)
@@ -558,7 +555,7 @@ struct RecommendedOCOOrdersSection: View {
         let totalGain = finalSharesToConsider * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         
-        // Create description
+        // Create description - always show Top-100 order, indicate if unprofitable
         let profitIndicator = isTop100Profitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
         let formattedDescription = String(format: "%@ SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
                                           profitIndicator, finalSharesToConsider, symbol, target, trailingStop, actualCostPerShare)
