@@ -9,104 +9,114 @@ struct OrderTab: View {
     let geometry: GeometryProxy
     let accountNumber: String
     
-    @State private var currentOrdersHeight: CGFloat = 0
-    @State private var recommendedOrdersHeight: CGFloat = 0
-    @State private var buySequenceOrdersHeight: CGFloat = 0
-    
-    // Minimum height for Current Orders section (header + cancel button)
-    private let minCurrentOrdersHeight: CGFloat = 80
-    
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 8) {
+        ScrollView {
+            LazyVStack(spacing: 20) {
                 // Section 1: Current Orders
-                CurrentOrdersSection(symbol: symbol)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: CurrentOrdersHeightKey.self, value: geo.size.height)
-                        }
-                    )
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: minCurrentOrdersHeight,
-                        maxHeight: max(minCurrentOrdersHeight, currentOrdersHeight)
-                    )
-                
-                Divider()
-                
-                // Section 2: Recommended OCO Orders (Combined Buy and Sell)
-                RecommendedOCOOrdersSection(
-                    symbol: symbol,
-                    atrValue: atrValue,
-                    taxLotData: taxLotData,
-                    sharesAvailableForTrading: sharesAvailableForTrading,
-                    quoteData: quoteData,
-                    accountNumber: accountNumber
-                )
-                .background(
-                    GeometryReader { geo in
-                        Color.clear
-                            .preference(key: RecommendedOrdersHeightKey.self, value: geo.size.height)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Section Header
+                    HStack {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.blue)
+                        Text("Current Orders")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.blue.opacity(0.1))
+                    
+                    // Section Content
+                    CurrentOrdersSection(symbol: symbol)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                }
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                Divider()
+                // Section 2: Recommended OCO Orders
+                VStack(alignment: .leading, spacing: 0) {
+                    // Section Header
+                    HStack {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .foregroundColor(.green)
+                        Text("Recommended OCO Orders")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.green.opacity(0.1))
+                    
+                    // Section Content
+                    RecommendedOCOOrdersSection(
+                        symbol: symbol,
+                        atrValue: atrValue,
+                        taxLotData: taxLotData,
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        quoteData: quoteData,
+                        accountNumber: accountNumber
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                )
                 
                 // Section 3: Buy Sequence Orders
-                BuySequenceOrdersSection(
-                    symbol: symbol,
-                    atrValue: atrValue,
-                    taxLotData: taxLotData,
-                    sharesAvailableForTrading: sharesAvailableForTrading,
-                    quoteData: quoteData,
-                    accountNumber: accountNumber
-                )
-                .background(
-                    GeometryReader { geo in
-                        Color.clear
-                            .preference(key: BuySequenceOrdersHeightKey.self, value: geo.size.height)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Section Header
+                    HStack {
+                        Image(systemName: "arrow.up.circle")
+                            .foregroundColor(.orange)
+                        Text("Buy Sequence Orders")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.orange.opacity(0.1))
+                    
+                    // Section Content
+                    BuySequenceOrdersSection(
+                        symbol: symbol,
+                        atrValue: atrValue,
+                        taxLotData: taxLotData,
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        quoteData: quoteData,
+                        accountNumber: accountNumber
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                // Add bottom padding to ensure last section is fully visible
+                Spacer(minLength: 20)
             }
-            .padding(.horizontal, geometry.size.width * 0.02)
-            .onPreferenceChange(CurrentOrdersHeightKey.self) { height in
-                currentOrdersHeight = height
-            }
-            .onPreferenceChange(RecommendedOrdersHeightKey.self) { height in
-                recommendedOrdersHeight = height
-            }
-            .onPreferenceChange(BuySequenceOrdersHeightKey.self) { height in
-                buySequenceOrdersHeight = height
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
+        .background(Color.black.opacity(0.1))
         .tabItem {
             Image(systemName: "list.bullet")
             Text("Orders")
         }
-    }
-}
-
-// Preference keys for measuring section heights
-struct CurrentOrdersHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-struct RecommendedOrdersHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-struct BuySequenceOrdersHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 } 

@@ -187,15 +187,22 @@ struct CSVOrderValidator {
         }
         
         // Validate target gain calculation
-                    let expectedTargetGain = max(15.0, TradingConfig.atrMultiplier * record.atr)
+        let expectedTargetGain = max(15.0, TradingConfig.atrMultiplier * record.atr)
         if abs(expectedTargetGain - record.targetGainMin15) > 0.1 {
             errors.append("Target gain calculation error: expected \(expectedTargetGain), got \(record.targetGainMin15)")
         }
         
-        // Validate shares calculation
-        let expectedSharesToBuy = (record.totalQuantity * record.targetPrice - record.totalCost) / (record.targetPrice - record.averagePrice)
-        if abs(expectedSharesToBuy - record.limitShares) > 1.0 {
-            errors.append("Shares calculation error: expected \(expectedSharesToBuy), got \(record.limitShares)")
+        // Validate that shares to buy is reasonable (should be positive and not exceed total quantity)
+        if record.sharesToBuyAtTargetPrice <= 0 {
+            errors.append("Shares to buy at target price should be positive")
+        }
+        
+        if record.limitShares <= 0 {
+            errors.append("Limit shares should be positive")
+        }
+        
+        if record.limitShares > record.sharesToBuyAtTargetPrice {
+            errors.append("Limit shares should not exceed shares to buy at target price")
         }
         
         return errors

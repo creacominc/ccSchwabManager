@@ -1044,7 +1044,7 @@ struct RecommendedOCOOrdersSection: View {
                 cumulativeSharesUsed: 0.0
             )
             
-            guard let (actualCostPerShare, sharesUsed) = costBasisResult else {
+            guard let (actualCostPerShare, _) = costBasisResult else {
                 AppLogger.shared.debug("Could not calculate cost basis for \(sharesToTry) shares")
                 continue
             }
@@ -1433,7 +1433,7 @@ struct RecommendedOCOOrdersSection: View {
             }
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
+        //.background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(8)
         .onChange(of: symbol) { _, newSymbol in
             checkAndUpdateSymbol()

@@ -30,6 +30,19 @@ The application provides a clean, focused interface with two main tabs:
 - **Holdings**: View and manage your Schwab account positions with detailed analysis and order recommendations
 - **Credentials**: Manage your Schwab API credentials and authentication settings
 
+### Orders Tab Layout
+The Orders tab features a redesigned, user-friendly interface with three distinct sections:
+
+- **Current Orders**: Displays active working orders with a clean, compact design that automatically adjusts height based on content
+- **Recommended OCO Orders**: Shows intelligent order recommendations with radio button selection and enhanced visual organization
+- **Buy Sequence Orders**: Strategic position building orders with nested order structures and dynamic trailing stops
+
+**Key Layout Improvements:**
+- **Clear Visual Separation**: Each section has distinct headers with color-coded themes (blue, green, orange)
+- **Proper Scrolling**: All content is accessible through smooth scrolling regardless of window size
+- **Responsive Design**: Sections automatically adjust height and spacing for optimal viewing
+- **Enhanced UX**: Better visual hierarchy and intuitive navigation between order types
+
 ### Enhanced Sell Order Logic
 
 The application now includes sophisticated sell order logic with multiple order types and proper cost basis calculations:

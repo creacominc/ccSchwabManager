@@ -57,21 +57,26 @@ struct BuySequenceOrdersSection: View {
     private func calculateBuySequenceOrders() -> [BuySequenceOrder] {
         var sequenceOrders: [BuySequenceOrder] = []
         
+        AppLogger.shared.debug("=== calculateBuySequenceOrders START ===")
+        AppLogger.shared.debug("Symbol: \(symbol)")
+        AppLogger.shared.debug("ATR: \(atrValue)%")
+        AppLogger.shared.debug("Tax lots count: \(taxLotData.count)")
+        AppLogger.shared.debug("Shares available for trading: \(sharesAvailableForTrading)")
+        AppLogger.shared.debug("Quote data available: \(quoteData != nil)")
+        
         guard let currentPrice = getCurrentPrice() else {
             AppLogger.shared.debug("❌ No current price available for \(symbol)")
             return sequenceOrders
         }
+        AppLogger.shared.debug("✅ Current price: $\(currentPrice)")
         
         // Get minimum strike price for the symbol
         guard let minimumStrike = SchwabClient.shared.getMinimumStrikeForSymbol(symbol) else {
             AppLogger.shared.debug("❌ No minimum strike price available for \(symbol)")
+            AppLogger.shared.debug("This might be because options contracts are not loaded for this symbol")
             return sequenceOrders
         }
-        
-        AppLogger.shared.debug("=== calculateBuySequenceOrders ===")
-        AppLogger.shared.debug("Symbol: \(symbol)")
-        AppLogger.shared.debug("Current price: $\(currentPrice)")
-        AppLogger.shared.debug("Minimum strike: $\(minimumStrike)")
+        AppLogger.shared.debug("✅ Minimum strike: $\(minimumStrike)")
         
         // Calculate sequence orders
         // Last order target = minimum strike price
@@ -157,32 +162,45 @@ struct BuySequenceOrdersSection: View {
         }
         
         AppLogger.shared.debug("=== Final result: \(sequenceOrders.count) sequence orders ===")
+        AppLogger.shared.debug("=== calculateBuySequenceOrders END ===")
         return sequenceOrders
     }
     
     private func getCurrentPrice() -> Double? {
-        // First try to get the real-time quote price
-        if let quote = quoteData?.quote?.lastPrice {
-            AppLogger.shared.debug("✅ Using real-time quote price: $\(quote)")
-            return quote
+        // Ensure we never use a quote for the wrong symbol (avoids stale carryover on navigation)
+        if let dataSymbol = quoteData?.symbol, dataSymbol != symbol {
+            AppLogger.shared.debug("❌ QuoteData symbol (\(dataSymbol)) does not match current symbol (\(symbol)); ignoring quote data and deferring price")
+            return nil
+        } else {
+            // First try to get the real-time quote price
+            if let quote = quoteData?.quote?.lastPrice {
+                AppLogger.shared.debug("✅ Using real-time quote price: $\(quote)")
+                return quote
+            }
+            
+            // Fallback to extended market price if available
+            if let extendedPrice = quoteData?.extended?.lastPrice {
+                AppLogger.shared.debug("✅ Using extended market price: $\(extendedPrice)")
+                return extendedPrice
+            }
+            
+            // Fallback to regular market price if available
+            if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
+                AppLogger.shared.debug("✅ Using regular market price: $\(regularPrice)")
+                return regularPrice
+            }
         }
         
-        // Fallback to extended market price if available
-        if let extendedPrice = quoteData?.extended?.lastPrice {
-            AppLogger.shared.debug("✅ Using extended market price: $\(extendedPrice)")
-            return extendedPrice
-        }
-        
-        // Fallback to regular market price if available
-        if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
-            AppLogger.shared.debug("✅ Using regular market price: $\(regularPrice)")
-            return regularPrice
-        }
-        
-        // Last resort: use the price from tax lot data (may be yesterday's close)
-        let fallbackPrice = taxLotData.first?.price
-        AppLogger.shared.debug("⚠️ Using fallback price from tax lot data: $\(fallbackPrice ?? 0)")
-        return fallbackPrice
+        // If we reach here and still don't have a quote, do not fallback to tax-lot price
+        // until we have confirmed data for the current symbol to avoid cross-symbol leakage.
+        AppLogger.shared.debug("⚠️ No valid quote available and symbol alignment unknown; returning nil to defer calculation")
+        return nil
+    }
+    
+    private func isDataReadyForCurrentSymbol() -> Bool {
+        // We consider data ready only when quoteData is present and matches the current symbol
+        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol { return true }
+        return false
     }
     
     private func updateSequenceOrders() {
@@ -251,13 +269,17 @@ struct BuySequenceOrdersSection: View {
             checkAndUpdateSymbol()
         }
         .onAppear {
-            // Initialize sequence orders if not already set
-            if sequenceOrders.isEmpty {
+            // Only populate when we have aligned data for this symbol
+            if sequenceOrders.isEmpty, isDataReadyForCurrentSymbol() {
                 sequenceOrders = getSequenceOrders()
             }
         }
         .onChange(of: getDataHash()) { _, _ in
-            // Update orders when underlying data changes
+            // Update orders when underlying data changes and belongs to this symbol
+            guard isDataReadyForCurrentSymbol() else {
+                AppLogger.shared.debug("⏳ Data not ready for symbol \(symbol); skipping recompute")
+                return
+            }
             sequenceOrders = getSequenceOrders()
         }
         .sheet(isPresented: $showingConfirmationDialog) {
@@ -369,6 +391,11 @@ struct BuySequenceOrdersSection: View {
             Text("Buy Sequence Orders")
                 .font(.headline)
             
+            // Add debugging info
+            Text("(\(sequenceOrders.count) orders)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
             Spacer()
             
             if !sequenceOrders.isEmpty {
@@ -391,9 +418,41 @@ struct BuySequenceOrdersSection: View {
     private var contentView: some View {
         Group {
             if sequenceOrders.isEmpty {
-                Text("No buy sequence orders available")
-                    .foregroundColor(.secondary)
-                    .padding()
+                VStack(spacing: 8) {
+                    Text("No buy sequence orders available")
+                        .foregroundColor(.secondary)
+                    
+                    // Add debugging information
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Debug Info:")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                        Text("Symbol: \(symbol)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("ATR: \(atrValue)%")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Shares Available: \(sharesAvailableForTrading)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Tax Lots: \(taxLotData.count)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Quote Data: \(quoteData != nil ? "Available" : "Not Available")")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Note: Buy Sequence Orders require options contracts to be loaded for this symbol")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(.top, 4)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(4)
+                }
+                .padding()
             } else {
                 orderTableView
             }

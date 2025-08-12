@@ -13,31 +13,14 @@ struct BuyOrderTests {
 
     
     @Test func testBuyOrderCalculation() async throws {
-        // Test data setup
-        let _ = "AAPL"
-        let atrValue = 2.5 // 2.5% ATR
+        // Test basic buy order calculation
         let currentPrice = 150.0
         let avgCostPerShare = 140.0
         let totalShares = 100.0
+        let atrValue = 2.5 // 2.5% ATR
         
-        // Create mock tax lot data
-        let _ = [
-            SalesCalcPositionsRecord(
-                openDate: "2024-01-01 09:30:00",
-                gainLossPct: ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0,
-                gainLossDollar: (currentPrice - avgCostPerShare) * totalShares,
-                quantity: totalShares,
-                price: currentPrice,
-                costPerShare: avgCostPerShare,
-                marketValue: currentPrice * totalShares,
-                costBasis: avgCostPerShare * totalShares,
-                splitMultiple: 1.0
-            )
-        ]
-        
-        // Calculate expected values based on the buy order workflow
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
-        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 17.5% (5 * 2.5)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 15% (minimum) when calculated value is less than 15%
         
         // Verify current profit is less than target (should trigger buy order)
         #expect(currentProfitPercent < targetGainPercent, "Current profit should be less than target to trigger buy order")
@@ -68,7 +51,7 @@ struct BuyOrderTests {
         finalSharesToBuy = max(finalSharesToBuy, 1.0)
         
         // Verify calculations
-        #expect(targetGainPercent == 12.5, "Target gain percent should be 12.5% (5 * 2.5)")
+        #expect(targetGainPercent == 15.0, "Target gain percent should be 15% (minimum) when calculated value is less than 15%")
         #expect(targetPrice > avgCostPerShare, "Target price should be above average cost")
         #expect(entryPrice > targetPrice, "Entry price should be above target price")
         #expect(targetBuyPrice > entryPrice, "Target buy price should be above entry price")
@@ -93,9 +76,9 @@ struct BuyOrderTests {
     @Test func testBuyOrderWithHighATR() async throws {
         // Test with high ATR (should use atrMultiplier * ATR as target)
         let atrValue = 4.0 // 4% ATR
-        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 28% (5 * 4)
+        let targetGainPercent = max(15.0, TradingConfig.atrMultiplier * atrValue) // Should be 20% (5 * 4)
         
-        #expect(targetGainPercent == 28.0, "Target gain percent should be 28% for 4% ATR")
+        #expect(targetGainPercent == 20.0, "Target gain percent should be 20% for 4% ATR")
     }
     
     @Test func testBuyOrderWithLowATR() async throws {
