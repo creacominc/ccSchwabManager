@@ -1845,27 +1845,17 @@ class SchwabClient
         AppLogger.shared.info("🔍 Processing \(m_orderList.count) orders to categorize by symbol...")
         
         // update the m_symbolsWithOrders dictionary with each symbol in the orderList with orders that are in awaiting states
-        for (index, order) in m_orderList.enumerated() {
-            // AppLogger.shared.debug("🔍 Processing order \(index + 1)/\(m_orderList.count): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), Strategy=\(order.orderStrategyType?.rawValue ?? "nil")")
-            
+        for (_, order) in m_orderList.enumerated() {            
             if let activeStatus: ActiveOrderStatus = ActiveOrderStatus(from: order.status ?? .unknown, order: order) {
-                // AppLogger.shared.debug("  ✅ Order has active status: \(activeStatus.shortDisplayName)")
-
                 if( ( order.orderStrategyType == .SINGLE )
                     || ( order.orderStrategyType == .TRIGGER ) ) {
-                    // AppLogger.shared.debug("  📋 Processing SINGLE/TRIGGER order")
                     for (legIndex, leg) in (order.orderLegCollection ?? []).enumerated() {
                         if let symbol = leg.instrument?.symbol {
-                            // AppLogger.shared.debug("    📊 Leg \(legIndex + 1): Symbol=\(symbol)")
                             if m_symbolsWithOrders[symbol] == nil {
                                 m_symbolsWithOrders[symbol] = []
-                                // AppLogger.shared.debug("      ➕ Created new entry for symbol \(symbol)")
                             }
                             if !m_symbolsWithOrders[symbol]!.contains(activeStatus) {
                                 m_symbolsWithOrders[symbol]!.append(activeStatus)
-                                // AppLogger.shared.debug("      ➕ Added status \(activeStatus.shortDisplayName) to symbol \(symbol)")
-                            // } else {
-                            //     AppLogger.shared.debug("      ⚠️ Status \(activeStatus.shortDisplayName) already exists for symbol \(symbol)")
                             }
                         } else {
                             AppLogger.shared.warning("    ⚠️ Leg \(legIndex + 1): No symbol found")
@@ -1873,30 +1863,20 @@ class SchwabClient
                     }
                 }
                 if ( order.orderStrategyType == .OCO ) {
-                    // AppLogger.shared.debug("  📋 Processing OCO order")
-                    for (childIndex, childOrder) in (order.childOrderStrategies ?? []).enumerated() {
-                        // AppLogger.shared.debug("    🔍 Child order \(childIndex + 1): ID=\(childOrder.orderId?.description ?? "nil"), Status=\(childOrder.status?.rawValue ?? "nil")")
+                    for (_, childOrder) in (order.childOrderStrategies ?? []).enumerated() {
                         if let childActiveStatus = ActiveOrderStatus(from: childOrder.status ?? .unknown, order: childOrder) {
-                            // AppLogger.shared.debug("      ✅ Child order has active status: \(childActiveStatus.shortDisplayName)")
                             for (legIndex, leg) in (childOrder.orderLegCollection ?? []).enumerated() {
                                 if let symbol = leg.instrument?.symbol {
-                                    // AppLogger.shared.debug("        📊 Child Leg \(legIndex + 1): Symbol=\(symbol)")
                                     if m_symbolsWithOrders[symbol] == nil {
                                         m_symbolsWithOrders[symbol] = []
-                                        // AppLogger.shared.debug("          ➕ Created new entry for symbol \(symbol)")
                                     }
                                     if !m_symbolsWithOrders[symbol]!.contains(childActiveStatus) {
                                         m_symbolsWithOrders[symbol]!.append(childActiveStatus)
-                                    //     AppLogger.shared.debug("          ➕ Added status \(childActiveStatus.shortDisplayName) to symbol \(symbol)")
-                                    // } else {
-                                    //     AppLogger.shared.debug("          ⚠️ Status \(childActiveStatus.shortDisplayName) already exists for symbol \(symbol)")
                                     }
                                 } else {
                                     AppLogger.shared.warning("        ⚠️ Child Leg \(legIndex + 1): No symbol found")
                                 }
                             }
-                        // } else {
-                        //     AppLogger.shared.warning("      ❌ Child order does not have active status: \(childOrder.status?.rawValue ?? "nil")")
                         }
                     }
                 }
@@ -1911,12 +1891,6 @@ class SchwabClient
                 AppLogger.shared.debug("  ❌ Order is completed/cancelled: \(order.status?.rawValue ?? "nil")")
             }
         }
-        
-        // AppLogger.shared.info("🔍 Final symbols with orders: \(m_symbolsWithOrders.count)")
-        // for (symbol, statuses) in m_symbolsWithOrders {
-        //     let statusNames = statuses.map { $0.shortDisplayName }.joined(separator: ", ")
-        //     AppLogger.shared.debug("  📋 \(symbol): \(statusNames)")
-        // }
         AppLogger.shared.info("🔍 === END updateSymbolsWithOrders ===")
     }
 

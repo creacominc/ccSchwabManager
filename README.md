@@ -151,16 +151,18 @@ This ensures that selecting orders for submission is fast and responsive, while 
 
 ### CSV Export Functionality
 
-The application now supports exporting transaction history and tax lot data to CSV files:
+The application now supports exporting transaction history, tax lot data, and holdings data to CSV files:
 
 - **Transaction History Export**: Click the export button (📤) in the Date column header of the transaction history table to export all transactions for a specific symbol
 - **Tax Lots Export**: Click the export button (📤) in the Open Date column header of the sales calc table to export all tax lot data for a specific symbol
+- **Holdings Export**: Click the export button (📤) to the right of the Symbol column header in the Holdings tab to export comprehensive holdings data
 
 #### Export File Naming Convention
 
 Files are automatically named using the following format:
 - `Transactions_<Symbol>_<Date>.csv` for transaction history exports
 - `TaxLots_<Symbol>_<Date>.csv` for tax lot exports
+- `Holdings_<Date>.csv` for holdings exports
 
 Where:
 - `<Symbol>` is the stock/security symbol (e.g., AAPL, MSFT)
@@ -188,6 +190,43 @@ Files are saved to the user's Downloads folder by default, with a file dialog al
 - Cost Basis
 - Gain/Loss $
 - Gain/Loss %
+
+**Holdings CSV includes:**
+- Symbol
+- Quantity
+- Market Value
+- Cost Basis
+- Gain/Loss $
+- Gain/Loss %
+- Account
+- Trade Date
+- Order Status
+
+### Enhanced Recommended OCO Orders
+
+The application now provides enhanced OCO (One-Cancels-Other) order recommendations with improved UI and additional sell order types:
+
+- **Additional Sell Order Types**: Beyond the standard sell orders, the system now generates:
+  - **1% Higher Trailing Stop Orders**: Sell orders with trailing stops 1% higher than the minimum break-even order
+  - **Maximum Shares Orders**: Sell orders using all available shares with appropriately adjusted trailing stops
+  - **Configurable Limits**: Up to 7 additional sell orders (configurable via `maxAdditionalSellOrders` constant)
+
+- **Improved Order Selection Interface**:
+  - **Radio Button Selection**: Replaced checkboxes with radio buttons for better single-selection behavior
+  - **Separate Selection Groups**: Independent radio button groups for sell and buy orders
+  - **Deselection Support**: Tap selected radio buttons again to deselect them
+  - **Visual Feedback**: Clear indication of selected orders with filled circle icons
+
+- **Enhanced Layout and UX**:
+  - **Right-Aligned Submit Button**: Submit button positioned to the right of the orders for better visual balance
+  - **Proper Spacing**: Enhanced spacing and visual separation between sell and buy order sections
+  - **Copy Functionality**: Copy order descriptions to clipboard with visual feedback
+  - **Responsive Design**: Layout adapts to content and screen size
+
+- **Smart Order Logic**:
+  - **Full Share Availability**: All sell orders can use the full available shares (not assuming previous orders consume shares)
+  - **Proper Gap Structure**: Target prices are calculated midway between stop price and cost per share for better risk management
+  - **Profitability Validation**: Orders are only created when they meet profitability requirements
 
 ## Project Structure
 

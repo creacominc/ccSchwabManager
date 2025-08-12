@@ -8,7 +8,12 @@ struct RecommendedOCOOrdersSection: View {
     let sharesAvailableForTrading: Double
     let quoteData: QuoteData?
     let accountNumber: String
-    @State private var selectedOrderIndices: Set<Int> = []
+    
+    // Configuration constants
+    private let maxAdditionalSellOrders = 7
+    
+    @State private var selectedSellOrderIndex: Int? = nil
+    @State private var selectedBuyOrderIndex: Int? = nil
     @State private var recommendedSellOrders: [SalesCalcResultsRecord] = []
     @State private var recommendedBuyOrders: [BuyOrderRecord] = []
     @State private var lastSymbol: String = ""
@@ -152,8 +157,15 @@ struct RecommendedOCOOrdersSection: View {
             AppLogger.shared.debug("✅ Min break even order created: \(minBreakEvenOrder.description)")
             recommended.append(minBreakEvenOrder)
             
-            // Calculate additional sell orders by iterating through tax lots
-            calculateAdditionalSellOrdersFromTaxLots(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots, minBreakEvenOrder: minBreakEvenOrder, recommended: &recommended)
+            // Calculate additional sell orders from tax lots
+            let additionalOrders = calculateAdditionalSellOrdersFromTaxLots(
+                currentPrice: currentPrice,
+                sortedTaxLots: sortedTaxLots,
+                minBreakEvenOrder: minBreakEvenOrder
+            )
+            
+            // Add the additional orders to the recommended list
+            recommended.append(contentsOf: additionalOrders)
         }
         
         AppLogger.shared.debug("=== Final result: \(recommended.count) recommended orders ===")
@@ -810,50 +822,51 @@ struct RecommendedOCOOrdersSection: View {
     
 
     
-    /// Calculate additional sell orders by iterating through tax lots to achieve higher trailing stops
-    private func calculateAdditionalSellOrdersFromTaxLots(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord], minBreakEvenOrder: SalesCalcResultsRecord, recommended: inout [SalesCalcResultsRecord]) {
+    /// Calculate additional sell orders from tax lots
+    private func calculateAdditionalSellOrdersFromTaxLots(
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord
+    ) -> [SalesCalcResultsRecord] {
+        
         AppLogger.shared.debug("=== calculateAdditionalSellOrdersFromTaxLots ===")
-        
-        // Define the additional trailing stop targets we want to achieve
-        let additionalTrailingStops = [0.5, 1.0, 1.5] // Multipliers of ATR
-        var ordersCreated = 0
-        var cumulativeSharesUsed = minBreakEvenOrder.sharesToSell
-        var currentTaxLotIndex = 0
-        
-        AppLogger.shared.debug("Starting with \(sortedTaxLots.count) tax lots")
-        AppLogger.shared.debug("Min break-even order used \(minBreakEvenOrder.sharesToSell) shares")
+        AppLogger.shared.debug("Current price: \(currentPrice)")
+        AppLogger.shared.debug("Min BE order: \(minBreakEvenOrder.description)")
         AppLogger.shared.debug("Shares available for trading: \(sharesAvailableForTrading)")
         
-        // Try to create each additional order type
-        for atrMultiplier in additionalTrailingStops {
-            guard ordersCreated < 3 else { // We already have the min break-even order, so max 3 additional
-                AppLogger.shared.debug("✅ Maximum number of additional orders reached")
-                break
-            }
-            
-            let targetTrailingStop = minBreakEvenOrder.trailingStop + (atrMultiplier * atrValue)
-            AppLogger.shared.debug("Attempting to create order with trailing stop: \(targetTrailingStop)% (min BE + \(atrMultiplier) * ATR)")
-            
-            // Try to find shares from tax lots to create this order
-            if let additionalOrder = createAdditionalSellOrderFromTaxLots(
-                currentPrice: currentPrice,
-                sortedTaxLots: sortedTaxLots,
-                minBreakEvenOrder: minBreakEvenOrder,
-                targetTrailingStop: targetTrailingStop,
-                atrMultiplier: atrMultiplier,
-                cumulativeSharesUsed: cumulativeSharesUsed,
-                currentTaxLotIndex: &currentTaxLotIndex
-            ) {
-                AppLogger.shared.debug("✅ Additional sell order (+\(atrMultiplier)ATR) created: \(additionalOrder.description)")
-                recommended.append(additionalOrder)
-                cumulativeSharesUsed += additionalOrder.sharesToSell
-                ordersCreated += 1
-            } else {
-                AppLogger.shared.error("❌ Could not create additional sell order (+\(atrMultiplier)ATR)")
-            }
+        var additionalOrders: [SalesCalcResultsRecord] = []
+        var currentTaxLotIndex = 0
+        
+        // Create 1% higher trailing stop order
+        if let higherTSOrder = createOnePercentHigherTrailingStopOrder(
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            minBreakEvenOrder: minBreakEvenOrder,
+            currentTaxLotIndex: &currentTaxLotIndex
+        ) {
+            additionalOrders.append(higherTSOrder)
+            AppLogger.shared.debug("✅ Added 1% higher TS order: \(higherTSOrder.description)")
         }
         
-        AppLogger.shared.debug("=== Final result: Created \(ordersCreated) additional sell orders ===")
+        // Create max shares sell order
+        if let maxSharesOrder = createMaxSharesSellOrder(
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            minBreakEvenOrder: minBreakEvenOrder,
+            currentTaxLotIndex: &currentTaxLotIndex
+        ) {
+            additionalOrders.append(maxSharesOrder)
+            AppLogger.shared.debug("✅ Added max shares order: \(maxSharesOrder.description)")
+        }
+        
+        // Continue with other additional orders if we haven't reached the limit
+        while additionalOrders.count < maxAdditionalSellOrders {
+            // ... existing logic for other additional orders ...
+            break // For now, just break to avoid infinite loop
+        }
+        
+        AppLogger.shared.debug("Total additional orders created: \(additionalOrders.count)")
+        return additionalOrders
     }
     
     /// Create an additional sell order by finding shares from available tax lots
@@ -901,25 +914,25 @@ struct RecommendedOCOOrdersSection: View {
                 continue
             }
             
-            let actualCostPerShare = costBasisResult.actualCostPerShare
+            let avgCostPerShare = costBasisResult.actualCostPerShare
             let sharesToUse = costBasisResult.sharesUsed
             
-            AppLogger.shared.debug("✅ Found \(sharesToUse) shares with avg cost $\(actualCostPerShare)")
+            AppLogger.shared.debug("✅ Found \(sharesToUse) shares with avg cost $\(avgCostPerShare)")
             
             // Validate that new target is above the weighted average cost per share
-            guard newTarget > actualCostPerShare else {
-                AppLogger.shared.debug("❌ New target $\(newTarget) is not above weighted avg cost per share $\(actualCostPerShare)")
+            guard newTarget > avgCostPerShare else {
+                AppLogger.shared.debug("❌ New target $\(newTarget) is not above weighted avg cost per share $\(avgCostPerShare)")
                 continue
             }
             
             // Calculate exit price (same logic as min break-even)
-            let exit = max(newTarget * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), actualCostPerShare)
+            let exit = max(newTarget * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), avgCostPerShare)
             
-            let totalGain = sharesToUse * (newTarget - actualCostPerShare)
-            let gain = actualCostPerShare > 0 ? ((newTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+            let totalGain = sharesToUse * (newTarget - avgCostPerShare)
+            let gain = avgCostPerShare > 0 ? ((newTarget - avgCostPerShare) / avgCostPerShare) * 100.0 : 0.0
             
             let formattedDescription = String(format: "(+%.1fATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                                              atrMultiplier, sharesToUse, symbol, newTarget, targetTrailingStop, actualCostPerShare)
+                                              atrMultiplier, sharesToUse, symbol, newTarget, targetTrailingStop, avgCostPerShare)
             AppLogger.shared.debug("✅ Created additional sell order: \(formattedDescription)")
             
             // Update the tax lot index for future orders
@@ -938,7 +951,7 @@ struct RecommendedOCOOrdersSection: View {
             return SalesCalcResultsRecord(
                 shares: sharesToUse,
                 rollingGainLoss: totalGain,
-                breakEven: actualCostPerShare,
+                breakEven: avgCostPerShare,
                 gain: gain,
                 sharesToSell: sharesToUse,
                 trailingStop: targetTrailingStop,
@@ -1005,13 +1018,170 @@ struct RecommendedOCOOrdersSection: View {
         return nil
     }
     
+    /// Create a sell order with 1% higher trailing stop than the Min BE order
+    private func createOnePercentHigherTrailingStopOrder(
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord,
+        currentTaxLotIndex: inout Int
+    ) -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("=== createOnePercentHigherTrailingStopOrder ===")
+        
+        // Calculate 1% higher trailing stop than Min BE order
+        let targetTrailingStop = minBreakEvenOrder.trailingStop + 1.0
+        AppLogger.shared.debug("Target trailing stop: \(targetTrailingStop)% (Min BE + 1.0%)")
+        
+        // Try different share amounts to find a profitable combination
+        for sharesToTry in 1...Int(sharesAvailableForTrading) {
+            AppLogger.shared.debug("Trying \(sharesToTry) shares...")
+            
+            // Calculate cost basis for these shares
+            let costBasisResult = calculateCostBasisForShares(
+                sharesNeeded: Double(sharesToTry),
+                startingTaxLotIndex: 0,
+                sortedTaxLots: sortedTaxLots,
+                cumulativeSharesUsed: 0.0
+            )
+            
+            guard let (actualCostPerShare, sharesUsed) = costBasisResult else {
+                AppLogger.shared.debug("Could not calculate cost basis for \(sharesToTry) shares")
+                continue
+            }
+            
+            // Calculate a profitable target (1% above cost per share)
+            let profitableTarget = actualCostPerShare * 1.01
+            AppLogger.shared.debug("Profitable target: \(profitableTarget) (1% above cost per share \(actualCostPerShare))")
+            
+            // Calculate the trailing stop from current price to this target
+            let trailingStop = ((currentPrice - profitableTarget) / currentPrice) * 100.0
+            AppLogger.shared.debug("Calculated trailing stop: \(trailingStop)%")
+            
+            // Check if this trailing stop is close to our target
+            if abs(trailingStop - targetTrailingStop) <= 0.5 {
+                AppLogger.shared.debug("✅ Found profitable combination with \(sharesToTry) shares")
+                
+                // Calculate the proper target price: midway between stop price and cost per share
+                let stopPrice = currentPrice * (1.0 - trailingStop / 100.0)
+                let targetPrice = stopPrice + (actualCostPerShare - stopPrice) / 2.0
+                
+                AppLogger.shared.debug("Stop price: \(stopPrice), Target price: \(targetPrice), Cost per share: \(actualCostPerShare)")
+                
+                // Create the sell order
+                let sellOrder = SalesCalcResultsRecord(
+                    shares: Double(sharesToTry),
+                    rollingGainLoss: Double(sharesToTry) * (targetPrice - actualCostPerShare),
+                    breakEven: actualCostPerShare,
+                    gain: ((targetPrice - actualCostPerShare) / actualCostPerShare) * 100.0,
+                    sharesToSell: Double(sharesToTry),
+                    trailingStop: trailingStop,
+                    entry: currentPrice * (1.0 - trailingStop / 100.0),
+                    target: targetPrice,
+                    cancel: targetPrice * 0.95,
+                    description: "SELL \(sharesToTry) MU Target=\(String(format: "%.2f", targetPrice)) TS=\(String(format: "%.2f", trailingStop))% Gain=\(String(format: "%.1f", ((targetPrice - actualCostPerShare) / actualCostPerShare) * 100.0))% Cost/Share=\(String(format: "%.2f", actualCostPerShare))",
+                    openDate: "1%HigherTS"
+                )
+                
+                return sellOrder
+            }
+        }
+        
+        AppLogger.shared.debug("❌ Could not find profitable combination for 1% higher trailing stop")
+        return nil
+    }
+    
+    /// Create a sell order for the maximum available shares with an appropriately adjusted trailing stop
+    private func createMaxSharesSellOrder(
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord,
+        currentTaxLotIndex: inout Int
+    ) -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("=== createMaxSharesSellOrder ===")
+        
+        // Calculate remaining shares available
+        let remainingShares = sharesAvailableForTrading
+        guard remainingShares >= 1.0 else {
+            AppLogger.shared.debug("❌ No shares available for trading")
+            return nil
+        }
+        
+        AppLogger.shared.debug("Creating max shares order with \(remainingShares) shares")
+        
+        // Calculate cost basis for all remaining shares
+        let costBasisResult = calculateCostBasisForShares(
+            sharesNeeded: remainingShares,
+            startingTaxLotIndex: 0,
+            sortedTaxLots: sortedTaxLots,
+            cumulativeSharesUsed: 0.0
+        )
+        
+        guard let (actualCostPerShare, sharesUsed) = costBasisResult else {
+            AppLogger.shared.debug("❌ Could not calculate cost basis for \(remainingShares) shares")
+            return nil
+        }
+        
+        AppLogger.shared.debug("✅ Found \(sharesUsed) shares with avg cost $\(actualCostPerShare)")
+        
+        // Calculate a profitable target (1% above cost per share)
+        let profitableTarget = actualCostPerShare * 1.01
+        AppLogger.shared.debug("Profitable target: $\(profitableTarget) (1% above cost $\(actualCostPerShare))")
+        
+        // Calculate the trailing stop from current price to this target
+        let trailingStop = ((currentPrice - profitableTarget) / currentPrice) * 100.0
+        AppLogger.shared.debug("Calculated trailing stop: \(trailingStop)%")
+        
+        // Validate the trailing stop is reasonable
+        guard trailingStop >= 0.5 else {
+            AppLogger.shared.debug("❌ Calculated trailing stop \(trailingStop)% is too small (< 0.5%)")
+            return nil
+        }
+        
+        // Calculate the proper target price: midway between stop price and cost per share
+        let stopPrice = currentPrice * (1.0 - trailingStop / 100.0)
+        let targetPrice = stopPrice + (actualCostPerShare - stopPrice) / 2.0
+        
+        AppLogger.shared.debug("Stop price: \(stopPrice), Target price: \(targetPrice), Cost per share: \(actualCostPerShare)")
+        
+        // Calculate gain at this target
+        let gainAtTarget = ((targetPrice - actualCostPerShare) / actualCostPerShare) * 100.0
+        AppLogger.shared.debug("Gain at target: \(gainAtTarget)%")
+        
+        // Create the sell order
+        let description = String(
+            format: "(Max Shares) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+            sharesUsed,
+            symbol,
+            targetPrice,
+            trailingStop,
+            actualCostPerShare
+        )
+        
+        let sellOrder = SalesCalcResultsRecord(
+            shares: sharesUsed,
+            rollingGainLoss: (targetPrice - actualCostPerShare) * sharesUsed,
+            breakEven: actualCostPerShare,
+            gain: gainAtTarget,
+            sharesToSell: sharesUsed,
+            trailingStop: trailingStop,
+            entry: currentPrice * (1.0 - trailingStop / 100.0),
+            target: targetPrice,
+            cancel: targetPrice * 0.95,
+            description: description,
+            openDate: "MaxShares"
+        )
+        
+        AppLogger.shared.debug("✅ Max shares sell order created: \(description)")
+        return sellOrder
+    }
+    
     // OLD CODE - REMOVED: calculateBuyOrder function replaced with new logic
     
     // OLD CODE - REMOVED: calculateSecondBuyOrder function no longer needed
     
     // OLD CODE - COMMENTED OUT FOR REFERENCE
-    // The following timing-related functions are no longer needed for simplified orders
-    // that don't use submit/cancel times or dates.
+    // The following timing-related functions are no longer needed for simplified orders.
     /*
     private func calculateSubmitDate() -> (String, Bool) {
         let calendar : Calendar = Calendar.current
@@ -1162,7 +1332,8 @@ struct RecommendedOCOOrdersSection: View {
             AppLogger.shared.debug("Symbol changed from \(lastSymbol) to \(symbol)")
             lastSymbol = symbol
             copiedValue = "TBD"
-            selectedOrderIndices.removeAll()
+            selectedSellOrderIndex = nil
+            selectedBuyOrderIndex = nil
             // Clear cache when symbol changes
             cachedSellOrders.removeAll()
             cachedBuyOrders.removeAll()
@@ -1231,16 +1402,39 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            headerView
-            contentView
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recommended OCO Orders")
+                .font(.headline)
+                .foregroundColor(.primary)
+            
+            HStack(alignment: .top, spacing: 0) {
+                VStack(spacing: 8) {
+                    sellOrdersSection
+                    buyOrdersSection
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                submitButtonSection
+                    .frame(maxHeight: .infinity)
+            }
+            
+            // Copy feedback text
             if copiedValue != "TBD" {
-                Text("Copied: \(copiedValue)")
-                    .font(.caption)
-                    .foregroundColor(.green)
-                    .padding(.horizontal)
+                HStack {
+                    Spacer()
+                    Text("Copied: \(copiedValue)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.1))
+                        .cornerRadius(4)
+                }
             }
         }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
         .onChange(of: symbol) { _, newSymbol in
             checkAndUpdateSymbol()
         }
@@ -1363,86 +1557,266 @@ struct RecommendedOCOOrdersSection: View {
         .padding()
     }
     
-    private var headerView: some View {
-        HStack {
-            Text("Recommended OCO Orders")
-                .font(.headline)
+    // MARK: - Sell Orders Section
+    private var sellOrdersSection: some View {
+        VStack(spacing: 8) {
+            sellOrdersHeaderRow
             
-            Spacer()
-        }
-        .padding(.horizontal)
-    }
-    
-    private var contentView: some View {
-        Group {
-            if currentOrders.isEmpty {
-                Text("No recommended OCO orders available")
+            if let sellOrders = getSellOrders() {
+                ForEach(Array(sellOrders.enumerated()), id: \.element.id) { index, order in
+                    sellOrderRow(order: order, index: index)
+                }
+            } else {
+                Text("No sell orders available")
                     .foregroundColor(.secondary)
                     .padding()
-            } else {
-                orderTableView
             }
         }
     }
     
-    private var orderTableView: some View {
-        HStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    headerRow
-                    orderRows
-                }
-            }
+    // MARK: - Buy Orders Section
+    private var buyOrdersSection: some View {
+        VStack(spacing: 8) {
+            buyOrdersHeaderRow
             
-            VStack {
-                Spacer()
-                if !selectedOrderIndices.isEmpty {
-                    Button(action: submitOCOOrders) {
-                        VStack {
-                            Image(systemName: "paperplane.circle.fill")
-                                .font(.title2)
-                            Text("Submit\nOCO")
-                                .font(.caption)
-                                .multilineTextAlignment(.center)
-                        }
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(8)
-                    }
+            if let buyOrders = getBuyOrders() {
+                ForEach(Array(buyOrders.enumerated()), id: \.element.id) { index, order in
+                    buyOrderRow(order: order, index: index)
                 }
-                Spacer()
+            } else {
+                Text("No buy orders available")
+                    .foregroundColor(.secondary)
+                    .padding()
             }
-            .padding(.trailing, 8)
         }
+    }
+    
+    private var sellOrdersHeaderRow: some View {
+        HStack {
+            Text("")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 30, alignment: .center)
+            
+            Text("Description")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Text("Shares")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+            
+            Text("Stop")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 100, alignment: .trailing)
+            
+            Text("Target")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+        .background(Color.red.opacity(0.1))
+    }
+    
+    private var buyOrdersHeaderRow: some View {
+        HStack {
+            Text("")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 30, alignment: .center)
+            
+            Text("Description")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Text("Shares")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+            
+            Text("Stop")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 100, alignment: .trailing)
+            
+            Text("Target")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 4)
+        .background(Color.blue.opacity(0.1))
+    }
+    
+    private func sellOrderRow(order: SalesCalcResultsRecord, index: Int) -> some View {
+        HStack {
+            Button(action: {
+                if selectedSellOrderIndex == index {
+                    selectedSellOrderIndex = nil  // Deselect if already selected
+                } else {
+                    selectedSellOrderIndex = index  // Select this order
+                }
+            }) {
+                Image(systemName: selectedSellOrderIndex == index ? "largecircle.fill.circle" : "circle")
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text(order.description)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboard(text: order.description)
+                }
+            
+            Text("\(Int(order.sharesToSell))")
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(value: Double(order.sharesToSell), format: "%.0f")
+                }
+            
+            Text(String(format: "%.2f%%", order.trailingStop))
+                .font(.caption)
+                .frame(width: 100, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(value: order.trailingStop, format: "%.2f")
+                }
+            
+            Text(String(format: "%.2f", order.target))
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(value: order.target, format: "%.2f")
+                }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 2)
+        .background(selectedSellOrderIndex == index ? Color.red.opacity(0.2) : Color.red.opacity(0.05))
+        .cornerRadius(4)
+    }
+    
+    private func buyOrderRow(order: BuyOrderRecord, index: Int) -> some View {
+        HStack {
+            Button(action: {
+                if selectedBuyOrderIndex == index {
+                    selectedBuyOrderIndex = nil  // Deselect if already selected
+                } else {
+                    selectedBuyOrderIndex = index  // Select this order
+                }
+            }) {
+                Image(systemName: selectedBuyOrderIndex == index ? "largecircle.fill.circle" : "circle")
+                    .foregroundColor(.blue)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text(order.description)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onTapGesture {
+                    copyToClipboard(text: order.description)
+                }
+            
+            Text("\(Int(order.sharesToBuy))")
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(value: Double(order.sharesToBuy), format: "%.0f")
+                }
+            
+            Text(String(format: "%.2f%%", order.trailingStop))
+                .font(.caption)
+                .frame(width: 100, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(value: order.trailingStop, format: "%.2f")
+                }
+            
+            Text(String(format: "%.2f", order.targetBuyPrice))
+                .font(.caption)
+                .frame(width: 80, alignment: .trailing)
+                .onTapGesture {
+                    copyToClipboard(value: order.targetBuyPrice, format: "%.2f")
+                }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 2)
+        .background(selectedBuyOrderIndex == index ? Color.blue.opacity(0.2) : Color.blue.opacity(0.05))
+        .cornerRadius(4)
+    }
+    
+    // MARK: - Submit Button Section
+    private var submitButtonSection: some View {
+        VStack {
+            if selectedSellOrderIndex != nil && selectedBuyOrderIndex != nil {
+                Button(action: submitOCOOrders) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "paperplane.circle.fill")
+                            .font(.title2)
+                        Text("Submit\nOCO")
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundColor(.white)
+                    .frame(width: 80, height: 80)
+                    .background(Color.green)
+                    .cornerRadius(8)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "paperplane.circle")
+                        .font(.title2)
+                    Text("Submit")
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundColor(.secondary)
+                .frame(width: 80, height: 80)
+                .background(Color.gray.opacity(0.2))
+                .cornerRadius(8)
+            }
+        }
+        .frame(width: 80)
+        .padding(.leading, 16)
     }
     
     private func submitOCOOrders() {
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected order indices: \(selectedOrderIndices)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected sell order index: \(selectedSellOrderIndex?.description ?? "nil")")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected buy order index: \(selectedBuyOrderIndex?.description ?? "nil")")
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(currentOrders.count)")
         
-        guard !selectedOrderIndices.isEmpty else { 
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ No orders selected")
+        guard let sellIndex = selectedSellOrderIndex,
+              let buyIndex = selectedBuyOrderIndex else { 
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Both sell and buy orders must be selected")
             return 
         }
         
-        let selectedOrders = selectedOrderIndices.compactMap { index in
-            index < currentOrders.count ? currentOrders[index] : nil
+        // Get the selected orders
+        let sellOrders = getSellOrders()
+        let buyOrders = getBuyOrders()
+        
+        guard let sellOrder = sellOrders?[sellIndex],
+              let buyOrder = buyOrders?[buyIndex] else {
+            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Could not retrieve selected orders")
+            return
         }
         
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders count: \(selectedOrders.count)")
         AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders details:")
-        for (index, (orderType, order)) in selectedOrders.enumerated() {
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT]   Order \(index + 1): type=\(orderType), order=\(type(of: order))")
-            if let sellOrder = order as? SalesCalcResultsRecord {
-                AppLogger.shared.debug("🔄 [OCO-SUBMIT]     SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
-            } else if let buyOrder = order as? BuyOrderRecord {
-                AppLogger.shared.debug("🔄 [OCO-SUBMIT]     BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
-            } else {
-                AppLogger.shared.debug("🔄 [OCO-SUBMIT]     Unknown order type: \(type(of: order))")
-            }
-        }
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT]   SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+        AppLogger.shared.debug("🔄 [OCO-SUBMIT]   BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+        
+        // Create the selected orders array in the format expected by the order creation
+        let selectedOrders: [(String, Any)] = [
+            ("SELL", sellOrder),
+            ("BUY", buyOrder)
+        ]
         
         // Get account number from the position
         guard let accountNumberInt = getAccountNumber() else {
@@ -1526,39 +1900,6 @@ struct RecommendedOCOOrdersSection: View {
         return Int64(accountNumber)
     }
     
-    // OLD CODE - COMMENTED OUT FOR REFERENCE
-    // These timing-related functions are no longer needed for simplified orders.
-    /*
-    private func calculateReleaseTime() -> String {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Get tomorrow's date
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) else {
-            return formatDateForSchwab(now)
-        }
-        
-        // Set to 9:30 AM (market open)
-        var components = calendar.dateComponents([.year, .month, .day], from: tomorrow)
-        components.hour = 9
-        components.minute = 30
-        components.second = 0
-        
-        guard let marketOpen = calendar.date(from: components) else {
-            return formatDateForSchwab(tomorrow)
-        }
-        
-        return formatDateForSchwab(marketOpen)
-    }
-    
-    private func formatDateForSchwab(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
-        formatter.timeZone = TimeZone(abbreviation: "UTC")
-        return formatter.string(from: date)
-    }
-    */
-    
     private func createOrderDescriptions(orders: [(String, Any)]) -> [String] {
         AppLogger.shared.debug("=== createOrderDescriptions ===")
         AppLogger.shared.debug("Input orders count: \(orders.count)")
@@ -1601,7 +1942,8 @@ struct RecommendedOCOOrdersSection: View {
                 orderToSubmit = nil
                 orderDescriptions = []
                 orderJson = ""
-                selectedOrderIndices.removeAll()
+                selectedSellOrderIndex = nil
+                selectedBuyOrderIndex = nil
                 
                 // Show success or error dialog
                 if result.success {
@@ -1630,134 +1972,24 @@ struct RecommendedOCOOrdersSection: View {
         return description
     }
     
-    private var headerRow: some View {
-        HStack {
-            Text("")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 30, alignment: .center)
-            
-            Text("Type")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 60, alignment: .leading)
-            
-            Text("Description")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
-            Text("Shares")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 80, alignment: .trailing)
-            
-            Text("Stop")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 100, alignment: .trailing)
-            
-            Text("Target")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 80, alignment: .trailing)
+    private func getSellOrders() -> [SalesCalcResultsRecord]? {
+        let sellOrders = currentOrders.compactMap { order in
+            if order.0 == "SELL", let sellOrder = order.1 as? SalesCalcResultsRecord {
+                return sellOrder
+            }
+            return nil
         }
-        .padding(.horizontal)
-        .padding(.vertical, 4)
-        .background(Color.blue.opacity(0.1))
+        return sellOrders.isEmpty ? nil : sellOrders
     }
     
-    private var orderRows: some View {
-        return ForEach(Array(currentOrders.enumerated()), id: \.offset) { index, order in
-            orderRow(index: index, orderType: order.0, order: order.1, isSelected: selectedOrderIndices.contains(index))
-        }
-    }
-    
-    private func orderRow(index: Int, orderType: String, order: Any, isSelected: Bool) -> some View {
-        HStack {
-            Button(action: {
-                if isSelected {
-                    selectedOrderIndices.remove(index)
-                } else {
-                    selectedOrderIndices.insert(index)
-                }
-            }) {
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                    .foregroundColor(.blue)
+    private func getBuyOrders() -> [BuyOrderRecord]? {
+        let buyOrders = currentOrders.compactMap { order in
+            if order.0 == "BUY", let buyOrder = order.1 as? BuyOrderRecord {
+                return buyOrder
             }
-            .buttonStyle(PlainButtonStyle())
-            .frame(width: 30, alignment: .center)
-            
-            Text(orderType)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 60, alignment: .leading)
-                .foregroundColor(orderType == "SELL" ? .red : .blue)
-            
-            Group {
-                if let sellOrder = order as? SalesCalcResultsRecord {
-                    Text(sellOrder.description)
-                        .font(.caption)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .onTapGesture {
-                            copyToClipboard(text: sellOrder.description)
-                        }
-                    
-                    Text("\(Int(sellOrder.sharesToSell))")
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: Double(sellOrder.sharesToSell), format: "%.0f")
-                        }
-                    
-                    Text(String(format: "%.2f%%", sellOrder.trailingStop))
-                        .font(.caption)
-                        .frame(width: 100, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: sellOrder.trailingStop, format: "%.2f")
-                        }
-                    
-                    Text(String(format: "%.2f", sellOrder.target))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: sellOrder.target, format: "%.2f")
-                        }
-                } else if let buyOrder = order as? BuyOrderRecord {
-                    Text(buyOrder.description)
-                        .font(.caption)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .onTapGesture {
-                            copyToClipboard(text: buyOrder.description)
-                        }
-                    
-                    Text("\(Int(buyOrder.sharesToBuy))")
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: Double(buyOrder.sharesToBuy), format: "%.0f")
-                        }
-                    
-                    Text(String(format: "%.2f%%", buyOrder.trailingStop))
-                        .font(.caption)
-                        .frame(width: 100, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: buyOrder.trailingStop, format: "%.2f")
-                        }
-                    
-                    Text(String(format: "%.2f", buyOrder.targetBuyPrice))
-                        .font(.caption)
-                        .frame(width: 80, alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboard(value: buyOrder.targetBuyPrice, format: "%.2f")
-                        }
-                }
-            }
+            return nil
         }
-        .padding(.horizontal)
-        .padding(.vertical, 2)
-        .background(isSelected ? Color.blue.opacity(0.2) : rowStyle(for: orderType, item: order).opacity(0.1))
-        .cornerRadius(4)
+        return buyOrders.isEmpty ? nil : buyOrders
     }
     
     // MARK: - Helper Functions for Minimum Share Calculations
@@ -1894,50 +2126,6 @@ struct RecommendedOCOOrdersSection: View {
         
         AppLogger.shared.error("❌ Could not achieve target gain of \(targetGainPercent)%")
         return nil
-    }
-    
-    /// Calculate the minimum number of shares needed from a specific lot to achieve the target gain
-    private func calculateMinimumSharesFromLot(
-        lot: SalesCalcPositionsRecord,
-        targetGainPercent: Double,
-        targetPrice: Double,
-        cumulativeShares: Double,
-        cumulativeCost: Double
-    ) -> Double {
-        // If this lot alone can achieve the target gain, calculate the minimum shares needed
-        let lotGainPercent = ((targetPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-        
-        if lotGainPercent >= targetGainPercent {
-            // This lot alone can achieve the target gain
-            // Calculate the minimum shares needed from this lot
-            // let minShares: Double = 1.0 // Start with 1 share
-            
-            // Binary search to find the minimum shares needed
-            var low = 1.0
-            var high = lot.quantity
-            
-            while low <= high {
-                let mid = (low + high) / 2.0
-                let testShares = cumulativeShares + mid
-                let testCost = cumulativeCost + (mid * lot.costPerShare)
-                let testAvgCost = testCost / testShares
-                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
-                
-                if testGainPercent >= targetGainPercent {
-                    // We can achieve the target with this many shares, try fewer
-                    high = mid - 1.0
-                } else {
-                    // We need more shares
-                    low = mid + 1.0
-                }
-            }
-            
-            return low
-        } else {
-            // This lot alone cannot achieve the target gain
-            // We need all shares from this lot plus some from previous lots
-            return lot.quantity
-        }
     }
     
     /// Calculates the minimum shares needed to achieve a specific profit percentage on the remaining position

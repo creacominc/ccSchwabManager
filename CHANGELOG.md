@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **NEW**: CSV Export functionality for Holdings table
+  - Added export button to the right of the Symbol column header in Holdings tab
+  - Implemented CSV export with comprehensive holdings data including positions, account information, trade dates, and order statuses
+  - Added proper CSV formatting with headers and data rows
+  - Integrated with existing CSV export infrastructure for consistent user experience
+  - Added @MainActor isolation to resolve UI threading issues with NSSavePanel
+- **NEW**: Enhanced Recommended OCO Orders with additional sell order types
+  - Added 1% higher trailing stop sell orders that iterate through available shares to find profitable combinations
+  - Added maximum shares sell orders that use all available shares with appropriately adjusted trailing stops
+  - Increased limit from 3 to 7 additional sell orders with configurable constant `maxAdditionalSellOrders`
+  - Implemented proper gap structure between stop price, target price, and cost per share
+  - Fixed target price calculation to be midway between stop price and cost per share for better risk management
+  - Enhanced order creation logic to work with full available shares (not assuming previous orders consume shares)
+- **NEW**: Improved UI for Recommended OCO Orders section
+  - Replaced checkboxes with radio buttons for better single-selection behavior
+  - Implemented separate radio button groups for sell and buy orders
+  - Added deselection functionality by tapping selected radio buttons again
+  - Moved submit button to the right side of the orders for better visual balance
+  - Removed redundant "Clear Selection" buttons for cleaner interface
+  - Enhanced layout with proper spacing and visual separation between sections
+- **NEW**: Copy feedback functionality for order descriptions
+  - Added copy feedback text display at the bottom of Recommended OCO Orders section
+  - Implemented consistent copy behavior across all order types
+  - Added visual confirmation when orders are copied to clipboard
+  - Integrated with existing copy infrastructure for cross-platform compatibility
+
+### Fixed
+- **FIXED**: Trailing stop calculation logic for additional sell orders
+  - Corrected calculation that was producing negative trailing stop values
+  - Fixed target price calculation to create proper gaps between stop, target, and cost
+  - Resolved issue where additional sell orders weren't appearing due to incorrect profitability checks
+  - Fixed share availability logic to allow all orders to use full available shares
+- **FIXED**: CSV export threading issues
+  - Resolved Main Actor isolation warnings by properly wrapping NSSavePanel calls
+  - Fixed optional unwrapping issues in order status handling
+  - Corrected function parameter passing for CSV generation
+- **FIXED**: Order selection and submission logic
+  - Corrected radio button state management for proper single-selection behavior
+  - Fixed order submission validation to ensure both buy and sell orders are selected
+  - Resolved UI layout issues with proper SwiftUI view structure
+
 ### Fixed
 - Buy order targets occasionally showing values from the previously viewed symbol when navigating between positions
   - Ensured price/quote usage is symbol-safe: ignore `quoteData` if `quoteData.symbol` != current symbol

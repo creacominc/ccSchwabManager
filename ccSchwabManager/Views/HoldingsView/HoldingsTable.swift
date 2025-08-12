@@ -38,7 +38,7 @@ struct HoldingsTable: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TableHeader(currentSort: $currentSort, viewSize: viewSize, columnWidths: columnWidths)
+            TableHeader(currentSort: $currentSort, viewSize: viewSize, columnWidths: columnWidths, sortedHoldings: sortedHoldings, accountPositions: accountPositions, tradeDateCache: tradeDateCache, orderStatusCache: orderStatusCache)
             Divider()
             TableContent(
                 sortedHoldings: sortedHoldings,
@@ -66,6 +66,10 @@ private struct TableHeader: View {
     @Binding var currentSort: SortConfig?
     let viewSize: CGSize
     let columnWidths: [CGFloat]
+    let sortedHoldings: [Position]
+    let accountPositions: [(Position, String, String)]
+    let tradeDateCache: [String: String]
+    let orderStatusCache: [String: ActiveOrderStatus?]
 
     @ViewBuilder
     private func columnHeader(title: String, column: SortableColumn, alignment: Alignment = .leading) -> some View {
@@ -97,7 +101,18 @@ private struct TableHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            columnHeader(title: "Symbol", column: .symbol).frame(width: columnWidths[0] * viewSize.width)
+            HStack {
+                columnHeader(title: "Symbol", column: .symbol)
+                Button(action: {
+                    CSVExporter.exportHoldings(sortedHoldings, accountPositions: accountPositions, tradeDates: tradeDateCache, orderStatuses: orderStatusCache)
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(width: columnWidths[0] * viewSize.width)
             columnHeader(title: "Qty", column: .quantity, alignment: .trailing).frame(width: columnWidths[1] * viewSize.width)
             columnHeader(title: "Avg", column: .avgPrice, alignment: .trailing).frame(width: columnWidths[2] * viewSize.width)
             columnHeader(title: "Market", column: .marketValue, alignment: .trailing).frame(width: columnWidths[3] * viewSize.width)

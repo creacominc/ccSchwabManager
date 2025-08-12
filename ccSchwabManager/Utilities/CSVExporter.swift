@@ -29,6 +29,16 @@ class CSVExporter {
         saveCSVFile(content: csvContent, defaultFileName: defaultFileName)
     }
     
+    static func exportHoldings(_ positions: [Position], accountPositions: [(Position, String, String)], tradeDates: [String: String] = [:], orderStatuses: [String: ActiveOrderStatus?] = [:]) {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd"
+        let currentDate = dateFormatter.string(from: Date())
+        let defaultFileName = "Holdings_\(currentDate).csv"
+        
+        let csvContent = generateHoldingsCSV(positions, accountPositions: accountPositions, tradeDates: tradeDates, orderStatuses: orderStatuses)
+        saveCSVFile(content: csvContent, defaultFileName: defaultFileName)
+    }
+    
     static func generateTransactionCSV(_ transactions: [Transaction], symbol: String) -> String {
         var csv = "Date,Type,Quantity,Price,Net Amount\n"
         
@@ -68,6 +78,52 @@ class CSVExporter {
         return csv
     }
     
+    static func generateHoldingsCSV(_ positions: [Position], accountPositions: [(Position, String, String)], tradeDates: [String: String] = [:], orderStatuses: [String: ActiveOrderStatus?] = [:]) -> String {
+        var csv = "Symbol,Description,Quantity,Average Price,Market Value,P/L,P/L %,Asset Type,Account,Last Trade Date,Order Status,DTE/Contracts\n"
+        
+        for position in positions {
+            let symbol = position.instrument?.symbol ?? ""
+            let description = position.instrument?.description ?? ""
+            let quantity = String(format: "%.4f", (position.longQuantity ?? 0) + (position.shortQuantity ?? 0))
+            let avgPrice = String(format: "%.2f", position.averagePrice ?? 0)
+            let marketValue = String(format: "%.2f", position.marketValue ?? 0)
+            let pl = String(format: "%.2f", position.longOpenProfitLoss ?? 0)
+            
+            // Calculate P/L percentage
+            let plPercent: Double
+            if let mv = position.marketValue, let plValue = position.longOpenProfitLoss {
+                let costBasis = mv - plValue
+                plPercent = costBasis != 0 ? (plValue / costBasis) * 100 : 0
+            } else {
+                plPercent = 0
+            }
+            let plPercentStr = String(format: "%.2f", plPercent)
+            
+            let assetType = position.instrument?.assetType?.rawValue ?? ""
+            
+            // Get account number from accountPositions
+            let accountNumber = accountPositions.first { $0.0.id == position.id }?.1 ?? ""
+            
+            // Get last trade date (this would need to be passed in or calculated)
+            let lastTradeDate = tradeDates[symbol] ?? "" // Use passed-in tradeDates
+            
+            // Get order status (this would need to be passed in or calculated)
+            let orderStatus: String
+            if let status = orderStatuses[symbol], let unwrappedStatus = status {
+                orderStatus = unwrappedStatus.rawValue
+            } else {
+                orderStatus = ""
+            }
+            
+            // For DTE/Contracts, we'll use a placeholder since we can't call SchwabClient from static context
+            let dteContracts = "" // Placeholder - would need to be calculated and passed in
+            
+            csv += "\(symbol),\(description),\(quantity),\(avgPrice),\(marketValue),\(pl),\(plPercentStr),\(assetType),\(accountNumber),\(lastTradeDate),\(orderStatus),\(dteContracts)\n"
+        }
+        
+        return csv
+    }
+    
     static func formatTransactionDate(_ dateString: String?) -> String {
         guard let dateString = dateString,
               let date = ISO8601DateFormatter().date(from: dateString) else {
@@ -81,18 +137,20 @@ class CSVExporter {
     
     private static func saveCSVFile(content: String, defaultFileName: String) {
         #if os(macOS)
-        let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [.commaSeparatedText]
-        savePanel.nameFieldStringValue = defaultFileName
-        savePanel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        
-        savePanel.begin { response in
-            if response == .OK, let url = savePanel.url {
-                do {
-                    try content.write(to: url, atomically: true, encoding: .utf8)
-                    print("CSV file saved successfully to: \(url.path)")
-                } catch {
-                    print("Error saving CSV file: \(error)")
+        Task { @MainActor in
+            let savePanel = NSSavePanel()
+            savePanel.allowedContentTypes = [.commaSeparatedText]
+            savePanel.nameFieldStringValue = defaultFileName
+            savePanel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            
+            savePanel.begin { response in
+                if response == .OK, let url = savePanel.url {
+                    do {
+                        try content.write(to: url, atomically: true, encoding: .utf8)
+                        print("CSV file saved successfully to: \(url.path)")
+                    } catch {
+                        print("Error saving CSV file: \(error)")
+                    }
                 }
             }
         }
