@@ -1403,7 +1403,7 @@ struct RecommendedOCOOrdersSection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recommended OCO Orders")
+            Text("Recommended Orders")
                 .font(.headline)
                 .foregroundColor(.primary)
             
@@ -1471,7 +1471,7 @@ struct RecommendedOCOOrdersSection: View {
         .alert("Order Submitted Successfully", isPresented: $showingSuccessAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Your OCO order has been submitted successfully.")
+            Text("Your order has been submitted successfully.")
         }
     }
     
@@ -1479,7 +1479,7 @@ struct RecommendedOCOOrdersSection: View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
             HStack {
-                Text("Confirm OCO Order Submission")
+                Text("Confirm Order Submission")
                     .font(.title2)
                     .fontWeight(.bold)
                 
@@ -1754,12 +1754,12 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Submit Button Section
     private var submitButtonSection: some View {
         VStack {
-            if selectedSellOrderIndex != nil && selectedBuyOrderIndex != nil {
-                Button(action: submitOCOOrders) {
+            if selectedSellOrderIndex != nil || selectedBuyOrderIndex != nil {
+                Button(action: submitOrders) {
                     VStack(spacing: 8) {
                         Image(systemName: "paperplane.circle.fill")
                             .font(.title2)
-                        Text("Submit\nOCO")
+                        Text("Submit\nOrder")
                             .font(.caption)
                             .multilineTextAlignment(.center)
                     }
@@ -1786,15 +1786,15 @@ struct RecommendedOCOOrdersSection: View {
         .padding(.leading, 16)
     }
     
-    private func submitOCOOrders() {
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders START ===")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected sell order index: \(selectedSellOrderIndex?.description ?? "nil")")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected buy order index: \(selectedBuyOrderIndex?.description ?? "nil")")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] All orders count: \(currentOrders.count)")
+    private func submitOrders() {
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] === submitOrders START ===")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Selected sell order index: \(selectedSellOrderIndex?.description ?? "nil")")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Selected buy order index: \(selectedBuyOrderIndex?.description ?? "nil")")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] All orders count: \(currentOrders.count)")
         
-        guard let sellIndex = selectedSellOrderIndex,
-              let buyIndex = selectedBuyOrderIndex else { 
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Both sell and buy orders must be selected")
+        // Allow single orders - at least one must be selected
+        guard selectedSellOrderIndex != nil || selectedBuyOrderIndex != nil else { 
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT] ❌ At least one order must be selected")
             return 
         }
         
@@ -1802,31 +1802,40 @@ struct RecommendedOCOOrdersSection: View {
         let sellOrders = getSellOrders()
         let buyOrders = getBuyOrders()
         
-        guard let sellOrder = sellOrders?[sellIndex],
-              let buyOrder = buyOrders?[buyIndex] else {
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] ❌ Could not retrieve selected orders")
+        var selectedOrders: [(String, Any)] = []
+        
+        // Add sell order if selected
+        if let sellIndex = selectedSellOrderIndex,
+           let sellOrder = sellOrders?[sellIndex] {
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Selected SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
+            selectedOrders.append(("SELL", sellOrder))
+        }
+        
+        // Add buy order if selected
+        if let buyIndex = selectedBuyOrderIndex,
+           let buyOrder = buyOrders?[buyIndex] {
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Selected BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
+            selectedOrders.append(("BUY", buyOrder))
+        }
+        
+        // Validate that we have at least one order
+        guard !selectedOrders.isEmpty else {
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT] ❌ Could not retrieve selected orders")
             return
         }
         
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Selected orders details:")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT]   SELL order: sharesToSell=\(sellOrder.sharesToSell), entry=\(sellOrder.entry), target=\(sellOrder.target), cancel=\(sellOrder.cancel)")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT]   BUY order: sharesToBuy=\(buyOrder.sharesToBuy), targetBuyPrice=\(buyOrder.targetBuyPrice), entryPrice=\(buyOrder.entryPrice), targetGainPercent=\(buyOrder.targetGainPercent)")
-        
-        // Create the selected orders array in the format expected by the order creation
-        let selectedOrders: [(String, Any)] = [
-            ("SELL", sellOrder),
-            ("BUY", buyOrder)
-        ]
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Total orders to submit: \(selectedOrders.count)")
         
         // Get account number from the position
         guard let accountNumberInt = getAccountNumber() else {
-            AppLogger.shared.error("🔄 [OCO-SUBMIT] ❌ Could not get account number for position")
+            AppLogger.shared.error("🔄 [ORDER-SUBMIT] ❌ Could not get account number for position")
             return
         }
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Account number: \(accountNumberInt)")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Account number: \(accountNumberInt)")
         
-        // Simplified OCO order creation - no timing constraints
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Creating simplified OCO order without timing constraints")
+        // Create order (single order or OCO if both are selected)
+        let orderType = selectedOrders.count == 1 ? "single order" : "OCO order"
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Creating \(orderType) without timing constraints")
         
         // Create order using SchwabClient (single order or OCO)
         guard let orderToSubmit = SchwabClient.shared.createOrder(
@@ -1835,16 +1844,16 @@ struct RecommendedOCOOrdersSection: View {
             selectedOrders: selectedOrders,
             releaseTime: "" // No release time for simplified orders
         ) else {
-            AppLogger.shared.error("🔄 [OCO-SUBMIT] ❌ Failed to create order")
+            AppLogger.shared.error("🔄 [ORDER-SUBMIT] ❌ Failed to create order")
             return
         }
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] ✅ Order created successfully")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] ✅ Order created successfully")
         
         // Create order descriptions for confirmation dialog
         orderDescriptions = createOrderDescriptions(orders: selectedOrders)
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] Created \(orderDescriptions.count) order descriptions:")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] Created \(orderDescriptions.count) order descriptions:")
         for (index, description) in orderDescriptions.enumerated() {
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT]   \(index + 1): \(description)")
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT]   \(index + 1): \(description)")
         }
         
         // Create JSON preview
@@ -1853,18 +1862,18 @@ struct RecommendedOCOOrdersSection: View {
             encoder.outputFormatting = .prettyPrinted
             let jsonData = try encoder.encode(orderToSubmit)
             orderJson = String(data: jsonData, encoding: .utf8) ?? "{}"
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] JSON created successfully, length: \(orderJson.count)")
-            AppLogger.shared.debug("🔄 [OCO-SUBMIT] JSON preview : \(String(orderJson))")
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT] JSON created successfully, length: \(orderJson.count)")
+            AppLogger.shared.debug("🔄 [ORDER-SUBMIT] JSON preview : \(String(orderJson))")
         } catch {
             orderJson = "Error encoding order: \(error)"
-            AppLogger.shared.error("🔄 [OCO-SUBMIT] ❌ JSON encoding error: \(error)")
+            AppLogger.shared.error("🔄 [ORDER-SUBMIT] ❌ JSON encoding error: \(error)")
         }
         
         // Store the order and show confirmation dialog
         self.orderToSubmit = orderToSubmit
         showingConfirmationDialog = true
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] ✅ Showing confirmation dialog")
-        AppLogger.shared.debug("🔄 [OCO-SUBMIT] === submitOCOOrders END ===")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] ✅ Showing confirmation dialog")
+        AppLogger.shared.debug("🔄 [ORDER-SUBMIT] === submitOrders END ===")
     }
     
     private func getAccountNumber() -> Int64? {
@@ -1956,10 +1965,10 @@ struct RecommendedOCOOrdersSection: View {
         }
     }
     
-    private func createOCOOrderDescription(orders: [(String, Any)]) -> String {
+    private func createOrderDescription(orders: [(String, Any)]) -> String {
         guard !orders.isEmpty else { return "" }
         
-        var description = "OCO Orders for \(symbol):\n"
+        var description = "Orders for \(symbol):\n"
         
         for (index, (_, order)) in orders.enumerated() {
             if let sellOrder = order as? SalesCalcResultsRecord {

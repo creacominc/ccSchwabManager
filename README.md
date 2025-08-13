@@ -34,7 +34,7 @@ The application provides a clean, focused interface with two main tabs:
 The Orders tab features a redesigned, user-friendly interface with three distinct sections:
 
 - **Current Orders**: Displays active working orders with a clean, compact design that automatically adjusts height based on content
-- **Recommended OCO Orders**: Shows intelligent order recommendations with radio button selection and enhanced visual organization
+- **Recommended Orders**: Shows intelligent order recommendations with radio button selection and enhanced visual organization (supports both single orders and OCO orders)
 - **Buy Sequence Orders**: Strategic position building orders with nested order structures and dynamic trailing stops
 
 **Key Layout Improvements:**
@@ -78,7 +78,7 @@ For a position with multiple tax lots:
 
 ### Dynamic Section Sizing
 
-The Orders tab now features intelligent space allocation between Current Orders and Recommended OCO Orders sections:
+The Orders tab now features intelligent space allocation between Current Orders and Recommended Orders sections:
 
 - **Adaptive Layout**: Current Orders section shrinks to minimum height when empty, giving more space to Recommended Orders
 - **Minimum Height Guarantee**: Current Orders maintains minimum height (80 points) to accommodate header and cancel button
@@ -93,7 +93,10 @@ The application now includes sophisticated buy order logic for positions that ar
 - **Intelligent Entry Pricing**: Buy orders are set to enter at 1 ATR% below the target price, ensuring we don't buy until the position is sufficiently profitable
 - **Precise Trailing Stops**: Trailing stop percentages are calculated based on the target price vs current price, ensuring accurate stop placement
 - **Price Rounding**: All prices and percentages are rounded to the penny (2 decimal places) for precise order execution
-- **Single vs OCO Orders**: The system intelligently creates single orders when only one order is selected, and OCO orders when multiple orders are selected
+- **Flexible Order Submission**: The system now supports both single orders and OCO orders:
+  - **Single Orders**: Submit individual buy or sell orders independently
+  - **OCO Orders**: Submit both buy and sell orders together as a One-Cancels-Other order
+  - **Smart Submit Button**: Submit button is enabled when either a buy OR sell order is selected (not requiring both)
 
 #### Buy Order Example
 For a position with:
@@ -215,9 +218,9 @@ Files are saved to the user's Downloads folder by default, with a file dialog al
 - Trade Date
 - Order Status
 
-### Enhanced Recommended OCO Orders
+### Enhanced Recommended Orders
 
-The application now provides enhanced OCO (One-Cancels-Other) order recommendations with improved UI and additional sell order types:
+The application now provides enhanced order recommendations with improved UI and additional sell order types, supporting both single orders and OCO (One-Cancels-Other) orders:
 
 - **Additional Sell Order Types**: Beyond the standard sell orders, the system now generates:
   - **1% Higher Trailing Stop Orders**: Sell orders with trailing stops 1% higher than the minimum break-even order
@@ -240,6 +243,13 @@ The application now provides enhanced OCO (One-Cancels-Other) order recommendati
   - **Full Share Availability**: All sell orders can use the full available shares (not assuming previous orders consume shares)
   - **Proper Gap Structure**: Target prices are calculated midway between stop price and cost per share for better risk management
   - **Profitability Validation**: Orders are only created when they meet profitability requirements
+
+- **Flexible Order Submission**:
+  - **Single Order Support**: Users can now submit individual buy or sell orders without requiring both
+  - **OCO Order Support**: Traditional OCO functionality still available when both buy and sell orders are selected
+  - **Smart Submit Button**: Submit button automatically enables when any order is selected (buy OR sell)
+  - **Dynamic Order Creation**: System automatically creates single orders or OCO orders based on selection
+  - **Improved User Experience**: No more requirement to select both order types - submit what you need when you need it
 
 ## Project Structure
 

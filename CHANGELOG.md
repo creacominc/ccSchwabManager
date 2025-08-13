@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Flexible Order Submission for Recommended Orders
+  - **Single Order Support**: Users can now submit individual buy or sell orders without requiring both
+  - **OCO Order Support**: Traditional OCO functionality still available when both buy and sell orders are selected
+  - **Smart Submit Button**: Submit button automatically enables when any order is selected (buy OR sell)
+  - **Dynamic Order Creation**: System automatically creates single orders or OCO orders based on selection
+  - **Improved User Experience**: No more requirement to select both order types - submit what you need when you need it
+  - **Updated UI Text**: Changed section titles and button text from "OCO" to generic "Orders" to reflect new functionality
+  - **Enhanced Function Names**: Updated function names and logging from "OCO" to generic "Orders" for consistency
 - **NEW**: CSV Export functionality for Holdings table
   - Added export button to the right of the Symbol column header in Holdings tab
   - Implemented CSV export with comprehensive holdings data including positions, account information, trade dates, and order statuses

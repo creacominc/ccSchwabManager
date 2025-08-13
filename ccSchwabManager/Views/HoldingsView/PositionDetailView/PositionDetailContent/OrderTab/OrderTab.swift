@@ -39,13 +39,13 @@ struct OrderTab: View {
                         .stroke(Color.blue.opacity(0.3), lineWidth: 1)
                 )
                 
-                // Section 2: Recommended OCO Orders
+                // Section 2: Recommended Orders (Single or OCO)
                 VStack(alignment: .leading, spacing: 0) {
                     // Section Header
                     HStack {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .foregroundColor(.green)
-                        Text("Recommended OCO Orders")
+                        Text("Recommended Orders")
                             .font(.headline)
                             .fontWeight(.semibold)
                         Spacer()
