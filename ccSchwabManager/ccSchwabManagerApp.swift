@@ -15,7 +15,7 @@ struct ccSchwabManagerApp: App
     init() {
         print( "=== ccSchwabManagerApp init ===" )
         AppLogger.shared.info("=== ccSchwabManagerApp started ===")
-        AppLogger.shared.info("=== Testing log file write ===")
+        AppLogger.shared.info("=== Testing log file write ===" )
         print("Log file should be at: ~/Documents/ccSchwabManager.log")
         
         // Direct file write test
@@ -59,6 +59,7 @@ struct ccSchwabManagerApp: App
                     SchwabClient.shared.clearLoadingState()
                     return .handled
                 }
+                .overlay(CSVShareView())
         }
     }
 }

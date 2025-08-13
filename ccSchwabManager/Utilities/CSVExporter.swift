@@ -155,10 +155,8 @@ class CSVExporter {
             }
         }
         #else
-        // For iOS, we would need to implement a different approach
-        // For now, just print the content
-        print("CSV content for \(defaultFileName):")
-        print(content)
+        // iOS implementation - trigger the share sheet
+        CSVShareManager.shared.shareCSV(content: content, fileName: defaultFileName)
         #endif
     }
 } 
