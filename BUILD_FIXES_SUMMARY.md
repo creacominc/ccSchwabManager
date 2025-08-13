@@ -20,6 +20,17 @@ This document summarizes all the fixes applied to resolve macOS and iOS build is
 - Replaced `#if canImport(AppKit)` with `#if os(macOS)` for better platform detection
 - Added missing platform-specific imports in `ccSchwabManagerApp.swift`
 
+### 2. iOS-Only Type References in macOS Build
+**Problem**: The CSVShareManager.swift file was referencing iOS-only types (`UIActivity`) in the macOS build path, causing build failures.
+
+**Files Fixed**:
+- `ccSchwabManager/Utilities/CSVShareManager.swift` - Fixed iOS-only type references for macOS compatibility
+
+**Changes Made**:
+- Changed `applicationActivities: [UIActivity]?` to `applicationActivities: [Any]?` for cross-platform compatibility
+- Added proper type casting in iOS-specific code: `applicationActivities as? [UIActivity]`
+- Ensured macOS placeholder structs use generic types that don't reference iOS-only APIs
+
 ### 2. Platform-Specific API Usage
 **Problem**: The code was using `NSApplication.didBecomeActiveNotification` without proper platform-specific handling.
 
@@ -72,6 +83,10 @@ This document summarizes all the fixes applied to resolve macOS and iOS build is
    - Updated import statements for consistency
    - Changed from `canImport` to `os` checks
 
+6. **ccSchwabManager/Utilities/CSVShareManager.swift**
+   - Fixed iOS-only type references for macOS compatibility
+   - Changed `UIActivity` references to generic `Any` type for cross-platform support
+
 ## Verification Checklist
 
 - ✅ All platform-specific imports are properly handled
@@ -79,6 +94,7 @@ This document summarizes all the fixes applied to resolve macOS and iOS build is
 - ✅ macOS build continues to work with NSApplication  
 - ✅ Cross-platform imports are correctly conditionally compiled
 - ✅ App lifecycle notifications work on both platforms
+- ✅ iOS-only types are properly wrapped and don't leak into macOS builds
 - ✅ Package.swift targets latest platform versions
 - ✅ Build system supports both iOS and macOS targets
 - ✅ Deployment targets set to latest iOS 18.5 and macOS 15.5

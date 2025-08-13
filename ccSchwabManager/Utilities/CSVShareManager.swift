@@ -31,15 +31,15 @@ import UIKit
 // SwiftUI wrapper for UIActivityViewController (iOS only)
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
-    let applicationActivities: [UIActivity]?
+    let applicationActivities: [Any]?
     
-    init(activityItems: [Any], applicationActivities: [UIActivity]? = nil) {
+    init(activityItems: [Any], applicationActivities: [Any]? = nil) {
         self.activityItems = activityItems
         self.applicationActivities = applicationActivities
     }
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities as? [UIActivity])
         controller.setValue("CSV Export", forKey: "subject")
         return controller
     }
@@ -104,9 +104,9 @@ struct CSVShareView: View {
 // macOS placeholder ShareSheet - this ensures the struct exists on all platforms
 struct ShareSheet: View {
     let activityItems: [Any]
-    let applicationActivities: [UIActivity]?
+    let applicationActivities: [Any]?
     
-    init(activityItems: [Any], applicationActivities: [UIActivity]? = nil) {
+    init(activityItems: [Any], applicationActivities: [Any]? = nil) {
         self.activityItems = activityItems
         self.applicationActivities = applicationActivities
     }
