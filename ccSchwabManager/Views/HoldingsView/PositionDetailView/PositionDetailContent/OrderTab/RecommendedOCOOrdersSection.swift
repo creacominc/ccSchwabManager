@@ -1533,7 +1533,6 @@ struct RecommendedOCOOrdersSection: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 150)
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(4)
             }
