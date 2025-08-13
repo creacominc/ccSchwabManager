@@ -3,9 +3,9 @@
 import Foundation
 //import Security
 
-#if canImport(UIKit)
+#if os(iOS)
 import UIKit
-#elseif canImport(AppKit)
+#elseif os(macOS)
 import AppKit
 #endif
 
