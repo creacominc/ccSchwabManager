@@ -1710,7 +1710,7 @@ class SchwabClient
         // let ordersWeb = "\(accountWeb)/\(m_secrets.acountNumberHash)/orders"
         
         await withTaskGroup(of: [Order]?.self) { group in
-            for status in [OrderStatus.working, OrderStatus.queued, OrderStatus.awaitingParentOrder, OrderStatus.awaitingCondition] {
+            for status in OrderStatus.allCases {
                 // ignore order status values that are not active orders
                 if status == .rejected || status == .canceled || status == .replaced || status == .expired || status == .filled {
                     continue
