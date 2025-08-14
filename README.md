@@ -120,23 +120,24 @@ The application now supports sophisticated Buy Sequence Orders for strategic pos
   - **Standard**: 5% trailing stop when minimum strike is ≤25% above current price
   - **Conservative**: 1/4 of percent difference (less 4%) when minimum strike is >25% above current price
 - **Smart Order Filtering**: Orders are only created if their entry price is above the current market price
-- **Maximum Cost Control**: Each order is limited to $1400 maximum cost or 25 shares, whichever is smaller
+- **Maximum Cost Control**: Each order is limited to $1400 maximum cost, with shares calculated as `min(5 shares, maxCostPerOrder / targetPrice)`
 - **6% Price Intervals**: Each subsequent order targets a price 6% below the previous order's target
 - **Minimum Strike Integration**: The highest-priced order targets the minimum strike price of existing contracts for the underlying symbol
+- **Options Data Integration**: Orders are generated based on actual options contracts found in positions, using proper strike price and expiration date extraction
 
 #### Buy Sequence Example
 For a position with:
-- Current price: $22.73
-- Minimum strike: $25.00 (from existing call contracts)
-- ATR: 2.5%
+- Current price: $181.56
+- Minimum strike: $235.00 (from existing call contracts)
+- ATR: 3.58%
 
 The system creates:
-- **Order 3**: Target = $25.00 (minimum strike)
-- **Order 2**: Target = $23.50 (25 × 0.94)
-- **Order 1**: Target = $22.09 (23.50 × 0.94) - not entered (below current price)
-- **Order 0**: Target = $20.76 (22.09 × 0.94) - not entered (below current price)
+- **Order 1**: Target = $235.00 (minimum strike), Entry = $226.59, Shares = 5 (limited by cost)
+- **Order 2**: Target = $220.90 (6% below previous), Entry = $212.85, Shares = 5
+- **Order 3**: Target = $207.65 (6% below previous), Entry = $200.22, Shares = 5
+- **Order 4**: Target = $195.19 (6% below previous), Entry = $188.15, Shares = 5
 
-Only orders 3 and 2 would be entered since their entry prices are above the current market price.
+All orders would be entered since their entry prices are above the current market price.
 
 ### Real-Time Price Synchronization
 

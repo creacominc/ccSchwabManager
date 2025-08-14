@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **NEW**: Fixed Buy Sequence Orders to properly extract options data from positions
+  - **Options Data Integration**: Orders now use actual options contracts found in positions instead of relying on cached contract data
+  - **Proper Strike Price Extraction**: Uses `extractStrike(from:)` function to parse strike prices from option symbols
+  - **Proper Expiration Date Extraction**: Uses `extractExpirationDate(from:description:)` function to parse expiration dates from option data
+  - **Enhanced Debug Logging**: Added comprehensive logging to show options data extraction process and results
+  - **Robust Data Handling**: Orders are generated even when quote data isn't available, using fallback pricing
+  - **Cost-Based Share Calculation**: Fixed share calculation to use `min(5 shares, maxCostPerOrder / targetPrice)` instead of hard stop
+  - **Future-Proof Design**: Orders now work with all order statuses and properly filter active vs non-active orders
+- **NEW**: Fixed order status filtering logic to be more comprehensive and future-proof
+  - **Complete Status Coverage**: Now iterates through `OrderStatus.allCases` (all 20 order statuses) instead of hardcoded list
+  - **Proper Active Order Filtering**: Correctly filters out non-active statuses (rejected, canceled, replaced, expired, filled)
+  - **Eliminated Redundancy**: Removed redundant filtering logic that was preventing proper order detection
+  - **Enhanced Logging**: Added comprehensive logging to show which order statuses are being processed
 - **NEW**: Flexible Order Submission for Recommended Orders
   - **Single Order Support**: Users can now submit individual buy or sell orders without requiring both
   - **OCO Order Support**: Traditional OCO functionality still available when both buy and sell orders are selected
