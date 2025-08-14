@@ -613,13 +613,20 @@ struct OrderDetailRow: View {
     private func formatActivationCondition(order: Order, symbol: String) -> String? {
         // For orders with activation price
         if let activationPrice = order.activationPrice {
-            return "\(symbol) BID AT OR ABOVE \(String(format: "%.2f", activationPrice))"
+            return "STOP \(String(format: "%.2f", activationPrice))"
         }
         
         // For stop orders, the stop price is the activation condition
         if order.orderType == .STOP || order.orderType == .STOP_LIMIT {
             if let stopPrice = order.stopPrice {
-                return "\(symbol) BID AT OR ABOVE \(String(format: "%.2f", stopPrice))"
+                return "STOP \(String(format: "%.2f", stopPrice))"
+            }
+        }
+        
+        // For trailing stop orders, show the stop price if available
+        if order.orderType == .TRAILING_STOP || order.orderType == .TRAILING_STOP_LIMIT {
+            if let stopPrice = order.stopPrice {
+                return "STOP \(String(format: "%.2f", stopPrice))"
             }
         }
         

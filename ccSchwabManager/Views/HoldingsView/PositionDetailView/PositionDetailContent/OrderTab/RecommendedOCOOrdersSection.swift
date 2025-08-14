@@ -1018,7 +1018,7 @@ struct RecommendedOCOOrdersSection: View {
         return nil
     }
     
-    /// Create a sell order with 1% higher trailing stop than the Min BE order
+    /// Create a sell order with 1% trailing stop (1% below current price)
     private func createOnePercentHigherTrailingStopOrder(
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
@@ -1026,68 +1026,100 @@ struct RecommendedOCOOrdersSection: View {
         currentTaxLotIndex: inout Int
     ) -> SalesCalcResultsRecord? {
         
-        AppLogger.shared.debug("=== createOnePercentHigherTrailingStopOrder ===")
+        AppLogger.shared.debug("=== +1 = createOnePercentHigherTrailingStopOrder ===")
         
         // Calculate 1% higher trailing stop than Min BE order
-        let targetTrailingStop = minBreakEvenOrder.trailingStop + 1.0
-        AppLogger.shared.debug("Target trailing stop: \(targetTrailingStop)% (Min BE + 1.0%)")
+        let targetTrailingStop: Double = minBreakEvenOrder.trailingStop + 1.0
+        AppLogger.shared.debug("=== +1 = Target trailing stop: \(targetTrailingStop)% (Min BE + 1.0%)")
         
-        // Try different share amounts to find a profitable combination
-        for sharesToTry in 1...Int(sharesAvailableForTrading) {
-            AppLogger.shared.debug("Trying \(sharesToTry) shares...")
+        // Calculate the stop price based on the target trailing stop
+        let stopPrice: Double = currentPrice * (1.0 - targetTrailingStop / 100.0)
+        AppLogger.shared.debug("=== +1 = Stop price: $\(stopPrice) (based on \(targetTrailingStop)% trailing stop)")
+        
+        // Find the maximum number of shares where the weighted average cost per share is below the stop price
+        // We need to traverse all tax lots and accumulate shares until the weighted average cost exceeds the stop price
+        var cumulativeShares: Double = 0
+        var cumulativeCost: Double = 0
+        var maxShares = 0
+        
+        AppLogger.shared.debug("=== +1 = Looking for shares with weighted avg cost < $\(stopPrice)")
+        for (index, taxLot) in sortedTaxLots.enumerated() {
+            AppLogger.shared.debug("=== +1 = Tax lot \(index): \(taxLot.quantity) shares, cost per share: $\(taxLot.costPerShare)")
             
-            // Calculate cost basis for these shares
-            let costBasisResult = calculateCostBasisForShares(
-                sharesNeeded: Double(sharesToTry),
-                startingTaxLotIndex: 0,
-                sortedTaxLots: sortedTaxLots,
-                cumulativeSharesUsed: 0.0
-            )
+            // Add all shares from this tax lot
+            let sharesToAdd: Double = taxLot.quantity
+            let costToAdd: Double = taxLot.costBasis
             
-            guard let (actualCostPerShare, _) = costBasisResult else {
-                AppLogger.shared.debug("Could not calculate cost basis for \(sharesToTry) shares")
-                continue
+            // Calculate new weighted average cost
+            let newCumulativeShares = cumulativeShares + sharesToAdd
+            let newCumulativeCost = cumulativeCost + costToAdd
+            let newWeightedAvgCost = newCumulativeCost / newCumulativeShares
+            
+            AppLogger.shared.debug("=== +1 = Adding \(sharesToAdd) shares at $\(taxLot.costPerShare)")
+            AppLogger.shared.debug("=== +1 = New weighted avg cost: $\(newWeightedAvgCost) (cumulative: \(newCumulativeShares) shares, $\(newCumulativeCost))")
+
+            // Check if this would make the weighted average cost too high
+            // if newWeightedAvgCost >= stopPrice {
+                // if the number of shares in the lots so far exceed the shares available for trading, break
+                // if newCumulativeShares > sharesAvailableForTrading {
+                //     AppLogger.shared.debug("❌ Stopping at tax lot \(index): new weighted avg cost $\(newWeightedAvgCost) >= stop price $\(stopPrice), but shares available for trading \(sharesAvailableForTrading) < \(newCumulativeShares)")
+                //     break
+                // }
+            //    AppLogger.shared.debug("Skipping tax lot \(index): new weighted avg cost $\(newWeightedAvgCost) >= stop price $\(stopPrice)")
+            //    continue
+            // }
+
+            // Accept these shares
+            cumulativeShares = newCumulativeShares
+            cumulativeCost = newCumulativeCost
+            maxShares = Int(cumulativeShares)
+
+            if newCumulativeShares > sharesAvailableForTrading {
+                AppLogger.shared.debug("=== +1 = ❌ Stopping at tax lot \(index): new weighted avg cost $\(newWeightedAvgCost) >= stop price $\(stopPrice), but shares available for trading \(sharesAvailableForTrading) < \(newCumulativeShares)")
+                break
             }
-            
-            // Calculate a profitable target (1% above cost per share)
-            let profitableTarget = actualCostPerShare * 1.01
-            AppLogger.shared.debug("Profitable target: \(profitableTarget) (1% above cost per share \(actualCostPerShare))")
-            
-            // Calculate the trailing stop from current price to this target
-            let trailingStop = ((currentPrice - profitableTarget) / currentPrice) * 100.0
-            AppLogger.shared.debug("Calculated trailing stop: \(trailingStop)%")
-            
-            // Check if this trailing stop is close to our target
-            if abs(trailingStop - targetTrailingStop) <= 0.5 {
-                AppLogger.shared.debug("✅ Found profitable combination with \(sharesToTry) shares")
-                
-                // Calculate the proper target price: midway between stop price and cost per share
-                let stopPrice = currentPrice * (1.0 - trailingStop / 100.0)
-                let targetPrice = stopPrice + (actualCostPerShare - stopPrice) / 2.0
-                
-                AppLogger.shared.debug("Stop price: \(stopPrice), Target price: \(targetPrice), Cost per share: \(actualCostPerShare)")
-                
-                // Create the sell order
-                let sellOrder = SalesCalcResultsRecord(
-                    shares: Double(sharesToTry),
-                    rollingGainLoss: Double(sharesToTry) * (targetPrice - actualCostPerShare),
-                    breakEven: actualCostPerShare,
-                    gain: ((targetPrice - actualCostPerShare) / actualCostPerShare) * 100.0,
-                    sharesToSell: Double(sharesToTry),
-                    trailingStop: trailingStop,
-                    entry: currentPrice * (1.0 - trailingStop / 100.0),
-                    target: targetPrice,
-                    cancel: targetPrice * 0.95,
-                    description: "SELL \(sharesToTry) MU Target=\(String(format: "%.2f", targetPrice)) TS=\(String(format: "%.2f", trailingStop))% Gain=\(String(format: "%.1f", ((targetPrice - actualCostPerShare) / actualCostPerShare) * 100.0))% Cost/Share=\(String(format: "%.2f", actualCostPerShare))",
-                    openDate: "1%HigherTS"
-                )
-                
-                return sellOrder
+            // stop when the cost per share is low enough
+            if newWeightedAvgCost < stopPrice {
+                AppLogger.shared.debug("=== +1 = ✅ Stopping at tax lot \(index): new weighted avg cost $\(newWeightedAvgCost) < stop price $\(stopPrice)")
+                break
             }
+            // AppLogger.shared.debug("=== +1 = ✅ Accepted \(sharesToAdd) shares, total: \(cumulativeShares) shares, avg cost: $\(newWeightedAvgCost)")
+
         }
+
+        guard maxShares > 0 else {
+            AppLogger.shared.debug("=== +1 = ❌ No shares available with weighted avg cost below stop price $\(stopPrice)")
+            return nil
+        }
+
+        let avgCostPerShare = cumulativeCost / cumulativeShares
+        AppLogger.shared.debug("=== +1 = ✅ Found \(maxShares) shares with weighted avg cost $\(avgCostPerShare) below stop price $\(stopPrice)")
+
+        // Calculate a profitable target price (above the average cost per share)
+        let targetPrice = max(stopPrice + (avgCostPerShare - stopPrice) / 2.0, avgCostPerShare * 1.005)
+        AppLogger.shared.debug("=== +1 = Target price: $\(targetPrice) (profitable above cost $\(avgCostPerShare))")
+
+        // Verify the trailing stop calculation
+        let calculatedTrailingStop = ((currentPrice - targetPrice) / currentPrice) * 100.0
+        AppLogger.shared.debug("=== +1 = Calculated trailing stop: \(calculatedTrailingStop)% (should be close to \(targetTrailingStop)%)")
+
+        let sellOrder = SalesCalcResultsRecord(
+            shares: Double(maxShares),
+            rollingGainLoss: Double(maxShares) * (targetPrice - avgCostPerShare),
+            breakEven: avgCostPerShare,
+            gain: ((targetPrice - avgCostPerShare) / avgCostPerShare) * 100.0,
+            sharesToSell: Double(maxShares),
+            trailingStop: targetTrailingStop,
+            entry: stopPrice,
+            target: targetPrice,
+            cancel: targetPrice * 0.95,
+            description: String(format: "(1%% TS) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                               Double(maxShares), symbol, targetPrice, targetTrailingStop, avgCostPerShare),
+            openDate: "1%HigherTS"
+        )
         
-        AppLogger.shared.debug("❌ Could not find profitable combination for 1% higher trailing stop")
-        return nil
+        return sellOrder
+        
     }
     
     /// Create a sell order for the maximum available shares with an appropriately adjusted trailing stop

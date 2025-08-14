@@ -2103,12 +2103,6 @@ class SchwabClient
                 let (data, response) = try await URLSession.shared.data(for: request)
                 
                 if let httpResponse = response as? HTTPURLResponse {
-                    AppLogger.shared.debug("📤 [PLACE-ORDER] 📥 RESPONSE:")
-                    AppLogger.shared.debug("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
-                    AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
-                    AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.description)")
-                    AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.debugDescription)")
-
                     if let responseString = String(data: data, encoding: .utf8) {
                         AppLogger.shared.debug("📤 [PLACE-ORDER]   📄 Response Body: \(responseString)")
                     }
@@ -2119,6 +2113,12 @@ class SchwabClient
                         await fetchOrderHistory()
                         return (true, nil)
                     } else {
+                        AppLogger.shared.debug("📤 [PLACE-ORDER] 📥 RESPONSE:")
+                        AppLogger.shared.debug("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
+                        AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
+                        AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.description)")
+                        AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.debugDescription)")
+
                         // Try to extract error message from response body
                         var errorMessage = "Order placement failed with status code: \(httpResponse.statusCode)"
                         

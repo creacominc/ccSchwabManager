@@ -30,6 +30,56 @@ struct BuySequenceOrdersSection: View {
     @State private var lastCalculatedSymbol: String = ""
     @State private var lastCalculatedDataHash: String = ""
     
+    // Computed property to get adjusted orders with trailing stop modifications
+    private var adjustedSequenceOrders: [BuySequenceOrder] {
+        guard !selectedSequenceOrderIndices.isEmpty else { return sequenceOrders }
+        
+        // Sort selected indices to ensure they're in order
+        let sortedSelectedIndices = selectedSequenceOrderIndices.sorted()
+        
+        // Find the order with the lowest target price (first to be entered) among selected orders
+        let selectedOrders = sortedSelectedIndices.compactMap { index in
+            index < sequenceOrders.count ? sequenceOrders[index] : nil
+        }
+        
+        guard let lowestTargetOrder = selectedOrders.min(by: { $0.targetPrice < $1.targetPrice }) else { return sequenceOrders }
+        
+        // Calculate total trailing stop from unchecked orders
+        var totalUncheckedTrailingStop: Double = 0.0
+        for (index, order) in sequenceOrders.enumerated() {
+            if !selectedSequenceOrderIndices.contains(index) {
+                totalUncheckedTrailingStop += order.trailingStop
+            }
+        }
+        
+        // Create adjusted orders
+        var adjustedOrders: [BuySequenceOrder] = []
+        for (index, order) in sequenceOrders.enumerated() {
+            if selectedSequenceOrderIndices.contains(index) {
+                var adjustedOrder = order
+                
+                // If this is the order with the lowest target price, add the trailing stops from unchecked orders
+                if order.targetPrice == lowestTargetOrder.targetPrice && totalUncheckedTrailingStop > 0 {
+                    let adjustedTrailingStop = order.trailingStop + totalUncheckedTrailingStop
+                    adjustedOrder = BuySequenceOrder(
+                        orderIndex: order.orderIndex,
+                        shares: order.shares,
+                        targetPrice: order.targetPrice,
+                        entryPrice: order.entryPrice,
+                        trailingStop: adjustedTrailingStop,
+                        orderCost: order.orderCost,
+                        description: String(format: "BUY %.0f %@ Target=%.2f Entry=%.2f TS=%.1f%% Cost=%.2f (Adjusted TS includes %.1f%% from unchecked orders)", 
+                                           order.shares, symbol, order.targetPrice, order.entryPrice, adjustedTrailingStop, order.orderCost, totalUncheckedTrailingStop)
+                    )
+                }
+                
+                adjustedOrders.append(adjustedOrder)
+            }
+        }
+        
+        return adjustedOrders
+    }
+    
     private func getDataHash() -> String {
         // Create a hash of the data that affects calculations
         let taxLotHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
@@ -404,7 +454,7 @@ struct BuySequenceOrdersSection: View {
                         // Deselect all
                         selectedSequenceOrderIndices.removeAll()
                     } else {
-                        // Select all
+                        // Select all (from top down)
                         selectedSequenceOrderIndices = Set(0..<sequenceOrders.count)
                     }
                 }
@@ -501,9 +551,8 @@ struct BuySequenceOrdersSection: View {
             return 
         }
         
-        let selectedOrders = selectedSequenceOrderIndices.compactMap { index in
-            index < sequenceOrders.count ? sequenceOrders[index] : nil
-        }
+        // Use adjusted orders that include trailing stop modifications
+        let selectedOrders = adjustedSequenceOrders
         
         AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] Selected orders count: \(selectedOrders.count)")
         AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] Selected orders details:")
@@ -609,8 +658,9 @@ struct BuySequenceOrdersSection: View {
         
         var descriptions: [String] = []
         for (index, order) in orders.enumerated() {
-            AppLogger.shared.debug("createOrderDescriptions - Processing order \(index + 1): shares=\(order.shares), target=\(order.targetPrice), entry=\(order.entryPrice)")
+            AppLogger.shared.debug("createOrderDescriptions - Processing order \(index + 1): shares=\(order.shares), target=\(order.targetPrice), entry=\(order.entryPrice), trailingStop=\(order.trailingStop)")
             
+            // Use the description from the adjusted order if available
             let description = order.description.isEmpty ?
                 "BUY \(order.shares) shares at \(order.targetPrice) (Entry: \(order.entryPrice), Trailing Stop: \(order.trailingStop)%)" :
                 order.description
@@ -686,7 +736,10 @@ struct BuySequenceOrdersSection: View {
     
     private var orderRows: some View {
         return ForEach(Array(sequenceOrders.enumerated()), id: \.offset) { index, order in
-            orderRow(index: index, order: order, isSelected: selectedSequenceOrderIndices.contains(index))
+            // Use adjusted orders for display if any are selected
+            let displayOrder = !selectedSequenceOrderIndices.isEmpty ? 
+                adjustedSequenceOrders.first { $0.orderIndex == order.orderIndex } ?? order : order
+            orderRow(index: index, order: displayOrder, isSelected: selectedSequenceOrderIndices.contains(index))
         }
     }
     
@@ -694,9 +747,18 @@ struct BuySequenceOrdersSection: View {
         HStack {
             Button(action: {
                 if isSelected {
+                    // Remove this index and all below it
                     selectedSequenceOrderIndices.remove(index)
+                    // Also remove all indices below this one
+                    for i in (index + 1)..<sequenceOrders.count {
+                        selectedSequenceOrderIndices.remove(i)
+                    }
                 } else {
+                    // Add this index and all above it
                     selectedSequenceOrderIndices.insert(index)
+                    for i in 0...index {
+                        selectedSequenceOrderIndices.insert(i)
+                    }
                 }
             }) {
                 Image(systemName: isSelected ? "checkmark.square.fill" : "square")
@@ -704,6 +766,7 @@ struct BuySequenceOrdersSection: View {
             }
             .buttonStyle(PlainButtonStyle())
             .frame(width: 30, alignment: .center)
+            .disabled(false) // Always enabled for selection
             
             Text("\(order.orderIndex + 1)")
                 .font(.caption)
