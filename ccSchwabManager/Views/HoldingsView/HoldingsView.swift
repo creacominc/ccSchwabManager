@@ -72,7 +72,7 @@ struct HoldingsView: View {
     @State private var holdings: [Position] = []
     @State private var searchText = ""
     @State private var currentSort: SortConfig? = SortConfig(column: .lastTradeDate, ascending: SortableColumn.lastTradeDate.defaultAscending)
-    @State private var selectedAssetTypes: Set<String> = []
+    @State private var selectedAssetTypes: Set<AssetType> = []
     @State private var accountPositions: [(Position, String, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPosition: SelectedPosition? = nil
@@ -111,7 +111,7 @@ struct HoldingsView: View {
                 (position.instrument?.description?.localizedCaseInsensitiveContains(searchText) ?? false)
             
             let matchesAssetType = selectedAssetTypes.isEmpty || 
-                (position.instrument?.assetType?.rawValue).map { selectedAssetTypes.contains($0) } ?? false
+                (position.instrument?.assetType).map { selectedAssetTypes.contains($0) } ?? false
             
             let accountInfo = accountPositions.first { $0.0 === position }
             let matchesAccount = selectedAccountNumbers.isEmpty || 
@@ -399,7 +399,7 @@ struct HoldingsView: View {
                 //print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = loadingState
                 await fetchHoldingsAsync()
-                selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
+                selectedAssetTypes = Set( viewModel.uniqueAssetTypes.filter { $0 == .EQUITY } )
             }
             .onDisappear {
                 //print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")

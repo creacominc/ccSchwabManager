@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct FilterControls: View {
-    @Binding var selectedAssetTypes: Set<String>
+    @Binding var selectedAssetTypes: Set<AssetType>
     @Binding var selectedAccountNumbers: Set<String>
-    let uniqueAssetTypes: [String]
+    let uniqueAssetTypes: [AssetType]
     let uniqueAccountNumbers: [String]
     
     var body: some View {
@@ -15,19 +15,19 @@ struct FilterControls: View {
                     .padding( .leading )
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
-                        ForEach(uniqueAssetTypes, id: \.self) { type in
+                        ForEach(uniqueAssetTypes, id: \.self) { assetType in
                             Button(action: {
-                                if selectedAssetTypes.contains(type) {
-                                    selectedAssetTypes.remove(type)
+                                if selectedAssetTypes.contains(assetType) {
+                                    selectedAssetTypes.remove(assetType)
                                 } else {
-                                    selectedAssetTypes.insert(type)
+                                    selectedAssetTypes.insert(assetType)
                                 }
                             }) {
-                                Text(type)
+                                Text(assetType.shortDisplayName)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
-                                    .background(selectedAssetTypes.contains(type) ? Color.blue : Color.gray.opacity(0.2))
-                                    .foregroundColor(selectedAssetTypes.contains(type) ? .white : .primary)
+                                    .background(selectedAssetTypes.contains(assetType) ? Color.blue : Color.gray.opacity(0.2))
+                                    .foregroundColor(selectedAssetTypes.contains(assetType) ? .white : .primary)
                                     .cornerRadius(8)
                             }
                         }
@@ -35,7 +35,7 @@ struct FilterControls: View {
                     .padding(.horizontal)
                 }
             }
-            
+
             HStack {
                 Text("Accounts:")
                     .font(.subheadline)
@@ -67,4 +67,13 @@ struct FilterControls: View {
         .padding(.vertical, 8)
     }
 } 
- 
+
+#Preview("FilterControls", traits: .landscapeLeft) {
+    FilterControls(
+        selectedAssetTypes: .constant([ .EQUITY, .OPTION ]),
+        selectedAccountNumbers: .constant(["789"]),
+        uniqueAssetTypes: AssetType.allCases,
+        uniqueAccountNumbers: ["789", "321", "777"]
+    )
+}
+
