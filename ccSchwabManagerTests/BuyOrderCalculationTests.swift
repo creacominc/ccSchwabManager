@@ -162,47 +162,64 @@ class BuyOrderCalculationTests: XCTestCase {
     func testTargetPriceBounds() {
         // Test that target prices are constrained between 5% and 30% above current price
         let currentPrice = 100.0
-        let avgCostPerShare = 80.0
+//        let avgCostPerShare = 80.0
         let totalShares = 100.0
         let sharesToBuy = 10.0
         let targetGainPercent = 25.0
-        
-        // Calculate the target price using the new formula
-        let totalCost = avgCostPerShare * totalShares // 8000
-        let targetGainRatio = 1.0 + targetGainPercent / 100.0 // 1.25
-        let denominator = (totalShares + sharesToBuy) - sharesToBuy * targetGainRatio
-        let rawTargetPrice = (totalCost * targetGainRatio) / denominator
-        
-        // Apply the bounds constraint (this is what the actual function does)
-        let minTargetPrice = currentPrice * 1.05  // 105.0
-        let maxTargetPrice = currentPrice * 1.30  // 130.0
-        
-        let constrainedTargetPrice: Double
-        if rawTargetPrice < minTargetPrice {
-            constrainedTargetPrice = minTargetPrice
-        } else if rawTargetPrice > maxTargetPrice {
-            constrainedTargetPrice = maxTargetPrice
-        } else {
-            constrainedTargetPrice = rawTargetPrice
+
+        // perform the test for average costs of 60, 80, 100
+        for avgCostPerShare in [60.0, 80.0, 100.0] {
+            print("\n  Testing avgCostPerShare: \(avgCostPerShare)")
+
+            // Calculate the target price using the new formula
+            let totalCost = avgCostPerShare * totalShares // 8000
+            let targetGainRatio = 1.0 + targetGainPercent / 100.0 // 1.25
+            let denominator = (totalShares + sharesToBuy) - sharesToBuy * targetGainRatio
+            let rawTargetPrice = (totalCost * targetGainRatio) / denominator
+
+            // Apply the bounds constraint (this is what the actual function does)
+            let minTargetPrice = currentPrice * 1.05  // 105.0
+            let maxTargetPrice = currentPrice * 1.30  // 130.0
+
+            let constrainedTargetPrice: Double
+            if rawTargetPrice < minTargetPrice {
+                constrainedTargetPrice = minTargetPrice
+            } else if rawTargetPrice > maxTargetPrice {
+                constrainedTargetPrice = maxTargetPrice
+            } else {
+                constrainedTargetPrice = rawTargetPrice
+            }
+
+            // Verify the constrained target price is within bounds
+            XCTAssertGreaterThanOrEqual(constrainedTargetPrice, minTargetPrice, "Constrained target price should be at least 5% above current price")
+            XCTAssertLessThanOrEqual(constrainedTargetPrice, maxTargetPrice, "Constrained target price should be at most 30% above current price")
+
+            // Test edge case: if calculated price is below minimum, it should be constrained to minimum
+            let lowTargetPrice = 90.0 // Below 5% minimum
+            let constrainedLowPrice = max(lowTargetPrice, minTargetPrice)
+            XCTAssertEqual(constrainedLowPrice, minTargetPrice, "Low target price should be constrained to minimum")
+
+            // Test edge case: if calculated price is above maximum, it should be constrained to maximum
+            let highTargetPrice = 150.0 // Above 30% maximum
+            let constrainedHighPrice = min(highTargetPrice, maxTargetPrice)
+            XCTAssertEqual(constrainedHighPrice, maxTargetPrice, "High target price should be constrained to maximum")
+
+            // Verify the constraint logic based on where rawTargetPrice falls
+            if rawTargetPrice < minTargetPrice {
+                // If raw price is below minimum, it should be constrained to minimum
+                XCTAssertEqual(constrainedTargetPrice, minTargetPrice, "Raw price below minimum should be constrained to minimum")
+                print("  avgCost: \(avgCostPerShare), rawTarget: \(rawTargetPrice), constrained: \(constrainedTargetPrice) (constrained to minimum)")
+            } else if rawTargetPrice > maxTargetPrice {
+                // If raw price is above maximum, it should be constrained to maximum
+                XCTAssertEqual(constrainedTargetPrice, maxTargetPrice, "Raw price above maximum should be constrained to maximum")
+                print("  avgCost: \(avgCostPerShare), rawTarget: \(rawTargetPrice), constrained: \(constrainedTargetPrice) (constrained to maximum)")
+            } else {
+                // If raw price is within bounds, it should remain unchanged
+                XCTAssertEqual(constrainedTargetPrice, rawTargetPrice, "Raw price within bounds should remain unchanged")
+                print("  avgCost: \(avgCostPerShare), rawTarget: \(rawTargetPrice), constrained: \(constrainedTargetPrice) (within bounds)")
+            }
+
         }
-        
-        // Verify the constrained target price is within bounds
-        XCTAssertGreaterThanOrEqual(constrainedTargetPrice, minTargetPrice, "Constrained target price should be at least 5% above current price")
-        XCTAssertLessThanOrEqual(constrainedTargetPrice, maxTargetPrice, "Constrained target price should be at most 30% above current price")
-        
-        // Test edge case: if calculated price is below minimum, it should be constrained to minimum
-        let lowTargetPrice = 90.0 // Below 5% minimum
-        let constrainedLowPrice = max(lowTargetPrice, minTargetPrice)
-        XCTAssertEqual(constrainedLowPrice, minTargetPrice, "Low target price should be constrained to minimum")
-        
-        // Test edge case: if calculated price is above maximum, it should be constrained to maximum
-        let highTargetPrice = 150.0 // Above 30% maximum
-        let constrainedHighPrice = min(highTargetPrice, maxTargetPrice)
-        XCTAssertEqual(constrainedHighPrice, maxTargetPrice, "High target price should be constrained to maximum")
-        
-        // Verify that the raw calculated price was indeed below the minimum (which is why it got constrained)
-        XCTAssertLessThan(rawTargetPrice, minTargetPrice, "Raw calculated price should be below minimum bound")
-        XCTAssertEqual(constrainedTargetPrice, minTargetPrice, "Constrained price should equal minimum bound")
     }
     
     func testSingleOrderCreation() {
