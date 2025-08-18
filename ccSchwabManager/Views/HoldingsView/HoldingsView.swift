@@ -92,7 +92,6 @@ struct HoldingsView: View {
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
     @State private var orderStatusCache: [String: ActiveOrderStatus?] = [:]
-//    @State private var dteCache: [String: Int?] = [:]
 
     // Add state to track ongoing refresh operations
     @State private var isRefreshing = false
@@ -516,14 +515,7 @@ struct HoldingsView: View {
                 }
                 holdings = accountPositions.map { $0.0 }
                 viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
-                
-//                // Populate DTE cache
-//                for position in holdings {
-//                    if let symbol = position.instrument?.symbol {
-//                        dteCache[symbol] = calculateDTE(for: position)
-//                    }
-//                }
-//                
+        
                 print("✅ Holdings displayed: \(holdings.count) positions")
             }
         }
@@ -626,10 +618,5 @@ struct HoldingsView: View {
             }
         }
     }
-    
-//    // Helper function to calculate DTE for a position
-//    private func calculateDTE(for position: Position) -> Int? {
-//        // Use the efficient DTE methods from SchwabClient
-//        return SchwabClient.shared.getDTEForPosition(position)
-//    }
+
 } 

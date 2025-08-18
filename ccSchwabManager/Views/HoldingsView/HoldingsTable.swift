@@ -11,7 +11,8 @@ struct HoldingsTable: View {
 //    let dteCache: [String: Int?]
     @State private var copiedValue: String = "TBD"
 
-    private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05, 0.05]
+// private let columnWidths: [CGFloat] = [0.17, 0.07, 0.07, 0.09, 0.07, 0.07, 0.09, 0.05, 0.08, 0.05, 0.05]
+    private let columnWidths: [CGFloat] = [ 0.09, 0.06, 0.06, 0.08, 0.06, 0.06, 0.08, 0.04, 0.06, 0.04, 0.04 ]
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
@@ -330,3 +331,49 @@ private struct TableRow: View {
     
 
 }
+
+
+// Preview
+
+#Preview("HoldingsTable", traits: .landscapeLeft) {
+    let samplePosition1 = Position(
+        averagePrice: 50.0,
+        longQuantity: 100.0,
+        instrument: Instrument(
+            assetType: .EQUITY,
+            symbol: "AAPL",
+            description: "Apple Inc."
+        ),
+        marketValue: 5500.0,
+        longOpenProfitLoss: 500.0
+    )
+    
+    let samplePosition2 = Position(
+        averagePrice: 25.0,
+        longQuantity: 50.0,
+        instrument: Instrument(
+            assetType: .OPTION,
+            symbol: "AAPL240119C00150000",
+            description: "AAPL Jan 19 2024 150 Call"
+        ),
+        marketValue: 1250.0,
+        longOpenProfitLoss: -250.0
+    )
+    
+    let samplePositions = [samplePosition1, samplePosition2]
+    let accountPositions = [
+        (samplePosition1, "456", "2024/01/15"),
+        (samplePosition2, "012", "2024/01/16")
+    ]
+    
+    HoldingsTable(
+        sortedHoldings: samplePositions,
+        selectedPositionId: .constant(nil),
+        accountPositions: accountPositions,
+        currentSort: .constant(SortConfig(column: .symbol, ascending: true)),
+        viewSize: CGSize(width: 1200, height: 800),
+        tradeDateCache: ["123456": "2024/01/15", "789012": "2024/01/16"],
+        orderStatusCache: ["456": .working, "012": .accepted]
+    )
+}
+
