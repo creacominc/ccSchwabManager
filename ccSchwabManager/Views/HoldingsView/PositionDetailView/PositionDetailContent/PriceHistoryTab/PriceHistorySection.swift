@@ -27,7 +27,7 @@ struct PriceHistorySection: View {
     }
 }
 
-#Preview("PriceHistorySection") {
+#Preview("PriceHistorySection - with sample data") {
     let calendar = Calendar.current
     let now = Date()
     
@@ -167,6 +167,38 @@ struct PriceHistorySection: View {
     return PriceHistorySection(
         priceHistory: samplePriceHistory,
         isLoading: false,
+        formatDate: { timestamp in
+            if let timestamp = timestamp {
+                let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+            return "N/A"
+        }
+    )
+    .frame(width: 400, height: 300)
+    .padding()
+}
+
+#Preview("PriceHistorySection - No Data") {
+    return PriceHistorySection(
+        priceHistory: nil,
+        isLoading: false,
+        formatDate: { timestamp in
+            if let timestamp = timestamp {
+                let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+            return "N/A"
+        }
+    )
+    .frame(width: 400, height: 300)
+    .padding()
+}
+
+#Preview("PriceHistorySection - Loading") {
+    return PriceHistorySection(
+        priceHistory: nil,
+        isLoading: true,
         formatDate: { timestamp in
             if let timestamp = timestamp {
                 let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
