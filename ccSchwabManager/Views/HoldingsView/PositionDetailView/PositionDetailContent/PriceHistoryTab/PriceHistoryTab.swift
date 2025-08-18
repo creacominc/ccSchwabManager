@@ -21,7 +21,7 @@ struct PriceHistoryTab: View {
     }
 }
 
-#Preview("PriceHistoryTab - With Data") {
+#Preview("PriceHistoryTab - With Data", traits: .landscapeLeft) {
     let calendar = Calendar.current
     let now = Date()
     
@@ -176,7 +176,7 @@ struct PriceHistoryTab: View {
     .padding()
 }
 
-#Preview("PriceHistoryTab - Loading") {
+#Preview("PriceHistoryTab - Loading", traits: .landscapeLeft) {
     GeometryReader { geometry in
         PriceHistoryTab(
             priceHistory: nil,
@@ -195,7 +195,7 @@ struct PriceHistoryTab: View {
     .padding()
 }
 
-#Preview("PriceHistoryTab - No Data") {
+#Preview("PriceHistoryTab - No Data", traits: .landscapeLeft) {
     GeometryReader { geometry in
         PriceHistoryTab(
             priceHistory: nil,
