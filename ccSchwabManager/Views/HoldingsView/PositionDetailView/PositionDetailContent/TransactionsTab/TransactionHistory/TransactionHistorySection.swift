@@ -196,7 +196,7 @@ struct PreviewTransactionHistorySection: View {
     
     var body: some View {
         GeometryReader { geometry in
-            let columnProportions: [CGFloat] = [0.25, 0.15, 0.20, 0.20, 0.20]
+            let columnProportions: [CGFloat] = [0.30, 0.10, 0.20, 0.20, 0.20] // Updated to match main section
             let horizontalPadding: CGFloat = 16 * 2 
             let interColumnSpacing = (CGFloat(columnProportions.count - 1) * 8)
             let availableWidthForColumns = geometry.size.width - interColumnSpacing - horizontalPadding
@@ -333,7 +333,6 @@ struct PreviewTransactionHistorySection: View {
         symbol: "AAPL",
         transactions: sampleTransactions
     )
-    .frame(width: 800, height: 600)
     .padding()
 }
 
@@ -343,7 +342,6 @@ struct PreviewTransactionHistorySection: View {
         symbol: "AAPL",
         transactions: []
     )
-    .frame(width: 800, height: 600)
     .padding()
 }
 
@@ -353,6 +351,172 @@ struct PreviewTransactionHistorySection: View {
         symbol: "AAPL",
         transactions: []
     )
-    .frame(width: 800, height: 600)
+    .padding()
+}
+
+#Preview("TransactionHistorySection - Across Devices", traits: .landscapeLeft) {
+    let sampleTransactions = [
+        Transaction(
+            activityId: 12345,
+            time: "2025-01-15T10:30:00+0000",
+            tradeDate: "2025-01-15T10:30:00+0000",
+            netAmount: -1500.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12345
+                    ),
+                    amount: 10.0,
+                    price: 150.00
+                )
+            ]
+        ),
+        Transaction(
+            activityId: 12346,
+            time: "2025-01-16T14:45:00+0000",
+            tradeDate: "2025-01-16T14:45:00+0000",
+            netAmount: 2000.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12346
+                    ),
+                    amount: 8.0,
+                    price: 250.00
+                )
+            ]
+        ),
+        Transaction(
+            activityId: 12347,
+            time: "2025-01-17T09:15:00+0000",
+            tradeDate: "2025-01-17T09:15:00+0000",
+            netAmount: -750.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12347
+                    ),
+                    amount: 5.0,
+                    price: 150.00
+                )
+            ]
+        )
+    ]
+    
+    return VStack(spacing: 20) {
+        // iPhone SE landscape
+        VStack(spacing: 0) {
+            Text("iPhone SE Landscape")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+            
+            PreviewTransactionHistorySection(
+                isLoading: false,
+                symbol: "AAPL",
+                transactions: sampleTransactions
+            )
+            .frame(width: 650, height: 400)
+        }
+        
+        // iPhone 15 Pro landscape
+        VStack(spacing: 0) {
+            Text("iPhone 15 Pro Landscape")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+            
+            PreviewTransactionHistorySection(
+                isLoading: false,
+                symbol: "AAPL",
+                transactions: sampleTransactions
+            )
+            .frame(width: 852, height: 400)
+        }
+        
+        // iPad landscape
+        VStack(spacing: 0) {
+            Text("iPad Landscape")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 5)
+            
+            PreviewTransactionHistorySection(
+                isLoading: false,
+                symbol: "AAPL",
+                transactions: sampleTransactions
+            )
+            .frame(width: 1024, height: 400)
+        }
+    }
+    .padding()
+}
+
+#Preview("TransactionHistorySection - Natural Geometry", traits: .landscapeLeft) {
+    let sampleTransactions = [
+        Transaction(
+            activityId: 12345,
+            time: "2025-01-15T10:30:00+0000",
+            tradeDate: "2025-01-15T10:30:00+0000",
+            netAmount: -1500.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12345
+                    ),
+                    amount: 10.0,
+                    price: 150.00
+                )
+            ]
+        ),
+        Transaction(
+            activityId: 12346,
+            time: "2025-01-16T14:45:00+0000",
+            tradeDate: "2025-01-16T14:45:00+0000",
+            netAmount: 2000.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12346
+                    ),
+                    amount: 8.0,
+                    price: 250.00
+                )
+            ]
+        ),
+        Transaction(
+            activityId: 12347,
+            time: "2025-01-17T09:15:00+0000",
+            tradeDate: "2025-01-17T09:15:00+0000",
+            netAmount: -750.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12347
+                    ),
+                    amount: 5.0,
+                    price: 150.00
+                )
+            ]
+        )
+    ]
+    
+    return PreviewTransactionHistorySection(
+        isLoading: false,
+        symbol: "AAPL",
+        transactions: sampleTransactions
+    )
     .padding()
 }
