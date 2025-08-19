@@ -43,9 +43,6 @@ struct TransactionHistorySection: View {
         }
     }
 
-    // Define proportional widths for columns
-    private let columnProportions: [CGFloat] = [0.30, 0.09, 0.15, 0.15, 0.20] // Date, Type, Qty, Price, Net Amount
-
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
 #if os(iOS)
@@ -105,9 +102,9 @@ struct TransactionHistorySection: View {
     var body: some View {
         GeometryReader { geometry in
             let horizontalPadding: CGFloat = 16 * 2 
-            let interColumnSpacing = (CGFloat(columnProportions.count - 1) * 8)
+            let interColumnSpacing = (CGFloat(TransactionRow.columnProportions.count - 1) * 8)
             let availableWidthForColumns = geometry.size.width - interColumnSpacing - horizontalPadding
-            let calculatedWidths = columnProportions.map { $0 * availableWidthForColumns }
+            let calculatedWidths = TransactionRow.columnProportions.map { $0 * availableWidthForColumns }
             
             VStack(alignment: .leading, spacing: 0) {
                 if isLoading {
@@ -190,7 +187,7 @@ struct TransactionHistorySection: View {
 }
 
 // MARK: - Preview Helpers
-#Preview("TransactionHistorySection - With Sample Data", traits: .landscapeLeft) {
+#Preview("TransactionHistorySection", traits: .landscapeLeft) {
     let sampleTransactions = [
         Transaction(
             activityId: 12345,
@@ -253,7 +250,8 @@ struct TransactionHistorySection: View {
     .padding()
 }
 
-#Preview("TransactionHistorySection - Loading State", traits: .landscapeLeft) {
+
+#Preview("TransactionHistorySection - Loading", traits: .landscapeLeft) {
     TransactionHistorySection(
         isLoading: true,
         symbol: "AAPL",
@@ -271,169 +269,3 @@ struct TransactionHistorySection: View {
     .padding()
 }
 
-#Preview("TransactionHistorySection - Across Devices", traits: .landscapeLeft) {
-    let sampleTransactions = [
-        Transaction(
-            activityId: 12345,
-            time: "2025-01-15T10:30:00+0000",
-            tradeDate: "2025-01-15T10:30:00+0000",
-            netAmount: -1500.00,
-            transferItems: [
-                TransferItem(
-                    instrument: Instrument(
-                        assetType: .EQUITY,
-                        symbol: "AAPL",
-                        instrumentId: 12345
-                    ),
-                    amount: 10.0,
-                    price: 150.00
-                )
-            ]
-        ),
-        Transaction(
-            activityId: 12346,
-            time: "2025-01-16T14:45:00+0000",
-            tradeDate: "2025-01-16T14:45:00+0000",
-            netAmount: 2000.00,
-            transferItems: [
-                TransferItem(
-                    instrument: Instrument(
-                        assetType: .EQUITY,
-                        symbol: "AAPL",
-                        instrumentId: 12346
-                    ),
-                    amount: 8.0,
-                    price: 250.00
-                )
-            ]
-        ),
-        Transaction(
-            activityId: 12347,
-            time: "2025-01-17T09:15:00+0000",
-            tradeDate: "2025-01-17T09:15:00+0000",
-            netAmount: -750.00,
-            transferItems: [
-                TransferItem(
-                    instrument: Instrument(
-                        assetType: .EQUITY,
-                        symbol: "AAPL",
-                        instrumentId: 12347
-                    ),
-                    amount: 5.0,
-                    price: 150.00
-                )
-            ]
-        )
-    ]
-    
-    return VStack(spacing: 20) {
-        // iPhone SE landscape
-        VStack(spacing: 0) {
-            Text("iPhone SE Landscape")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
-            
-            TransactionHistorySection(
-                isLoading: false,
-                symbol: "AAPL",
-                transactions: sampleTransactions
-            )
-            .frame(width: 650, height: 400)
-        }
-        
-        // iPhone 15 Pro landscape
-        VStack(spacing: 0) {
-            Text("iPhone 15 Pro Landscape")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
-            
-            TransactionHistorySection(
-                isLoading: false,
-                symbol: "AAPL",
-                transactions: sampleTransactions
-            )
-            .frame(width: 852, height: 400)
-        }
-        
-        // iPad landscape
-        VStack(spacing: 0) {
-            Text("iPad Landscape")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
-            
-            TransactionHistorySection(
-                isLoading: false,
-                symbol: "AAPL",
-                transactions: sampleTransactions
-            )
-            .frame(width: 1024, height: 400)
-        }
-    }
-    .padding()
-}
-
-#Preview("TransactionHistorySection - Natural Geometry", traits: .landscapeLeft) {
-    let sampleTransactions = [
-        Transaction(
-            activityId: 12345,
-            time: "2025-01-15T10:30:00+0000",
-            tradeDate: "2025-01-15T10:30:00+0000",
-            netAmount: -1500.00,
-            transferItems: [
-                TransferItem(
-                    instrument: Instrument(
-                        assetType: .EQUITY,
-                        symbol: "AAPL",
-                        instrumentId: 12345
-                    ),
-                    amount: 10.0,
-                    price: 150.00
-                )
-            ]
-        ),
-        Transaction(
-            activityId: 12346,
-            time: "2025-01-16T14:45:00+0000",
-            tradeDate: "2025-01-16T14:45:00+0000",
-            netAmount: 2000.00,
-            transferItems: [
-                TransferItem(
-                    instrument: Instrument(
-                        assetType: .EQUITY,
-                        symbol: "AAPL",
-                        instrumentId: 12346
-                    ),
-                    amount: 8.0,
-                    price: 250.00
-                )
-            ]
-        ),
-        Transaction(
-            activityId: 12347,
-            time: "2025-01-17T09:15:00+0000",
-            tradeDate: "2025-01-17T09:15:00+0000",
-            netAmount: -750.00,
-            transferItems: [
-                TransferItem(
-                    instrument: Instrument(
-                        assetType: .EQUITY,
-                        symbol: "AAPL",
-                        instrumentId: 12347
-                    ),
-                    amount: 5.0,
-                    price: 150.00
-                )
-            ]
-        )
-    ]
-    
-    return TransactionHistorySection(
-        isLoading: false,
-        symbol: "AAPL",
-        transactions: sampleTransactions
-    )
-    .padding()
-}

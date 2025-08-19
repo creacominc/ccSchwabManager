@@ -8,7 +8,11 @@ struct SalesCalcTableRow: View {
     let copyToClipboardValue: (Double, String) -> Void
     let isEvenRow: Bool
     let showGainLossDollar: Bool
-    
+
+    public static let wideColumnProportions: [CGFloat] = [0.16, 0.09, 0.09, 0.11, 0.11, 0.11, 0.11, 0.11, 0.05] // Open Date, Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss $, Gain/Loss %, Split
+    public static let narrowColumnProportions: [CGFloat] = [0.18, 0.11, 0.11, 0.12, 0.15, 0.15, 0.12, 0.05] // Open Date, Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss %, Split (no Gain/Loss $)
+
+
     @State private var isHovered = false
     
     private func rowStyle() -> Color {
@@ -131,12 +135,10 @@ struct SalesCalcTableRowPreviewHelper {
     // iPad Mini landscape width is approximately 1024 points
     static let iPadMiniLandscapeWidth: CGFloat = 1024
     
-    static let wideColumnProportions: [CGFloat] = [0.16, 0.09, 0.09, 0.11, 0.11, 0.11, 0.11, 0.11, 0.05] // Open Date, Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss $, Gain/Loss %, Split
-    static let narrowColumnProportions: [CGFloat] = [0.18, 0.11, 0.11, 0.12, 0.15, 0.15, 0.12, 0.05] // Open Date, Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss %, Split (no Gain/Loss $)
     
     static func calculateWidths(for containerWidth: CGFloat, showGainLossDollar: Bool = true) -> [CGFloat] {
         let horizontalPadding: CGFloat = 16 * 2
-        let proportions = showGainLossDollar ? wideColumnProportions : narrowColumnProportions
+        let proportions = showGainLossDollar ? SalesCalcTableRow.wideColumnProportions : SalesCalcTableRow.narrowColumnProportions
         let interColumnSpacing = (CGFloat(proportions.count - 1) * 8)
         let availableWidthForColumns = containerWidth - interColumnSpacing - horizontalPadding
         return proportions.map { $0 * availableWidthForColumns }

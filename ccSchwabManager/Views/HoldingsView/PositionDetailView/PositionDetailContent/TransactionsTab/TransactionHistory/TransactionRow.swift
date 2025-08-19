@@ -11,6 +11,8 @@ struct TransactionRow: View {
     let isEvenRow: Bool
     
     @State private var isHovered = false
+    public static let columnProportions: [CGFloat] = [0.30, 0.10, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
+
     
     private var isSell: Bool {
         return transaction.netAmount ?? 0 > 0
@@ -84,17 +86,15 @@ struct TransactionRow: View {
 
 // MARK: - Preview Helper
 struct TransactionRowPreviewHelper {
-    static let columnProportions: [CGFloat] = [0.30, 0.10, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
-    
     static func calculateWidths(for containerWidth: CGFloat) -> [CGFloat] {
         let horizontalPadding: CGFloat = 16 * 2
-        let interColumnSpacing = (CGFloat(columnProportions.count - 1) * 8)
+        let interColumnSpacing = (CGFloat(TransactionRow.columnProportions.count - 1) * 8)
         let availableWidthForColumns = containerWidth - interColumnSpacing - horizontalPadding
-        return columnProportions.map { $0 * availableWidthForColumns }
+        return TransactionRow.columnProportions.map { $0 * availableWidthForColumns }
     }
 }
 
-#Preview("TransactionRow - Multiple Rows", traits: .landscapeLeft) {
+#Preview("TransactionRows w/ Header", traits: .landscapeLeft) {
     let sampleTransactions = [
         Transaction(
             activityId: 12345,
@@ -148,54 +148,7 @@ struct TransactionRowPreviewHelper {
             ]
         )
     ]
-    
-    return GeometryReader { geometry in
-        let calculatedWidths = TransactionRowPreviewHelper.calculateWidths(for: geometry.size.width)
-        
-        VStack(spacing: 0) {
-            ForEach(Array(sampleTransactions.enumerated()), id: \.element.id) { index, transaction in
-                TransactionRow(
-                    transaction: transaction,
-                    symbol: "AAPL",
-                    calculatedWidths: calculatedWidths,
-                    formatDate: { dateString in
-                        guard let dateString = dateString,
-                              let date = ISO8601DateFormatter().date(from: dateString) else {
-                            return ""
-                        }
-                        let formatter = DateFormatter()
-                        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                        return formatter.string(from: date)
-                    },
-                    copyToClipboard: { _ in },
-                    copyToClipboardValue: { _, _ in },
-                    isEvenRow: index % 2 == 0
-                )
-            }
-        }
-    }
-    .padding()
-}
 
-#Preview("TransactionRow - In Context with Header", traits: .landscapeLeft) {
-    let sampleTransaction = Transaction(
-        activityId: 12345,
-        time: "2025-01-15T10:30:00+0000",
-        tradeDate: "2025-01-15T10:30:00+0000",
-        netAmount: -1500.00,
-        transferItems: [
-            TransferItem(
-                instrument: Instrument(
-                    assetType: .EQUITY,
-                    symbol: "AAPL",
-                    instrumentId: 12345
-                ),
-                amount: 10.0,
-                price: 150.00
-            )
-        ]
-    )
-    
     return GeometryReader { geometry in
         let calculatedWidths = TransactionRowPreviewHelper.calculateWidths(for: geometry.size.width)
         
@@ -225,25 +178,27 @@ struct TransactionRowPreviewHelper {
             .background(Color.gray.opacity(0.1))
             
             Divider()
-            
-            // Transaction row
-            TransactionRow(
-                transaction: sampleTransaction,
-                symbol: "AAPL",
-                calculatedWidths: calculatedWidths,
-                formatDate: { dateString in
-                    guard let dateString = dateString,
-                          let date = ISO8601DateFormatter().date(from: dateString) else {
-                        return ""
-                    }
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                    return formatter.string(from: date)
-                },
-                copyToClipboard: { _ in },
-                copyToClipboardValue: { _, _ in },
-                isEvenRow: false
-            )
+
+            ForEach(Array(sampleTransactions.enumerated()), id: \.element.id) { index, transaction in
+                // Transaction row
+                TransactionRow(
+                    transaction: transaction,
+                    symbol: "AAPL",
+                    calculatedWidths: calculatedWidths,
+                    formatDate: { dateString in
+                        guard let dateString = dateString,
+                              let date = ISO8601DateFormatter().date(from: dateString) else {
+                            return ""
+                        }
+                        let formatter = DateFormatter()
+                        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                        return formatter.string(from: date)
+                    },
+                    copyToClipboard: { _ in },
+                    copyToClipboardValue: { _, _ in },
+                    isEvenRow: false
+                )
+            }
         }
     }
     .padding()
@@ -331,164 +286,6 @@ struct TransactionRowPreviewHelper {
             copyToClipboardValue: { _, _ in },
             isEvenRow: true
         )
-    }
-    .padding()
-}
-
-#Preview("TransactionRow - Responsive Across Devices", traits: .landscapeLeft) {
-    let sampleTransaction = Transaction(
-        activityId: 12345,
-        time: "2025-01-15T10:30:00+0000",
-        tradeDate: "2025-01-15T10:30:00+0000",
-        netAmount: -1500.00,
-        transferItems: [
-            TransferItem(
-                instrument: Instrument(
-                    assetType: .EQUITY,
-                    symbol: "AAPL",
-                    instrumentId: 12345
-                ),
-                amount: 10.0,
-                price: 150.00
-            )
-        ]
-    )
-    
-    return VStack(spacing: 20) {
-        // iPhone SE landscape
-        VStack(spacing: 0) {
-            Text("iPhone SE Landscape")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            GeometryReader { geometry in
-                let calculatedWidths = TransactionRowPreviewHelper.calculateWidths(for: geometry.size.width)
-                
-                VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Text("Date").frame(width: calculatedWidths[0])
-                        Text("Type").frame(width: calculatedWidths[1])
-                        Text("Quantity").frame(width: calculatedWidths[2], alignment: .trailing)
-                        Text("Price").frame(width: calculatedWidths[3], alignment: .trailing)
-                        Text("Net Amount").frame(width: calculatedWidths[4], alignment: .trailing)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 3)
-                    .background(Color.gray.opacity(0.1))
-                    
-                    Divider()
-                    
-                    TransactionRow(
-                        transaction: sampleTransaction,
-                        symbol: "AAPL",
-                        calculatedWidths: calculatedWidths,
-                        formatDate: { dateString in
-                            guard let dateString = dateString,
-                                  let date = ISO8601DateFormatter().date(from: dateString) else {
-                                return ""
-                            }
-                            let formatter = DateFormatter()
-                            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                            return formatter.string(from: date)
-                        },
-                        copyToClipboard: { _ in },
-                        copyToClipboardValue: { _, _ in },
-                        isEvenRow: false
-                    )
-                }
-            }
-            .frame(width: 650, height: 100)
-        }
-        
-        // iPhone 15 Pro landscape
-        VStack(spacing: 0) {
-            Text("iPhone 15 Pro Landscape")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            GeometryReader { geometry in
-                let calculatedWidths = TransactionRowPreviewHelper.calculateWidths(for: geometry.size.width)
-                
-                VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Text("Date").frame(width: calculatedWidths[0])
-                        Text("Type").frame(width: calculatedWidths[1])
-                        Text("Quantity").frame(width: calculatedWidths[2], alignment: .trailing)
-                        Text("Price").frame(width: calculatedWidths[3], alignment: .trailing)
-                        Text("Net Amount").frame(width: calculatedWidths[4], alignment: .trailing)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 3)
-                    .background(Color.gray.opacity(0.1))
-                    
-                    Divider()
-                    
-                    TransactionRow(
-                        transaction: sampleTransaction,
-                        symbol: "AAPL",
-                        calculatedWidths: calculatedWidths,
-                        formatDate: { dateString in
-                            guard let dateString = dateString,
-                                  let date = ISO8601DateFormatter().date(from: dateString) else {
-                                return ""
-                            }
-                            let formatter = DateFormatter()
-                            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                            return formatter.string(from: date)
-                        },
-                        copyToClipboard: { _ in },
-                        copyToClipboardValue: { _, _ in },
-                        isEvenRow: false
-                    )
-                }
-            }
-            .frame(width: 852, height: 100)
-        }
-        
-        // iPad landscape
-        VStack(spacing: 0) {
-            Text("iPad Landscape")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            GeometryReader { geometry in
-                let calculatedWidths = TransactionRowPreviewHelper.calculateWidths(for: geometry.size.width)
-                
-                VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        Text("Date").frame(width: calculatedWidths[0])
-                        Text("Type").frame(width: calculatedWidths[1])
-                        Text("Quantity").frame(width: calculatedWidths[2], alignment: .trailing)
-                        Text("Price").frame(width: calculatedWidths[3], alignment: .trailing)
-                        Text("Net Amount").frame(width: calculatedWidths[4], alignment: .trailing)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 3)
-                    .background(Color.gray.opacity(0.1))
-                    
-                    Divider()
-                    
-                    TransactionRow(
-                        transaction: sampleTransaction,
-                        symbol: "AAPL",
-                        calculatedWidths: calculatedWidths,
-                        formatDate: { dateString in
-                            guard let dateString = dateString,
-                                  let date = ISO8601DateFormatter().date(from: dateString) else {
-                                return ""
-                            }
-                            let formatter = DateFormatter()
-                            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                            return formatter.string(from: date)
-                        },
-                        copyToClipboard: { _ in },
-                        copyToClipboardValue: { _, _ in },
-                        isEvenRow: false
-                    )
-                }
-            }
-            .frame(width: 1024, height: 100)
-        }
     }
     .padding()
 }

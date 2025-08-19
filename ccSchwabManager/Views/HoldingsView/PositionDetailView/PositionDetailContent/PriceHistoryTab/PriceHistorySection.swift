@@ -27,7 +27,7 @@ struct PriceHistorySection: View {
     }
 }
 
-#Preview("PriceHistorySection - with sample data", traits: .landscapeLeft) {
+#Preview("PriceHistorySection", traits: .landscapeLeft) {
     let calendar = Calendar.current
     let now = Date()
     
@@ -175,7 +175,6 @@ struct PriceHistorySection: View {
             return "N/A"
         }
     )
-    .frame(width: 400, height: 300)
     .padding()
 }
 
@@ -191,7 +190,6 @@ struct PriceHistorySection: View {
             return "N/A"
         }
     )
-    .frame(width: 400, height: 300)
     .padding()
 }
 
@@ -207,6 +205,5 @@ struct PriceHistorySection: View {
             return "N/A"
         }
     )
-    .frame(width: 400, height: 300)
     .padding()
 }

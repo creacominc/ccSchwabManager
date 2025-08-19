@@ -172,7 +172,6 @@ struct PriceHistoryTab: View {
             geometry: geometry
         )
     }
-    .frame(width: 600, height: 400)
     .padding()
 }
 
@@ -191,7 +190,6 @@ struct PriceHistoryTab: View {
             geometry: geometry
         )
     }
-    .frame(width: 600, height: 400)
     .padding()
 }
 
@@ -210,6 +208,5 @@ struct PriceHistoryTab: View {
             geometry: geometry
         )
     }
-    .frame(width: 600, height: 400)
     .padding()
 } 

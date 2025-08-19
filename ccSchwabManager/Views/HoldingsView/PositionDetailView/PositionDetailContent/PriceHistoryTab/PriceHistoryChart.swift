@@ -342,7 +342,6 @@ private struct TooltipView: View {
     ]
     
     return PriceHistoryChart(candles: sampleCandles)
-        .frame(width: 400, height: 300)
         .padding()
 }
 
