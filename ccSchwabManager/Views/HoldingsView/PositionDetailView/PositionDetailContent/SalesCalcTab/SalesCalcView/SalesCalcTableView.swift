@@ -191,10 +191,12 @@ struct SalesCalcTable: View {
                 currentSort = newSort
             }
             .frame(width: columnWidths[5] * viewSize.width)
-            columnHeader(title: "Gain/Loss $", column: .gainLossDollar, alignment: .trailing, currentSort: currentSort) { newSort in
-                currentSort = newSort
+            if viewSize.width >= 1024 { // Only show if wide enough
+                columnHeader(title: "Gain/Loss $", column: .gainLossDollar, alignment: .trailing, currentSort: currentSort) { newSort in
+                    currentSort = newSort
+                }
+                .frame(width: columnWidths[6] * viewSize.width)
             }
-            .frame(width: columnWidths[6] * viewSize.width)
             columnHeader(title: "Gain/Loss %", column: .gainLossPct, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
@@ -219,14 +221,37 @@ private struct TableContent: View {
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
     
+    private var showGainLossDollar: Bool {
+        return viewSize.width >= 1024 // iPad Mini landscape width
+    }
+    
+    private var calculatedWidths: [CGFloat] {
+        let horizontalPadding: CGFloat = 16 * 2
+        let effectiveColumnCount = showGainLossDollar ? columnWidths.count : columnWidths.count - 1
+        let interColumnSpacing = (CGFloat(effectiveColumnCount - 1) * 8)
+        let availableWidthForColumns = viewSize.width - interColumnSpacing - horizontalPadding
+        
+        if showGainLossDollar {
+            return columnWidths.map { $0 * availableWidthForColumns }
+        } else {
+            // Remove the Gain/Loss $ column (index 6) and redistribute the space
+            var adjustedWidths: [CGFloat] = []
+            for (index, width) in columnWidths.enumerated() {
+                if index != 6 { // Skip Gain/Loss $ column
+                    adjustedWidths.append(width * availableWidthForColumns)
+                }
+            }
+            return adjustedWidths
+        }
+    }
+    
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(Array(positionsData.enumerated()), id: \.element.id) { index, item in
-                    TableRow(
+                    SalesCalcTableRow(
                         item: item,
-                        viewSize: viewSize,
-                        columnWidths: columnWidths,
+                        calculatedWidths: calculatedWidths,
                         currentPrice: currentPrice,
                         copyToClipboard: { text in
                             copyToClipboard(text)
@@ -234,7 +259,8 @@ private struct TableContent: View {
                         copyToClipboardValue: { value, format in
                             copyToClipboardValue(value, format)
                         },
-                        isEvenRow: index % 2 == 0
+                        isEvenRow: index % 2 == 0,
+                        showGainLossDollar: showGainLossDollar
                     )
                     Divider()
                 }
@@ -244,121 +270,4 @@ private struct TableContent: View {
     }
 }
 
-private struct TableRow: View {
-    let item: SalesCalcPositionsRecord
-    let viewSize: CGSize
-    let columnWidths: [CGFloat]
-    let currentPrice: Double
-    let copyToClipboard: (String) -> Void
-    let copyToClipboardValue: (Double, String) -> Void
-    let isEvenRow: Bool
-    
-    @State private var isHovered = false
-    
-    private func rowStyle() -> Color {
-        if item.gainLossPct < 0.0 {
-            return .red
-        } else if item.gainLossPct < 5.0 {
-            return .yellow
-        }
-        return .green
-    }
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(item.openDate)
-                .frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
-                .foregroundStyle(daysSinceDateString(dateString: item.openDate) ?? 0 > 30 ? .green : .red)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Open Date: \(item.openDate)")
-                    copyToClipboard(item.openDate)
-                }
-            
-            Text(String(format: "%.2f", item.quantity))
-                .frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Quantity: \(item.quantity)")
-                    copyToClipboardValue(item.quantity, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", currentPrice))
-                .frame(width: columnWidths[2] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Price: \(currentPrice)")
-                    copyToClipboardValue(currentPrice, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.costPerShare))
-                .frame(width: columnWidths[3] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.costPerShare > item.price ? .red : .primary)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Cost/Share: \(item.costPerShare)")
-                    copyToClipboardValue(item.costPerShare, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.marketValue))
-                .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Market Value: \(item.marketValue)")
-                    copyToClipboardValue(item.marketValue, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.costBasis))
-                .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Cost Basis: \(item.costBasis)")
-                    copyToClipboardValue(item.costBasis, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.gainLossDollar))
-                .frame(width: columnWidths[6] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.gainLossDollar > 0.0 ? .green : .red)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Gain/Loss $: \(item.gainLossDollar)")
-                    copyToClipboardValue(item.gainLossDollar, "%.2f")
-                }
-            
-            Text(String(format: "%.2f%%", item.gainLossPct))
-                .frame(width: columnWidths[7] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Gain/Loss %: \(item.gainLossPct)")
-                    copyToClipboardValue(item.gainLossPct, "%.2f")
-                }
-            
-            Text(String(format: "%.0f", item.splitMultiple))
-                .frame(width: columnWidths[8] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.splitMultiple > 1.0 ? .blue : .secondary)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Split: \(item.splitMultiple)")
-                    copyToClipboardValue(item.splitMultiple, "%.0f")
-                }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 5)
-        .background(rowBackgroundColor)
-        #if os(macOS)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        #endif
-    }
-    
-    private var rowBackgroundColor: Color {
-        if isHovered {
-            return Color.gray.opacity(0.1)
-        } else if isEvenRow {
-            return Color.clear
-        } else {
-            return Color.gray.opacity(0.05)
-        }
-    }
-} 
+ 
