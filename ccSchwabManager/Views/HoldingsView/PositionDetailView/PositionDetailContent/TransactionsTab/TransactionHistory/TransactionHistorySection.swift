@@ -3,13 +3,14 @@ import SwiftUI
 struct TransactionHistorySection: View {
     let isLoading: Bool
     let symbol: String
+    let transactions: [Transaction]
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
     @State private var copiedValue: String = "TBD"
 
     private var sortedTransactions: [Transaction] {
-        guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
+        guard let sortConfig = currentSort else { return transactions }
         print( "=== Sorting transactions ===  \(symbol)" )
-        return SchwabClient.shared.getTransactionsFor( symbol: symbol ).sorted { t1, t2 in
+        return transactions.sorted { t1, t2 in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .date:
@@ -43,7 +44,7 @@ struct TransactionHistorySection: View {
     }
 
     // Define proportional widths for columns
-    private let columnProportions: [CGFloat] = [0.30, 0.10, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
+    private let columnProportions: [CGFloat] = [0.30, 0.09, 0.15, 0.15, 0.20] // Date, Type, Qty, Price, Net Amount
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
@@ -115,7 +116,7 @@ struct TransactionHistorySection: View {
                         .scaleEffect(2.0, anchor: .center)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         .padding()
-                } else if SchwabClient.shared.getTransactionsFor( symbol: symbol ).isEmpty {
+                } else if transactions.isEmpty {
                     Text("No transactions available")
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
@@ -189,90 +190,6 @@ struct TransactionHistorySection: View {
 }
 
 // MARK: - Preview Helpers
-struct PreviewTransactionHistorySection: View {
-    let isLoading: Bool
-    let symbol: String
-    let transactions: [Transaction]
-    
-    var body: some View {
-        GeometryReader { geometry in
-            let columnProportions: [CGFloat] = [0.30, 0.10, 0.20, 0.20, 0.20] // Updated to match main section
-            let horizontalPadding: CGFloat = 16 * 2 
-            let interColumnSpacing = (CGFloat(columnProportions.count - 1) * 8)
-            let availableWidthForColumns = geometry.size.width - interColumnSpacing - horizontalPadding
-            let calculatedWidths = columnProportions.map { $0 * availableWidthForColumns }
-            
-            VStack(alignment: .leading, spacing: 0) {
-                if isLoading {
-                    ProgressView()
-                        .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
-                        .scaleEffect(2.0, anchor: .center)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .padding()
-                } else if transactions.isEmpty {
-                    Text("No transactions available")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    VStack(spacing: 0) {
-                        // Header row
-                        HStack(spacing: 8) {
-                            HStack {
-                                Text("Date")
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 4)
-                                Button(action: {}) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.caption)
-                                        .foregroundColor(.blue)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .frame(width: calculatedWidths[0])
-                            
-                            Text("Type").frame(width: calculatedWidths[1])
-                            Text("Quantity").frame(width: calculatedWidths[2], alignment: .trailing)
-                            Text("Price").frame(width: calculatedWidths[3], alignment: .trailing)
-                            Text("Net Amount").frame(width: calculatedWidths[4], alignment: .trailing)
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 3)
-                        .background(Color.gray.opacity(0.1))
-                        
-                        Divider()
-
-                        // Content area with calculated widths passed down
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(transactions.enumerated()), id: \.element.id) { index, transaction in
-                                    TransactionRow(
-                                        transaction: transaction,
-                                        symbol: symbol,
-                                        calculatedWidths: calculatedWidths,
-                                        formatDate: { dateString in
-                                            guard let dateString = dateString,
-                                                  let date = ISO8601DateFormatter().date(from: dateString) else {
-                                                return ""
-                                            }
-                                            let formatter = DateFormatter()
-                                            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                                            return formatter.string(from: date)
-                                        },
-                                        copyToClipboard: { _ in },
-                                        copyToClipboardValue: { _, _ in },
-                                        isEvenRow: index % 2 == 0
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #Preview("TransactionHistorySection - With Sample Data", traits: .landscapeLeft) {
     let sampleTransactions = [
         Transaction(
@@ -328,7 +245,7 @@ struct PreviewTransactionHistorySection: View {
         )
     ]
     
-    return PreviewTransactionHistorySection(
+    return TransactionHistorySection(
         isLoading: false,
         symbol: "AAPL",
         transactions: sampleTransactions
@@ -337,7 +254,7 @@ struct PreviewTransactionHistorySection: View {
 }
 
 #Preview("TransactionHistorySection - Loading State", traits: .landscapeLeft) {
-    PreviewTransactionHistorySection(
+    TransactionHistorySection(
         isLoading: true,
         symbol: "AAPL",
         transactions: []
@@ -346,7 +263,7 @@ struct PreviewTransactionHistorySection: View {
 }
 
 #Preview("TransactionHistorySection - No Data", traits: .landscapeLeft) {
-    PreviewTransactionHistorySection(
+    TransactionHistorySection(
         isLoading: false,
         symbol: "AAPL",
         transactions: []
@@ -417,7 +334,7 @@ struct PreviewTransactionHistorySection: View {
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
             
-            PreviewTransactionHistorySection(
+            TransactionHistorySection(
                 isLoading: false,
                 symbol: "AAPL",
                 transactions: sampleTransactions
@@ -432,7 +349,7 @@ struct PreviewTransactionHistorySection: View {
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
             
-            PreviewTransactionHistorySection(
+            TransactionHistorySection(
                 isLoading: false,
                 symbol: "AAPL",
                 transactions: sampleTransactions
@@ -447,7 +364,7 @@ struct PreviewTransactionHistorySection: View {
                 .foregroundColor(.secondary)
                 .padding(.bottom, 5)
             
-            PreviewTransactionHistorySection(
+            TransactionHistorySection(
                 isLoading: false,
                 symbol: "AAPL",
                 transactions: sampleTransactions
@@ -513,7 +430,7 @@ struct PreviewTransactionHistorySection: View {
         )
     ]
     
-    return PreviewTransactionHistorySection(
+    return TransactionHistorySection(
         isLoading: false,
         symbol: "AAPL",
         transactions: sampleTransactions
