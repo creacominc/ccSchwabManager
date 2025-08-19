@@ -13,7 +13,6 @@ struct SalesCalcView: View {
     let isLoadingTaxLots: Bool
     let quoteData: QuoteData?
     @State private var currentSort: SalesCalcSortConfig? = SalesCalcSortConfig(column: .costPerShare, ascending: SalesCalcSortableColumn.costPerShare.defaultAscending )
-    @State private var viewSize: CGSize = .zero
     @State private var showIncompleteDataWarning = false
     
     private func getCurrentPrice() -> Double {
@@ -36,16 +35,9 @@ struct SalesCalcView: View {
                 SalesCalcTable(
                     positionsData: taxLotData,
                     currentSort: $currentSort,
-                    viewSize: geometry.size,
                     symbol: symbol,
                     currentPrice: getCurrentPrice()
                 )
-                .onAppear {
-                    viewSize = geometry.size
-                }
-                .onChange(of: geometry.size) { oldValue, newValue in
-                    viewSize = newValue
-                }
                 .padding(.horizontal)
             }
         }
