@@ -34,10 +34,10 @@ struct OrderTab: View {
                 }
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                )
+//                .overlay(
+//                    RoundedRectangle(cornerRadius: 8)
+//                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+//                )
                 
                 // Section 2: Recommended Orders (Single or OCO)
                 VStack(alignment: .leading, spacing: 0) {
@@ -68,10 +68,10 @@ struct OrderTab: View {
                 }
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
-                )
+//                .overlay(
+//                    RoundedRectangle(cornerRadius: 8)
+//                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+//                )
                 
                 // Section 3: Buy Sequence Orders
                 VStack(alignment: .leading, spacing: 0) {
@@ -102,10 +102,10 @@ struct OrderTab: View {
                 }
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                )
+//                .overlay(
+//                    RoundedRectangle(cornerRadius: 8)
+//                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+//                )
                 
                 // Add bottom padding to ensure last section is fully visible
                 Spacer(minLength: 20)
