@@ -9,6 +9,7 @@ struct HoldingsTableContent: View {
     let orderStatusCache: [String: ActiveOrderStatus?]
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
+    let availableWidth: CGFloat
 
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
@@ -39,10 +40,13 @@ struct HoldingsTableContent: View {
                         isEvenRow: isEvenRow,
                         isSelected: isSelected,
                         copyToClipboard: copyToClipboard,
-                        copyToClipboardValue: copyToClipboardValue
+                        copyToClipboardValue: copyToClipboardValue,
+                        availableWidth: availableWidth
                     )
                 }
             }
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -7,6 +7,7 @@ struct HoldingsTableHeader: View {
     let accountPositions: [(Position, String, String)]
     let tradeDateCache: [String: String]
     let orderStatusCache: [String: ActiveOrderStatus?]
+    let availableWidth: CGFloat
     
     // iPad Mini landscape width is 1024, so we'll use that as the breakpoint
     private let iPadBreakpoint: CGFloat = 1024
@@ -40,85 +41,100 @@ struct HoldingsTableHeader: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 8) {
-                // Symbol column (always shown)
-                HStack {
-                    columnHeader(title: "Symbol", column: .symbol)
-                    Button(action: {
-                        CSVExporter.exportHoldings(sortedHoldings, accountPositions: accountPositions, tradeDates: tradeDateCache, orderStatuses: orderStatusCache)
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
+        let isWide = availableWidth >= iPadBreakpoint
+        
+        HStack(spacing: 4) {
+            // Symbol column (always shown)
+            HStack {
+                columnHeader(title: "Symbol", column: .symbol)
+                Button(action: {
+                    CSVExporter.exportHoldings(sortedHoldings, accountPositions: accountPositions, tradeDates: tradeDateCache, orderStatuses: orderStatusCache)
+                }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.caption)
+                        .foregroundColor(.blue)
                 }
-                .frame(width: getColumnWidth(0, geometry: geometry) * geometry.size.width)
-                
-                // Quantity column (always shown)
-                columnHeader(title: "Qty", column: .quantity, alignment: .trailing)
-                    .frame(width: getColumnWidth(1, geometry: geometry) * geometry.size.width)
-                
-                // Average column (always shown)
-                columnHeader(title: "Avg", column: .avgPrice, alignment: .trailing)
-                    .frame(width: getColumnWidth(2, geometry: geometry) * geometry.size.width)
-                
-                // Market column (only shown in wide layout)
-                if geometry.size.width >= iPadBreakpoint {
-                    columnHeader(title: "Market", column: .marketValue, alignment: .trailing)
-                        .frame(width: columnWidths[3] * geometry.size.width)
-                }
-                
-                // P/L column (only shown in wide layout)
-                if geometry.size.width >= iPadBreakpoint {
-                    columnHeader(title: "P/L", column: .pl, alignment: .trailing)
-                        .frame(width: columnWidths[4] * geometry.size.width)
-                }
-                
-                // P/L% column (always shown)
-                columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing)
-                    .frame(width: getColumnWidth(5, geometry: geometry) * geometry.size.width)
-                
-                // Type column (only shown in wide layout)
-                if geometry.size.width >= iPadBreakpoint {
-                    columnHeader(title: "Type", column: .assetType)
-                        .frame(width: columnWidths[6] * geometry.size.width)
-                }
-                
-                // Account column (only shown in wide layout)
-                if geometry.size.width >= iPadBreakpoint {
-                    columnHeader(title: "Acnt", column: .account)
-                        .frame(width: columnWidths[7] * geometry.size.width)
-                }
-                
-                // Last Trade column (only shown in wide layout)
-                //if geometry.size.width >= iPadBreakpoint {
-                    columnHeader(title: "Last Trade", column: .lastTradeDate)
-                        .frame(width: columnWidths[8] * geometry.size.width)
-                //}
-                
-                // Order column (always shown)
-                columnHeader(title: "Order", column: .orderStatus)
-                    .frame(width: getColumnWidth(9, geometry: geometry) * geometry.size.width)
-                
-                // DTE/# column (always shown)
-                columnHeader(title: "DTE/#", column: .dte, alignment: .trailing)
-                    .frame(width: getColumnWidth(10, geometry: geometry) * geometry.size.width)
+                .buttonStyle(.plain)
             }
-//            .padding(.horizontal)
-            .background(Color.gray.opacity(0.1))
+            .frame(width: getColumnWidth(0) * availableWidth)
+            
+            // Quantity column (always shown)
+            columnHeader(title: "Qty", column: .quantity, alignment: .trailing)
+                .frame(width: getColumnWidth(1) * availableWidth)
+            
+            // Average column (always shown)
+            columnHeader(title: "Avg", column: .avgPrice, alignment: .trailing)
+                .frame(width: getColumnWidth(2) * availableWidth)
+            
+            // Market column (only shown in wide layout)
+            if isWide {
+                columnHeader(title: "Market", column: .marketValue, alignment: .trailing)
+                    .frame(width: getColumnWidth(3) * availableWidth)
+            }
+            
+            // P/L column (only shown in wide layout)
+            if isWide {
+                columnHeader(title: "P/L", column: .pl, alignment: .trailing)
+                    .frame(width: getColumnWidth(4) * availableWidth)
+            }
+            
+            // P/L% column (always shown)
+            columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing)
+                .frame(width: getColumnWidth(5) * availableWidth)
+            
+            // Type column (only shown in wide layout)
+            if isWide {
+                columnHeader(title: "Type", column: .assetType)
+                    .frame(width: getColumnWidth(6) * availableWidth)
+            }
+            
+            // Account column (only shown in wide layout)
+            if isWide {
+                columnHeader(title: "Acnt", column: .account)
+                    .frame(width: getColumnWidth(7) * availableWidth)
+            }
+            
+            // Last Trade column (always shown)
+            columnHeader(title: "Last Trade", column: .lastTradeDate)
+                .frame(width: getColumnWidth(8) * availableWidth)
+            
+            // Order column (always shown)
+            columnHeader(title: "Order", column: .orderStatus)
+                .frame(width: getColumnWidth(9) * availableWidth)
+            
+            // DTE/# column (always shown)
+            columnHeader(title: "DTE/#", column: .dte, alignment: .trailing)
+                .frame(width: getColumnWidth(10) * availableWidth)
         }
-        .frame(height: 25)
+        .frame(maxWidth: .infinity)
+        .background(Color.gray.opacity(0.1))
+        .frame(maxWidth: .infinity, minHeight: 25)
     }
     
-    // Helper function to get column width with 50% increase for narrow layout
-    private func getColumnWidth(_ index: Int, geometry: GeometryProxy) -> CGFloat {
+    // Helper function to get column width with adjustment for narrow layout
+    private func getColumnWidth(_ index: Int) -> CGFloat {
         let baseWidth = columnWidths[index]
-        if geometry.size.width < iPadBreakpoint {
-            // Increase width by 50% for narrow layout
-            return baseWidth * 1.6
+        let isWide = availableWidth >= iPadBreakpoint
+        
+        // For narrow layouts, some columns are hidden, so we need to redistribute the width
+        if !isWide {
+            // Columns 3, 4, 6, 7 are hidden in narrow layout
+            let hiddenColumns = [3, 4, 6, 7]
+            if hiddenColumns.contains(index) {
+                return 0 // Hidden columns get 0 width
+            }
+            
+            // Calculate total width of visible columns in narrow layout
+            let visibleColumns = [0, 1, 2, 5, 8, 9, 10]
+            let totalVisibleWidth = visibleColumns.reduce(0) { $0 + columnWidths[$1] }
+            
+            // Redistribute the hidden columns' width proportionally
+            let hiddenWidth = 1.0 - totalVisibleWidth
+            let redistributionFactor = hiddenWidth / totalVisibleWidth
+            
+            return baseWidth * (1.0 + redistributionFactor)
         }
+        
         return baseWidth
     }
 }
@@ -187,7 +203,8 @@ struct HoldingsTableHeader: View {
                 sortedHoldings: samplePositions,
                 accountPositions: sampleAccountPositions,
                 tradeDateCache: sampleTradeDateCache,
-                orderStatusCache: sampleOrderStatusCache
+                orderStatusCache: sampleOrderStatusCache,
+                availableWidth: 1024 // Assuming a fixed width for preview
             )
 
             ForEach(Array(samplePositions.enumerated()), id: \.element.id) { index, position in
@@ -201,7 +218,8 @@ struct HoldingsTableHeader: View {
                     isEvenRow: index % 2 == 0,
                     isSelected: false,
                     copyToClipboard: { text in print("Copied: \(text)") },
-                    copyToClipboardValue: { value, format in print("Copied value: \(String(format: format, value))") }
+                    copyToClipboardValue: { value, format in print("Copied value: \(String(format: format, value))") },
+                    availableWidth: 1024 // Assuming a fixed width for preview
                 )
             }
     }

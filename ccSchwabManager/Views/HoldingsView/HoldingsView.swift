@@ -332,6 +332,7 @@ struct HoldingsView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding()
                 } else {
+                    Spacer()
                     HoldingsTable(
                         sortedHoldings: sortedHoldings,
                         selectedPositionId: Binding(

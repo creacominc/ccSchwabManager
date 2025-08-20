@@ -11,8 +11,9 @@ struct HoldingsTableRow: View {
     let isSelected: Bool
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
+    let availableWidth: CGFloat
 
-    public static let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.10, 0.08, 0.08, 0.08, 0.06, 0.13, 0.09, 0.06]
+    public static let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.10, 0.08, 0.08, 0.08, 0.06, 0.12, 0.09, 0.09]
 
     // iPad Mini landscape width is 1024, so we'll use that as the breakpoint
     private let iPadBreakpoint: CGFloat = 1024
@@ -62,45 +63,40 @@ struct HoldingsTableRow: View {
 //    }
 
     var body: some View {
-        GeometryReader { geometry in
-            let isWide = geometry.size.width >= iPadBreakpoint
-
-            // VStack(spacing: 0) {
-                // Main content row
-                HStack(spacing: 4) {
-                    symbolColumn(geometry: geometry)
-                    quantityColumn(geometry: geometry)
-                    averageColumn(geometry: geometry)
-                    
-                    if isWide {
-                        marketColumn(geometry: geometry)
-                        plColumn(geometry: geometry)
-                    }
-                    
-                    plPercentColumn(geometry: geometry)
-                    
-                    if isWide {
-                        typeColumn(geometry: geometry)
-                        accountColumn(geometry: geometry)
-                    }
-                    
-                    lastTradeColumn(geometry: geometry)
-                    orderColumn(geometry: geometry)
-                    dteColumn(geometry: geometry)
-                }
-//                .padding(.vertical, 5)
-                .background(isEvenRow ? Color.clear : Color.gray.opacity(0.15) )
-                .onTapGesture {
-                    onTap()
-                }
-            // }
+        let isWide = availableWidth >= iPadBreakpoint
+        
+        HStack(spacing: 4) {
+            symbolColumn(isWide: isWide)
+            quantityColumn(isWide: isWide)
+            averageColumn(isWide: isWide)
+            
+            if isWide {
+                marketColumn(isWide: isWide)
+                plColumn(isWide: isWide)
+            }
+            
+            plPercentColumn(isWide: isWide)
+            
+            if isWide {
+                typeColumn(isWide: isWide)
+                accountColumn(isWide: isWide)
+            }
+            
+            lastTradeColumn(isWide: isWide)
+            orderColumn(isWide: isWide)
+            dteColumn(isWide: isWide)
         }
-        .frame(height: 18)
+        .frame(maxWidth: .infinity)
+        .background(isEvenRow ? Color.clear : Color.gray.opacity(0.15))
+        .onTapGesture {
+            onTap()
+        }
+        .frame(maxWidth: .infinity, minHeight: 18)
     }
     
     // MARK: - Column Views
     @ViewBuilder
-    private func symbolColumn(geometry: GeometryProxy) -> some View {
+    private func symbolColumn(isWide: Bool) -> some View {
         HStack {
             Text(position.instrument?.symbol ?? "N/A")
                 .font(.system(size: 14, weight: .medium))
@@ -116,96 +112,112 @@ struct HoldingsTableRow: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(width: getColumnWidth(0, geometry: geometry) * geometry.size.width)
+        .frame(width: getColumnWidth(0, isWide: isWide) * availableWidth)
     }
     
     @ViewBuilder
-    private func quantityColumn(geometry: GeometryProxy) -> some View {
+    private func quantityColumn(isWide: Bool) -> some View {
         Text("\(Int(position.longQuantity ?? 0))")
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: getColumnWidth(1, geometry: geometry) * geometry.size.width, alignment: .trailing)
+            .frame(width: getColumnWidth(1, isWide: isWide) * availableWidth, alignment: .trailing)
     }
     
     @ViewBuilder
-    private func averageColumn(geometry: GeometryProxy) -> some View {
+    private func averageColumn(isWide: Bool) -> some View {
         Text(String(format: "%.2f", position.averagePrice ?? 0.0))
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: getColumnWidth(2, geometry: geometry) * geometry.size.width, alignment: .trailing)
+            .frame(width: getColumnWidth(2, isWide: isWide) * availableWidth, alignment: .trailing)
     }
     
     @ViewBuilder
-    private func marketColumn(geometry: GeometryProxy) -> some View {
+    private func marketColumn(isWide: Bool) -> some View {
         Text(String(format: "%.2f", position.marketValue ?? 0.0))
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: HoldingsTableRow.columnWidths[3] * geometry.size.width, alignment: .trailing)
+            .frame(width: getColumnWidth(3, isWide: isWide) * availableWidth, alignment: .trailing)
     }
     
     @ViewBuilder
-    private func plColumn(geometry: GeometryProxy) -> some View {
+    private func plColumn(isWide: Bool) -> some View {
         Text(showGainLossDollar())
             .font(.system(size: 14))
             .foregroundColor(plPercent >= 0 ? .green : .red)
-            .frame(width: HoldingsTableRow.columnWidths[4] * geometry.size.width, alignment: .trailing)
+            .frame(width: getColumnWidth(4, isWide: isWide) * availableWidth, alignment: .trailing)
     }
     
     @ViewBuilder
-    private func plPercentColumn(geometry: GeometryProxy) -> some View {
+    private func plPercentColumn(isWide: Bool) -> some View {
         Text(String(format: "%.2f%%", plPercent))
             .font(.system(size: 14))
             .foregroundColor(plPercent >= 0 ? .green : .red)
-            .frame(width: getColumnWidth(5, geometry: geometry) * geometry.size.width, alignment: .trailing)
+            .frame(width: getColumnWidth(5, isWide: isWide) * availableWidth, alignment: .trailing)
     }
     
     @ViewBuilder
-    private func typeColumn(geometry: GeometryProxy) -> some View {
+    private func typeColumn(isWide: Bool) -> some View {
         Text(position.instrument?.assetType?.rawValue ?? "N/A")
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: HoldingsTableRow.columnWidths[6] * geometry.size.width, alignment: .leading)
+            .frame(width: getColumnWidth(6, isWide: isWide) * availableWidth, alignment: .leading)
     }
     
     @ViewBuilder
-    private func accountColumn(geometry: GeometryProxy) -> some View {
+    private func accountColumn(isWide: Bool) -> some View {
         Text(accountNumber)
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: HoldingsTableRow.columnWidths[7] * geometry.size.width, alignment: .leading)
+            .frame(width: getColumnWidth(7, isWide: isWide) * availableWidth, alignment: .leading)
     }
     
     @ViewBuilder
-    private func lastTradeColumn(geometry: GeometryProxy) -> some View {
+    private func lastTradeColumn(isWide: Bool) -> some View {
         Text(tradeDate)
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: HoldingsTableRow.columnWidths[8] * geometry.size.width, alignment: .leading)
+            .frame(width: getColumnWidth(8, isWide: isWide) * availableWidth, alignment: .leading)
     }
     
     @ViewBuilder
-    private func orderColumn(geometry: GeometryProxy) -> some View {
+    private func orderColumn(isWide: Bool) -> some View {
         Text(orderStatus?.rawValue ?? "N/A")
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: getColumnWidth(9, geometry: geometry) * geometry.size.width, alignment: .leading)
+            .frame(width: getColumnWidth(9, isWide: isWide) * availableWidth, alignment: .leading)
     }
     
     @ViewBuilder
-    private func dteColumn(geometry: GeometryProxy) -> some View {
+    private func dteColumn(isWide: Bool) -> some View {
         Text(dte)
             .font(.system(size: 14))
             .foregroundColor(.primary)
-            .frame(width: getColumnWidth(10, geometry: geometry) * geometry.size.width, alignment: .trailing)
+            .frame(width: getColumnWidth(10, isWide: isWide) * availableWidth, alignment: .trailing)
     }
     
-    // Helper function to get column width with 50% increase for narrow layout
-    private func getColumnWidth(_ index: Int, geometry: GeometryProxy) -> CGFloat {
+    // Helper function to get column width with adjustment for narrow layout
+    private func getColumnWidth(_ index: Int, isWide: Bool) -> CGFloat {
         let baseWidth = HoldingsTableRow.columnWidths[index]
-        if geometry.size.width < iPadBreakpoint {
-            // Increase width by 50% for narrow layout
-            return baseWidth * 1.6
+        
+        // For narrow layouts, some columns are hidden, so we need to redistribute the width
+        if !isWide {
+            // Columns 3, 4, 6, 7 are hidden in narrow layout
+            let hiddenColumns = [3, 4, 6, 7]
+            if hiddenColumns.contains(index) {
+                return 0 // Hidden columns get 0 width
+            }
+            
+            // Calculate total width of visible columns in narrow layout
+            let visibleColumns = [0, 1, 2, 5, 8, 9, 10]
+            let totalVisibleWidth = visibleColumns.reduce(0) { $0 + HoldingsTableRow.columnWidths[$1] }
+            
+            // Redistribute the hidden columns' width proportionally
+            let hiddenWidth = 1.0 - totalVisibleWidth
+            let redistributionFactor = hiddenWidth / totalVisibleWidth
+            
+            return baseWidth * (1.0 + redistributionFactor)
         }
+        
         return baseWidth
     }
 
@@ -273,7 +285,8 @@ struct HoldingsTableRow: View {
                 isEvenRow: isEvenRow,
                 isSelected: isSelected,
                 copyToClipboard: { text in print("Copied: \(text)") },
-                copyToClipboardValue: { value, format in print("Copied value: \(String(format: format, value))") }
+                copyToClipboardValue: { value, format in print("Copied value: \(String(format: format, value))") },
+                availableWidth: 1024 // Assuming a fixed width for preview
             )
         }
     }

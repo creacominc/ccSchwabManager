@@ -32,26 +32,48 @@ struct HoldingsTable: View {
         copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
 #endif
     }
+    
+    private func copyToClipboardValue(value: Double, format: String) {
+        let formattedValue = String(format: format, value)
+#if os(iOS)
+        UIPasteboard.general.string = formattedValue
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(formattedValue, forType: .string)
+        copiedValue = NSPasteboard.general.string(forType: .string) ?? "no value"
+#endif
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HoldingsTableHeader(currentSort: $currentSort, columnWidths: HoldingsTableRow.columnWidths, sortedHoldings: sortedHoldings, accountPositions: accountPositions, tradeDateCache: tradeDateCache, orderStatusCache: orderStatusCache)
-            Divider()
-            HoldingsTableContent(
-                sortedHoldings: sortedHoldings,
-                selectedPositionId: $selectedPositionId,
-                accountPositions: accountPositions,
-                viewSize: viewSize,
-                tradeDateCache: tradeDateCache,
-                orderStatusCache: orderStatusCache,
-                copyToClipboard: copyToClipboard,
-                copyToClipboardValue: copyToClipboard
-            )
-            if copiedValue != "TBD" {
-                Text("Copied: \(copiedValue)")
-                    .font(.caption)
-                    .foregroundColor(.green)
-                    .padding(.horizontal)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                HoldingsTableHeader(
+                    currentSort: $currentSort, 
+                    columnWidths: HoldingsTableRow.columnWidths, 
+                    sortedHoldings: sortedHoldings, 
+                    accountPositions: accountPositions, 
+                    tradeDateCache: tradeDateCache, 
+                    orderStatusCache: orderStatusCache,
+                    availableWidth: geometry.size.width
+                )
+                HoldingsTableContent(
+                    sortedHoldings: sortedHoldings,
+                    selectedPositionId: $selectedPositionId,
+                    accountPositions: accountPositions,
+                    viewSize: viewSize,
+                    tradeDateCache: tradeDateCache,
+                    orderStatusCache: orderStatusCache,
+                    copyToClipboard: copyToClipboard,
+                    copyToClipboardValue: copyToClipboardValue,
+                    availableWidth: geometry.size.width
+                )
+                if copiedValue != "TBD" {
+                    Text("Copied: \(copiedValue)")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal)
+                }
             }
         }
     }
