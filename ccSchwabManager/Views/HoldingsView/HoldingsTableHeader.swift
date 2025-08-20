@@ -117,7 +117,7 @@ struct HoldingsTableHeader: View {
         let baseWidth = columnWidths[index]
         if geometry.size.width < iPadBreakpoint {
             // Increase width by 50% for narrow layout
-            return baseWidth * 1.5
+            return baseWidth * 1.6
         }
         return baseWidth
     }
@@ -203,7 +203,6 @@ struct HoldingsTableHeader: View {
                     copyToClipboard: { text in print("Copied: \(text)") },
                     copyToClipboardValue: { value, format in print("Copied value: \(String(format: format, value))") }
                 )
-                Divider()
             }
     }
 }

@@ -13,19 +13,19 @@ struct HoldingsTableRow: View {
     let copyToClipboardValue: (Double, String) -> Void
 
     public static let columnWidths: [CGFloat] = [0.12, 0.07, 0.07, 0.10, 0.08, 0.08, 0.08, 0.06, 0.13, 0.09, 0.06]
-    
+
     // iPad Mini landscape width is 1024, so we'll use that as the breakpoint
     private let iPadBreakpoint: CGFloat = 1024
 
-    @State private var isHovered = false
-    
+//    @State private var isHovered = false
+
     private var plPercent: Double {
         let pl = position.longOpenProfitLoss ?? 0
         let mv = position.marketValue ?? 0
         let costBasis = mv - pl
         return costBasis != 0 ? (pl / costBasis) * 100 : 0
     }
-    
+
     private var plColor: Color {
         if plPercent < 0 {
             return .red
@@ -35,13 +35,12 @@ struct HoldingsTableRow: View {
             return .primary
         }
     }
-    
-    private var orderStatusText: String {
-        let text = orderStatus?.shortDisplayName ?? "None"
-        // print("[HoldingsTable] Symbol: \(position.instrument?.symbol ?? "") shows order status: \(text) (\(orderStatus?.rawValue ?? "nil"))")
-        return text
-    }
-    
+
+//    private var orderStatusText: String {
+//        let text = orderStatus?.shortDisplayName ?? "None"
+//        return text
+//    }
+
     private var orderStatusColor: Color {
         guard let status = orderStatus else { return .secondary }
         
@@ -56,17 +55,17 @@ struct HoldingsTableRow: View {
             return .blue
         }
     }
-    
-    private var isWideLayout: Bool {
-        // This will be computed in the GeometryReader
-        return false // Placeholder, will be set in body
-    }
-    
+
+//    private var isWideLayout: Bool {
+//        // This will be computed in the GeometryReader
+//        return false // Placeholder, will be set in body
+//    }
+
     var body: some View {
         GeometryReader { geometry in
             let isWide = geometry.size.width >= iPadBreakpoint
-            
-            VStack(spacing: 0) {
+
+            // VStack(spacing: 0) {
                 // Main content row
                 HStack(spacing: 4) {
                     symbolColumn(geometry: geometry)
@@ -89,18 +88,17 @@ struct HoldingsTableRow: View {
                     orderColumn(geometry: geometry)
                     dteColumn(geometry: geometry)
                 }
-                .padding(.vertical, 5)
-                .background(isEvenRow ? Color.gray.opacity(0.05) : Color.clear)
+//                .padding(.vertical, 5)
+                .background(isEvenRow ? Color.clear : Color.gray.opacity(0.15) )
                 .onTapGesture {
                     onTap()
                 }
-            }
+            // }
         }
-        .frame(height: 20)
+        .frame(height: 18)
     }
     
     // MARK: - Column Views
-    
     @ViewBuilder
     private func symbolColumn(geometry: GeometryProxy) -> some View {
         HStack {
@@ -206,7 +204,7 @@ struct HoldingsTableRow: View {
         let baseWidth = HoldingsTableRow.columnWidths[index]
         if geometry.size.width < iPadBreakpoint {
             // Increase width by 50% for narrow layout
-            return baseWidth * 1.5
+            return baseWidth * 1.6
         }
         return baseWidth
     }
@@ -279,6 +277,6 @@ struct HoldingsTableRow: View {
             )
         }
     }
-    .padding()
+    //.padding()
     .background(Color.gray.opacity(0.05))
 }

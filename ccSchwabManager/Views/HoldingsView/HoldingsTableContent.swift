@@ -41,7 +41,6 @@ struct HoldingsTableContent: View {
                         copyToClipboard: copyToClipboard,
                         copyToClipboardValue: copyToClipboardValue
                     )
-                    Divider()
                 }
             }
         }
