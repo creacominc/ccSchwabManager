@@ -47,7 +47,7 @@ struct HoldingsTable: View {
 
     var body: some View {
         GeometryReader { geometry in
-            VStack(spacing: 0) {
+            VStack(spacing: 1) {
                 HoldingsTableHeader(
                     currentSort: $currentSort, 
                     columnWidths: HoldingsTableRow.columnWidths, 
@@ -55,8 +55,9 @@ struct HoldingsTable: View {
                     accountPositions: accountPositions, 
                     tradeDateCache: tradeDateCache, 
                     orderStatusCache: orderStatusCache,
-                    availableWidth: geometry.size.width
                 )
+                .frame( minHeight: 30 )
+                .layoutPriority(1)
                 HoldingsTableContent(
                     sortedHoldings: sortedHoldings,
                     selectedPositionId: $selectedPositionId,
@@ -66,8 +67,9 @@ struct HoldingsTable: View {
                     orderStatusCache: orderStatusCache,
                     copyToClipboard: copyToClipboard,
                     copyToClipboardValue: copyToClipboardValue,
-                    availableWidth: geometry.size.width
                 )
+                //.frame( alignment: .top )
+                .layoutPriority(2)
                 if copiedValue != "TBD" {
                     Text("Copied: \(copiedValue)")
                         .font(.caption)
@@ -123,5 +125,8 @@ struct HoldingsTable: View {
         tradeDateCache: ["123456": "2024/01/15", "789012": "2024/01/16"],
         orderStatusCache: ["456": .working, "012": .accepted]
     )
+    .padding(.horizontal, 20)
+    .padding(.trailing, 10)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 }
 

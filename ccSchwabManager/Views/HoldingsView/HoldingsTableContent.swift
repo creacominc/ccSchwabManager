@@ -9,7 +9,6 @@ struct HoldingsTableContent: View {
     let orderStatusCache: [String: ActiveOrderStatus?]
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
-    let availableWidth: CGFloat
 
     private func accountNumberFor(_ position: Position) -> String {
         accountPositions.first { $0.0.id == position.id }?.1 ?? ""
@@ -17,7 +16,7 @@ struct HoldingsTableContent: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: 8) {
                 ForEach(Array(sortedHoldings.enumerated()), id: \.element.id) { index, position in
                     let isOption = position.instrument?.assetType == .OPTION
                     let dte: Int? = isOption ? 
@@ -40,13 +39,69 @@ struct HoldingsTableContent: View {
                         isEvenRow: isEvenRow,
                         isSelected: isSelected,
                         copyToClipboard: copyToClipboard,
-                        copyToClipboardValue: copyToClipboardValue,
-                        availableWidth: availableWidth
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        copyToClipboardValue: copyToClipboardValue
+                    ) // table row
+                } // for
+            }  // vstack
+            .padding(.horizontal, 5)
+            .padding(.trailing, 40)
+        } // scroll
+    } // view
+}
+
+#Preview("Holdings", traits: .landscapeLeft) {
+    let samplePositions : [Position] = [
+        Position(
+            shortQuantity: 0.0,
+            averagePrice: 150.0,
+            longQuantity: 100.0,
+            instrument: Instrument(
+                assetType: .EQUITY,
+                symbol: "AAPL",
+                description: "Apple Inc."
+            ),
+            marketValue: 15500.0,
+            longOpenProfitLoss: 500.0
+        ),
+        Position(
+            shortQuantity: 0.0,
+            averagePrice: 25.0,
+            longQuantity: 50.0,
+            instrument: Instrument(
+                assetType: .OPTION,
+                symbol: "AAPL240119C00150000",
+                description: "AAPL Jan 19 2024 150 Call"
+            ),
+            marketValue: 1000.0,
+            longOpenProfitLoss: -250.0
+        ),
+        Position(
+            shortQuantity: 0.0,
+            averagePrice: 75.0,
+            longQuantity: 200.0,
+            instrument: Instrument(
+                assetType: .EQUITY,
+                symbol: "MSFT",
+                description: "Microsoft Corporation"
+            ),
+            marketValue: 15000.0,
+            longOpenProfitLoss: 0.0
+        )
+    ]
+
+    return VStack(alignment: .center, spacing: 8) {
+        HoldingsTableContent(
+            sortedHoldings: samplePositions,
+            selectedPositionId: .constant(nil),
+            accountPositions: [],
+            viewSize: CGSize(width: 800, height: 600),
+            tradeDateCache: ["AAPL": "20241201"],
+            orderStatusCache: ["AAPL": .working],
+            copyToClipboard: { _ in },
+            copyToClipboardValue: { _, _ in },
+        )
     }
+    .padding(.horizontal, 5)
+    .padding(.trailing, 5)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 }
