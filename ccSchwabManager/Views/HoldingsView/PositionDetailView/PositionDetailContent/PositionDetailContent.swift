@@ -70,10 +70,24 @@ struct PositionDetailContent: View {
                         )
                         
                         TabButton(
-                            title: "Orders",
-                            icon: "doc.text",
+                            title: "Current",
+                            icon: "clock.arrow.circlepath",
                             isSelected: selectedTab == 4,
                             action: { selectedTab = 4 }
+                        )
+                        
+                        TabButton(
+                            title: "OCO",
+                            icon: "chart.line.uptrend.xyaxis",
+                            isSelected: selectedTab == 5,
+                            action: { selectedTab = 5 }
+                        )
+                        
+                        TabButton(
+                            title: "Sequence",
+                            icon: "arrow.up.circle",
+                            isSelected: selectedTab == 6,
+                            action: { selectedTab = 6 }
                         )
                     }
                     .background(Color.gray.opacity(0.1))
@@ -134,13 +148,23 @@ struct PositionDetailContent: View {
                                 geometry: geometry,
                             )
                         case 4:
-                            OrderTab(
+                            CurrentOrdersTab(symbol: symbol)
+                        case 5:
+                            OCOOrdersTab(
                                 symbol: symbol,
                                 atrValue: atrValue,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
                                 taxLotData: taxLotData,
+                                sharesAvailableForTrading: sharesAvailableForTrading,
                                 quoteData: quoteData,
-                                geometry: geometry,
+                                accountNumber: accountNumber
+                            )
+                        case 6:
+                            SequenceOrdersTab(
+                                symbol: symbol,
+                                atrValue: atrValue,
+                                taxLotData: taxLotData,
+                                sharesAvailableForTrading: sharesAvailableForTrading,
+                                quoteData: quoteData,
                                 accountNumber: accountNumber
                             )
                         default:
