@@ -33,9 +33,9 @@ struct PriceHistoryChart: View {
         let firstDate = Date(timeIntervalSince1970: TimeInterval(candles.first?.datetime ?? 0) / 1000)
         let lastDate = Date(timeIntervalSince1970: TimeInterval(candles.last?.datetime ?? 0) / 1000)
         let calendar = Calendar.current
-        // Offset to ensure labels are visible: start 1 day later, end 1 day earlier
-        let startDate = calendar.date(byAdding: .day, value: -5, to: firstDate) ?? firstDate
-        let endDate = calendar.date(byAdding: .day, value: 48, to: lastDate) ?? lastDate
+        // Only extend slightly to ensure labels are visible: start 1 day earlier, end 1 day later
+        let startDate = calendar.date(byAdding: .day, value: -1, to: firstDate) ?? firstDate
+        let endDate = calendar.date(byAdding: .day, value: 1, to: lastDate) ?? lastDate
         return startDate...endDate
     }
     
@@ -81,11 +81,11 @@ struct PriceHistoryChart: View {
                     
                     if Calendar.current.isDate(date, inSameDayAs: firstDataDate) {
                         AxisValueLabel {
-                            Text(formatDate(date, format: "yy-MM"))
+                            Text(formatDate(date, format: "MM-dd"))
                         }
                     } else if Calendar.current.isDate(date, inSameDayAs: lastDataDate) {
                         AxisValueLabel {
-                            Text(formatDate(date, format: "yy-MM-dd"))
+                            Text(formatDate(date, format: "yyyy-MM-dd"))
                         }
                     } else if isFirstDayOfQuarter(date) {
                         AxisValueLabel {
