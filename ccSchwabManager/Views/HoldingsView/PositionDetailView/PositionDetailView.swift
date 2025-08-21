@@ -18,6 +18,7 @@ struct PositionDetailView: View {
     @State private var taxLotData: [SalesCalcPositionsRecord] = []
     @State private var isLoadingTaxLots = false
     @State private var computedSharesAvailableForTrading: Double = 0.0
+    @State private var transactions: [Transaction] = []
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
@@ -62,7 +63,7 @@ struct PositionDetailView: View {
         
         // Fetch all position-related data in parallel
         priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-        _ = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        transactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
         quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
         
         // Fetch tax lot data as part of the main data fetch
@@ -134,6 +135,7 @@ struct PositionDetailView: View {
                     quoteData: quoteData,
                     taxLotData: taxLotData,
                     isLoadingTaxLots: isLoadingTaxLots,
+                    transactions: transactions,
                     viewSize: $viewSize,
                     selectedTab: $selectedTab,
                 )

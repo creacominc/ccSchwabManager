@@ -48,10 +48,10 @@ struct CredentialsInputView: View {
             TextEditor(text: .constant(jsonText))
                 .font(.system(.body, design: .monospaced))
                 .frame(maxHeight: .infinity)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
+//                .overlay(
+//                    RoundedRectangle(cornerRadius: 8)
+//                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+//                )
             
             // Editable credentials
             VStack(alignment: .leading, spacing: 10) {

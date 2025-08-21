@@ -17,7 +17,7 @@ struct PriceHistoryChart: View {
         Color(.systemBackground)
         #endif
     }
-    
+
     private var yAxisRange: ClosedRange<Double> {
         guard !candles.isEmpty else { return 0...100 }
         let closes = candles.compactMap { $0.close }
@@ -33,9 +33,26 @@ struct PriceHistoryChart: View {
         let firstDate = Date(timeIntervalSince1970: TimeInterval(candles.first?.datetime ?? 0) / 1000)
         let lastDate = Date(timeIntervalSince1970: TimeInterval(candles.last?.datetime ?? 0) / 1000)
         let calendar = Calendar.current
-        let startDate = calendar.date(byAdding: .day, value: -2, to: firstDate) ?? firstDate
-        let endDate = calendar.date(byAdding: .day, value: 2, to: lastDate) ?? lastDate
+        // Offset to ensure labels are visible: start 1 day later, end 1 day earlier
+        let startDate = calendar.date(byAdding: .day, value: -5, to: firstDate) ?? firstDate
+        let endDate = calendar.date(byAdding: .day, value: 48, to: lastDate) ?? lastDate
         return startDate...endDate
+    }
+    
+    private func formatDate(_ date: Date, format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = format
+        return formatter.string(from: date)
+    }
+    
+    private func isFirstDayOfQuarter(_ date: Date) -> Bool {
+        let calendar = Calendar.current
+        let month = calendar.component(.month, from: date)
+        let day = calendar.component(.day, from: date)
+        
+        // Quarters start in January (1), April (4), July (7), October (10)
+        // and on the 1st day of the month
+        return (month == 1 || month == 4 || month == 7 || month == 10) && day == 1
     }
     
     var body: some View {
@@ -57,18 +74,22 @@ struct PriceHistoryChart: View {
         .chartXScale(domain: xAxisRange)
         .chartXAxis {
             AxisMarks(values: .stride(by: .day)) { value in
-                if let date = value.as(Date.self) {
-                    let calendar = Calendar.current
-                    let isFirstDayOfMonth = calendar.component(.day, from: date) == 1
-                    let isFirstOrLastDate = date == xAxisRange.lowerBound || date == xAxisRange.upperBound
+                if let date : Date = value.as(Date.self) {
+                    // Only show labels for the first and last actual data points
+                    let firstDataDate = Date(timeIntervalSince1970: TimeInterval(candles.first?.datetime ?? 0) / 1000)
+                    let lastDataDate = Date(timeIntervalSince1970: TimeInterval(candles.last?.datetime ?? 0) / 1000)
                     
-                    if isFirstOrLastDate {
+                    if Calendar.current.isDate(date, inSameDayAs: firstDataDate) {
                         AxisValueLabel {
-                            Text(date, format: .dateTime.year().month().day())
+                            Text(formatDate(date, format: "yy-MM"))
                         }
-                    } else if isFirstDayOfMonth {
+                    } else if Calendar.current.isDate(date, inSameDayAs: lastDataDate) {
                         AxisValueLabel {
-                            Text(date, format: .dateTime.year().month())
+                            Text(formatDate(date, format: "yy-MM-dd"))
+                        }
+                    } else if isFirstDayOfQuarter(date) {
+                        AxisValueLabel {
+                            Text(formatDate(date, format: "MM"))
                         }
                     }
                     AxisGridLine()
@@ -204,31 +225,126 @@ private struct TooltipView: View {
     }
 }
 
-// MARK: - Price History Section
-
-struct PriceHistorySection: View {
-    let priceHistory: CandleList?
-    let isLoading: Bool
-    let formatDate: (Int64?) -> String
+#Preview("PriceHistoryChart", traits: .landscapeLeft) {
+    let calendar = Calendar.current
+    let now = Date()
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            
-            if isLoading {
-                ProgressView()
-                    .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
-                    .scaleEffect(2.0, anchor: .center)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else if let history = priceHistory {
-                PriceHistoryChart(candles: history.candles)
-            } else {
-                Text("No price history available")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            }
-        }
-        .padding(.vertical)
-    }
-} 
+    // Create sample data spanning a full year with monthly data points
+    let sampleCandles = [
+        // January (Q1)
+        Candle(
+            close: 145.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -11, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 148.0,
+            low: 142.0,
+            open: 143.0,
+            volume: 1200000
+        ),
+        // February (Q1)
+        Candle(
+            close: 152.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -10, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 155.0,
+            low: 149.0,
+            open: 145.0,
+            volume: 1350000
+        ),
+        // March (Q1)
+        Candle(
+            close: 158.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -9, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 161.0,
+            low: 155.0,
+            open: 152.0,
+            volume: 1500000
+        ),
+        // April (Q2)
+        Candle(
+            close: 162.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -8, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 165.0,
+            low: 159.0,
+            open: 158.0,
+            volume: 1400000
+        ),
+        // May (Q2)
+        Candle(
+            close: 168.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -7, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 171.0,
+            low: 163.0,
+            open: 162.0,
+            volume: 1600000
+        ),
+        // June (Q2)
+        Candle(
+            close: 175.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -6, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 178.0,
+            low: 172.0,
+            open: 168.0,
+            volume: 1700000
+        ),
+        // July (Q3)
+        Candle(
+            close: 182.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -5, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 185.0,
+            low: 179.0,
+            open: 175.0,
+            volume: 1800000
+        ),
+        // August (Q3)
+        Candle(
+            close: 188.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -4, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 191.0,
+            low: 185.0,
+            open: 182.0,
+            volume: 1900000
+        ),
+        // September (Q3)
+        Candle(
+            close: 195.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -3, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 198.0,
+            low: 192.0,
+            open: 188.0,
+            volume: 2000000
+        ),
+        // October (Q4)
+        Candle(
+            close: 190.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -2, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 193.0,
+            low: 187.0,
+            open: 195.0,
+            volume: 1800000
+        ),
+        // November (Q4)
+        Candle(
+            close: 185.0,
+            datetime: Int64(calendar.date(byAdding: .month, value: -1, to: now)?.timeIntervalSince1970 ?? 0) * 1000,
+            high: 188.0,
+            low: 182.0,
+            open: 190.0,
+            volume: 1700000
+        ),
+        // December (Q4) - Current month
+        Candle(
+            close: 180.0,
+            datetime: Int64(now.timeIntervalSince1970) * 1000,
+            high: 183.0,
+            low: 178.0,
+            open: 185.0,
+            volume: 1600000
+        )
+    ]
+    
+    return PriceHistoryChart(candles: sampleCandles)
+        .padding()
+}
+
+ 
+
+

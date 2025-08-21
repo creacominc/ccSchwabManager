@@ -72,7 +72,7 @@ struct HoldingsView: View {
     @State private var holdings: [Position] = []
     @State private var searchText = ""
     @State private var currentSort: SortConfig? = SortConfig(column: .lastTradeDate, ascending: SortableColumn.lastTradeDate.defaultAscending)
-    @State private var selectedAssetTypes: Set<String> = []
+    @State private var selectedAssetTypes: Set<AssetType> = []
     @State private var accountPositions: [(Position, String, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
     @State private var selectedPosition: SelectedPosition? = nil
@@ -92,7 +92,6 @@ struct HoldingsView: View {
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
     @State private var orderStatusCache: [String: ActiveOrderStatus?] = [:]
-//    @State private var dteCache: [String: Int?] = [:]
 
     // Add state to track ongoing refresh operations
     @State private var isRefreshing = false
@@ -111,7 +110,7 @@ struct HoldingsView: View {
                 (position.instrument?.description?.localizedCaseInsensitiveContains(searchText) ?? false)
             
             let matchesAssetType = selectedAssetTypes.isEmpty || 
-                (position.instrument?.assetType?.rawValue).map { selectedAssetTypes.contains($0) } ?? false
+                (position.instrument?.assetType).map { selectedAssetTypes.contains($0) } ?? false
             
             let accountInfo = accountPositions.first { $0.0 === position }
             let matchesAccount = selectedAccountNumbers.isEmpty || 
@@ -333,6 +332,7 @@ struct HoldingsView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding()
                 } else {
+                    Spacer()
                     HoldingsTable(
                         sortedHoldings: sortedHoldings,
                         selectedPositionId: Binding(
@@ -399,7 +399,7 @@ struct HoldingsView: View {
                 //print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
                 SchwabClient.shared.loadingDelegate = loadingState
                 await fetchHoldingsAsync()
-                selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == "EQUITY" })
+                selectedAssetTypes = Set( viewModel.uniqueAssetTypes.filter { $0 == .EQUITY } )
             }
             .onDisappear {
                 //print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")
@@ -516,14 +516,7 @@ struct HoldingsView: View {
                 }
                 holdings = accountPositions.map { $0.0 }
                 viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
-                
-//                // Populate DTE cache
-//                for position in holdings {
-//                    if let symbol = position.instrument?.symbol {
-//                        dteCache[symbol] = calculateDTE(for: position)
-//                    }
-//                }
-//                
+        
                 print("✅ Holdings displayed: \(holdings.count) positions")
             }
         }
@@ -626,10 +619,5 @@ struct HoldingsView: View {
             }
         }
     }
-    
-//    // Helper function to calculate DTE for a position
-//    private func calculateDTE(for position: Position) -> Int? {
-//        // Use the efficient DTE methods from SchwabClient
-//        return SchwabClient.shared.getDTEForPosition(position)
-//    }
+
 } 

@@ -62,13 +62,36 @@ private func columnHeader(title: String, column: SalesCalcSortableColumn, alignm
 struct SalesCalcTable: View {
     let positionsData: [SalesCalcPositionsRecord]
     @Binding var currentSort: SalesCalcSortConfig?
-    let viewSize: CGSize
     let symbol: String
     let currentPrice: Double
     @State private var copiedValue: String = "TBD"
-    
-    // Define proportional widths for columns
-    private let columnWidths: [CGFloat] = [0.16, 0.09, 0.09, 0.11, 0.11, 0.11, 0.11, 0.11, 0.11] // Open Date (wider), Quantity, Price, Cost/Share, Market Value, Cost Basis, Gain/Loss $, Gain/Loss %, Split
+
+    public func showGainLossDollar(for width: CGFloat) -> Bool {
+        return width >= 1024 // iPad Mini landscape width
+    }
+
+    public func columnWidths(for width: CGFloat) -> [CGFloat]
+    {
+        if( showGainLossDollar(for: width) )
+        {
+            return SalesCalcTableRow.wideColumnProportions
+        }
+        else
+        {
+            return SalesCalcTableRow.narrowColumnProportions
+        }
+                
+    }
+
+    public func calculatedWidths(for width: CGFloat) -> [CGFloat]
+    {
+        if showGainLossDollar(for: width) {
+            return SalesCalcTableRow.wideColumnProportions.map { $0 * width }
+        } else {
+            return SalesCalcTableRow.narrowColumnProportions.map { $0 * width }
+        }
+    }
+        
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
@@ -127,34 +150,40 @@ struct SalesCalcTable: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            headerRow
-            TableContent(
-                positionsData: sortedData,
-                viewSize: viewSize,
-                columnWidths: columnWidths,
-                currentPrice: currentPrice,
-                copiedValue: $copiedValue,
-                copyToClipboard: copyToClipboard,
-                copyToClipboardValue: copyToClipboard
-            )
-            if copiedValue != "TBD" {
-                Text("Copied: \(copiedValue)")
-                    .font(.caption)
-                    .foregroundColor(.green)
-                    .padding(.horizontal)
-                    .onAppear {
-                        print("SalesCalcTableView: Displaying copied value: \(copiedValue)")
-                    }
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let showGainLossDollar = showGainLossDollar(for: width)
+            let calculatedWidths = calculatedWidths(for: width)
+            
+            VStack(spacing: 0) {
+                headerRow(width: width, showGainLossDollar: showGainLossDollar)
+                TableContent(
+                    positionsData: sortedData,
+                    currentPrice: currentPrice,
+                    copiedValue: $copiedValue,
+                    copyToClipboard: copyToClipboard,
+                    copyToClipboardValue: copyToClipboard,
+                    calculatedWidths: calculatedWidths,
+                    showGainLossDollar: showGainLossDollar
+                )
+                if copiedValue != "TBD" {
+                    Text("Copied: \(copiedValue)")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal)
+                        .onAppear {
+                            print("SalesCalcTableView: Displaying copied value: \(copiedValue)")
+                        }
+                }
             }
-        }
-        .frame(maxWidth: .infinity)
-        .onAppear {
-            print("SalesCalcTableView: Table initialized with \(sortedData.count) items for symbol \(symbol)")
+            .frame(maxWidth: .infinity)
+            .onAppear {
+                print("SalesCalcTableView: Table initialized with \(sortedData.count) items for symbol \(symbol)")
+            }
         }
     }
     
-    private var headerRow: some View {
+    private func headerRow(width: CGFloat, showGainLossDollar: Bool) -> some View {
         HStack(spacing: 8) {
             HStack {
                 columnHeader(title: "Open Date", column: .openDate, currentSort: currentSort) { newSort in
@@ -169,40 +198,42 @@ struct SalesCalcTable: View {
                 }
                 .buttonStyle(.plain)
             }
-            .frame(width: columnWidths[0] * viewSize.width)
+            .frame(width: columnWidths(for: width)[0] * width)
             
             columnHeader(title: "Quantity", column: .quantity, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[1] * viewSize.width)
+            .frame(width: columnWidths(for: width)[1] * width)
             columnHeader(title: "Price", column: .price, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[2] * viewSize.width)
+            .frame(width: columnWidths(for: width)[2] * width)
             columnHeader(title: "Cost/Share", column: .costPerShare, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[3] * viewSize.width)
+            .frame(width: columnWidths(for: width)[3] * width)
             columnHeader(title: "Market Value", column: .marketValue, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[4] * viewSize.width)
+            .frame(width: columnWidths(for: width)[4] * width)
             columnHeader(title: "Cost Basis", column: .costBasis, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[5] * viewSize.width)
-            columnHeader(title: "Gain/Loss $", column: .gainLossDollar, alignment: .trailing, currentSort: currentSort) { newSort in
-                currentSort = newSort
+            .frame(width: columnWidths(for: width)[5] * width)
+            if showGainLossDollar { // Only show if wide enough
+                columnHeader(title: "Gain/Loss $", column: .gainLossDollar, alignment: .trailing, currentSort: currentSort) { newSort in
+                    currentSort = newSort
+                }
+                .frame(width: columnWidths(for: width)[6] * width)
             }
-            .frame(width: columnWidths[6] * viewSize.width)
             columnHeader(title: "Gain/Loss %", column: .gainLossPct, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[7] * viewSize.width)
+            .frame(width: columnWidths(for: width)[ (showGainLossDollar ? 7 : 6) ] * width)
             columnHeader(title: "Split", column: .splitMultiple, alignment: .trailing, currentSort: currentSort) { newSort in
                 currentSort = newSort
             }
-            .frame(width: columnWidths[8] * viewSize.width)
+            .frame(width: columnWidths(for: width)[ (showGainLossDollar ? 8 : 7 ) ] * width)
         }
         .padding(.horizontal)
         .padding(.vertical, 5)
@@ -210,23 +241,23 @@ struct SalesCalcTable: View {
     }
 }
 
+// contained in a SalesCalcTable
 private struct TableContent: View {
     let positionsData: [SalesCalcPositionsRecord]
-    let viewSize: CGSize
-    let columnWidths: [CGFloat]
     let currentPrice: Double
     @Binding var copiedValue: String
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
-    
+    let calculatedWidths: [CGFloat]
+    let showGainLossDollar: Bool
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(Array(positionsData.enumerated()), id: \.element.id) { index, item in
-                    TableRow(
+                    SalesCalcTableRow(
                         item: item,
-                        viewSize: viewSize,
-                        columnWidths: columnWidths,
+                        calculatedWidths: calculatedWidths,
                         currentPrice: currentPrice,
                         copyToClipboard: { text in
                             copyToClipboard(text)
@@ -234,7 +265,8 @@ private struct TableContent: View {
                         copyToClipboardValue: { value, format in
                             copyToClipboardValue(value, format)
                         },
-                        isEvenRow: index % 2 == 0
+                        isEvenRow: index % 2 == 0,
+                        showGainLossDollar: showGainLossDollar
                     )
                     Divider()
                 }
@@ -244,121 +276,76 @@ private struct TableContent: View {
     }
 }
 
-private struct TableRow: View {
-    let item: SalesCalcPositionsRecord
-    let viewSize: CGSize
-    let columnWidths: [CGFloat]
-    let currentPrice: Double
-    let copyToClipboard: (String) -> Void
-    let copyToClipboardValue: (Double, String) -> Void
-    let isEvenRow: Bool
-    
-    @State private var isHovered = false
-    
-    private func rowStyle() -> Color {
-        if item.gainLossPct < 0.0 {
-            return .red
-        } else if item.gainLossPct < 5.0 {
-            return .yellow
-        }
-        return .green
+// MARK: - Preview Helper
+struct SalesCalcTableViewPreviewHelper {
+    // iPad Mini landscape width is approximately 1024 points
+    static let iPadMiniLandscapeWidth: CGFloat = 1024
+
+    static func calculateWidths(for containerWidth: CGFloat, showGainLossDollar: Bool = true) -> [CGFloat] {
+        let horizontalPadding: CGFloat = 16 * 2
+        let proportions = showGainLossDollar ? SalesCalcTableRow.wideColumnProportions : SalesCalcTableRow.narrowColumnProportions
+        let interColumnSpacing = (CGFloat(proportions.count - 1) * 8)
+        let availableWidthForColumns = containerWidth - interColumnSpacing - horizontalPadding
+        return proportions.map { $0 * availableWidthForColumns }
     }
     
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(item.openDate)
-                .frame(width: columnWidths[0] * viewSize.width, alignment: .leading)
-                .foregroundStyle(daysSinceDateString(dateString: item.openDate) ?? 0 > 30 ? .green : .red)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Open Date: \(item.openDate)")
-                    copyToClipboard(item.openDate)
-                }
-            
-            Text(String(format: "%.2f", item.quantity))
-                .frame(width: columnWidths[1] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Quantity: \(item.quantity)")
-                    copyToClipboardValue(item.quantity, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", currentPrice))
-                .frame(width: columnWidths[2] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Price: \(currentPrice)")
-                    copyToClipboardValue(currentPrice, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.costPerShare))
-                .frame(width: columnWidths[3] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.costPerShare > item.price ? .red : .primary)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Cost/Share: \(item.costPerShare)")
-                    copyToClipboardValue(item.costPerShare, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.marketValue))
-                .frame(width: columnWidths[4] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Market Value: \(item.marketValue)")
-                    copyToClipboardValue(item.marketValue, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.costBasis))
-                .frame(width: columnWidths[5] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Cost Basis: \(item.costBasis)")
-                    copyToClipboardValue(item.costBasis, "%.2f")
-                }
-            
-            Text(String(format: "%.2f", item.gainLossDollar))
-                .frame(width: columnWidths[6] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.gainLossDollar > 0.0 ? .green : .red)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Gain/Loss $: \(item.gainLossDollar)")
-                    copyToClipboardValue(item.gainLossDollar, "%.2f")
-                }
-            
-            Text(String(format: "%.2f%%", item.gainLossPct))
-                .frame(width: columnWidths[7] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.gainLossPct > 5.0 ? .green : item.gainLossPct > 0.0 ? .yellow : .red)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Gain/Loss %: \(item.gainLossPct)")
-                    copyToClipboardValue(item.gainLossPct, "%.2f")
-                }
-            
-            Text(String(format: "%.0f", item.splitMultiple))
-                .frame(width: columnWidths[8] * viewSize.width, alignment: .trailing)
-                .monospacedDigit()
-                .foregroundStyle(item.splitMultiple > 1.0 ? .blue : .secondary)
-                .onTapGesture {
-                    print("SalesCalcTableView: Tap detected on Split: \(item.splitMultiple)")
-                    copyToClipboardValue(item.splitMultiple, "%.0f")
-                }
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 5)
-        .background(rowBackgroundColor)
-        #if os(macOS)
-        .onHover { hovering in
-            isHovered = hovering
-        }
-        #endif
+    static func shouldShowGainLossDollar(for containerWidth: CGFloat) -> Bool {
+        return containerWidth >= iPadMiniLandscapeWidth
     }
+}
+
+#Preview("SalesCalcTableView", traits: .landscapeLeft) {
+    let samplePositions = [
+        SalesCalcPositionsRecord(
+            openDate: "2025-01-15",
+            gainLossPct: 15.5,
+            gainLossDollar: 150.00,
+            quantity: 100.0,
+            price: 150.00,
+            costPerShare: 130.00,
+            marketValue: 15000.00,
+            costBasis: 13000.00,
+            splitMultiple: 1.0
+        ),
+        SalesCalcPositionsRecord(
+            openDate: "2025-02-20",
+            gainLossPct: -5.2,
+            gainLossDollar: -75.00,
+            quantity: 50.0,
+            price: 150.00,
+            costPerShare: 158.00,
+            marketValue: 7500.00,
+            costBasis: 7900.00,
+            splitMultiple: 1.0
+        ),
+        SalesCalcPositionsRecord(
+            openDate: "2025-03-10",
+            gainLossPct: 3.8,
+            gainLossDollar: 45.00,
+            quantity: 75.0,
+            price: 150.00,
+            costPerShare: 144.00,
+            marketValue: 11250.00,
+            costBasis: 10800.00,
+            splitMultiple: 2.0
+        ),
+        SalesCalcPositionsRecord(
+            openDate: "2025-04-05",
+            gainLossPct: -12.3,
+            gainLossDollar: -225.00,
+            quantity: 25.0,
+            price: 150.00,
+            costPerShare: 171.00,
+            marketValue: 3750.00,
+            costBasis: 4275.00,
+            splitMultiple: 1.0
+        )
+    ]
     
-    private var rowBackgroundColor: Color {
-        if isHovered {
-            return Color.gray.opacity(0.1)
-        } else if isEvenRow {
-            return Color.clear
-        } else {
-            return Color.gray.opacity(0.05)
-        }
-    }
-} 
+    return SalesCalcTable(
+                positionsData: samplePositions,
+                currentSort: .constant(SalesCalcSortConfig(column: .openDate, ascending: false)),
+                symbol: "AAPL",
+                currentPrice: 150.00
+            )
+}

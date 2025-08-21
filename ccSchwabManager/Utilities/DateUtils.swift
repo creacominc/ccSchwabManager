@@ -108,11 +108,15 @@ extension Date
 func daysSinceDateString( dateString: String ) -> Int?
 {
     let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat =  "yyyy-MM-dd HH:mm:ss" // "MM/dd/yyyy" //
+    dateFormatter.dateFormat =  "yyyy-MM-dd HH:mm:ss"
     // Convert the date string to a Date object
     guard let date : Date = dateFormatter.date(from: dateString) else {
-        print("Invalid date format.  date = \(dateString)")
-        return nil
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        guard let date : Date = dateFormatter.date(from: dateString) else {
+            print("Invalid date format.  date = \(dateString)")
+            return nil
+        }
+        return( daysSinceDate( date: date ) )
     }
     return( daysSinceDate(date: date))
 }

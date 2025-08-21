@@ -1,27 +1,33 @@
 import SwiftUI
 
-struct PriceHistoryTab: View {
+struct PriceHistorySection: View {
     let priceHistory: CandleList?
     let isLoading: Bool
     let formatDate: (Int64?) -> String
-    let geometry: GeometryProxy
     
     var body: some View {
-        ScrollView {
-            PriceHistorySection(
-                priceHistory: priceHistory,
-                isLoading: isLoading,
-                formatDate: formatDate
-            )
-            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.90)
+        VStack(alignment: .leading, spacing: 6) {
+            
+            if isLoading {
+                ProgressView()
+                    .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
+                    .scaleEffect(2.0, anchor: .center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else if let history = priceHistory {
+                PriceHistoryChart(candles: history.candles)
+            } else {
+                Text("No price history available")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            }
         }
-        .tabItem {
-            Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
-        }
+        .padding(.vertical)
     }
 }
 
-#Preview("PriceHistoryTab - With Data", traits: .landscapeLeft) {
+#Preview("PriceHistorySection", traits: .landscapeLeft) {
     let calendar = Calendar.current
     let now = Date()
     
@@ -158,55 +164,46 @@ struct PriceHistoryTab: View {
         symbol: "AAPL"
     )
     
-    return GeometryReader { geometry in
-        PriceHistoryTab(
-            priceHistory: samplePriceHistory,
-            isLoading: false,
-            formatDate: { timestamp in
-                if let timestamp = timestamp {
-                    let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-                    return date.formatted(date: .abbreviated, time: .omitted)
-                }
-                return "N/A"
-            },
-            geometry: geometry
-        )
-    }
+    return PriceHistorySection(
+        priceHistory: samplePriceHistory,
+        isLoading: false,
+        formatDate: { timestamp in
+            if let timestamp = timestamp {
+                let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+            return "N/A"
+        }
+    )
     .padding()
 }
 
-#Preview("PriceHistoryTab - Loading", traits: .landscapeLeft) {
-    GeometryReader { geometry in
-        PriceHistoryTab(
-            priceHistory: nil,
-            isLoading: true,
-            formatDate: { timestamp in
-                if let timestamp = timestamp {
-                    let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-                    return date.formatted(date: .abbreviated, time: .omitted)
-                }
-                return "N/A"
-            },
-            geometry: geometry
-        )
-    }
+#Preview("PriceHistorySection - No Data", traits: .landscapeLeft) {
+    return PriceHistorySection(
+        priceHistory: nil,
+        isLoading: false,
+        formatDate: { timestamp in
+            if let timestamp = timestamp {
+                let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+            return "N/A"
+        }
+    )
     .padding()
 }
 
-#Preview("PriceHistoryTab - No Data", traits: .landscapeLeft) {
-    GeometryReader { geometry in
-        PriceHistoryTab(
-            priceHistory: nil,
-            isLoading: false,
-            formatDate: { timestamp in
-                if let timestamp = timestamp {
-                    let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-                    return date.formatted(date: .abbreviated, time: .omitted)
-                }
-                return "N/A"
-            },
-            geometry: geometry
-        )
-    }
+#Preview("PriceHistorySection - Loading", traits: .landscapeLeft) {
+    return PriceHistorySection(
+        priceHistory: nil,
+        isLoading: true,
+        formatDate: { timestamp in
+            if let timestamp = timestamp {
+                let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+            return "N/A"
+        }
+    )
     .padding()
-} 
+}

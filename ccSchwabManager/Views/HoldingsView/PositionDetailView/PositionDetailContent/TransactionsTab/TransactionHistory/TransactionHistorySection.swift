@@ -1,40 +1,16 @@
 import SwiftUI
 
-// ADD Definitions for Transaction Sorting
-struct TransactionSortConfig: Equatable {
-    var column: TransactionSortableColumn
-    var ascending: Bool
-}
-
-enum TransactionSortableColumn: String, CaseIterable, Identifiable {
-    case date = "Date"
-    case type = "Type" // Buy/Sell derived from netAmount
-    case quantity = "Quantity"
-    case price = "Price"
-    case netAmount = "Net Amount"
-
-    var id: String { self.rawValue }
-
-    var defaultAscending: Bool {
-        switch self {
-        case .date, .quantity, .price:
-            return false // Typically newest first
-        case .type, .netAmount:
-            return true
-        }
-    }
-}
-
 struct TransactionHistorySection: View {
     let isLoading: Bool
     let symbol: String
+    let transactions: [Transaction]
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
     @State private var copiedValue: String = "TBD"
 
     private var sortedTransactions: [Transaction] {
-        guard let sortConfig = currentSort else { return SchwabClient.shared.getTransactionsFor( symbol: symbol ) }
+        guard let sortConfig = currentSort else { return transactions }
         print( "=== Sorting transactions ===  \(symbol)" )
-        return SchwabClient.shared.getTransactionsFor( symbol: symbol ).sorted { t1, t2 in
+        return transactions.sorted { t1, t2 in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .date:
@@ -66,9 +42,6 @@ struct TransactionHistorySection: View {
             }
         }
     }
-
-    // Define proportional widths for columns
-    private let columnProportions: [CGFloat] = [0.25, 0.15, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
@@ -121,109 +94,34 @@ struct TransactionHistorySection: View {
         .buttonStyle(.plain)
     }
 
-    private static func round(_ value: Double, precision: Int) -> Double {
+    static func round(_ value: Double, precision: Int) -> Double {
         let multiplier = pow(10.0, Double(precision))
         return (value * multiplier).rounded() / multiplier
     }
 
-    struct TransactionRow: View {
-        let transaction: Transaction
-        let symbol: String
-        let calculatedWidths: [CGFloat]
-        let formatDate: (String?) -> String
-        let copyToClipboard: (String) -> Void
-        let copyToClipboardValue: (Double, String) -> Void
-        let isEvenRow: Bool
-        
-        @State private var isHovered = false
-        
-        private var isSell: Bool {
-            return transaction.netAmount ?? 0 > 0
-        }
-        
-        var body: some View {
-            HStack(spacing: 8) {
-                Text(formatDate(transaction.tradeDate))
-                    .frame(width: calculatedWidths[0], alignment: .leading)
-                    .onTapGesture {
-                        copyToClipboard(formatDate(transaction.tradeDate))
-                    }
-                Text(transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown")
-                    .frame(width: calculatedWidths[1], alignment: .leading)
-                    .onTapGesture {
-                        copyToClipboard(transaction.netAmount ?? 0 < 0 ? "Buy" : transaction.netAmount ?? 0 > 0 ? "Sell" : "Unknown")
-                    }
-                if let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) {
-                    let amount = TransactionHistorySection.round(transferItem.amount ?? 0, precision: 4)
-                    // Use computed price for merged/renamed securities
-                    let computedPrice = SchwabClient.shared.getComputedPriceForTransaction(transaction, symbol: symbol)
-                    let price = TransactionHistorySection.round(computedPrice, precision: 2)
-                    Text(String(format: "%.4f", amount))
-                        .frame(width: calculatedWidths[2], alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboardValue(amount, "%.4f")
-                        }
-                    Text(String(format: "%.2f", price))
-                        .frame(width: calculatedWidths[3], alignment: .trailing)
-                        .onTapGesture {
-                            copyToClipboardValue(price, "%.2f")
-                        }
-                } else {
-                    Text("").frame(width: calculatedWidths[2])
-                    Text("").frame(width: calculatedWidths[3])
-                }
-                Text(String(format: "%.2f", transaction.netAmount ?? 0))
-                    .frame(width: calculatedWidths[4], alignment: .trailing)
-                    .onTapGesture {
-                        copyToClipboardValue(transaction.netAmount ?? 0, "%.2f")
-                    }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 3)
-            .background(rowBackgroundColor)
-            .foregroundColor(isSell ? .red : .primary)
-            #if os(macOS)
-            .onHover { hovering in
-                isHovered = hovering
-            }
-            #endif
-            Divider()
-        }
-        
-        private var rowBackgroundColor: Color {
-            if isHovered {
-                return Color.gray.opacity(0.1)
-            } else if isEvenRow {
-                return Color.clear
-            } else {
-                return Color.gray.opacity(0.05)
-            }
-        }
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if isLoading {
-                ProgressView()
-                    .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
-                    .scaleEffect(2.0, anchor: .center)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else if SchwabClient.shared.getTransactionsFor( symbol: symbol ).isEmpty {
-                Text("No transactions available")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else {
-                GeometryReader { geometry in
-                    // Account for HStack spacing AND its horizontal padding (assuming default ~16pts per side)
-                    let horizontalPadding: CGFloat = 16 * 2 
-                    let interColumnSpacing = (CGFloat(columnProportions.count - 1) * 8) // 8 is the HStack spacing
-                    let availableWidthForColumns = geometry.size.width - interColumnSpacing - horizontalPadding
-                    let calculatedWidths = columnProportions.map { $0 * availableWidthForColumns }
-
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = 16 * 2 
+            let interColumnSpacing = (CGFloat(TransactionRow.columnProportions.count - 1) * 8)
+            let availableWidthForColumns = geometry.size.width - interColumnSpacing - horizontalPadding
+            let calculatedWidths = TransactionRow.columnProportions.map { $0 * availableWidthForColumns }
+            
+            VStack(alignment: .leading, spacing: 0) {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
+                        .scaleEffect(2.0, anchor: .center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .padding()
+                } else if transactions.isEmpty {
+                    Text("No transactions available")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .padding()
+                } else {
                     VStack(spacing: 0) {
-                        HStack(spacing: 4) {
+                        // Header row
+                        HStack(spacing: 8) {
                             HStack {
                                 columnHeader(title: "Date", column: .date)
                                 Button(action: {
@@ -238,11 +136,8 @@ struct TransactionHistorySection: View {
                             .frame(width: calculatedWidths[0])
                             
                             columnHeader(title: "Type", column: .type).frame(width: calculatedWidths[1])
-                            // right justify the Quantity column header
                             columnHeader(title: "Quantity", column: .quantity, alignment: .trailing).frame(width: calculatedWidths[2])
-                            // right justify the Price column header
                             columnHeader(title: "Price", column: .price, alignment: .trailing).frame(width: calculatedWidths[3])
-                            // right justify the Net Amount column header
                             columnHeader(title: "Net Amount", column: .netAmount, alignment: .trailing).frame(width: calculatedWidths[4])
                         }
                         .padding(.horizontal)
@@ -251,6 +146,7 @@ struct TransactionHistorySection: View {
                         
                         Divider()
 
+                        // Content area with calculated widths passed down
                         ScrollView {
                             LazyVStack(spacing: 0) {
                                 ForEach(Array(sortedTransactions.enumerated()), id: \.element.id) { index, transaction in
@@ -266,18 +162,17 @@ struct TransactionHistorySection: View {
                                 }
                             }
                         }
-                        
-                        if copiedValue != "TBD" {
-                            Text("Copied: \(copiedValue)")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                                .padding(.horizontal)
-                        }
+                    }
+                    
+                    if copiedValue != "TBD" {
+                        Text("Copied: \(copiedValue)")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .padding(.horizontal)
                     }
                 }
             }
         }
-        .padding(.vertical)
     }
 
     private func formatDate(_ dateString: String?) -> String {
@@ -289,4 +184,88 @@ struct TransactionHistorySection: View {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)
     }
-} 
+}
+
+// MARK: - Preview Helpers
+#Preview("TransactionHistorySection", traits: .landscapeLeft) {
+    let sampleTransactions = [
+        Transaction(
+            activityId: 12345,
+            time: "2025-01-15T10:30:00+0000",
+            tradeDate: "2025-01-15T10:30:00+0000",
+            netAmount: -1500.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12345
+                    ),
+                    amount: 10.0,
+                    price: 150.00
+                )
+            ]
+        ),
+        Transaction(
+            activityId: 12346,
+            time: "2025-01-16T14:45:00+0000",
+            tradeDate: "2025-01-16T14:45:00+0000",
+            netAmount: 2000.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12346
+                    ),
+                    amount: 8.0,
+                    price: 250.00
+                )
+            ]
+        ),
+        Transaction(
+            activityId: 12347,
+            time: "2025-01-17T09:15:00+0000",
+            tradeDate: "2025-01-17T09:15:00+0000",
+            netAmount: -750.00,
+            transferItems: [
+                TransferItem(
+                    instrument: Instrument(
+                        assetType: .EQUITY,
+                        symbol: "AAPL",
+                        instrumentId: 12347
+                    ),
+                    amount: 5.0,
+                    price: 150.00
+                )
+            ]
+        )
+    ]
+    
+    return TransactionHistorySection(
+        isLoading: false,
+        symbol: "AAPL",
+        transactions: sampleTransactions
+    )
+    .padding()
+}
+
+
+#Preview("TransactionHistorySection - Loading", traits: .landscapeLeft) {
+    TransactionHistorySection(
+        isLoading: true,
+        symbol: "AAPL",
+        transactions: []
+    )
+    .padding()
+}
+
+#Preview("TransactionHistorySection - No Data", traits: .landscapeLeft) {
+    TransactionHistorySection(
+        isLoading: false,
+        symbol: "AAPL",
+        transactions: []
+    )
+    .padding()
+}
+

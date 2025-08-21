@@ -16,6 +16,7 @@ struct PositionDetailContent: View {
     let quoteData: QuoteData?
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
+    let transactions: [Transaction]
     @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
 
@@ -51,7 +52,8 @@ struct PositionDetailContent: View {
                     TransactionsTab(
                         isLoading: isLoadingTransactions,
                         symbol: position.instrument?.symbol ?? "",
-                        geometry: geometry
+                        geometry: geometry,
+                        transactions: transactions
                     )
                     .tag(1)
                     
