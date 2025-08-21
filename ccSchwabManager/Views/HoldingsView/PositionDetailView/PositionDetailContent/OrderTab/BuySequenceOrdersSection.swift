@@ -664,15 +664,15 @@ struct BuySequenceOrdersSection: View {
                 Spacer()
                 if !selectedSequenceOrderIndices.isEmpty {
                     Button(action: submitSequenceOrders) {
-                        VStack {
+                        VStack(spacing: 4) {
                             Image(systemName: "paperplane.circle.fill")
-                                .font(.title2)
+                                .font(.title3)
                             Text("Submit\nSequence")
-                                .font(.caption)
+                                .font(.caption2)
                                 .multilineTextAlignment(.center)
                         }
                         .foregroundColor(.white)
-                        .padding()
+                        .frame(width: 40, height: 40)
                         .background(Color.green)
                         .cornerRadius(8)
                     }
@@ -886,66 +886,75 @@ struct BuySequenceOrdersSection: View {
     }
     
     private func orderRow(index: Int, order: BuySequenceOrder, isSelected: Bool) -> some View {
-        HStack {
-            Button(action: {
-                if isSelected {
-                    // Remove this index and all below it
-                    selectedSequenceOrderIndices.remove(index)
-                    // Also remove all indices below this one
-                    for i in (index + 1)..<sequenceOrders.count {
-                        selectedSequenceOrderIndices.remove(i)
+        VStack(spacing: 4) {
+            // First line: checkbox, order number, shares, stop, target
+            HStack {
+                Button(action: {
+                    if isSelected {
+                        // Remove this index and all below it
+                        selectedSequenceOrderIndices.remove(index)
+                        // Also remove all indices below this one
+                        for i in (index + 1)..<sequenceOrders.count {
+                            selectedSequenceOrderIndices.remove(i)
+                        }
+                    } else {
+                        // Add this index and all above it
+                        selectedSequenceOrderIndices.insert(index)
+                        for i in 0...index {
+                            selectedSequenceOrderIndices.insert(i)
+                        }
                     }
-                } else {
-                    // Add this index and all above it
-                    selectedSequenceOrderIndices.insert(index)
-                    for i in 0...index {
-                        selectedSequenceOrderIndices.insert(i)
-                    }
+                }) {
+                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                        .foregroundColor(.green)
                 }
-            }) {
-                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                .buttonStyle(PlainButtonStyle())
+                .frame(width: 30, alignment: .center)
+                .disabled(false) // Always enabled for selection
+                
+                Text("\(order.orderIndex + 1)")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .frame(width: 60, alignment: .leading)
                     .foregroundColor(.green)
+                
+                Spacer()
+                
+                Text("\(Int(order.shares))")
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: Double(order.shares), format: "%.0f")
+                    }
+                
+                Text(String(format: "%.2f%%", order.trailingStop))
+                    .font(.caption)
+                    .frame(width: 100, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: order.trailingStop, format: "%.2f")
+                    }
+                
+                Text(String(format: "%.2f", order.targetPrice))
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: order.targetPrice, format: "%.2f")
+                    }
             }
-            .buttonStyle(PlainButtonStyle())
-            .frame(width: 30, alignment: .center)
-            .disabled(false) // Always enabled for selection
             
-            Text("\(order.orderIndex + 1)")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 60, alignment: .leading)
-                .foregroundColor(.green)
-            
-            Text(order.description)
-                .font(.caption)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onTapGesture {
-                    copyToClipboard(text: order.description)
-                }
-            
-            Text("\(Int(order.shares))")
-                .font(.caption)
-                .frame(width: 80, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: Double(order.shares), format: "%.0f")
-                }
-            
-            Text(String(format: "%.2f%%", order.trailingStop))
-                .font(.caption)
-                .frame(width: 100, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: order.trailingStop, format: "%.2f")
-                }
-            
-            Text(String(format: "%.2f", order.targetPrice))
-                .font(.caption)
-                .frame(width: 80, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: order.targetPrice, format: "%.2f")
-                }
+            // Second line: description
+            HStack {
+                Text(order.description)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onTapGesture {
+                        copyToClipboard(text: order.description)
+                    }
+            }
+            .padding(.leading, 90) // Align with content above (30 + 60 for checkbox + order number)
         }
         .padding(.horizontal)
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .background(isSelected ? Color.green.opacity(0.2) : rowStyle(for: order).opacity(0.1))
         .cornerRadius(4)
     }

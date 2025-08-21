@@ -23,7 +23,24 @@ struct SalesCalcTableRow: View {
         }
         return .green
     }
-    
+
+    private func formatDate(_ dateString: String?) -> String {
+        guard let dateString = dateString else {
+            return ""
+        }
+        
+        let inputFormatter = DateFormatter()
+        inputFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        
+        guard let date = inputFormatter.date(from: dateString) else {
+            return ""
+        }
+        
+        let outputFormatter = DateFormatter()
+        outputFormatter.dateFormat = "yyyy-MM-dd"
+        return outputFormatter.string(from: date)
+    }
+
     // When the Gain/Loss $ column is hidden, the indices of the
     // trailing columns shift left by one. Compute them safely.
     private var gainLossPercentIndex: Int { showGainLossDollar ? 7 : 6 }
@@ -31,7 +48,7 @@ struct SalesCalcTableRow: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            Text(item.openDate)
+            Text( formatDate( item.openDate ) )
                 .frame(width: calculatedWidths[0], alignment: .leading)
                 .foregroundStyle(daysSinceDateString(dateString: item.openDate) ?? 0 > 30 ? .green : .red)
                 .onTapGesture {

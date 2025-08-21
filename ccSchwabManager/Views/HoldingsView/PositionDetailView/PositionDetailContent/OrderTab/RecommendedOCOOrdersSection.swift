@@ -1687,97 +1687,117 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func sellOrderRow(order: SalesCalcResultsRecord, index: Int) -> some View {
-        HStack {
-            Button(action: {
-                if selectedSellOrderIndex == index {
-                    selectedSellOrderIndex = nil  // Deselect if already selected
-                } else {
-                    selectedSellOrderIndex = index  // Select this order
+        VStack(spacing: 4) {
+            // First line: checkbox, shares, stop, target
+            HStack {
+                Button(action: {
+                    if selectedSellOrderIndex == index {
+                        selectedSellOrderIndex = nil  // Deselect if already selected
+                    } else {
+                        selectedSellOrderIndex = index  // Select this order
+                    }
+                }) {
+                    Image(systemName: selectedSellOrderIndex == index ? "largecircle.fill.circle" : "circle")
+                        .foregroundColor(.red)
                 }
-            }) {
-                Image(systemName: selectedSellOrderIndex == index ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(.red)
+                .buttonStyle(PlainButtonStyle())
+                .frame(width: 30, alignment: .center)
+                
+                Spacer()
+                
+                Text("\(Int(order.sharesToSell))")
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: Double(order.sharesToSell), format: "%.0f")
+                    }
+                
+                Text(String(format: "%.2f%%", order.trailingStop))
+                    .font(.caption)
+                    .frame(width: 100, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: order.trailingStop, format: "%.2f")
+                    }
+                
+                Text(String(format: "%.2f", order.target))
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: order.target, format: "%.2f")
+                    }
             }
-            .buttonStyle(PlainButtonStyle())
             
-            Text(order.description)
-                .font(.caption)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onTapGesture {
-                    copyToClipboard(text: order.description)
-                }
-            
-            Text("\(Int(order.sharesToSell))")
-                .font(.caption)
-                .frame(width: 80, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: Double(order.sharesToSell), format: "%.0f")
-                }
-            
-            Text(String(format: "%.2f%%", order.trailingStop))
-                .font(.caption)
-                .frame(width: 100, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: order.trailingStop, format: "%.2f")
-                }
-            
-            Text(String(format: "%.2f", order.target))
-                .font(.caption)
-                .frame(width: 80, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: order.target, format: "%.2f")
-                }
+            // Second line: description
+            HStack {
+                Text(order.description)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onTapGesture {
+                        copyToClipboard(text: order.description)
+                    }
+            }
+            .padding(.leading, 30) // Align with content above checkbox
         }
         .padding(.horizontal)
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .background(selectedSellOrderIndex == index ? Color.red.opacity(0.2) : Color.red.opacity(0.05))
         .cornerRadius(4)
     }
     
     private func buyOrderRow(order: BuyOrderRecord, index: Int) -> some View {
-        HStack {
-            Button(action: {
-                if selectedBuyOrderIndex == index {
-                    selectedBuyOrderIndex = nil  // Deselect if already selected
-                } else {
-                    selectedBuyOrderIndex = index  // Select this order
+        VStack(spacing: 4) {
+            // First line: checkbox, shares, stop, target
+            HStack {
+                Button(action: {
+                    if selectedBuyOrderIndex == index {
+                        selectedBuyOrderIndex = nil  // Deselect if already selected
+                    } else {
+                        selectedBuyOrderIndex = index  // Select this order
+                    }
+                }) {
+                    Image(systemName: selectedBuyOrderIndex == index ? "largecircle.fill.circle" : "circle")
+                        .foregroundColor(.blue)
                 }
-            }) {
-                Image(systemName: selectedBuyOrderIndex == index ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(.blue)
+                .buttonStyle(PlainButtonStyle())
+                .frame(width: 30, alignment: .center)
+                
+                Spacer()
+                
+                Text("\(Int(order.sharesToBuy))")
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: Double(order.sharesToBuy), format: "%.0f")
+                    }
+                
+                Text(String(format: "%.2f%%", order.trailingStop))
+                    .font(.caption)
+                    .frame(width: 100, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: order.trailingStop, format: "%.2f")
+                    }
+                
+                Text(String(format: "%.2f", order.targetBuyPrice))
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+                    .onTapGesture {
+                        copyToClipboard(value: order.targetBuyPrice, format: "%.2f")
+                    }
             }
-            .buttonStyle(PlainButtonStyle())
             
-            Text(order.description)
-                .font(.caption)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .onTapGesture {
-                    copyToClipboard(text: order.description)
-                }
-            
-            Text("\(Int(order.sharesToBuy))")
-                .font(.caption)
-                .frame(width: 80, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: Double(order.sharesToBuy), format: "%.0f")
-                }
-            
-            Text(String(format: "%.2f%%", order.trailingStop))
-                .font(.caption)
-                .frame(width: 100, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: order.trailingStop, format: "%.2f")
-                }
-            
-            Text(String(format: "%.2f", order.targetBuyPrice))
-                .font(.caption)
-                .frame(width: 80, alignment: .trailing)
-                .onTapGesture {
-                    copyToClipboard(value: order.targetBuyPrice, format: "%.2f")
-                }
+            // Second line: description
+            HStack {
+                Text(order.description)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onTapGesture {
+                        copyToClipboard(text: order.description)
+                    }
+            }
+            .padding(.leading, 30) // Align with content above checkbox
         }
         .padding(.horizontal)
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .background(selectedBuyOrderIndex == index ? Color.blue.opacity(0.2) : Color.blue.opacity(0.05))
         .cornerRadius(4)
     }
@@ -1787,33 +1807,33 @@ struct RecommendedOCOOrdersSection: View {
         VStack {
             if selectedSellOrderIndex != nil || selectedBuyOrderIndex != nil {
                 Button(action: submitOrders) {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 4) {
                         Image(systemName: "paperplane.circle.fill")
-                            .font(.title2)
+                            .font(.title3)
                         Text("Submit\nOrder")
-                            .font(.caption)
+                            .font(.caption2)
                             .multilineTextAlignment(.center)
                     }
                     .foregroundColor(.white)
-                    .frame(width: 80, height: 80)
+                    .frame(width: 40, height: 40)
                     .background(Color.green)
                     .cornerRadius(8)
                 }
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 4) {
                     Image(systemName: "paperplane.circle")
-                        .font(.title2)
+                        .font(.title3)
                     Text("Submit")
-                        .font(.caption)
+                        .font(.caption2)
                         .multilineTextAlignment(.center)
                 }
                 .foregroundColor(.secondary)
-                .frame(width: 80, height: 80)
+                .frame(width: 40, height: 40)
                 .background(Color.gray.opacity(0.2))
                 .cornerRadius(8)
             }
         }
-        .frame(width: 80)
+        .frame(width: 40)
         .padding(.leading, 16)
     }
     
