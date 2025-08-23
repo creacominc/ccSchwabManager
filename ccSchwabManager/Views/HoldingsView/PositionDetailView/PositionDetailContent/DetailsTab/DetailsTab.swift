@@ -8,79 +8,144 @@ struct DetailsTab: View {
     let sharesAvailableForTrading: Double
     let lastPrice: Double
     let quoteData: QuoteData?
-    
+
+    // labels
+    let labels = [
+        ["P/L%", "ATR", "Market Value", "Asset Type", "Div Yield", "DTE/#"],
+        ["P/L", "Quantity", "Average Price", "Last", "Account", "Available"]
+    ]
+
+
     var body: some View {
         VStack(spacing: 8) {
-            // Simple 2-column, 6-row table layout
+            // Three-column layout: Left | Spacer | Right
             ForEach(0..<6) { rowIndex in
                 HStack(spacing: 0) {
-                    // Left column
-                    HStack(spacing: 12) {
-                        Text(getFieldForRow(rowIndex, column: 0).label)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .frame(width: 100, alignment: .leading)
-                        Text(getFieldForRow(rowIndex, column: 0).getValue(
-                            position: position,
-                            atrValue: atrValue,
-                            sharesAvailableForTrading: sharesAvailableForTrading,
-                            accountNumber: accountNumber,
-                            lastPrice: lastPrice,
-                            quoteData: quoteData
-                        ))
-                        .font(.body)
-                        .foregroundColor(getFieldForRow(rowIndex, column: 0).getColor(position: position, atrValue: atrValue))
+                    ForEach(0..<2)
+                    { colIndex in
+                        // add spacer before all but first column
+                        if colIndex > 0 {
+                            // Spacer column - fills the gap
+                            Spacer()
+                                .frame(minWidth: 1)
+                                .padding(.horizontal, 8)
+                        }
+                        // column
+                        HStack(spacing: 12)
+                        {
+                            Text( labels[ colIndex ][ rowIndex ] )
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .frame(width: 120, alignment: .leading)
+                            Text( getFieldValue( rowIndex, colIndex ) )
+                                .font(.body)
+                                .foregroundColor( getFieldColor( rowIndex, colIndex ) )
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    // Right column
-                    HStack(spacing: 12) {
-                        Text(getFieldForRow(rowIndex, column: 1).label)
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .frame(width: 100, alignment: .leading)
-                        Text(getFieldForRow(rowIndex, column: 1).getValue(
-                            position: position,
-                            atrValue: atrValue,
-                            sharesAvailableForTrading: sharesAvailableForTrading,
-                            accountNumber: accountNumber,
-                            lastPrice: lastPrice,
-                            quoteData: quoteData
-                        ))
-                        .font(.body)
-                        .foregroundColor(getFieldForRow(rowIndex, column: 1).getColor(position: position, atrValue: atrValue))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.vertical, 2)
             }
         }
         .padding()
     }
-    
-    private func getFieldForRow(_ rowIndex: Int, column: Int) -> PositionDetailField {
-        let fields: [[PositionDetailField]] = [
-            // Row 0: P/L% | P/L
-            [.plPercent(atrValue: atrValue), .pl],
-            // Row 1: ATR | Quantity  
-            [.atr(atrValue: atrValue), .quantity],
-            // Row 2: Market Value | Average Price
-            [.marketValue, .averagePrice],
-            // Row 3: Asset Type | Last Price
-            [.assetType, .lastPrice(lastPrice: lastPrice)],
-            // Row 4: Dividend Yield | Account
-            [.dividendYield, .account(accountNumber: accountNumber)],
-            // Row 5: DTE/# | Available
-            [.dte, .sharesAvailableForTrading(sharesAvailableForTrading: sharesAvailableForTrading)]
-        ]
-        
-        return fields[rowIndex][column]
+
+    private func getFieldValue(_ rowIndex: Int, _ colIndex: Int) -> String
+    {
+        switch colIndex {
+            case 0:
+                // Left column logic
+                switch rowIndex {
+                    case 0:
+                        let pl = position.longOpenProfitLoss ?? 0
+                        let mv = position.marketValue ?? 0
+                        let costBasis = mv - pl
+                        let plPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+                        return String(format: "%.1f%%", plPercent)
+                    case 1: return String(format: "%.2f %%", atrValue)
+                    case 2: return String(format: "%.2f", position.marketValue ?? 0)
+                    case 3: return position.instrument?.assetType?.rawValue ?? ""
+                    case 4:
+                        if let divYield = quoteData?.fundamental?.divYield {
+                            return String(format: "%.2f%%", divYield)
+                        }
+                        return "N/A"
+                    case 5: return "" // DTE/# - no value for equity
+                    default: return ""
+                }
+            
+            case 1:
+                // Right column logic
+                switch rowIndex {
+                    case 0:
+                        let pl = position.longOpenProfitLoss ?? 0
+                        return String(format: "%.2f", pl)
+                    case 1:
+                        let quantity = (position.longQuantity ?? 0) + (position.shortQuantity ?? 0)
+                        return String(format: "%.2f", quantity)
+                    case 2: return String(format: "%.2f", position.averagePrice ?? 0)
+                    case 3: return String(format: "%.2f", lastPrice)
+                    case 4: return accountNumber
+                    case 5: return String(format: "%.2f", sharesAvailableForTrading)
+                    default: return ""
+                }
+
+            default:
+                AppLogger.shared.warning("Unhandled column index \(colIndex)")
+                return ""
+        }
     }
+    
+    private func getFieldColor(_ rowIndex: Int, _ colIndex: Int) -> Color {
+        if colIndex == 0 {
+            // Left column logic
+            switch rowIndex {
+            case 0: 
+                let pl = position.longOpenProfitLoss ?? 0
+                let mv = position.marketValue ?? 0
+                let costBasis = mv - pl
+                let plPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+                
+                if plPercent < 0 {
+                    return .red
+                }
+                let threshold = min(5.0, 2 * atrValue)
+                if plPercent <= threshold {
+                    return .orange
+                } else {
+                    return .green
+                }
+            default: return .primary
+            }
+        } else {
+            // Right column logic
+            switch rowIndex {
+            case 0: 
+                let pl = position.longOpenProfitLoss ?? 0
+                let mv = position.marketValue ?? 0
+                let costBasis = mv - pl
+                let plPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+                
+                if plPercent < 0 {
+                    return .red
+                }
+                let threshold = min(5.0, 2 * atrValue)
+                if plPercent <= threshold {
+                    return .orange
+                } else {
+                    return .green
+                }
+            default: return .primary
+            }
+        }
+    }
+    
+
     
 
 }
 
-#Preview {
+#Preview("Details", traits: .landscapeLeft) {
     let samplePosition = Position(
         shortQuantity: 0.0,
         averagePrice: 35.48,
