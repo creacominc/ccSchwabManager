@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CurrentOrdersSection: View {
     let symbol: String
+    let orders: [Order]
     @State private var selectedOrderGroups: Set<Int64> = []
     @State private var showingErrorAlert = false
     @State private var errorMessage = ""
@@ -14,13 +15,12 @@ struct CurrentOrdersSection: View {
     }
     
     private var currentOrders: [Order] {
-        let allOrders = SchwabClient.shared.getOrderList()
         var filteredOrders: [Order] = []
         
-        print("[OrderTab] Checking open orders for symbol: \(symbol)")
-        print("[OrderTab] Total orders from SchwabClient: \(allOrders.count)")
+        print("[CurrentOrdersSection] Checking open orders for symbol: \(symbol)")
+        print("[CurrentOrdersSection] Total orders passed in: \(orders.count)")
         
-        for order in allOrders {
+        for order in orders {
             // Check if order matches the symbol
             var orderMatchesSymbol = false
             var hasOpenChildOrder = false
@@ -62,36 +62,36 @@ struct CurrentOrdersSection: View {
             }
             
             if orderMatchesSymbol {
-                print("[OrderTab] Found order for symbol \(self.symbol): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
+                print("[CurrentOrdersSection] Found order for symbol \(self.symbol): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
                 
                 // For OCO orders, only add if there are open child orders
                 if order.orderStrategyType == .OCO {
                     if hasOpenChildOrder {
-                        print("[OrderTab] OCO order has open child orders")
+                        print("[CurrentOrdersSection] OCO order has open child orders")
                         filteredOrders.append(order)
                     } else {
-                        print("[OrderTab] OCO order has no open child orders")
+                        print("[CurrentOrdersSection] OCO order has no open child orders")
                     }
                 } else {
                     // For non-OCO orders, check if order status is open
                     if let status = order.status,
                        let activeStatus = ActiveOrderStatus(from: status, order: order),
                        openStatuses.contains(activeStatus) {
-                        print("[OrderTab] Order is open: \(activeStatus.shortDisplayName)")
+                        print("[CurrentOrdersSection] Order is open: \(activeStatus.shortDisplayName)")
                         filteredOrders.append(order)
                     } else {
-                        print("[OrderTab] Order is not open: \(order.status?.rawValue ?? "nil")")
+                        print("[CurrentOrdersSection] Order is not open: \(order.status?.rawValue ?? "nil")")
                     }
                 }
             }
         }
         
-        print("[OrderTab] Found \(filteredOrders.count) open orders for symbol \(symbol)")
+        print("[CurrentOrdersSection] Found \(filteredOrders.count) open orders for symbol \(symbol)")
         
         // // Debug: Print all order IDs being returned
-        // print("[OrderTab] Order IDs being returned:")
+        // print("[CurrentOrdersSection] Order IDs being returned:")
         // for (index, order) in filteredOrders.enumerated() {
-        //     print("[OrderTab]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
+        //     print("[CurrentOrdersSection]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
         // }
         
         return filteredOrders
@@ -146,7 +146,7 @@ struct CurrentOrdersSection: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
                     .onAppear {
-                        print("[OrderTab] No open orders for symbol: \(symbol)")
+                        print("[CurrentOrdersSection] No open orders for symbol: \(symbol)")
                     }
             } else {
                 HStack(alignment: .top, spacing: 16) {
@@ -200,6 +200,113 @@ struct CurrentOrdersSection: View {
             Text("Selected orders have been successfully cancelled.")
         }
     }
+}
+
+#Preview("CurrentOrdersSection - With Orders", traits: .landscapeLeft) {
+    CurrentOrdersSection(symbol: "AAPL", orders: createMockOrders())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+#Preview("CurrentOrdersSection - No Orders", traits: .landscapeLeft) {
+    CurrentOrdersSection(symbol: "XYZ", orders: [])
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+#Preview("CurrentOrdersSection - Multiple Order Types", traits: .landscapeLeft) {
+    CurrentOrdersSection(symbol: "TSLA", orders: createMockOCOOrders())
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+// MARK: - Mock Data for Previews
+private func createMockOrders() -> [Order] {
+    let instrument = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "AAPL",
+        description: "Apple Inc. Common Stock"
+    )
+    
+    let orderLeg = OrderLegCollection(
+        instrument: instrument,
+        instruction: .BUY_TO_OPEN,
+        positionEffect: .OPENING,
+        quantity: 100
+    )
+    
+    let order = Order(
+        orderType: .LIMIT,
+        quantity: 100,
+        price: 150.50,
+        orderLegCollection: [orderLeg],
+        orderStrategyType: .SINGLE,
+        orderId: 12345,
+        status: .working,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    return [order]
+}
+
+private func createMockOCOOrders() -> [Order] {
+    let instrument1 = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "TSLA",
+        description: "Tesla Inc. Common Stock"
+    )
+    
+    let instrument2 = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "TSLA",
+        description: "Tesla Inc. Common Stock"
+    )
+    
+    let orderLeg1 = OrderLegCollection(
+        instrument: instrument1,
+        instruction: .SELL_TO_CLOSE,
+        positionEffect: .CLOSING,
+        quantity: 50
+    )
+    
+    let orderLeg2 = OrderLegCollection(
+        instrument: instrument2,
+        instruction: .SELL_TO_CLOSE,
+        positionEffect: .CLOSING,
+        quantity: 50
+    )
+    
+    let childOrder1 = Order(
+        orderType: .STOP,
+        quantity: 50,
+        stopPrice: 200.00,
+        orderLegCollection: [orderLeg1],
+        orderStrategyType: .SINGLE,
+        orderId: 67891,
+        status: .awaitingParentOrder,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    let childOrder2 = Order(
+        orderType: .LIMIT,
+        quantity: 50,
+        price: 250.00,
+        orderLegCollection: [orderLeg2],
+        orderStrategyType: .SINGLE,
+        orderId: 67892,
+        status: .awaitingParentOrder,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    let ocoOrder = Order(
+        orderType: .LIMIT,
+        quantity: 100,
+        orderLegCollection: [orderLeg1, orderLeg2],
+        orderStrategyType: .OCO,
+        orderId: 67890,
+        status: .working,
+        enteredTime: "2025-01-15T09:30:00-05:00",
+        childOrderStrategies: [childOrder1, childOrder2]
+    )
+    
+    return [ocoOrder]
 }
 
 

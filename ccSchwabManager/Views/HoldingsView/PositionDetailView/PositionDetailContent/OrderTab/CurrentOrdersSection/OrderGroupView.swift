@@ -138,7 +138,7 @@ struct OrderGroupView: View {
             }
         }
         .onAppear {
-            print("[OrderTab] Rendering order group: ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
+            print("[OrderGroupView] Rendering order group: ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
         }
     }
 }

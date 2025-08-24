@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CurrentOrdersTab: View {
     let symbol: String
+    let orders: [Order]
     
     var body: some View {
         ScrollView {
@@ -22,7 +23,7 @@ struct CurrentOrdersTab: View {
                     .background(Color.blue.opacity(0.1))
                     
                     // Section Content
-                    CurrentOrdersSection(symbol: symbol)
+                    CurrentOrdersSection(symbol: symbol, orders: orders)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                 }
@@ -37,4 +38,49 @@ struct CurrentOrdersTab: View {
         }
         .background(Color.black.opacity(0.1))
     }
+}
+
+#Preview("CurrentOrdersTab - With Orders") {
+    CurrentOrdersTab(
+        symbol: "AAPL",
+        orders: createMockOrders()
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+#Preview("CurrentOrdersTab - No Orders") {
+    CurrentOrdersTab(
+        symbol: "XYZ",
+        orders: []
+    )
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+// MARK: - Mock Data for Previews
+private func createMockOrders() -> [Order] {
+    let instrument = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "AAPL",
+        description: "Apple Inc. Common Stock"
+    )
+    
+    let orderLeg = OrderLegCollection(
+        instrument: instrument,
+        instruction: .BUY_TO_OPEN,
+        positionEffect: .OPENING,
+        quantity: 100
+    )
+    
+    let order = Order(
+        orderType: .LIMIT,
+        quantity: 100,
+        price: 150.50,
+        orderLegCollection: [orderLeg],
+        orderStrategyType: .SINGLE,
+        orderId: 12345,
+        status: .working,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    return [order]
 }

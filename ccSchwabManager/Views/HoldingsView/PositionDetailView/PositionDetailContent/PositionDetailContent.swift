@@ -19,6 +19,8 @@ struct PositionDetailContent: View {
     let transactions: [Transaction]
     @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
+    @State private var orders: [Order] = []
+    @State private var isLoadingOrders: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -148,7 +150,7 @@ struct PositionDetailContent: View {
                                 geometry: geometry,
                             )
                         case 4:
-                            CurrentOrdersTab(symbol: symbol)
+                            CurrentOrdersTab(symbol: symbol, orders: orders)
                         case 5:
                             OCOOrdersTab(
                                 symbol: symbol,
@@ -181,9 +183,13 @@ struct PositionDetailContent: View {
                     }
                     .onAppear {
                         viewSize = geometry.size
+                        fetchOrders()
                     }
                     .onChange(of: geometry.size) { oldValue, newValue in
                         viewSize = newValue
+                    }
+                    .onChange(of: symbol) { _, _ in
+                        fetchOrders()
                     }
                 }
             }
@@ -201,6 +207,19 @@ struct PositionDetailContent: View {
         } else {
             // Fallback to price history if no quote data is available
             return priceHistory?.candles.last?.close ?? 0.0
+        }
+    }
+    
+    private func fetchOrders() {
+        isLoadingOrders = true
+        
+        Task {
+            let fetchedOrders = SchwabClient.shared.getOrderList()
+            
+            await MainActor.run {
+                self.orders = fetchedOrders
+                self.isLoadingOrders = false
+            }
         }
     }
 }
