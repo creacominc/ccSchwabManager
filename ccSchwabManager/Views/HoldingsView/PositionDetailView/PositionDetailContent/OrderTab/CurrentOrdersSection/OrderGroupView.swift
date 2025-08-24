@@ -142,3 +142,156 @@ struct OrderGroupView: View {
         }
     }
 }
+
+#Preview("OrderGroupView - Single Order", traits: .landscapeLeft) {
+    OrderGroupView(
+        order: createSampleSingleOrder(),
+        selectedOrderGroups: .constant(Set<Int64>())
+    )
+    .frame(width: .infinity)
+    .padding(.vertical)
+}
+
+#Preview("OrderGroupView - Multiple Orders (OCO)", traits: .landscapeLeft) {
+    OrderGroupView(
+        order: createSampleOCOOrder(),
+        selectedOrderGroups: .constant(Set<Int64>())
+    )
+    .frame(width: .infinity)
+    .padding(.vertical)
+}
+
+#Preview("OrderGroupView - Multiple Orders (TRIGGER)", traits: .landscapeLeft) {
+    OrderGroupView(
+        order: createSampleTriggerOrder(),
+        selectedOrderGroups: .constant(Set<Int64>())
+    )
+    .frame(width: .infinity)
+    .padding(.vertical)
+}
+
+// MARK: - Sample Data Creation
+private func createSampleSingleOrder() -> Order {
+    let instrument = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "AAPL",
+        description: "Apple Inc. Common Stock"
+    )
+    
+    let orderLeg = OrderLegCollection(
+        instrument: instrument,
+        instruction: .BUY_TO_OPEN,
+        positionEffect: .OPENING,
+        quantity: 100
+    )
+    
+    return Order(
+        orderType: .LIMIT,
+        quantity: 100,
+        price: 150.50,
+        orderLegCollection: [orderLeg],
+        orderStrategyType: .SINGLE,
+        orderId: 12345,
+        status: .working,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+}
+
+private func createSampleOCOOrder() -> Order {
+    let instrument1 = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "TSLA",
+        description: "Tesla Inc. Common Stock"
+    )
+    
+    let instrument2 = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "TSLA",
+        description: "Tesla Inc. Common Stock"
+    )
+    
+    let orderLeg1 = OrderLegCollection(
+        instrument: instrument1,
+        instruction: .SELL_TO_CLOSE,
+        positionEffect: .CLOSING,
+        quantity: 50
+    )
+    
+    let orderLeg2 = OrderLegCollection(
+        instrument: instrument2,
+        instruction: .SELL_TO_CLOSE,
+        positionEffect: .CLOSING,
+        quantity: 50
+    )
+    
+    let childOrder1 = Order(
+        orderType: .STOP,
+        quantity: 50,
+        stopPrice: 200.00,
+        orderLegCollection: [orderLeg1],
+        orderStrategyType: .SINGLE,
+        orderId: 67891,
+        status: .awaitingParentOrder,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    let childOrder2 = Order(
+        orderType: .LIMIT,
+        quantity: 50,
+        price: 250.00,
+        orderLegCollection: [orderLeg2],
+        orderStrategyType: .SINGLE,
+        orderId: 67892,
+        status: .awaitingParentOrder,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    return Order(
+        orderType: .LIMIT,
+        quantity: 100,
+        orderLegCollection: [orderLeg1, orderLeg2],
+        orderStrategyType: .OCO,
+        orderId: 67890,
+        status: .working,
+        enteredTime: "2025-01-15T09:30:00-05:00",
+        childOrderStrategies: [childOrder1, childOrder2]
+    )
+}
+
+private func createSampleTriggerOrder() -> Order {
+    let instrument = AccountsInstrument(
+        assetType: .EQUITY,
+        symbol: "NVDA",
+        description: "NVIDIA Corporation Common Stock"
+    )
+    
+    let orderLeg = OrderLegCollection(
+        instrument: instrument,
+        instruction: .BUY_TO_OPEN,
+        positionEffect: .OPENING,
+        quantity: 25
+    )
+    
+    let childOrder = Order(
+        orderType: .LIMIT,
+        quantity: 25,
+        price: 500.00,
+        orderLegCollection: [orderLeg],
+        orderStrategyType: .SINGLE,
+        orderId: 11112,
+        status: .awaitingParentOrder,
+        enteredTime: "2025-01-15T09:30:00-05:00"
+    )
+    
+    return Order(
+        orderType: .LIMIT,
+        quantity: 25,
+        orderLegCollection: [orderLeg],
+        activationPrice: 450.00,
+        orderStrategyType: .TRIGGER,
+        orderId: 11111,
+        status: .working,
+        enteredTime: "2025-01-15T09:30:00-05:00",
+        childOrderStrategies: [childOrder]
+    )
+}
