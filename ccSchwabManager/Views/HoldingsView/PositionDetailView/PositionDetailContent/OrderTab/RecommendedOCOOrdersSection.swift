@@ -445,38 +445,7 @@ struct RecommendedOCOOrdersSection: View {
     private func getLimitedATR() -> Double {
         return max(1.0, min(TradingConfig.atrMultiplier, atrValue))
     }
-    
-    // OLD CODE - COMMENTED OUT FOR REFERENCE
-    // This timing-related function is no longer needed for simplified orders.
-    /*
-    private func formatReleaseTime(_ date: Date) -> String {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Ensure the date is not in the past
-        var adjustedDate = date
-        if adjustedDate <= now {
-            // Move to the next weekday at 09:40
-            var nextWeekday = calendar.date(byAdding: .day, value: 1, to: now) ?? now
-            while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
-                // Sunday = 1, Saturday = 7
-                nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
-            }
-            adjustedDate = nextWeekday
-        }
-        
-        var components = calendar.dateComponents([.year, .month, .day], from: adjustedDate)
-        components.hour = 9
-        components.minute = 40
-        components.second = 0
-        
-        let targetDate = calendar.date(from: components) ?? adjustedDate
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
-        return formatter.string(from: targetDate)
-    }
-    */
-    
+
     // --- Top 100 Standing Sell ---
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         // Check if position has more than 100 shares total (not just available for trading)

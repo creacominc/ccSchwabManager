@@ -38,7 +38,7 @@ struct OrderDetailRow: View {
         // 4. Order Type
         if let orderType = order.orderType {
             description += " \(formatOrderType(orderType))"
-        } else if order.orderStrategyType == .SINGLE || order.orderStrategyType == .TRIGGER {
+        } else if order.orderStrategyType == .TRIGGER { //  order.orderStrategyType == .SINGLE ||
             description += " TRSTPLMT"
         }
         
@@ -67,12 +67,7 @@ struct OrderDetailRow: View {
         if let orderId = order.orderId {
             description += " #\(orderId)"
         }
-        
-        // 9. Release Time
-        if let releaseTime = order.releaseTime {
-            description += " SUBMIT AT \(formatReleaseTime(releaseTime))"
-        }
-        
+
         // 10. Cancel Time
         if let cancelTimeDate = order.cancelTime {
             let formatter = ISO8601DateFormatter()
@@ -84,12 +79,7 @@ struct OrderDetailRow: View {
         if let activationInfo = formatActivationCondition(order: order, symbol: symbol) {
             description += " WHEN \(activationInfo)"
         }
-        
-        // 12. Cancel Condition (if applicable)
-        if let cancelInfo = formatCancelCondition(order: order, symbol: symbol) {
-            description += " CANCEL IF \(cancelInfo)"
-        }
-        
+
         // 13. Position Effect
         if let positionEffect = firstLeg.positionEffect {
             description += " \(formatPositionEffect(positionEffect))"
@@ -287,13 +277,7 @@ struct OrderDetailRow: View {
         
         return nil
     }
-    
-    private func formatCancelCondition(order: Order, symbol: String) -> String? {
-        // This would be implemented based on the specific cancel conditions
-        // For now, return nil as this would need to be determined from the order data
-        return nil
-    }
-    
+
     private func formatPriceLinkBasis(_ basis: PriceLinkBasis) -> String {
         switch basis {
         case .BID:
@@ -328,28 +312,6 @@ struct OrderDetailRow: View {
         }
     }
     
-    private func formatStrategyType(_ strategyType: OrderStrategyType) -> String {
-        switch strategyType {
-        case .SINGLE:
-            return ""
-        case .OCO:
-            return "OCO"
-        case .TRIGGER:
-            return "TRIGGER"
-        case .PAIR:
-            return "PAIR"
-        case .FLATTEN:
-            return "FLATTEN"
-        case .TWO_DAY_SWAP:
-            return "TWO_DAY_SWAP"
-        case .BLAST_ALL:
-            return "BLAST_ALL"
-        case .CANCEL:
-            return "CANCEL"
-        case .RECALL:
-            return "RECALL"
-        }
-    }
     
     private func formatPositionEffect(_ positionEffect: PositionEffectType) -> String {
         switch positionEffect {
@@ -388,30 +350,6 @@ struct OrderDetailRow: View {
                 // Only copy to clipboard, don't toggle checkbox
                 copyToClipboard(text: formatOrderDescription(order: order))
             }
-            .onAppear {
-                let description = formatOrderDescription(order: order)
-                print("=== ORDER DESCRIPTION DEBUG ===")
-                print("Order ID: \(order.orderId?.description ?? "nil")")
-                print("Order Status: \(order.status?.rawValue ?? "nil")")
-                print("Order Type: \(order.orderType?.rawValue ?? "nil")")
-                print("Strategy Type: \(order.orderStrategyType?.rawValue ?? "nil")")
-                print("Duration: \(order.duration?.rawValue ?? "nil")")
-                print("Release Time: \(order.releaseTime ?? "nil")")
-                print("Price: \(order.price?.description ?? "nil")")
-                print("Stop Price: \(order.stopPrice?.description ?? "nil")")
-                print("Activation Price: \(order.activationPrice?.description ?? "nil")")
-                print("Price Link Basis: \(order.priceLinkBasis?.rawValue ?? "nil")")
-                print("Price Link Type: \(order.priceLinkType?.rawValue ?? "nil")")
-                print("Price Offset: \(order.priceOffset?.description ?? "nil")")
-                print("Stop Price Link Basis: \(order.stopPriceLinkBasis?.rawValue ?? "nil")")
-                print("Stop Price Link Type: \(order.stopPriceLinkType?.rawValue ?? "nil")")
-                print("Stop Price Offset: \(order.stopPriceOffset?.description ?? "nil")")
-                print("Stop Type: \(order.stopType?.rawValue ?? "nil")")
-                print("---")
-                print("FORMATTED DESCRIPTION:")
-                print(description)
-                print("=== END DEBUG ===")
-            }
     }
     
     private func copyToClipboard(text: String) {
@@ -422,4 +360,93 @@ struct OrderDetailRow: View {
         NSPasteboard.general.setString(text, forType: .string)
 #endif
     }
+}
+
+#Preview("OrderDetailRow", traits: .landscapeLeft) {
+    VStack(spacing: 16) {
+        // Sample limit order
+        OrderDetailRow(
+            order: Order(
+                session: nil,
+                duration: .GOOD_TILL_CANCEL,
+                orderType: .LIMIT,
+                quantity: 100,
+                price: 150.50,
+                orderLegCollection: [
+                    OrderLegCollection(
+                        instrument: AccountsInstrument(symbol: "AAPL"),
+                        instruction: .BUY_TO_OPEN,
+                        positionEffect: .OPENING,
+                        quantity: 100
+                    )
+                ],
+                orderStrategyType: .SINGLE,
+                orderId: 12345,
+                status: .working
+            ),
+            groupOrderId: 12345
+        )
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+        
+        // Sample trailing stop limit order
+        OrderDetailRow(
+            order: Order(
+                session: nil,
+                duration: .GOOD_TILL_CANCEL,
+                orderType: .TRAILING_STOP_LIMIT,
+                quantity: 200,
+                stopPriceLinkBasis: .LAST,
+                stopPriceLinkType: .PERCENT,
+                stopPriceOffset: 2.0,
+                priceLinkBasis: .LAST,
+                priceLinkType: .PERCENT,
+                priceOffset: 3.0,
+                orderLegCollection: [
+                    OrderLegCollection(
+                        instrument: AccountsInstrument(symbol: "TSLA"),
+                        instruction: .SELL_TO_CLOSE,
+                        positionEffect: .CLOSING,
+                        quantity: 200
+                    )
+                ],
+                orderStrategyType: .SINGLE,
+                orderId: 12346,
+                status: .working
+            ),
+            groupOrderId: 12346
+        )
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+        
+        // Sample OCO order
+        OrderDetailRow(
+            order: Order(
+                session: nil,
+                duration: .DAY,
+                orderType: .STOP_LIMIT,
+                quantity: 150,
+                stopPrice: 70.00,
+                price: 75.25,
+                orderLegCollection: [
+                    OrderLegCollection(
+                        instrument: AccountsInstrument(symbol: "MSFT"),
+                        instruction: .BUY_TO_OPEN,
+                        positionEffect: .OPENING,
+                        quantity: 150
+                    )
+                ],
+                orderStrategyType: .OCO,
+                orderId: 12347,
+                status: .working
+            ),
+            groupOrderId: 12347
+        )
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
+    .padding()
 }
