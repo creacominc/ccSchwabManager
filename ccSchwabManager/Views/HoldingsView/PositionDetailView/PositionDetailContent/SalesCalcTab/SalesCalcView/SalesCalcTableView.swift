@@ -1,5 +1,8 @@
 import SwiftUI
 
+/**
+ * column headers
+ */
 enum SalesCalcSortableColumn: String, CaseIterable, Identifiable {
     case openDate = "Open Date"
     case quantity = "Quantity"
@@ -22,13 +25,25 @@ enum SalesCalcSortableColumn: String, CaseIterable, Identifiable {
 
 }
 
+/**
+ * the column to sort on and the direction of the sort.
+ */
 struct SalesCalcSortConfig {
     var column: SalesCalcSortableColumn
     var ascending: Bool
 }
 
+/**
+ * construct a single column header with optional sort indicator.
+ */
 @ViewBuilder
-private func columnHeader(title: String, column: SalesCalcSortableColumn, alignment: Alignment = .leading, currentSort: SalesCalcSortConfig?, onSortChange: @escaping (SalesCalcSortConfig) -> Void) -> some View {
+private func columnHeader(  title: String,
+                            column: SalesCalcSortableColumn,
+                            alignment: Alignment = .leading,
+                            currentSort: SalesCalcSortConfig?,
+                            onSortChange: @escaping (SalesCalcSortConfig) -> Void
+                        ) -> some View
+{
     Button(action: {
         if currentSort?.column == column {
             var newSort = currentSort!
@@ -59,7 +74,8 @@ private func columnHeader(title: String, column: SalesCalcSortableColumn, alignm
     .buttonStyle(.plain)
 }
 
-struct SalesCalcTable: View {
+struct SalesCalcTable: View
+{
     let positionsData: [SalesCalcPositionsRecord]
     @Binding var currentSort: SalesCalcSortConfig?
     let symbol: String
@@ -80,10 +96,9 @@ struct SalesCalcTable: View {
         {
             return SalesCalcTableRow.narrowColumnProportions
         }
-                
     }
 
-    public func calculatedWidths(for width: CGFloat) -> [CGFloat]
+    private func calculatedWidths(for width: CGFloat) -> [CGFloat]
     {
         if showGainLossDollar(for: width) {
             return SalesCalcTableRow.wideColumnProportions.map { $0 * width }
@@ -91,7 +106,6 @@ struct SalesCalcTable: View {
             return SalesCalcTableRow.narrowColumnProportions.map { $0 * width }
         }
     }
-        
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
@@ -268,36 +282,18 @@ private struct TableContent: View {
                         isEvenRow: index % 2 == 0,
                         showGainLossDollar: showGainLossDollar
                     )
-                    Divider()
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-// MARK: - Preview Helper
-struct SalesCalcTableViewPreviewHelper {
-    // iPad Mini landscape width is approximately 1024 points
-    static let iPadMiniLandscapeWidth: CGFloat = 1024
 
-    static func calculateWidths(for containerWidth: CGFloat, showGainLossDollar: Bool = true) -> [CGFloat] {
-        let horizontalPadding: CGFloat = 16 * 2
-        let proportions = showGainLossDollar ? SalesCalcTableRow.wideColumnProportions : SalesCalcTableRow.narrowColumnProportions
-        let interColumnSpacing = (CGFloat(proportions.count - 1) * 8)
-        let availableWidthForColumns = containerWidth - interColumnSpacing - horizontalPadding
-        return proportions.map { $0 * availableWidthForColumns }
-    }
-    
-    static func shouldShowGainLossDollar(for containerWidth: CGFloat) -> Bool {
-        return containerWidth >= iPadMiniLandscapeWidth
-    }
-}
 
 #Preview("SalesCalcTableView", traits: .landscapeLeft) {
     let samplePositions = [
         SalesCalcPositionsRecord(
-            openDate: "2025-01-15",
+            openDate: "2025-01-15 09:30:43",
             gainLossPct: 15.5,
             gainLossDollar: 150.00,
             quantity: 100.0,
@@ -308,7 +304,7 @@ struct SalesCalcTableViewPreviewHelper {
             splitMultiple: 1.0
         ),
         SalesCalcPositionsRecord(
-            openDate: "2025-02-20",
+            openDate: "2025-02-20 14:11:00",
             gainLossPct: -5.2,
             gainLossDollar: -75.00,
             quantity: 50.0,
@@ -319,7 +315,7 @@ struct SalesCalcTableViewPreviewHelper {
             splitMultiple: 1.0
         ),
         SalesCalcPositionsRecord(
-            openDate: "2025-03-10",
+            openDate: "2025-03-10 11:30:00",
             gainLossPct: 3.8,
             gainLossDollar: 45.00,
             quantity: 75.0,
@@ -330,7 +326,7 @@ struct SalesCalcTableViewPreviewHelper {
             splitMultiple: 2.0
         ),
         SalesCalcPositionsRecord(
-            openDate: "2025-04-05",
+            openDate: "2025-04-05 11:21:11",
             gainLossPct: -12.3,
             gainLossDollar: -225.00,
             quantity: 25.0,
@@ -342,10 +338,13 @@ struct SalesCalcTableViewPreviewHelper {
         )
     ]
     
-    return SalesCalcTable(
-                positionsData: samplePositions,
-                currentSort: .constant(SalesCalcSortConfig(column: .openDate, ascending: false)),
-                symbol: "AAPL",
-                currentPrice: 150.00
-            )
+    return  GeometryReader { geometry in
+        SalesCalcTable(
+            positionsData: samplePositions,
+            currentSort: .constant(SalesCalcSortConfig(column: .openDate, ascending: false)),
+            symbol: "AAPL",
+            currentPrice: 150.00
+        )
+        .padding( .trailing, 80 )
+    }
 }

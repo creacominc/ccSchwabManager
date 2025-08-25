@@ -21,6 +21,18 @@ struct PositionDetailContent: View {
     @Binding var selectedTab: Int
     @State private var orders: [Order] = []
     @State private var isLoadingOrders: Bool = false
+    
+    private var detailsTabView: some View {
+        DetailsTab(
+            position: position,
+            accountNumber: accountNumber,
+            symbol: symbol,
+            atrValue: atrValue,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            lastPrice: getCurrentPrice(),
+            quoteData: quoteData
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,16 +127,6 @@ struct PositionDetailContent: View {
                     // Custom content switcher instead of TabView
                     Group {
                         switch selectedTab {
-                        case 0:
-                            DetailsTab(
-                                position: position,
-                                accountNumber: accountNumber,
-                                symbol: symbol,
-                                atrValue: atrValue,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
-                                lastPrice: getCurrentPrice(),
-                                quoteData: quoteData
-                            )
                         case 1:
                             PriceHistoryTab(
                                 priceHistory: priceHistory,
@@ -146,8 +148,7 @@ struct PositionDetailContent: View {
                                 sharesAvailableForTrading: sharesAvailableForTrading,
                                 taxLotData: taxLotData,
                                 isLoadingTaxLots: isLoadingTaxLots,
-                                quoteData: quoteData,
-                                geometry: geometry,
+                                quoteData: quoteData
                             )
                         case 4:
                             CurrentOrdersTab(symbol: symbol, orders: orders)
@@ -169,16 +170,10 @@ struct PositionDetailContent: View {
                                 quoteData: quoteData,
                                 accountNumber: accountNumber
                             )
+                        case 0:
+                            detailsTabView
                         default:
-                            DetailsTab(
-                                position: position,
-                                accountNumber: accountNumber,
-                                symbol: symbol,
-                                atrValue: atrValue,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
-                                lastPrice: getCurrentPrice(),
-                                quoteData: quoteData
-                            )
+                            detailsTabView
                         }
                     }
                     .onAppear {

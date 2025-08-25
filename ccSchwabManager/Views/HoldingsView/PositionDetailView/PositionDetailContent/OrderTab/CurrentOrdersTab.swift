@@ -40,7 +40,7 @@ struct CurrentOrdersTab: View {
     }
 }
 
-#Preview("CurrentOrdersTab - With Orders") {
+#Preview("CurrentOrdersTab - With Orders", traits: .landscapeLeft) {
     CurrentOrdersTab(
         symbol: "AAPL",
         orders: createMockOrders()
@@ -48,7 +48,7 @@ struct CurrentOrdersTab: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
 }
 
-#Preview("CurrentOrdersTab - No Orders") {
+#Preview("CurrentOrdersTab - No Orders", traits: .landscapeLeft) {
     CurrentOrdersTab(
         symbol: "XYZ",
         orders: []
