@@ -7,7 +7,6 @@ struct PriceHistorySection: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            
             if isLoading {
                 ProgressView()
                     .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )

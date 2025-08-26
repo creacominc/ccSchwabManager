@@ -53,6 +53,13 @@ struct SalesCalcView: View {
                 }
             }
         }
+        .frame(minWidth: 800, minHeight: 400) // Add minimum dimensions for preview
+        .onAppear {
+            print("SalesCalcView: onAppear - taxLotData count: \(taxLotData.count), isLoadingTaxLots: \(isLoadingTaxLots)")
+            if !taxLotData.isEmpty {
+                print("SalesCalcView: First record - Qty: \(taxLotData[0].quantity), Price: \(taxLotData[0].price)")
+            }
+        }
         .onChange(of: SchwabClient.shared.showIncompleteDataWarning) { oldValue, newValue in
             showIncompleteDataWarning = newValue
         }

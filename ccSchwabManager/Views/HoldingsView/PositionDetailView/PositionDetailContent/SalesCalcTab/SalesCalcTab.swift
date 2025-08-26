@@ -27,54 +27,7 @@ struct SalesCalcTab: View {
 #Preview("SalesCalcTab - With Data", traits: .landscapeLeft) {
     VStack(spacing: 0) {
         // Simulate the tab button area
-        HStack(spacing: 0) {
-            TabButton(
-                title: "Details",
-                icon: "info.circle",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Price History",
-                icon: "chart.line.uptrend.xyaxis",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Transactions",
-                icon: "list.bullet",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Sales Calc",
-                icon: "calculator",
-                isSelected: true,
-                action: {}
-            )
-            TabButton(
-                title: "Orders",
-                icon: "doc.text",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "OCO",
-                icon: "arrow.up.circle",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Sequence",
-                icon: "arrow.up.circle",
-                isSelected: false,
-                action: {}
-            )
-        }
-        .background(Color.gray.opacity(0.1))
-        .padding(.horizontal)
-        .padding(.bottom, 2)
-        
+        createMockTabBar()
         // Tab content area
         SalesCalcTab(
             symbol: "AAPL",
@@ -84,59 +37,14 @@ struct SalesCalcTab: View {
             isLoadingTaxLots: false,
             quoteData: createMockQuoteData()
         )
+        .background(Color.blue.opacity(0.1)) // Add background to see the content area
     }
 }
 
 #Preview("SalesCalcTab - Loading State", traits: .landscapeLeft) {
     VStack(spacing: 0) {
         // Simulate the tab button area
-        HStack(spacing: 0) {
-            TabButton(
-                title: "Details",
-                icon: "info.circle",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Price History",
-                icon: "chart.line.uptrend.xyaxis",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Transactions",
-                icon: "list.bullet",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Sales Calc",
-                icon: "calculator",
-                isSelected: true,
-                action: {}
-            )
-            TabButton(
-                title: "Orders",
-                icon: "doc.text",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "OCO",
-                icon: "arrow.up.circle",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Sequence",
-                icon: "arrow.up.circle",
-                isSelected: false,
-                action: {}
-            )
-        }
-        .background(Color.gray.opacity(0.1))
-        .padding(.horizontal)
-        .padding(.bottom, 2)
+        createMockTabBar()
         
         // Tab content area
         SalesCalcTab(
@@ -153,53 +61,7 @@ struct SalesCalcTab: View {
 #Preview("SalesCalcTab - No Data", traits: .landscapeLeft) {
     VStack(spacing: 0) {
         // Simulate the tab button area
-        HStack(spacing: 0) {
-            TabButton(
-                title: "Details",
-                icon: "info.circle",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Price History",
-                icon: "chart.line.uptrend.xyaxis",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Transactions",
-                icon: "list.bullet",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Sales Calc",
-                icon: "calculator",
-                isSelected: true,
-                action: {}
-            )
-            TabButton(
-                title: "Orders",
-                icon: "doc.text",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "OCO",
-                icon: "arrow.up.circle",
-                isSelected: false,
-                action: {}
-            )
-            TabButton(
-                title: "Sequence",
-                icon: "arrow.up.circle",
-                isSelected: false,
-                action: {}
-            )
-        }
-        .background(Color.gray.opacity(0.1))
-        .padding(.horizontal)
-        .padding(.bottom, 2)
+        createMockTabBar()
         
         // Tab content area
         SalesCalcTab(
@@ -285,4 +147,55 @@ private func createMockQuoteData() -> QuoteData {
         reference: nil,
         regular: regularMarket
     )
+} 
+
+@MainActor
+private func createMockTabBar() -> some View {
+    HStack(spacing: 0) {
+        TabButton(
+            title: "Details",
+            icon: "info.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Price History",
+            icon: "chart.line.uptrend.xyaxis",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Transactions",
+            icon: "list.bullet",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sales Calc",
+            icon: "calculator",
+            isSelected: true,
+            action: {}
+        )
+        TabButton(
+            title: "Orders",
+            icon: "doc.text",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "OCO",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sequence",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+    }
+    .background(Color.gray.opacity(0.1))
+    .padding(.horizontal)
+    .padding(.bottom, 2)
 } 

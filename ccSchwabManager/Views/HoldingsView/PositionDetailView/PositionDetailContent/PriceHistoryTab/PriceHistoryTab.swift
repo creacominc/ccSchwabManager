@@ -159,54 +159,116 @@ struct PriceHistoryTab: View {
     )
     
     return GeometryReader { geometry in
-        PriceHistoryTab(
-            priceHistory: samplePriceHistory,
-            isLoading: false,
-            formatDate: { timestamp in
-                if let timestamp = timestamp {
-                    let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-                    return date.formatted(date: .abbreviated, time: .omitted)
-                }
-                return "N/A"
-            },
-            geometry: geometry
-        )
+        VStack {
+            createMockTabBar()
+            PriceHistoryTab(
+                priceHistory: samplePriceHistory,
+                isLoading: false,
+                formatDate: { timestamp in
+                    if let timestamp = timestamp {
+                        let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                        return date.formatted(date: .abbreviated, time: .omitted)
+                    }
+                    return "N/A"
+                },
+                geometry: geometry
+            )
+        }
     }
     .padding()
 }
 
 #Preview("PriceHistoryTab - Loading", traits: .landscapeLeft) {
     GeometryReader { geometry in
-        PriceHistoryTab(
-            priceHistory: nil,
-            isLoading: true,
-            formatDate: { timestamp in
-                if let timestamp = timestamp {
-                    let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-                    return date.formatted(date: .abbreviated, time: .omitted)
-                }
-                return "N/A"
-            },
-            geometry: geometry
-        )
+        VStack {
+            createMockTabBar()
+            PriceHistoryTab(
+                priceHistory: nil,
+                isLoading: true,
+                formatDate: { timestamp in
+                    if let timestamp = timestamp {
+                        let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                        return date.formatted(date: .abbreviated, time: .omitted)
+                    }
+                    return "N/A"
+                },
+                geometry: geometry
+            )
+        }
     }
     .padding()
 }
 
 #Preview("PriceHistoryTab - No Data", traits: .landscapeLeft) {
     GeometryReader { geometry in
-        PriceHistoryTab(
-            priceHistory: nil,
-            isLoading: false,
-            formatDate: { timestamp in
-                if let timestamp = timestamp {
-                    let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-                    return date.formatted(date: .abbreviated, time: .omitted)
-                }
-                return "N/A"
-            },
-            geometry: geometry
-        )
+        VStack {
+            createMockTabBar()
+            PriceHistoryTab(
+                priceHistory: nil,
+                isLoading: false,
+                formatDate: { timestamp in
+                    if let timestamp = timestamp {
+                        let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
+                        return date.formatted(date: .abbreviated, time: .omitted)
+                    }
+                    return "N/A"
+                },
+                geometry: geometry
+            )
+        }
     }
     .padding()
 } 
+
+
+@MainActor
+private func createMockTabBar() -> some View {
+    HStack(spacing: 0) {
+        TabButton(
+            title: "Details",
+            icon: "info.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Price History",
+            icon: "chart.line.uptrend.xyaxis",
+            isSelected: true,
+            action: {}
+        )
+        TabButton(
+            title: "Transactions",
+            icon: "list.bullet",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sales Calc",
+            icon: "calculator",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Orders",
+            icon: "doc.text",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "OCO",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sequence",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+    }
+    .background(Color.gray.opacity(0.1))
+    .padding(.horizontal)
+    .padding(.bottom, 2)
+}
+

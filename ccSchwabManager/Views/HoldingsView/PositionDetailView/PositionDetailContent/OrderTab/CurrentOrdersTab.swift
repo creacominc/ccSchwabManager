@@ -41,19 +41,23 @@ struct CurrentOrdersTab: View {
 }
 
 #Preview("CurrentOrdersTab - With Orders", traits: .landscapeLeft) {
-    CurrentOrdersTab(
-        symbol: "AAPL",
-        orders: createMockOrders()
-    )
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    VStack {
+        createMockTabBar()
+        CurrentOrdersTab(
+            symbol: "AAPL",
+            orders: createMockOrders()
+        )
+    }
 }
 
 #Preview("CurrentOrdersTab - No Orders", traits: .landscapeLeft) {
-    CurrentOrdersTab(
-        symbol: "XYZ",
-        orders: []
-    )
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    VStack {
+        createMockTabBar()
+        CurrentOrdersTab(
+            symbol: "XYZ",
+            orders: []
+        )
+    }
 }
 
 // MARK: - Mock Data for Previews
@@ -83,4 +87,56 @@ private func createMockOrders() -> [Order] {
     )
     
     return [order]
+}
+
+
+@MainActor
+private func createMockTabBar() -> some View {
+    HStack(spacing: 0) {
+        TabButton(
+            title: "Details",
+            icon: "info.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Price History",
+            icon: "chart.line.uptrend.xyaxis",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Transactions",
+            icon: "list.bullet",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sales Calc",
+            icon: "calculator",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Orders",
+            icon: "doc.text",
+            isSelected: true,
+            action: {}
+        )
+        TabButton(
+            title: "OCO",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sequence",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+    }
+    .background(Color.gray.opacity(0.1))
+    .padding(.horizontal)
+    .padding(.bottom, 2)
 }

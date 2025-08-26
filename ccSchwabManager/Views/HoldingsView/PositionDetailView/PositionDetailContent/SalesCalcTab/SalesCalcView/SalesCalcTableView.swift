@@ -193,6 +193,11 @@ struct SalesCalcTable: View
             .frame(maxWidth: .infinity)
             .onAppear {
                 print("SalesCalcTableView: Table initialized with \(sortedData.count) items for symbol \(symbol)")
+                print("SalesCalcTableView: Geometry width: \(width), showGainLossDollar: \(showGainLossDollar)")
+                print("SalesCalcTableView: sortedData count: \(sortedData.count)")
+                if !sortedData.isEmpty {
+                    print("SalesCalcTableView: First sorted item - Qty: \(sortedData[0].quantity), Price: \(sortedData[0].price)")
+                }
             }
         }
     }

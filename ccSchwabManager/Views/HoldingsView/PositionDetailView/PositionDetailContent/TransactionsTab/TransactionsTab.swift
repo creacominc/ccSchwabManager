@@ -60,24 +60,30 @@ struct TransactionsTab: View {
     ]
     
     return GeometryReader { geometry in
-        TransactionsTab(
-            isLoading: false,
-            symbol: "AAPL",
-            geometry: geometry,
-            transactions: sampleTransactions
-        )
+        VStack{
+            createMockTabBar()
+            TransactionsTab(
+                isLoading: false,
+                symbol: "AAPL",
+                geometry: geometry,
+                transactions: sampleTransactions
+            )
+        }
     }
     .padding()
 }
 
 #Preview("TransactionsTab - Loading State", traits: .landscapeLeft) {
     return GeometryReader { geometry in
-        TransactionsTab(
-            isLoading: true,
-            symbol: "AAPL",
-            geometry: geometry,
-            transactions: []
-        )
+        VStack{
+            createMockTabBar()
+            TransactionsTab(
+                isLoading: true,
+                symbol: "AAPL",
+                geometry: geometry,
+                transactions: []
+            )
+        }
     }
     .padding()
 }
@@ -104,13 +110,66 @@ struct TransactionsTab: View {
     ]
     
     return GeometryReader { geometry in
-        TransactionsTab(
-            isLoading: false,
-            symbol: "MSFT",
-            geometry: geometry,
-            transactions: sampleTransactions
-        )
+        VStack{
+            createMockTabBar()
+            TransactionsTab(
+                isLoading: false,
+                symbol: "MSFT",
+                geometry: geometry,
+                transactions: sampleTransactions
+            )
+        }
     }
     .padding()
 }
- 
+
+@MainActor
+private func createMockTabBar() -> some View {
+    HStack(spacing: 0) {
+        TabButton(
+            title: "Details",
+            icon: "info.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Price History",
+            icon: "chart.line.uptrend.xyaxis",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Transactions",
+            icon: "list.bullet",
+            isSelected: true,
+            action: {}
+        )
+        TabButton(
+            title: "Sales Calc",
+            icon: "calculator",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Orders",
+            icon: "doc.text",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "OCO",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+        TabButton(
+            title: "Sequence",
+            icon: "arrow.up.circle",
+            isSelected: false,
+            action: {}
+        )
+    }
+    .background(Color.gray.opacity(0.1))
+    .padding(.horizontal)
+    .padding(.bottom, 2)
+}
