@@ -415,6 +415,7 @@ struct HoldingsView: View {
                 viewSize = newValue
             }
         }
+//        .debugPreview("HoldingsView")
         .sheet(item: $selectedPosition) { selected in
             let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
             PositionDetailView(

@@ -30,7 +30,6 @@ struct OCOOrdersTab: View {
                     RecommendedOCOOrdersSection(
                         symbol: symbol,
                         atrValue: atrValue,
-                        taxLotData: taxLotData,
                         sharesAvailableForTrading: sharesAvailableForTrading,
                         quoteData: quoteData,
                         accountNumber: accountNumber

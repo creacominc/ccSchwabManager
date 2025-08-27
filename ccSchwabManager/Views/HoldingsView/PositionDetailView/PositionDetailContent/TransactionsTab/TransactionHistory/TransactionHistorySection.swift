@@ -7,37 +7,36 @@ struct TransactionHistorySection: View {
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
     @State private var copiedValue: String = "TBD"
 
-    private var sortedTransactions: [Transaction] {
-        guard let sortConfig = currentSort else { return transactions }
+    // Pre-compute transactions with computed prices to avoid repeated API calls
+    private var transactionsWithComputedPrices: [TransactionWithComputedPrice] {
+        return transactions.map { TransactionWithComputedPrice(transaction: $0, symbol: symbol) }
+    }
+
+    private var sortedTransactions: [TransactionWithComputedPrice] {
+        guard let sortConfig = currentSort else { return transactionsWithComputedPrices }
         print( "=== Sorting transactions ===  \(symbol)" )
-        return transactions.sorted { t1, t2 in
+        return transactionsWithComputedPrices.sorted { t1, t2 in
             let ascending = sortConfig.ascending
             switch sortConfig.column {
             case .date:
-                let date1 = t1.tradeDate ?? ""
-                let date2 = t2.tradeDate ?? ""
+                let date1 = t1.transaction.tradeDate ?? ""
+                let date2 = t2.transaction.tradeDate ?? ""
                 return ascending ? date1 < date2 : date1 > date2
             case .type:
-                let type1 = (t1.netAmount ?? 0) < 0 ? "Buy" : (t1.netAmount ?? 0) > 0 ? "Sell" : "Unknown"
-                let type2 = (t2.netAmount ?? 0) < 0 ? "Buy" : (t2.netAmount ?? 0) > 0 ? "Sell" : "Unknown"
+                let type1 = t1.transactionType
+                let type2 = t2.transactionType
                 return ascending ? type1 < type2 : type1 > type2
             case .quantity:
-                // get the amount from the first transferItem with instrumentSymbol matching symbol
-                let transferItem1 = t1.transferItems.first(where: { $0.instrument?.symbol == symbol })
-                let transferItem2 = t2.transferItems.first(where: { $0.instrument?.symbol == symbol })
-                let qty1 = transferItem1?.amount ?? 0
-                let qty2 = transferItem2?.amount ?? 0
+                let qty1 = t1.amount
+                let qty2 = t2.amount
                 return ascending ? qty1 < qty2 : qty1 > qty2
             case .price:
-                // get the price from the first transferItem with instrumentSymbol matching symbol
-                let transferItem1 = t1.transferItems.first(where: { $0.instrument?.symbol == symbol })
-                let transferItem2 = t2.transferItems.first(where: { $0.instrument?.symbol == symbol })
-                let price1 = transferItem1?.price ?? 0
-                let price2 = transferItem2?.price ?? 0
+                let price1 = t1.computedPrice
+                let price2 = t2.computedPrice
                 return ascending ? price1 < price2 : price1 > price2
             case .netAmount:
-                let amount1 = t1.netAmount ?? 0
-                let amount2 = t2.netAmount ?? 0
+                let amount1 = t1.transaction.netAmount ?? 0
+                let amount2 = t2.transaction.netAmount ?? 0
                 return ascending ? amount1 < amount2 : amount1 > amount2
             }
         }
@@ -125,7 +124,7 @@ struct TransactionHistorySection: View {
                             HStack {
                                 columnHeader(title: "Date", column: .date)
                                 Button(action: {
-                                    CSVExporter.exportTransactions(sortedTransactions, symbol: symbol)
+                                    CSVExporter.exportTransactions(sortedTransactions.map { $0.transaction }, symbol: symbol)
                                 }) {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.caption)
@@ -149,15 +148,16 @@ struct TransactionHistorySection: View {
                         // Content area with calculated widths passed down
                         ScrollView {
                             LazyVStack(spacing: 0) {
-                                ForEach(Array(sortedTransactions.enumerated()), id: \.element.id) { index, transaction in
+                                ForEach(Array(sortedTransactions.enumerated()), id: \.element.transaction.id) { index, transactionWithPrice in
                                     TransactionRow(
-                                        transaction: transaction,
+                                        transaction: transactionWithPrice.transaction,
                                         symbol: symbol,
                                         calculatedWidths: calculatedWidths,
                                         formatDate: formatDate,
                                         copyToClipboard: copyToClipboard,
                                         copyToClipboardValue: copyToClipboard,
-                                        isEvenRow: index % 2 == 0
+                                        isEvenRow: index % 2 == 0,
+                                        computedPrice: transactionWithPrice.computedPrice
                                     )
                                 }
                             }

@@ -72,13 +72,13 @@ private func createMockOrders() -> [Order] {
         instrument: instrument,
         instruction: .BUY_TO_OPEN,
         positionEffect: .OPENING,
-        quantity: 100
+        quantity: 2
     )
     
     let order = Order(
         orderType: .LIMIT,
-        quantity: 100,
-        price: 150.50,
+        quantity: 2,
+        price: 50.50,
         orderLegCollection: [orderLeg],
         orderStrategyType: .SINGLE,
         orderId: 12345,
