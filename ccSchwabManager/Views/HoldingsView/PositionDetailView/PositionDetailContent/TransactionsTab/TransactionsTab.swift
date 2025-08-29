@@ -3,20 +3,21 @@ import SwiftUI
 struct TransactionsTab: View {
     let isLoading: Bool
     let symbol: String
-    let geometry: GeometryProxy
     let transactions: [Transaction]
     
     var body: some View {
-        ScrollView {
-            TransactionHistorySection(
-                isLoading: isLoading,
-                symbol: symbol,
-                transactions: transactions
-            )
-            .frame(width: geometry.size.width * 0.88, height: geometry.size.height * 0.90)
-        }
-        .tabItem {
-            Label("Transactions", systemImage: "list.bullet")
+        GeometryReader { geometry in
+            ScrollView {
+                TransactionHistorySection(
+                    isLoading: isLoading,
+                    symbol: symbol,
+                    transactions: transactions
+                )
+                .frame( width: geometry.size.width * 0.98, height: geometry.size.height * 0.95 )
+            }
+            .tabItem {
+                Label("Transactions", systemImage: "list.bullet")
+            }
         }
     }
 }
@@ -65,7 +66,6 @@ struct TransactionsTab: View {
             TransactionsTab(
                 isLoading: false,
                 symbol: "AAPL",
-                geometry: geometry,
                 transactions: sampleTransactions
             )
         }
@@ -80,7 +80,6 @@ struct TransactionsTab: View {
             TransactionsTab(
                 isLoading: true,
                 symbol: "AAPL",
-                geometry: geometry,
                 transactions: []
             )
         }
@@ -115,7 +114,6 @@ struct TransactionsTab: View {
             TransactionsTab(
                 isLoading: false,
                 symbol: "MSFT",
-                geometry: geometry,
                 transactions: sampleTransactions
             )
         }

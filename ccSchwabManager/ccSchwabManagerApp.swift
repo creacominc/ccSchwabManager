@@ -66,20 +66,19 @@ struct ccSchwabManagerApp: App
         }
         print( "=== ccSchwabManagerApp init ===" )
         AppLogger.shared.info("=== ccSchwabManagerApp started ===")
-        AppLogger.shared.info("=== Testing log file write ===" )
-        print("Log file should be at: ~/Documents/ccSchwabManager.log")
+        print("Log file location: \(AppLogger.shared.getLogFilePath())")
         
-        // Direct file write test
-        let testMessage = "=== Direct file write test ===\n"
-        if let data = testMessage.data(using: .utf8) {
-            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let logFileURL = documentsPath.appendingPathComponent("ccSchwabManager.log")
-            if let fileHandle = try? FileHandle(forWritingTo: logFileURL) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-                fileHandle.closeFile()
-            }
-        }
+        // // Direct file write test
+        // let testMessage = "=== Direct file write test ===\n"
+        // if let data = testMessage.data(using: .utf8) {
+        //     let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        //     let logFileURL = documentsPath.appendingPathComponent("ccSchwabManager.log")
+        //     if let fileHandle = try? FileHandle(forWritingTo: logFileURL) {
+        //         fileHandle.seekToEndOfFile()
+        //         fileHandle.write(data)
+        //         fileHandle.closeFile()
+        //     }
+        // }
     }
     
     var didBecomeActiveNotification: Notification.Name {

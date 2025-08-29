@@ -17,7 +17,7 @@ struct PositionDetailContent: View {
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
     let transactions: [Transaction]
-    @Binding var viewSize: CGSize
+//    @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
     @State private var orders: [Order] = []
     @State private var isLoadingOrders: Bool = false
@@ -131,14 +131,12 @@ struct PositionDetailContent: View {
                             PriceHistoryTab(
                                 priceHistory: priceHistory,
                                 isLoading: isLoadingPriceHistory,
-                                formatDate: formatDate,
-                                geometry: geometry
+                                formatDate: formatDate
                             )
                         case 2:
                             TransactionsTab(
                                 isLoading: isLoadingTransactions,
                                 symbol: position.instrument?.symbol ?? "",
-                                geometry: geometry,
                                 transactions: transactions
                             )
                         case 3:
@@ -176,13 +174,14 @@ struct PositionDetailContent: View {
                             detailsTabView
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
-                        viewSize = geometry.size
+//                        viewSize = geometry.size
                         fetchOrders()
                     }
-                    .onChange(of: geometry.size) { oldValue, newValue in
-                        viewSize = newValue
-                    }
+//                    .onChange(of: geometry.size) { oldValue, newValue in
+//                        viewSize = newValue
+//                    }
                     .onChange(of: symbol) { _, _ in
                         fetchOrders()
                     }

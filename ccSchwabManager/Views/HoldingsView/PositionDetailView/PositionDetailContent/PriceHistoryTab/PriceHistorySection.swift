@@ -11,18 +11,16 @@ struct PriceHistorySection: View {
                 ProgressView()
                     .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
                     .scaleEffect(2.0, anchor: .center)
-                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else if let history = priceHistory {
                 PriceHistoryChart(candles: history.candles)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
                 Text("No price history available")
                     .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             }
         }
-        .padding(.vertical)
     }
 }
 

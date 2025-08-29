@@ -56,14 +56,6 @@ struct ContentView: View
                 }
             }
         }
-//        .debugPreview("ContentView Group")
-//        .onAppear {
-//            if ProcessInfo.processInfo.isPreview {
-//                print("⏭ PREVIEW: ContentView appeared and accessing secrets properties")
-//                print("⏭ Stack trace:")
-//                Thread.callStackSymbols.forEach { print("⏭   \($0)") }
-//            }
-//        }
         .sheet(isPresented: $showingAuthDialog) {
             CredentialsInputView(isPresented: $showingAuthDialog)
                 .onDisappear {
@@ -71,14 +63,5 @@ struct ContentView: View
                     secretsManager.objectWillChange.send()
                 }
         }
-//        .onAppear {
-//            // Clear any stuck loading states when the view appears
-//            SchwabClient.shared.clearLoadingState()
-//        }
-//        .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
-//            // Clear stuck loading states when app becomes active
-//            print("📱 App became active - clearing stuck loading states")
-//            SchwabClient.shared.clearLoadingState()
-//        }
     }
 }

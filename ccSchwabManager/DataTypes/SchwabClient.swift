@@ -772,19 +772,7 @@ class SchwabClient
         m_refreshAccessToken_running = false
     }
     
-//    // Add method to clear stuck loading states
-//    func clearLoadingState() {
-//        // AppLogger.shared.warning("🧹 SchwabClient.clearLoadingState - Clearing any stuck loading state")
-//        loadingDelegate?.setLoading(false)
-//        loadingDelegate = nil
-//        
-//        // Also clear any stuck refresh token operations
-//        m_refreshAccessToken_running = false
-//        
-//        // Cancel any ongoing network requests by invalidating the URLSession
-//        URLSession.shared.invalidateAndCancel()
-//    }
-    
+
     /**
      * fetch account numbers and hashes from schwab
      *
@@ -1111,7 +1099,6 @@ class SchwabClient
         AppLogger.shared.debug("=== fetchQuote \(symbol) ===")
         
         let quoteUrl = "\(marketdataAPI)/\(symbol)/quotes"
-//        AppLogger.shared.debug("     quoteUrl: \(quoteUrl)")
         
         guard let url = URL(string: quoteUrl) else {
             AppLogger.shared.debug("fetchQuote. Invalid URL")
@@ -1800,26 +1787,19 @@ class SchwabClient
     public func fetchOrderHistory( retry : Bool = false ) async
     {
         AppLogger.shared.info("fetchOrderHistory === fetchOrderHistory  ===")
-        AppLogger.shared.info("fetchOrderHistory 🚀 Starting fetchOrderHistory")
-        
         // Clear existing orders
         m_orderList.removeAll(keepingCapacity: true)
-        
-        // Get date range for the last year
+        // Get date range for the 6 months
         let today: Date = Date()
-        let oneYearAgo: Date = Calendar.current.date(byAdding: .year, value: -1, to: today) ?? today
-        
+        let sixMonthsAgo: Date = Calendar.current.date(byAdding: .day, value: -31, to: today) ?? today
         let dateFormatter: DateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
         dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
         let todayStr: String = dateFormatter.string(from: today)
-        let dateOneYearAgoStr: String = dateFormatter.string(from: oneYearAgo)
-        
-        AppLogger.shared.info("fetchOrderHistory 📅 Date range: \(dateOneYearAgoStr) to \(todayStr)")
-        
+        let dateSixMonthsAgoStr: String = dateFormatter.string(from: sixMonthsAgo)
+        AppLogger.shared.info("fetchOrderHistory 📅 Date range: \(dateSixMonthsAgoStr) to \(todayStr)")
+
         // Fetch orders for each active status
-        // let ordersWeb = "\(accountWeb)/\(m_secrets.acountNumberHash)/orders"
-        
         await withTaskGroup(of: [Order]?.self) { group in
             for status in OrderStatus.allCases {
                 // ignore order status values that are not active orders
@@ -1827,124 +1807,82 @@ class SchwabClient
                     continue
                 }
                 AppLogger.shared.info("fetchOrderHistory 🔍 Fetching orders for status: \(status.rawValue)")
-                // for accountNumberHash in self.m_secrets.acountNumberHash {
-                    group.addTask {
-                        // AppLogger.shared.debug("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash),  status: \(status.rawValue) ===" )
+                group.addTask {
+                    var orderHistoryUrl: String = "\(ordersWeb)"
+                    orderHistoryUrl += "?fromEnteredTime=\(dateSixMonthsAgoStr)"
+                    orderHistoryUrl += "&toEnteredTime=\(todayStr)"
+                    orderHistoryUrl += "&status=\(status.rawValue)"
 
-                        var orderHistoryUrl = "\(ordersWeb)"
-                        orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
-                        orderHistoryUrl += "&toEnteredTime=\(todayStr)"
-                        orderHistoryUrl += "&status=\(status.rawValue)"
-                        
-                        AppLogger.shared.info("fetchOrderHistory 🔍 Requesting URL: \(orderHistoryUrl)")
+                    guard let url: URL = URL( string: orderHistoryUrl ) else {
+                        AppLogger.shared.error("fetchOrderHistory ❌ fetchOrderHistory. Invalid URL")
+                        return nil
+                    }
 
-                        guard let url = URL( string: orderHistoryUrl ) else {
-                            AppLogger.shared.error("fetchOrderHistory ❌ fetchOrderHistory. Invalid URL")
+                    var request: URLRequest = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "accept")
+                    // set a 10 second timeout on this request
+                    request.timeoutInterval = self.requestTimeout
+
+                    do {
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        guard let httpResponse: HTTPURLResponse = response as? HTTPURLResponse else {
+                            AppLogger.shared.error("fetchOrderHistory ❌ Invalid response type")
+                            return nil
+                        }
+                        if httpResponse.statusCode != 200 {
+                            if httpResponse.statusCode == 401 && retry {
+                                AppLogger.shared.warning("fetchOrderHistory === retrying fetchOrderHistory after refreshing access token ===")
+                                self.refreshAccessToken()
+                                // Note: We can't recursively call async function from within task group
+                                // The retry will be handled by the caller
+                                return nil
+                            }
+
+                            AppLogger.shared.error("fetchOrderHistory ❌ HTTP \(httpResponse.statusCode) for status \(status.rawValue)")
+                            if let serviceError: ServiceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                // print data as string
+                                AppLogger.shared.error("fetchOrderHistory ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")")
+                                serviceError.printErrors(prefix: "fetchOrderHistory ")
+                            }
                             return nil
                         }
 
-                        var request = URLRequest(url: url)
-                        request.httpMethod = "GET"
-                        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-                        request.setValue("application/json", forHTTPHeaderField: "accept")
-                        // set a 10 second timeout on this request
-                        request.timeoutInterval = self.requestTimeout
-                        
+                        // Try to decode, but if it fails, print the raw JSON
                         do {
-                            let (data, response) = try await URLSession.shared.data(for: request)
-
-                            guard let httpResponse = response as? HTTPURLResponse else {
-                                AppLogger.shared.error("fetchOrderHistory ❌ Invalid response type")
-                                return nil
-                            }
-
-                            if httpResponse.statusCode != 200 {
-                                if httpResponse.statusCode == 401 && retry {
-                                    AppLogger.shared.warning("fetchOrderHistory === retrying fetchOrderHistory after refreshing access token ===")
-                                    self.refreshAccessToken()
-                                    // Note: We can't recursively call async function from within task group
-                                    // The retry will be handled by the caller
-                                    return nil
-                                }
-
-                                AppLogger.shared.error("fetchOrderHistory ❌ HTTP \(httpResponse.statusCode) for status \(status.rawValue)")
-                                if let serviceError: ServiceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                    // print data as string
-                                    AppLogger.shared.error("fetchOrderHistory ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")")
-                                    serviceError.printErrors(prefix: "fetchOrderHistory ")
-                                }
-                                return nil
-                            }
-
-                            // Try to decode, but if it fails, print the raw JSON
-                            do {
-                                let decoder = JSONDecoder()
-                                let orders = try decoder.decode([Order].self, from: data)
-
-                                AppLogger.shared.info("fetchOrderHistory ✅ Received \(orders.count) orders for status \(status.rawValue)")
-                                // for order in orders {
-                                //     if let orderId = order.orderId, let symbol = order.orderLegCollection?.first?.instrument?.symbol {
-                                //         AppLogger.shared.debug("fetchOrderHistory   📋 Order ID: \(orderId), Symbol: \(symbol), Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-                                //     }
-                                // }
-
-                                return orders
-                            } catch {
-                                AppLogger.shared.error("fetchOrderHistory ❌ Decoding error for status \(status.rawValue): \(error.localizedDescription)")
-                                AppLogger.shared.error("fetchOrderHistory   detail:  \(error)")
-                                AppLogger.shared.error("fetchOrderHistory ❌ Raw JSON data received:")
-                                AppLogger.shared.error("fetchOrderHistory \(String(data: data, encoding: .utf8) ?? "Could not decode as UTF-8")")
-                                return nil
-                            }
+                            let decoder: JSONDecoder = JSONDecoder()
+                            let orders: [Order] = try decoder.decode([Order].self, from: data)
+                            AppLogger.shared.info("fetchOrderHistory ✅ Received \(orders.count) orders for status \(status.rawValue)")
+                            return orders
                         } catch {
-                            AppLogger.shared.error("fetchOrderHistory ❌ Network error for status \(status.rawValue): \(error.localizedDescription)")
+                            AppLogger.shared.error("fetchOrderHistory ❌ Decoding error for status \(status.rawValue): \(error.localizedDescription)")
+                            AppLogger.shared.error("fetchOrderHistory   detail:  \(error)")
+                            AppLogger.shared.error("fetchOrderHistory ❌ Raw JSON data received:")
+                            AppLogger.shared.error("fetchOrderHistory \(String(data: data, encoding: .utf8) ?? "Could not decode as UTF-8")")
                             return nil
                         }
-                    } // addTask
-                // } // account number hash
+                    } catch {
+                        AppLogger.shared.error("fetchOrderHistory ❌ Network error for status \(status.rawValue): \(error.localizedDescription)")
+                        return nil
+                    }
+                } // addTask
             } // for all orderStatus values
 
             // Collect results from all tasks
-            var totalOrdersReceived = 0
-            for await orders in group {
-                if let orders = orders {
+            var totalOrdersReceived: Int = 0
+            for await orders: [Order]? in group {
+                if let orders: [Order] = orders {
                     totalOrdersReceived += orders.count
-                    AppLogger.shared.info("fetchOrderHistory 📦 Adding \(orders.count) orders from status query (total so far: \(totalOrdersReceived))")
-                    // for order in orders {
-                    //     if let orderId = order.orderId {
-                    //         AppLogger.shared.debug("fetchOrderHistory   📋 Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
-                    //     }
-                    // }
+                    AppLogger.shared.info("fetchOrderHistory 📦 Adding \(orders.count) orders from query (total so far: \(totalOrdersReceived))")
                     m_orderList.append(contentsOf: orders)
                 }
             } // append orders
         } // await
-        
+
         AppLogger.shared.info("fetchOrderHistory 📊 Fetched \(m_orderList.count) orders for all accounts")
-        
-        // Deduplicate orders by orderId to ensure uniqueness
-        let uniqueOrders = Dictionary(grouping: m_orderList, by: { $0.orderId })
-            .compactMap { (orderId, orders) -> Order? in
-                // If there are multiple orders with the same ID, take the first one
-                // This could happen if the same order appears in multiple status queries
-                if orders.count > 1 {
-                    AppLogger.shared.warning("fetchOrderHistory ⚠️ Found \(orders.count) orders with ID \(orderId?.description ?? "nil"), keeping first one")
-                }
-                return orders.first
-            }
-        
-        m_orderList = uniqueOrders
+
         AppLogger.shared.info("fetchOrderHistory 📊 After deduplication: \(m_orderList.count) unique orders")
-        
-        // // Debug: Print all unique orders with their details
-        // AppLogger.shared.debug("fetchOrderHistory 🔍 All unique orders:")
-        // for order in m_orderList {
-        //     if let orderId = order.orderId {
-        //         let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
-        //         AppLogger.shared.debug("fetchOrderHistory   📋 ID: \(orderId), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-        //     }
-        // }
-        
         updateSymbolsWithOrders()
     }
     
@@ -2288,20 +2226,13 @@ class SchwabClient
      * getPrimaryOrderStatus - return the highest priority order status for a given symbol
      */
     public func getPrimaryOrderStatus(for symbol: String) -> ActiveOrderStatus? {
-        // AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
-        
         guard let statuses = m_symbolsWithOrders[symbol], !statuses.isEmpty else {
             // AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
             return nil
         }
-        
         // Sort by priority and return the highest priority status
         let sortedStatuses = statuses.sorted { $0.priority < $1.priority }
         let primaryStatus = sortedStatuses.first
-       
-        // AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
-        // AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
-        
         return primaryStatus
     }
     
@@ -2310,21 +2241,6 @@ class SchwabClient
      */
     public func getOrderList() -> [Order]
     {
-        AppLogger.shared.debug("[SchwabClient] getOrderList() called, returning \(m_orderList.count) orders")
-        
-        // Debug: Print all order IDs to check for duplicates
-        let orderIds = m_orderList.compactMap { $0.orderId }
-        let uniqueOrderIds = Set(orderIds)
-        AppLogger.shared.debug("[SchwabClient] Total order IDs: \(orderIds.count), Unique order IDs: \(uniqueOrderIds.count)")
-        
-        if orderIds.count != uniqueOrderIds.count {
-            AppLogger.shared.debug("[SchwabClient] WARNING: Found duplicate order IDs!")
-            let duplicates = Dictionary(grouping: orderIds, by: { $0 })
-                .filter { $0.value.count > 1 }
-                .map { $0.key }
-            AppLogger.shared.debug("[SchwabClient] Duplicate order IDs: \(duplicates)")
-        }
-        
         return m_orderList
     }
     
@@ -3018,18 +2934,15 @@ class SchwabClient
      */
     private func addTransactionsWithoutSorting(_ newTransactions: [Transaction]) {
         guard !newTransactions.isEmpty else { return }
-        
         // Create a set of existing transaction activityIds to avoid duplicates
         let existingActivityIds = Set(m_transactionList.compactMap { $0.activityId })
         let uniqueNewTransactions = newTransactions.filter { transaction in
             guard let activityId = transaction.activityId else { return true } // Include transactions without activityIds
             return !existingActivityIds.contains(activityId)
         }
-        
         if uniqueNewTransactions.count != newTransactions.count {
             AppLogger.shared.debug("  -- Removed \(newTransactions.count - uniqueNewTransactions.count) duplicate transactions")
         }
-        
         m_transactionList.append(contentsOf: uniqueNewTransactions)
     }
 

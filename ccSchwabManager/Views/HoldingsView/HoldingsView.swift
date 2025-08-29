@@ -338,9 +338,9 @@ struct HoldingsView: View {
                         selectedPositionId: Binding(
                             get: { selectedPosition?.id },
                             set: { newId in
-                                if let newId = newId,
-                                   let position = sortedHoldings.first(where: { $0.id == newId }),
-                                   let accountNumber = accountPositions.first(where: { $0.0.id == newId })?.1 {
+                                if let newId: Position.ID = newId,
+                                   let position: Position = sortedHoldings.first(where: { $0.id == newId }),
+                                   let accountNumber: String = accountPositions.first(where: { $0.0.id == newId })?.1 {
                                     selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
                                 }
                             }
@@ -351,8 +351,10 @@ struct HoldingsView: View {
                         tradeDateCache: tradeDateCache,
                         orderStatusCache: orderStatusCache,
                     )
+                    .padding( 5 )
                 }
             } // VStack
+            .padding( 5 )
             // Platform-specific searchable modifier (for macOS)
             #if os(macOS)
             .searchable(text: $searchText, prompt: "Search by symbol or description")
@@ -415,7 +417,6 @@ struct HoldingsView: View {
                 viewSize = newValue
             }
         }
-//        .debugPreview("HoldingsView")
         .sheet(item: $selectedPosition) { selected in
             let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
             PositionDetailView(
@@ -475,8 +476,8 @@ struct HoldingsView: View {
                     }
                 }
             }
-            .frame(width: viewSize.width * 0.97,
-                   height: viewSize.height * 0.92)
+            .frame( width: viewSize.width * 0.97,
+                    height: viewSize.height * 0.98 )
         }
         .withLoadingState(loadingState)
     }
@@ -621,4 +622,4 @@ struct HoldingsView: View {
         }
     }
 
-} 
+}

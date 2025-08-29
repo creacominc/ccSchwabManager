@@ -68,7 +68,6 @@ struct HoldingsTable: View {
                     copyToClipboard: copyToClipboard,
                     copyToClipboardValue: copyToClipboardValue,
                 )
-                //.frame( alignment: .top )
                 .layoutPriority(2)
                 if copiedValue != "TBD" {
                     Text("Copied: \(copiedValue)")

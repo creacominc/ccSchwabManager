@@ -41,7 +41,7 @@ struct DetailsTab: View {
                                 .font(.body)
                                 .foregroundColor( getFieldColor( rowIndex, colIndex ) )
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+//                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.vertical, 2)

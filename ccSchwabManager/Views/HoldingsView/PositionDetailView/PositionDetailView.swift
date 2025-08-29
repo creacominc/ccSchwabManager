@@ -33,11 +33,9 @@ struct PositionDetailView: View {
     }
 
     private func fetchDataForSymbol() {
-        //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to TRUE")
         loadingState.isLoading = true
         
         // Connect loading state to SchwabClient
-        //print("🔗 PositionDetailView - Setting SchwabClient.loadingDelegate")
         SchwabClient.shared.loadingDelegate = loadingState
         
         isLoadingPriceHistory = true
@@ -46,40 +44,31 @@ struct PositionDetailView: View {
         isLoadingTaxLots = true
         
         defer { 
-            //print("🔍 PositionDetailView.fetchDataForSymbol - Setting loading to FALSE")
             loadingState.isLoading = false
             isLoadingPriceHistory = false
             isLoadingTransactions = false
             isLoadingQuote = false
             isLoadingTaxLots = false
         }
-        
         guard let symbol = position.instrument?.symbol else {
             print("PositionDetailView: No symbol found for position")
             return
         }
-        
         print("PositionDetailView: Fetching data for symbol \(symbol)")
-        
         // Fetch all position-related data in parallel
         priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
         transactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
         quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
-        
         // Fetch tax lot data as part of the main data fetch
         // Get current price from quote for tax lot calculations
         let currentPrice = quoteData?.quote?.lastPrice ?? 
                           quoteData?.extended?.lastPrice ?? 
                           quoteData?.regular?.regularMarketLastPrice
         taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
-        
         print("PositionDetailView: Fetched \(taxLotData.count) tax lots for \(symbol)")
-        
         // Compute shares available for trading using the tax lots
         computedSharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: taxLotData)
         print("PositionDetailView: Computed shares available for \(symbol): \(computedSharesAvailableForTrading)")
-        
-        // print( "   ---- fetched \(taxLotData.count) tax lots for symbol \(symbol)" )
     }
 
     var body: some View {
@@ -136,7 +125,7 @@ struct PositionDetailView: View {
                     taxLotData: taxLotData,
                     isLoadingTaxLots: isLoadingTaxLots,
                     transactions: transactions,
-                    viewSize: $viewSize,
+//                    viewSize: $viewSize,
                     selectedTab: $selectedTab,
                 )
                 .padding(.horizontal)
@@ -163,7 +152,6 @@ struct PositionDetailView: View {
             }
         }
         .onDisappear {
-            //print("🔗 PositionDetailView - Clearing SchwabClient.loadingDelegate")
             SchwabClient.shared.loadingDelegate = nil
         }
         .withLoadingState(loadingState)

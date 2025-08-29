@@ -4,19 +4,20 @@ struct PriceHistoryTab: View {
     let priceHistory: CandleList?
     let isLoading: Bool
     let formatDate: (Int64?) -> String
-    let geometry: GeometryProxy
-    
+
     var body: some View {
-        ScrollView {
-            PriceHistorySection(
-                priceHistory: priceHistory,
-                isLoading: isLoading,
-                formatDate: formatDate
-            )
-            .frame(width: geometry.size.width * 0.90, height: geometry.size.height * 0.90)
-        }
-        .tabItem {
-            Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
+        GeometryReader { geometry in
+            ScrollView {
+                PriceHistorySection(
+                    priceHistory: priceHistory,
+                    isLoading: isLoading,
+                    formatDate: formatDate
+                )
+                .frame( width: geometry.size.width * 0.98, height: geometry.size.height * 0.95 )
+            }
+            .tabItem {
+                Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
+            }
         }
     }
 }
@@ -170,8 +171,8 @@ struct PriceHistoryTab: View {
                         return date.formatted(date: .abbreviated, time: .omitted)
                     }
                     return "N/A"
-                },
-                geometry: geometry
+                } // ,
+                // geometry: geometry
             )
         }
     }
@@ -191,8 +192,8 @@ struct PriceHistoryTab: View {
                         return date.formatted(date: .abbreviated, time: .omitted)
                     }
                     return "N/A"
-                },
-                geometry: geometry
+                } // ,
+                // geometry: geometry
             )
         }
     }
@@ -212,8 +213,8 @@ struct PriceHistoryTab: View {
                         return date.formatted(date: .abbreviated, time: .omitted)
                     }
                     return "N/A"
-                },
-                geometry: geometry
+                } // ,
+                // geometry: geometry
             )
         }
     }
