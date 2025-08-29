@@ -18,33 +18,48 @@ struct DetailsTab: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // Three-column layout: Left | Spacer | Right
-            ForEach(0..<6) { rowIndex in
-                HStack(spacing: 0) {
-                    ForEach(0..<2)
-                    { colIndex in
-                        // add spacer before all but first column
-                        if colIndex > 0 {
-                            // Spacer column - fills the gap
-                            Spacer()
-                                .frame(minWidth: 1)
-                                .padding(.horizontal, 8)
-                        }
-                        // column
-                        HStack(spacing: 12)
-                        {
-                            Text( labels[ colIndex ][ rowIndex ] )
+            // Two-column layout: Left | Spacer | Right
+            HStack(spacing: 0) {
+                // Left column
+                VStack(spacing: 0) {
+                    ForEach(0..<6) { rowIndex in
+                        HStack(spacing: 12) {
+                            Text(labels[0][rowIndex])
                                 .font(.body)
                                 .foregroundColor(.primary)
                                 .frame(width: 120, alignment: .leading)
-                            Text( getFieldValue( rowIndex, colIndex ) )
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(getFieldValue(rowIndex, 0))
                                 .font(.body)
-                                .foregroundColor( getFieldColor( rowIndex, colIndex ) )
+                                .foregroundColor(getFieldColor(rowIndex, 0))
+                                .frame(minWidth: 80, alignment: .leading)
                         }
-//                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 2)
                     }
                 }
-                .padding(.vertical, 2)
+                
+                // Spacer between columns
+                Spacer()
+                    .frame(minWidth: 1)
+                    .padding(.horizontal, 16)
+                
+                // Right column
+                VStack(spacing: 0) {
+                    ForEach(0..<6) { rowIndex in
+                        HStack(spacing: 12) {
+                            Text(labels[1][rowIndex])
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .frame(width: 120, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(getFieldValue(rowIndex, 1))
+                                .font(.body)
+                                .foregroundColor(getFieldColor(rowIndex, 1))
+                                .frame(minWidth: 80, alignment: .leading)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
             }
         }
         .padding()
