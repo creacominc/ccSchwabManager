@@ -115,6 +115,12 @@ struct RecommendedOCOOrdersSection: View {
             return cachedAllOrders
         }
         
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ getAllOrders: No tax lot data available")
+            return []
+        }
+        
         var orders: [(String, Any)] = []
         
         AppLogger.shared.debug("=== getAllOrders called ===")
@@ -148,6 +154,12 @@ struct RecommendedOCOOrdersSection: View {
     
     private func calculateRecommendedSellOrders() async -> [SalesCalcResultsRecord] {
         var recommended: [SalesCalcResultsRecord] = []
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ calculateRecommendedSellOrders: No tax lot data available")
+            return recommended
+        }
         
         guard let currentPrice = getCurrentPrice() else {
             AppLogger.shared.debug("❌ No current price available for \(symbol)")
@@ -220,6 +232,12 @@ struct RecommendedOCOOrdersSection: View {
     
     private func calculateRecommendedBuyOrders() -> [BuyOrderRecord] {
         var recommended: [BuyOrderRecord] = []
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ calculateRecommendedBuyOrders: No tax lot data available")
+            return recommended
+        }
         
         guard let currentPrice = getCurrentPrice() else {
             AppLogger.shared.debug("❌ No current price available for \(symbol)")
@@ -498,8 +516,8 @@ struct RecommendedOCOOrdersSection: View {
     }
 
     private func isDataReadyForCurrentSymbol() -> Bool {
-        // We consider data ready only when quoteData is present and matches the current symbol
-        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol { return true }
+        // We consider data ready only when quoteData is present, matches the current symbol, and tax lots are available
+        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol && !taxLotData.isEmpty { return true }
         return false
     }
     
@@ -508,6 +526,12 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func getSortedTaxLots() -> [SalesCalcPositionsRecord] {
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ getSortedTaxLots: No tax lot data available")
+            return []
+        }
+        
         // Create a simple hash of tax lot data to check if sorting is needed
         let taxLotsHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
         
@@ -530,6 +554,12 @@ struct RecommendedOCOOrdersSection: View {
         // Simplified calculation for previews that processes mock data quickly
         guard let currentPrice = getCurrentPrice() else {
             AppLogger.shared.debug("❌ No current price available for preview")
+            return
+        }
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ calculatePreviewOrders: No tax lot data available")
             return
         }
         
@@ -1376,6 +1406,22 @@ struct RecommendedOCOOrdersSection: View {
         
         AppLogger.shared.debug("🔄 Recalculating orders due to data change")
         
+        // Wait for tax lot calculation to complete if it's still running
+        if isLoadingTaxLots {
+            AppLogger.shared.debug("⏳ Waiting for tax lot calculation to complete...")
+            // Wait for the tax lot calculation to finish
+            while isLoadingTaxLots {
+                try? await Task.sleep(nanoseconds: 100_000_000) // Wait 100ms
+            }
+            AppLogger.shared.debug("✅ Tax lot calculation completed, proceeding with order calculation")
+        }
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ No tax lot data available, skipping order calculation")
+            return
+        }
+        
         // Use Task to handle async calculations without blocking the UI
         Task {
             // Calculate new orders in parallel
@@ -1419,6 +1465,8 @@ struct RecommendedOCOOrdersSection: View {
             // Clear tax lots cache
             cachedSortedTaxLots.removeAll()
             cachedTaxLotsHash = ""
+            // Clear tax lot data when symbol changes
+            taxLotData.removeAll()
             // Avoid computing with stale data from the previous position. Clear UI and
             // wait for new quote/tax-lot inputs to arrive; the onChange handlers will
             // repopulate when fresh data is ready for this symbol.
@@ -1543,9 +1591,15 @@ struct RecommendedOCOOrdersSection: View {
             // Load tax lots in background when component appears
             loadTaxLotsInBackground()
             
-            // Only populate when we have aligned data for this symbol
-            if currentOrders.isEmpty && isDataReadyForCurrentSymbol() {
-                Task {
+            // Wait for tax lots to be loaded before calculating orders
+            Task {
+                // Wait for tax lot calculation to complete
+                while isLoadingTaxLots {
+                    try? await Task.sleep(nanoseconds: 100_000_000) // Wait 100ms
+                }
+                
+                // Only populate when we have aligned data for this symbol and tax lots are ready
+                if currentOrders.isEmpty && isDataReadyForCurrentSymbol() && !taxLotData.isEmpty {
                     await updateRecommendedOrders()
                 }
             }
@@ -1554,22 +1608,22 @@ struct RecommendedOCOOrdersSection: View {
             checkAndUpdateSymbol()
         }
         .onChange(of: atrValue) { _, _ in
-            // Only recalculate if we have data and the symbol matches
-            guard isDataReadyForCurrentSymbol() else { return }
+            // Only recalculate if we have data, the symbol matches, and tax lots are ready
+            guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
             Task {
                 await updateRecommendedOrders()
             }
         }
         .onChange(of: sharesAvailableForTrading) { _, _ in
-            // Only recalculate if we have data and the symbol matches
-            guard isDataReadyForCurrentSymbol() else { return }
+            // Only recalculate if we have data, the symbol matches, and tax lots are ready
+            guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
             Task {
                 await updateRecommendedOrders()
             }
         }
         .onChange(of: quoteData?.quote?.lastPrice) { _, _ in
-            // Only recalculate if we have data and the symbol matches
-            guard isDataReadyForCurrentSymbol() else { return }
+            // Only recalculate if we have data, the symbol matches, and tax lots are ready
+            guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
             Task {
                 await updateRecommendedOrders()
             }
@@ -2392,7 +2446,13 @@ struct RecommendedOCOOrdersSection: View {
     
     // MARK: - Background Loading Methods
     private func loadTaxLotsInBackground() {
-        guard !isLoadingTaxLots else { return }
+        guard !isLoadingTaxLots else { 
+            AppLogger.shared.debug("⏳ Tax lot calculation already in progress, skipping...")
+            return 
+        }
+        
+        // Clear any existing tax lot data when starting a new calculation
+        taxLotData.removeAll()
         
         isLoadingTaxLots = true
         loadingProgress = 0.0
@@ -2441,6 +2501,8 @@ struct RecommendedOCOOrdersSection: View {
         isLoadingTaxLots = false
         loadingProgress = 0.0
         loadingMessage = ""
+        // Clear tax lot data when canceling
+        taxLotData.removeAll()
     }
 } 
 
