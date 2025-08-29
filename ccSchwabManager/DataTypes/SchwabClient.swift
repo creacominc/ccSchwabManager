@@ -154,6 +154,20 @@ class SchwabClient
     private let loadingDelegateLock = NSLock()
 
     private let m_fetchTimeout: TimeInterval = 5.0  // 5 second timeout for each fetch attempt
+    
+    // MARK: - Performance Optimization Cache
+    private var m_taxLotCache: [String: (timestamp: Date, data: [SalesCalcPositionsRecord])] = [:]
+    private let m_taxLotCacheLock = NSLock()
+    private let m_taxLotCacheTimeout: TimeInterval = 300 // 5 minutes
+    
+    // Cache for transaction history to avoid repeated API calls
+    private var m_transactionHistoryCache: [String: (timestamp: Date, data: [Transaction])] = [:]
+    private let m_transactionHistoryCacheLock = NSLock()
+    private let m_transactionHistoryCacheTimeout: TimeInterval = 600 // 10 minutes
+    
+    // Performance monitoring
+    private var m_performanceMetrics: [String: (startTime: Date, endTime: Date?)] = [:]
+    private let m_performanceMetricsLock = NSLock()
 
     // Add a computed property to track loading delegate changes
     var loadingDelegate: LoadingStateDelegate? {
@@ -184,6 +198,103 @@ class SchwabClient
         }
         retVal += "\n\t   ^^^^^^^^^^^^^^^"
         return retVal
+    }
+    
+    // MARK: - Performance Optimization Methods
+    private func startPerformanceTimer(_ operation: String) {
+        m_performanceMetricsLock.withLock {
+            m_performanceMetrics[operation] = (startTime: Date(), endTime: nil)
+        }
+    }
+    
+    private func endPerformanceTimer(_ operation: String) -> TimeInterval? {
+        m_performanceMetricsLock.withLock {
+            guard let metrics = m_performanceMetrics[operation] else { return nil }
+            let endTime = Date()
+            m_performanceMetrics[operation] = (startTime: metrics.startTime, endTime: endTime)
+            return endTime.timeIntervalSince(metrics.startTime)
+        }
+    }
+    
+    private func logPerformance(_ operation: String) {
+        if let duration = endPerformanceTimer(operation) {
+            AppLogger.shared.info("⏱️ Performance: \(operation) completed in \(String(format: "%.2f", duration))s")
+        }
+    }
+    
+    // MARK: - Optimized Caching Methods
+    private func getCachedTaxLots(for symbol: String) -> [SalesCalcPositionsRecord]? {
+        m_taxLotCacheLock.withLock {
+            guard let cacheEntry = m_taxLotCache[symbol] else { return nil }
+            
+            // Check if cache is still valid
+            if Date().timeIntervalSince(cacheEntry.timestamp) < m_taxLotCacheTimeout {
+                AppLogger.shared.debug("📦 Using cached tax lots for \(symbol) (age: \(String(format: "%.1f", Date().timeIntervalSince(cacheEntry.timestamp)))s)")
+                return cacheEntry.data
+            } else {
+                // Cache expired, remove it
+                m_taxLotCache.removeValue(forKey: symbol)
+                return nil
+            }
+        }
+    }
+    
+    private func cacheTaxLots(_ taxLots: [SalesCalcPositionsRecord], for symbol: String) {
+        m_taxLotCacheLock.withLock {
+            m_taxLotCache[symbol] = (timestamp: Date(), data: taxLots)
+            AppLogger.shared.debug("📦 Cached \(taxLots.count) tax lots for \(symbol)")
+        }
+    }
+    
+    private func getCachedTransactionHistory(for symbol: String) -> [Transaction]? {
+        m_transactionHistoryCacheLock.withLock {
+            guard let cacheEntry = m_transactionHistoryCache[symbol] else { return nil }
+            
+            // Check if cache is still valid
+            if Date().timeIntervalSince(cacheEntry.timestamp) < m_transactionHistoryCacheTimeout {
+                AppLogger.shared.debug("📦 Using cached transaction history for \(symbol) (age: \(String(format: "%.1f", Date().timeIntervalSince(cacheEntry.timestamp)))s)")
+                return cacheEntry.data
+            } else {
+                // Cache expired, remove it
+                m_transactionHistoryCache.removeValue(forKey: symbol)
+                return nil
+            }
+        }
+    }
+    
+    private func cacheTransactionHistory(_ transactions: [Transaction], for symbol: String) {
+        m_transactionHistoryCacheLock.withLock {
+            m_transactionHistoryCache[symbol] = (timestamp: Date(), data: transactions)
+            AppLogger.shared.debug("📦 Cached \(transactions.count) transactions for \(symbol)")
+        }
+    }
+    
+    // MARK: - Optimized Transaction Fetching
+    private func getTransactionsForOptimized(symbol: String) -> [Transaction] {
+        // First check cache
+        if let cachedTransactions = getCachedTransactionHistory(for: symbol) {
+            return cachedTransactions
+        }
+        
+        // If not cached, fetch and cache
+        let transactions = getTransactionsFor(symbol: symbol)
+        cacheTransactionHistory(transactions, for: symbol)
+        return transactions
+    }
+    
+    // MARK: - Smart Tax Lot Calculation
+    private func calculateOptimalTimeRange(for symbol: String, currentShares: Double) -> Int {
+        // Start with a reasonable range based on current shares
+        // If we have a lot of shares, we likely need more history
+        if currentShares > 1000 {
+            return 8 // 2 years
+        } else if currentShares > 100 {
+            return 6 // 1.5 years
+        } else if currentShares > 10 {
+            return 4 // 1 year
+        } else {
+            return 3 // 9 months
+        }
     }
     
     private init()
@@ -292,11 +403,11 @@ class SchwabClient
         }
         
         let originalPrice = transferItem.price ?? 0.0
-        AppLogger.shared.debug("  --- Original price: $\(originalPrice)")
+        //AppLogger.shared.debug("  --- Original price: $\(originalPrice)")
         
         // If the original price is not zero, return it
         if originalPrice > 0.0 {
-            AppLogger.shared.debug("  --- Returning original price: $\(originalPrice)")
+            //AppLogger.shared.debug("  --- Returning original price: $\(originalPrice)")
             return originalPrice
         }
         
@@ -661,19 +772,7 @@ class SchwabClient
         m_refreshAccessToken_running = false
     }
     
-    // Add method to clear stuck loading states
-    func clearLoadingState() {
-        AppLogger.shared.warning("🧹 SchwabClient.clearLoadingState - Clearing any stuck loading state")
-        loadingDelegate?.setLoading(false)
-        loadingDelegate = nil
-        
-        // Also clear any stuck refresh token operations
-        m_refreshAccessToken_running = false
-        
-        // Cancel any ongoing network requests by invalidating the URLSession
-        URLSession.shared.invalidateAndCancel()
-    }
-    
+
     /**
      * fetch account numbers and hashes from schwab
      *
@@ -1000,7 +1099,6 @@ class SchwabClient
         AppLogger.shared.debug("=== fetchQuote \(symbol) ===")
         
         let quoteUrl = "\(marketdataAPI)/\(symbol)/quotes"
-//        AppLogger.shared.debug("     quoteUrl: \(quoteUrl)")
         
         guard let url = URL(string: quoteUrl) else {
             AppLogger.shared.debug("fetchQuote. Invalid URL")
@@ -1689,26 +1787,19 @@ class SchwabClient
     public func fetchOrderHistory( retry : Bool = false ) async
     {
         AppLogger.shared.info("fetchOrderHistory === fetchOrderHistory  ===")
-        AppLogger.shared.info("fetchOrderHistory 🚀 Starting fetchOrderHistory")
-        
         // Clear existing orders
         m_orderList.removeAll(keepingCapacity: true)
-        
-        // Get date range for the last year
+        // Get date range for the 6 months
         let today: Date = Date()
-        let oneYearAgo: Date = Calendar.current.date(byAdding: .year, value: -1, to: today) ?? today
-        
+        let sixMonthsAgo: Date = Calendar.current.date(byAdding: .day, value: -31, to: today) ?? today
         let dateFormatter: DateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
         dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
         let todayStr: String = dateFormatter.string(from: today)
-        let dateOneYearAgoStr: String = dateFormatter.string(from: oneYearAgo)
-        
-        AppLogger.shared.info("fetchOrderHistory 📅 Date range: \(dateOneYearAgoStr) to \(todayStr)")
-        
+        let dateSixMonthsAgoStr: String = dateFormatter.string(from: sixMonthsAgo)
+        AppLogger.shared.info("fetchOrderHistory 📅 Date range: \(dateSixMonthsAgoStr) to \(todayStr)")
+
         // Fetch orders for each active status
-        // let ordersWeb = "\(accountWeb)/\(m_secrets.acountNumberHash)/orders"
-        
         await withTaskGroup(of: [Order]?.self) { group in
             for status in OrderStatus.allCases {
                 // ignore order status values that are not active orders
@@ -1716,124 +1807,82 @@ class SchwabClient
                     continue
                 }
                 AppLogger.shared.info("fetchOrderHistory 🔍 Fetching orders for status: \(status.rawValue)")
-                // for accountNumberHash in self.m_secrets.acountNumberHash {
-                    group.addTask {
-                        // AppLogger.shared.debug("  === fetchOrderHistory. accountNumberHash: \(accountNumberHash),  status: \(status.rawValue) ===" )
+                group.addTask {
+                    var orderHistoryUrl: String = "\(ordersWeb)"
+                    orderHistoryUrl += "?fromEnteredTime=\(dateSixMonthsAgoStr)"
+                    orderHistoryUrl += "&toEnteredTime=\(todayStr)"
+                    orderHistoryUrl += "&status=\(status.rawValue)"
 
-                        var orderHistoryUrl = "\(ordersWeb)"
-                        orderHistoryUrl += "?fromEnteredTime=\(dateOneYearAgoStr)"
-                        orderHistoryUrl += "&toEnteredTime=\(todayStr)"
-                        orderHistoryUrl += "&status=\(status.rawValue)"
-                        
-                        AppLogger.shared.info("fetchOrderHistory 🔍 Requesting URL: \(orderHistoryUrl)")
+                    guard let url: URL = URL( string: orderHistoryUrl ) else {
+                        AppLogger.shared.error("fetchOrderHistory ❌ fetchOrderHistory. Invalid URL")
+                        return nil
+                    }
 
-                        guard let url = URL( string: orderHistoryUrl ) else {
-                            AppLogger.shared.error("fetchOrderHistory ❌ fetchOrderHistory. Invalid URL")
+                    var request: URLRequest = URLRequest(url: url)
+                    request.httpMethod = "GET"
+                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "accept")
+                    // set a 10 second timeout on this request
+                    request.timeoutInterval = self.requestTimeout
+
+                    do {
+                        let (data, response) = try await URLSession.shared.data(for: request)
+                        guard let httpResponse: HTTPURLResponse = response as? HTTPURLResponse else {
+                            AppLogger.shared.error("fetchOrderHistory ❌ Invalid response type")
+                            return nil
+                        }
+                        if httpResponse.statusCode != 200 {
+                            if httpResponse.statusCode == 401 && retry {
+                                AppLogger.shared.warning("fetchOrderHistory === retrying fetchOrderHistory after refreshing access token ===")
+                                self.refreshAccessToken()
+                                // Note: We can't recursively call async function from within task group
+                                // The retry will be handled by the caller
+                                return nil
+                            }
+
+                            AppLogger.shared.error("fetchOrderHistory ❌ HTTP \(httpResponse.statusCode) for status \(status.rawValue)")
+                            if let serviceError: ServiceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                                // print data as string
+                                AppLogger.shared.error("fetchOrderHistory ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")")
+                                serviceError.printErrors(prefix: "fetchOrderHistory ")
+                            }
                             return nil
                         }
 
-                        var request = URLRequest(url: url)
-                        request.httpMethod = "GET"
-                        request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-                        request.setValue("application/json", forHTTPHeaderField: "accept")
-                        // set a 10 second timeout on this request
-                        request.timeoutInterval = self.requestTimeout
-                        
+                        // Try to decode, but if it fails, print the raw JSON
                         do {
-                            let (data, response) = try await URLSession.shared.data(for: request)
-
-                            guard let httpResponse = response as? HTTPURLResponse else {
-                                AppLogger.shared.error("fetchOrderHistory ❌ Invalid response type")
-                                return nil
-                            }
-
-                            if httpResponse.statusCode != 200 {
-                                if httpResponse.statusCode == 401 && retry {
-                                    AppLogger.shared.warning("fetchOrderHistory === retrying fetchOrderHistory after refreshing access token ===")
-                                    self.refreshAccessToken()
-                                    // Note: We can't recursively call async function from within task group
-                                    // The retry will be handled by the caller
-                                    return nil
-                                }
-
-                                AppLogger.shared.error("fetchOrderHistory ❌ HTTP \(httpResponse.statusCode) for status \(status.rawValue)")
-                                if let serviceError: ServiceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                    // print data as string
-                                    AppLogger.shared.error("fetchOrderHistory ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")")
-                                    serviceError.printErrors(prefix: "fetchOrderHistory ")
-                                }
-                                return nil
-                            }
-
-                            // Try to decode, but if it fails, print the raw JSON
-                            do {
-                                let decoder = JSONDecoder()
-                                let orders = try decoder.decode([Order].self, from: data)
-
-                                AppLogger.shared.info("fetchOrderHistory ✅ Received \(orders.count) orders for status \(status.rawValue)")
-                                // for order in orders {
-                                //     if let orderId = order.orderId, let symbol = order.orderLegCollection?.first?.instrument?.symbol {
-                                //         AppLogger.shared.debug("fetchOrderHistory   📋 Order ID: \(orderId), Symbol: \(symbol), Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-                                //     }
-                                // }
-
-                                return orders
-                            } catch {
-                                AppLogger.shared.error("fetchOrderHistory ❌ Decoding error for status \(status.rawValue): \(error.localizedDescription)")
-                                AppLogger.shared.error("fetchOrderHistory   detail:  \(error)")
-                                AppLogger.shared.error("fetchOrderHistory ❌ Raw JSON data received:")
-                                AppLogger.shared.error("fetchOrderHistory \(String(data: data, encoding: .utf8) ?? "Could not decode as UTF-8")")
-                                return nil
-                            }
+                            let decoder: JSONDecoder = JSONDecoder()
+                            let orders: [Order] = try decoder.decode([Order].self, from: data)
+                            AppLogger.shared.info("fetchOrderHistory ✅ Received \(orders.count) orders for status \(status.rawValue)")
+                            return orders
                         } catch {
-                            AppLogger.shared.error("fetchOrderHistory ❌ Network error for status \(status.rawValue): \(error.localizedDescription)")
+                            AppLogger.shared.error("fetchOrderHistory ❌ Decoding error for status \(status.rawValue): \(error.localizedDescription)")
+                            AppLogger.shared.error("fetchOrderHistory   detail:  \(error)")
+                            AppLogger.shared.error("fetchOrderHistory ❌ Raw JSON data received:")
+                            AppLogger.shared.error("fetchOrderHistory \(String(data: data, encoding: .utf8) ?? "Could not decode as UTF-8")")
                             return nil
                         }
-                    } // addTask
-                // } // account number hash
+                    } catch {
+                        AppLogger.shared.error("fetchOrderHistory ❌ Network error for status \(status.rawValue): \(error.localizedDescription)")
+                        return nil
+                    }
+                } // addTask
             } // for all orderStatus values
 
             // Collect results from all tasks
-            var totalOrdersReceived = 0
-            for await orders in group {
-                if let orders = orders {
+            var totalOrdersReceived: Int = 0
+            for await orders: [Order]? in group {
+                if let orders: [Order] = orders {
                     totalOrdersReceived += orders.count
-                    AppLogger.shared.info("fetchOrderHistory 📦 Adding \(orders.count) orders from status query (total so far: \(totalOrdersReceived))")
-                    // for order in orders {
-                    //     if let orderId = order.orderId {
-                    //         AppLogger.shared.debug("fetchOrderHistory   📋 Adding order ID: \(orderId), Status: \(order.status?.rawValue ?? "nil")")
-                    //     }
-                    // }
+                    AppLogger.shared.info("fetchOrderHistory 📦 Adding \(orders.count) orders from query (total so far: \(totalOrdersReceived))")
                     m_orderList.append(contentsOf: orders)
                 }
             } // append orders
         } // await
-        
+
         AppLogger.shared.info("fetchOrderHistory 📊 Fetched \(m_orderList.count) orders for all accounts")
-        
-        // Deduplicate orders by orderId to ensure uniqueness
-        let uniqueOrders = Dictionary(grouping: m_orderList, by: { $0.orderId })
-            .compactMap { (orderId, orders) -> Order? in
-                // If there are multiple orders with the same ID, take the first one
-                // This could happen if the same order appears in multiple status queries
-                if orders.count > 1 {
-                    AppLogger.shared.warning("fetchOrderHistory ⚠️ Found \(orders.count) orders with ID \(orderId?.description ?? "nil"), keeping first one")
-                }
-                return orders.first
-            }
-        
-        m_orderList = uniqueOrders
+
         AppLogger.shared.info("fetchOrderHistory 📊 After deduplication: \(m_orderList.count) unique orders")
-        
-        // // Debug: Print all unique orders with their details
-        // AppLogger.shared.debug("fetchOrderHistory 🔍 All unique orders:")
-        // for order in m_orderList {
-        //     if let orderId = order.orderId {
-        //         let symbols = order.orderLegCollection?.compactMap { $0.instrument?.symbol }.joined(separator: ", ") ?? "none"
-        //         AppLogger.shared.debug("fetchOrderHistory   📋 ID: \(orderId), Symbols: [\(symbols)], Status: \(order.status?.rawValue ?? "nil"), Strategy: \(order.orderStrategyType?.rawValue ?? "nil")")
-        //     }
-        // }
-        
         updateSymbolsWithOrders()
     }
     
@@ -2177,20 +2226,13 @@ class SchwabClient
      * getPrimaryOrderStatus - return the highest priority order status for a given symbol
      */
     public func getPrimaryOrderStatus(for symbol: String) -> ActiveOrderStatus? {
-        // AppLogger.shared.debug("🔍 getPrimaryOrderStatus for symbol: \(symbol)")
-        
         guard let statuses = m_symbolsWithOrders[symbol], !statuses.isEmpty else {
             // AppLogger.shared.debug("🔍 No active orders found for symbol: \(symbol)")
             return nil
         }
-        
         // Sort by priority and return the highest priority status
         let sortedStatuses = statuses.sorted { $0.priority < $1.priority }
         let primaryStatus = sortedStatuses.first
-       
-        // AppLogger.shared.debug("🔍 Available statuses for \(symbol): \(statuses.map { $0.shortDisplayName }.joined(separator: ", "))")
-        // AppLogger.shared.debug("🔍 Primary status for \(symbol): \(primaryStatus?.shortDisplayName ?? "nil")")
-        
         return primaryStatus
     }
     
@@ -2199,21 +2241,6 @@ class SchwabClient
      */
     public func getOrderList() -> [Order]
     {
-        AppLogger.shared.debug("[SchwabClient] getOrderList() called, returning \(m_orderList.count) orders")
-        
-        // Debug: Print all order IDs to check for duplicates
-        let orderIds = m_orderList.compactMap { $0.orderId }
-        let uniqueOrderIds = Set(orderIds)
-        AppLogger.shared.debug("[SchwabClient] Total order IDs: \(orderIds.count), Unique order IDs: \(uniqueOrderIds.count)")
-        
-        if orderIds.count != uniqueOrderIds.count {
-            AppLogger.shared.debug("[SchwabClient] WARNING: Found duplicate order IDs!")
-            let duplicates = Dictionary(grouping: orderIds, by: { $0 })
-                .filter { $0.value.count > 1 }
-                .map { $0.key }
-            AppLogger.shared.debug("[SchwabClient] Duplicate order IDs: \(duplicates)")
-        }
-        
         return m_orderList
     }
     
@@ -2907,18 +2934,15 @@ class SchwabClient
      */
     private func addTransactionsWithoutSorting(_ newTransactions: [Transaction]) {
         guard !newTransactions.isEmpty else { return }
-        
         // Create a set of existing transaction activityIds to avoid duplicates
         let existingActivityIds = Set(m_transactionList.compactMap { $0.activityId })
         let uniqueNewTransactions = newTransactions.filter { transaction in
             guard let activityId = transaction.activityId else { return true } // Include transactions without activityIds
             return !existingActivityIds.contains(activityId)
         }
-        
         if uniqueNewTransactions.count != newTransactions.count {
             AppLogger.shared.debug("  -- Removed \(newTransactions.count - uniqueNewTransactions.count) duplicate transactions")
         }
-        
         m_transactionList.append(contentsOf: uniqueNewTransactions)
     }
 
@@ -3370,7 +3394,248 @@ class SchwabClient
         return nil
     }
 
-
+    // MARK: - Optimized Tax Lot Calculation
+    public func computeTaxLotsOptimized(symbol: String, currentPrice: Double? = nil) -> [SalesCalcPositionsRecord] {
+        startPerformanceTimer("computeTaxLotsOptimized_\(symbol)")
+        
+        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) ===")
+        
+        // Check cache first - this is the key performance improvement
+        if let cachedTaxLots = getCachedTaxLots(for: symbol) {
+            AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - returning \(cachedTaxLots.count) cached ===")
+            logPerformance("computeTaxLotsOptimized_\(symbol)")
+            return cachedTaxLots
+        }
+        
+        // Get current share count and determine optimal time range
+        let currentShareCount = getShareCount(symbol: symbol)
+        let optimalQuarters = calculateOptimalTimeRange(for: symbol, currentShares: currentShareCount)
+        
+        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - using optimal range: \(optimalQuarters) quarters ===")
+        
+        // Ensure we have enough transaction history for this calculation
+        let currentQuarterDelta = m_quarterDeltaLock.withLock { return m_quarterDelta }
+        if currentQuarterDelta < optimalQuarters {
+            AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - expanding transaction history to \(optimalQuarters) quarters ===")
+            
+            // Use DispatchGroup to wait for the async operation with timeout
+            let group = DispatchGroup()
+            group.enter()
+            
+            // Start the fetch operation
+            Task {
+                // Fetch all needed quarters at once instead of incrementally
+                for _ in currentQuarterDelta..<optimalQuarters {
+                    await self.fetchTransactionHistory()
+                }
+                group.leave()
+            }
+            
+            // Wait for completion or timeout
+            let result = group.wait(timeout: .now() + m_fetchTimeout)
+            if result == .timedOut {
+                AppLogger.shared.warning("!!! computeTaxLotsOptimized \(symbol) timed out after \(m_fetchTimeout) seconds")
+            }
+        }
+        
+        // Clear previous results
+        m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
+        
+        // Get last price for this security
+        let lastPrice: Double
+        if let currentPrice = currentPrice {
+            lastPrice = currentPrice
+        } else if let quote = fetchQuote(symbol: symbol)?.quote?.lastPrice {
+            lastPrice = quote
+        } else if let extended = fetchQuote(symbol: symbol)?.extended?.lastPrice {
+            lastPrice = extended
+        } else if let regular = fetchQuote(symbol: symbol)?.regular?.regularMarketLastPrice {
+            lastPrice = regular
+        } else {
+            lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+        }
+        
+        // Use optimized transaction fetching with caching
+        let transactions = getTransactionsForOptimized(symbol: symbol)
+        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - processing \(transactions.count) transactions ===")
+        
+        var totalTransactionsFound = 0
+        var totalSharesFound = 0.0
+        var workingShareCount = currentShareCount
+        
+        // Process all trade transactions in a single pass
+        for transaction in transactions
+        where (transaction.type == .trade) || (transaction.type == .receiveAndDeliver) {
+            totalTransactionsFound += 1
+            
+            for transferItem in transaction.transferItems {
+                // Find transferItems where the shares, value, and cost are not 0
+                guard let numberOfShares = transferItem.amount,
+                      numberOfShares != 0.0,
+                      transferItem.instrument?.symbol == symbol
+                else {
+                    continue
+                }
+                
+                totalSharesFound += numberOfShares
+                
+                // Don't calculate gain/loss here - it will be calculated after adjustments
+                let gainLossDollar = 0.0
+                let gainLossPct = 0.0
+                
+                // Parse trade date
+                guard let tradeDate: String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
+                                              strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
+                    AppLogger.shared.error("-- Failed to parse date in trade. transferItem: \(transferItem.dump())")
+                    continue
+                }
+                
+                // Update share count (working backwards)
+                if numberOfShares > 0 {
+                    // BUY transaction - subtract shares
+                    workingShareCount = ((workingShareCount - numberOfShares) * 100000).rounded() / 100000
+                } else {
+                    // SELL transaction - add back shares
+                    workingShareCount = ((workingShareCount + abs(numberOfShares)) * 100000).rounded() / 100000
+                }
+                
+                // Add position record for this transaction
+                m_lastFilteredPositionRecords.append(
+                    SalesCalcPositionsRecord(
+                        openDate: tradeDate,
+                        gainLossPct: gainLossPct,
+                        gainLossDollar: gainLossDollar,
+                        quantity: numberOfShares,
+                        price: lastPrice,
+                        costPerShare: transferItem.price!,
+                        marketValue: numberOfShares * lastPrice,
+                        costBasis: transferItem.price! * numberOfShares,
+                        splitMultiple: 1.0
+                    )
+                )
+                
+                // Break if we find zero shares
+                if isNearZero(workingShareCount) {
+                    showIncompleteDataWarning = false
+                    AppLogger.shared.debug("-- computeTaxLotsOptimized: -- Found zero -- SUCCESS: Zero point found")
+                    break
+                }
+            }
+            
+            // Break if we found zero shares
+            if isNearZero(workingShareCount) {
+                break
+            }
+        }
+        
+        // Set warning if we didn't find zero
+        if !isNearZero(workingShareCount) {
+            showIncompleteDataWarning = true
+            AppLogger.shared.warning("Warning: computeTaxLotsOptimized could not find zero point for symbol: \(symbol)")
+        }
+        
+        // Sort records by date (oldest first) and cost (highest first for same date)
+        m_lastFilteredPositionRecords.sort { ($0.openDate < $1.openDate) || ($0.openDate == $1.openDate && ( ($0.costPerShare > $1.costPerShare) || ($0.quantity > $1.quantity) ) ) }
+        
+        // Match sells with buys using highest price up to that point
+        var remainingRecords: [SalesCalcPositionsRecord] = []
+        var buyQueue: [SalesCalcPositionsRecord] = []
+        
+        for record: SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
+            // collect buy records until you find a sell trade record.
+            if record.quantity > 0 {
+                // Add buy record to queue
+                buyQueue.append(record)
+            } else {
+                // If this is a .trade record, sort the buy queue by high price. On trades, the cost-per-share will not be zero
+                buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
+                
+                // Process sell record
+                var remainingSellQuantity = abs(record.quantity)
+                
+                // Match sell with buys
+                while remainingSellQuantity > 0 && !buyQueue.isEmpty {
+                    var buyRecord = buyQueue.removeFirst()
+                    let buyQuantity = buyRecord.quantity
+                    
+                    if buyQuantity <= remainingSellQuantity {
+                        // Buy record fully matches sell
+                        remainingSellQuantity -= buyQuantity
+                    } else {
+                        // Buy record partially matches sell - put it at the head of the queue if it is at least $0.01
+                        if( 0.01 <= round( buyRecord.quantity * 100.0 ) / 100.0 ) {
+                            let matchedQuantity = remainingSellQuantity
+                            buyRecord.quantity -= matchedQuantity
+                            buyRecord.marketValue = buyRecord.quantity * buyRecord.price
+                            buyRecord.costBasis = buyRecord.quantity * buyRecord.costPerShare
+                            buyQueue.insert(buyRecord, at: 0)
+                            remainingSellQuantity = 0
+                        }
+                    }
+                }
+                
+                // If we couldn't match all shares, keep the remaining sell if the buy queue is not empty
+                if ( (remainingSellQuantity > 0) && (!buyQueue.isEmpty) ) {
+                    var modifiedRecord = record
+                    modifiedRecord.quantity = -remainingSellQuantity
+                    modifiedRecord.marketValue = remainingSellQuantity * record.price
+                    modifiedRecord.costBasis = remainingSellQuantity * record.costPerShare
+                    remainingRecords.append(modifiedRecord)
+                }
+            }
+        }
+        
+        // Add any remaining buy records
+        remainingRecords.append(contentsOf: buyQueue)
+        
+        // Sort final records by date
+        remainingRecords.sort { $0.openDate < $1.openDate }
+        
+        // Handle merged/renamed securities where the earliest transaction has cost = 0
+        remainingRecords = handleMergedRenamedSecurities(remainingRecords, symbol: symbol)
+        
+        AppLogger.shared.debug("=== computeTaxLotsOptimized Summary for \(symbol) ===")
+        AppLogger.shared.debug("Total transactions processed: \(totalTransactionsFound)")
+        AppLogger.shared.debug("Total shares found in transactions: \(totalSharesFound)")
+        AppLogger.shared.debug("Current share count from position: \(getShareCount(symbol: symbol))")
+        AppLogger.shared.debug("Final tax lots created: \(remainingRecords.count)")
+        for (index, record) in remainingRecords.enumerated() {
+            AppLogger.shared.debug("  Lot \(index): \(record.quantity) shares at $\(record.costPerShare) on \(record.openDate)")
+        }
+        AppLogger.shared.debug("=== End computeTaxLotsOptimized Summary ===")
+        
+        m_lastFilteredPositionRecords = remainingRecords
+        
+        // Apply stock split adjustments
+        m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords)
+        
+        // Calculate gain/loss for each tax lot based on current price and remaining shares
+        let finalPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+        
+        for i in 0..<m_lastFilteredPositionRecords.count {
+            let lot = m_lastFilteredPositionRecords[i]
+            let remainingShares = lot.quantity
+            let costPerShare = lot.costPerShare
+            let costBasis = remainingShares * costPerShare
+            let marketValue = remainingShares * finalPrice
+            let gainLossDollar = marketValue - costBasis
+            let gainLossPct = costBasis != 0 ? ((finalPrice - costPerShare) / costPerShare) * 100.0 : 0.0
+            
+            m_lastFilteredPositionRecords[i].gainLossDollar = gainLossDollar
+            m_lastFilteredPositionRecords[i].gainLossPct = gainLossPct
+            m_lastFilteredPositionRecords[i].marketValue = marketValue
+            m_lastFilteredPositionRecords[i].costBasis = costBasis
+            m_lastFilteredPositionRecords[i].price = finalPrice
+        }
+        
+        // Cache the results for future use
+        cacheTaxLots(m_lastFilteredPositionRecords, for: symbol)
+        
+        // Log performance metrics
+        logPerformance("computeTaxLotsOptimized_\(symbol)")
+        
+        return m_lastFilteredPositionRecords
+    }
 
 } // SchwabClient
 

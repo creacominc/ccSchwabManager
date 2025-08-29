@@ -1,77 +1,82 @@
 import SwiftUI
 
-struct SalesCalcTab: View {
+struct OCOOrdersTab: View {
     let symbol: String
     let atrValue: Double
-    let sharesAvailableForTrading: Double
     let taxLotData: [SalesCalcPositionsRecord]
-    let isLoadingTaxLots: Bool
+    let sharesAvailableForTrading: Double
     let quoteData: QuoteData?
-
+    let accountNumber: String
+    
     var body: some View {
         ScrollView {
-            SalesCalcView(
-                symbol: symbol,
-                atrValue: atrValue,
-                taxLotData: taxLotData,
-                isLoadingTaxLots: isLoadingTaxLots,
-                quoteData: quoteData
-            )
+            LazyVStack(spacing: 20) {
+                // OCO Orders Section
+                VStack(alignment: .leading, spacing: 0) {
+                    // Section Header
+                    HStack {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .foregroundColor(.green)
+                        Text("Recommended Orders (Single or OCO)")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.green.opacity(0.1))
+                    
+                    // Section Content
+                    RecommendedOCOOrdersSection(
+                        symbol: symbol,
+                        atrValue: atrValue,
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        quoteData: quoteData,
+                        accountNumber: accountNumber
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(8)
+                
+                // Add bottom padding to ensure content is fully visible
+                Spacer(minLength: 20)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
-        .tabItem {
-            Label("Sales Calc", systemImage: "calculator")
-        }
+        .background(Color.black.opacity(0.1))
     }
 }
 
-#Preview("SalesCalcTab - With Data", traits: .landscapeLeft) {
+#Preview("OCOOrdersTab - With Data", traits: .landscapeLeft) {
     VStack(spacing: 0) {
-        // Simulate the tab button area
         createMockTabBar()
-        // Tab content area
-        SalesCalcTab(
+        OCOOrdersTab(
             symbol: "AAPL",
             atrValue: 2.45,
-            sharesAvailableForTrading: 500.0,
             taxLotData: createMockTaxLotData(),
-            isLoadingTaxLots: false,
-            quoteData: createMockQuoteData()
+            sharesAvailableForTrading: 500.0,
+            quoteData: createMockQuoteData(),
+            accountNumber: "123456789"
         )
-        .background(Color.blue.opacity(0.1)) // Add background to see the content area
+        .background(Color.blue.opacity(0.1))
     }
 }
 
-#Preview("SalesCalcTab - Loading State", traits: .landscapeLeft) {
+#Preview("OCOOrdersTab - No Data", traits: .landscapeLeft) {
     VStack(spacing: 0) {
-        // Simulate the tab button area
         createMockTabBar()
-        
-        // Tab content area
-        SalesCalcTab(
-            symbol: "TSLA",
-            atrValue: 3.12,
-            sharesAvailableForTrading: 300.0,
+        OCOOrdersTab(
+            symbol: "XYZ",
+            atrValue: 0.0,
             taxLotData: [],
-            isLoadingTaxLots: true,
-            quoteData: nil
+            sharesAvailableForTrading: 0.0,
+            quoteData: nil,
+            accountNumber: "987654321"
         )
-    }
-}
-
-#Preview("SalesCalcTab - No Data", traits: .landscapeLeft) {
-    VStack(spacing: 0) {
-        // Simulate the tab button area
-        createMockTabBar()
-        
-        // Tab content area
-        SalesCalcTab(
-            symbol: "NVDA",
-            atrValue: 1.87,
-            sharesAvailableForTrading: 200.0,
-            taxLotData: [],
-            isLoadingTaxLots: false,
-            quoteData: nil
-        )
+        .background(Color.blue.opacity(0.1))
     }
 }
 
@@ -147,7 +152,7 @@ private func createMockQuoteData() -> QuoteData {
         reference: nil,
         regular: regularMarket
     )
-} 
+}
 
 @MainActor
 private func createMockTabBar() -> some View {
@@ -173,7 +178,7 @@ private func createMockTabBar() -> some View {
         TabButton(
             title: "Sales Calc",
             icon: "calculator",
-            isSelected: true,
+            isSelected: false,
             action: {}
         )
         TabButton(
@@ -185,7 +190,7 @@ private func createMockTabBar() -> some View {
         TabButton(
             title: "OCO",
             icon: "arrow.up.circle",
-            isSelected: false,
+            isSelected: true,
             action: {}
         )
         TabButton(
@@ -198,4 +203,6 @@ private func createMockTabBar() -> some View {
     .background(Color.gray.opacity(0.1))
     .padding(.horizontal)
     .padding(.bottom, 2)
-} 
+}
+
+

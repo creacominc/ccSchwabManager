@@ -74,6 +74,9 @@ class Transaction: Codable, Identifiable, Hashable
     public var activityType: TransactionActivityType?
     public var transferItems: [TransferItem]
     
+    // Computed price cache to avoid repeated API calls
+    private var computedPriceCache: [String: Double] = [:]
+    
     // coding keys
     enum CodingKeys : String, CodingKey
     {
@@ -145,6 +148,78 @@ class Transaction: Codable, Identifiable, Hashable
             item.dump()
         }
         print( "=============================================" )
+    }
+    
+    /**
+     * getComputedPriceForSymbol - get the computed price for a specific symbol
+     * This method caches the result to avoid repeated API calls
+     */
+    public func getComputedPriceForSymbol(_ symbol: String) -> Double {
+        // Check cache first
+        if let cachedPrice = computedPriceCache[symbol] {
+            return cachedPrice
+        }
+        
+        // Get the computed price from SchwabClient
+        let computedPrice = SchwabClient.shared.getComputedPriceForTransaction(self, symbol: symbol)
+        
+        // Cache the result
+        computedPriceCache[symbol] = computedPrice
+        
+        return computedPrice
+    }
+    
+    /**
+     * clearComputedPriceCache - clear the computed price cache
+     * Useful when the transaction data changes
+     */
+    public func clearComputedPriceCache() {
+        computedPriceCache.removeAll()
+    }
+}
+
+/**
+ * TransactionWithComputedPrice - wraps a Transaction with pre-computed price data
+ * This allows us to move the price computation logic higher up in the view hierarchy
+ * and avoid repeated API calls when rendering transaction rows.
+ */
+struct TransactionWithComputedPrice {
+    let transaction: Transaction
+    let symbol: String
+    let computedPrice: Double
+    let transferItem: TransferItem?
+    
+    init(transaction: Transaction, symbol: String) {
+        self.transaction = transaction
+        self.symbol = symbol
+        
+        // Find the transfer item for this symbol
+        self.transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol })
+        
+        // Pre-compute the price to avoid repeated API calls
+        self.computedPrice = transaction.getComputedPriceForSymbol(symbol)
+    }
+    
+    var amount: Double {
+        return transferItem?.amount ?? 0
+    }
+    
+    var isSell: Bool {
+        return transaction.netAmount ?? 0 > 0
+    }
+    
+    var isBuy: Bool {
+        return transaction.netAmount ?? 0 < 0
+    }
+    
+    var transactionType: String {
+        if isBuy {
+            return "Buy"
+        } else if isSell {
+            return "Sell"
+        } else {
+            return "Unknown"
+        }
     }
 }
 

@@ -9,6 +9,7 @@ struct TransactionRow: View {
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
     let isEvenRow: Bool
+    let computedPrice: Double? // Optional pre-computed price to avoid API calls
     
     @State private var isHovered = false
     public static let columnProportions: [CGFloat] = [0.30, 0.10, 0.20, 0.20, 0.20] // Date, Type, Qty, Price, Net Amount
@@ -37,9 +38,8 @@ struct TransactionRow: View {
                 }
             if let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) {
                 let amount = round(transferItem.amount ?? 0, precision: 4)
-                // Use computed price for merged/renamed securities
-                let computedPrice = SchwabClient.shared.getComputedPriceForTransaction(transaction, symbol: symbol)
-                let price = round(computedPrice, precision: 2)
+                // Use pre-computed price if available, otherwise fall back to original logic
+                let price = round(computedPrice ?? transferItem.price ?? 0, precision: 2)
                 Text(String(format: "%.4f", amount))
                     .frame(width: calculatedWidths[2], alignment: .trailing)
                     .onTapGesture {
@@ -196,7 +196,8 @@ struct TransactionRowPreviewHelper {
                     },
                     copyToClipboard: { _ in },
                     copyToClipboardValue: { _, _ in },
-                    isEvenRow: false
+                    isEvenRow: false,
+                    computedPrice: nil
                 )
             }
         }
@@ -241,7 +242,8 @@ struct TransactionRowPreviewHelper {
             },
             copyToClipboard: { _ in },
             copyToClipboardValue: { _, _ in },
-            isEvenRow: false
+            isEvenRow: false,
+            computedPrice: nil
         )
     }
     .padding()
@@ -284,7 +286,8 @@ struct TransactionRowPreviewHelper {
             },
             copyToClipboard: { _ in },
             copyToClipboardValue: { _, _ in },
-            isEvenRow: true
+            isEvenRow: true,
+            computedPrice: nil
         )
     }
     .padding()

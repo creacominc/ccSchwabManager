@@ -12,28 +12,73 @@ import UIKit
 import AppKit
 #endif
 
+// MARK: - Preview Detection Helper
+extension ProcessInfo {
+    var isPreview: Bool {
+        return environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
+}
+//
+//extension View {
+////    func logPreviewStackTrace(_ message: String) -> some View {
+////        if ProcessInfo.processInfo.isPreview {
+////            print("⏭ PREVIEW STACK TRACE: \(message)")
+////            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+////        }
+////        return self
+////    }
+//    
+////    func debugPreview(_ viewName: String) -> some View {
+////        if ProcessInfo.processInfo.isPreview {
+////            print("⏭ PREVIEW: Initializing view: \(viewName)")
+////            print("⏭ Stack trace:")
+////            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+////        }
+////        return self
+////    }
+//    
+////    func debugEnvironmentObject<T: ObservableObject>(_ objectType: T.Type, _ message: String = "") -> some View {
+////        if ProcessInfo.processInfo.isPreview {
+////            print("⏭ PREVIEW: View accessing @EnvironmentObject \(String(describing: objectType)): \(message)")
+////            print("⏭ Stack trace:")
+////            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+////        }
+////        return self
+////    }
+//}
+
 @main
 struct ccSchwabManagerApp: App
 {
-    @StateObject private var secretsManager = SecretsManager()
+    @StateObject private var secretsManager: SecretsManager
     
     init() {
+        if ProcessInfo.processInfo.isPreview {
+            print("⏭ PREVIEW: Creating SecretsManager in ccSchwabManagerApp.init()")
+            print("⏭ Stack trace:")
+            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+        }
+        self._secretsManager = StateObject(wrappedValue: SecretsManager())
+        
+        if ProcessInfo.processInfo.isPreview {
+            print("⏭ Skipping ccSchwabManagerApp.init() because this is a preview")
+            return
+        }
         print( "=== ccSchwabManagerApp init ===" )
         AppLogger.shared.info("=== ccSchwabManagerApp started ===")
-        AppLogger.shared.info("=== Testing log file write ===" )
-        print("Log file should be at: ~/Documents/ccSchwabManager.log")
+        print("Log file location: \(AppLogger.shared.getLogFilePath())")
         
-        // Direct file write test
-        let testMessage = "=== Direct file write test ===\n"
-        if let data = testMessage.data(using: .utf8) {
-            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let logFileURL = documentsPath.appendingPathComponent("ccSchwabManager.log")
-            if let fileHandle = try? FileHandle(forWritingTo: logFileURL) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-                fileHandle.closeFile()
-            }
-        }
+        // // Direct file write test
+        // let testMessage = "=== Direct file write test ===\n"
+        // if let data = testMessage.data(using: .utf8) {
+        //     let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        //     let logFileURL = documentsPath.appendingPathComponent("ccSchwabManager.log")
+        //     if let fileHandle = try? FileHandle(forWritingTo: logFileURL) {
+        //         fileHandle.seekToEndOfFile()
+        //         fileHandle.write(data)
+        //         fileHandle.closeFile()
+        //     }
+        // }
     }
     
     var didBecomeActiveNotification: Notification.Name {
@@ -50,21 +95,17 @@ struct ccSchwabManagerApp: App
         {
             ContentView()
                 .environmentObject(secretsManager)
-                .onAppear {
-                    AppLogger.shared.info("=== ContentView appeared ===")
-                    AppLogger.shared.info("Log file location: \(AppLogger.shared.getLogFilePath())")
-                    print("ContentView appeared - this should show in console")
-                }
-                .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
-                    print("📱 App became active - clearing any stuck loading states")
-                    SchwabClient.shared.clearLoadingState()
-                }
-                .onKeyPress(.escape) {
-                    print("🔑 ESC key pressed - clearing any stuck loading states")
-                    SchwabClient.shared.clearLoadingState()
-                    return .handled
-                }
-                .overlay(CSVShareView())
+//                .debugPreview("ContentView")
+//                .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
+//                    print("📱 App became active - clearing any stuck loading states")
+//                    SchwabClient.shared.clearLoadingState()
+//                }
+//                .onKeyPress(.escape) {
+//                    print("🔑 ESC key pressed - clearing any stuck loading states")
+//                    SchwabClient.shared.clearLoadingState()
+//                    return .handled
+//                }
+//                .overlay(CSVShareView().debugPreview("CSVShareView"))
         }
     }
 }
@@ -74,7 +115,29 @@ class SecretsManager: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     
+    // Debug property to track access
+    var debugSecrets: Secrets {
+        if ProcessInfo.processInfo.isPreview {
+            print("⏭ PREVIEW: SecretsManager.secrets accessed")
+            print("⏭ Stack trace:")
+            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+        }
+        return secrets
+    }
+    
     init() {
+        if ProcessInfo.processInfo.isPreview {
+//            print("⏭ PREVIEW: SecretsManager.init() called")
+//            print("⏭ Stack trace:")
+//            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+//        }
+//        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            print("⏭ Skipping SecretsManager.saveSecrets() because this is a preview")
+//            print("⏭ Stack trace for SecretsManager.init() in preview:")
+//            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+            self.secrets = Secrets()
+            return
+        }
         print( "=== SecretsManager init getting secrets ===" )
         self.secrets = KeychainManager.readSecrets(prefix: "SecretsManager/init") ?? Secrets()
         // Configure SchwabClient with initial secrets
@@ -82,6 +145,12 @@ class SecretsManager: ObservableObject {
     }
     
     func saveSecrets() {
+        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            print("⏭ Skipping SecretsManager.saveSecrets() because this is a preview")
+            print("⏭ Stack trace for SecretsManager.saveSecrets() in preview:")
+            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+            return
+        }
         print( "=== SecretsManager Saving secrets ===" )
         var secretsToSave = secrets
         _ = KeychainManager.saveSecrets(secrets: &secretsToSave)
@@ -90,6 +159,12 @@ class SecretsManager: ObservableObject {
     }
     
     func resetSecrets(partial: Bool = false) {
+        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            print("⏭ Skipping SecretsManager.resetSecrets() because this is a preview")
+            print("⏭ Stack trace for SecretsManager.resetSecrets() in preview:")
+            Thread.callStackSymbols.forEach { print("⏭   \($0)") }
+            return
+        }
         if partial {
             // Keep appId, appSecret, and redirectUrl
             let appId = secrets.appId

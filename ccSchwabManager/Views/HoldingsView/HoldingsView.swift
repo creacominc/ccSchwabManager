@@ -225,6 +225,23 @@ struct HoldingsView: View {
                             .onSubmit {
                                 // Optional: Handle search submission
                             }
+                            .onKeyPress(.delete) {
+                                searchText = ""
+                                return .handled
+                            }
+                            .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
+                                searchText = ""
+                                return .handled
+                            }
+                            .onKeyPress { keyPress in
+                                // Handle alphanumeric input for search
+                                let character = keyPress.characters.first
+                                if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
+                                    searchText += String(char)
+                                    return .handled
+                                }
+                                return .ignored
+                            }
                         
                         if !searchText.isEmpty {
                             Button(action: {
@@ -338,9 +355,9 @@ struct HoldingsView: View {
                         selectedPositionId: Binding(
                             get: { selectedPosition?.id },
                             set: { newId in
-                                if let newId = newId,
-                                   let position = sortedHoldings.first(where: { $0.id == newId }),
-                                   let accountNumber = accountPositions.first(where: { $0.0.id == newId })?.1 {
+                                if let newId: Position.ID = newId,
+                                   let position: Position = sortedHoldings.first(where: { $0.id == newId }),
+                                   let accountNumber: String = accountPositions.first(where: { $0.0.id == newId })?.1 {
                                     selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
                                 }
                             }
@@ -351,44 +368,20 @@ struct HoldingsView: View {
                         tradeDateCache: tradeDateCache,
                         orderStatusCache: orderStatusCache,
                     )
+                    .padding( 5 )
                 }
             } // VStack
+            .padding( 5 )
             // Platform-specific searchable modifier (for macOS)
             #if os(macOS)
             .searchable(text: $searchText, prompt: "Search by symbol or description")
             #endif
-            // Keyboard handling for both platforms
-            .focusable()
-            .focused($isSearchFieldFocused)
-            .onKeyPress(.delete) {
-                searchText = ""
-                return .handled
-            }
-            .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
-                searchText = ""
-                return .handled
-            }
-            .onKeyPress { keyPress in
-                // Handle alphanumeric input for search
-                let character = keyPress.characters.first
-                if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
-                    // Focus search field and append character
-                    #if os(iOS)
-                    isSearchFieldFocused = true
-                    #endif
-                    searchText += String(char)
-                    return .handled
-                }
-                return .ignored
-            }
             .onAppear {
-                // Ensure the view can receive keyboard events
+                // Focus the search field when the view appears
                 #if os(iOS)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isSearchFieldFocused = true
                 }
-                #else
-                isSearchFieldFocused = true
                 #endif
             }
             //.navigationTitle("Holdings")
@@ -474,8 +467,8 @@ struct HoldingsView: View {
                     }
                 }
             }
-            .frame(width: viewSize.width * 0.97,
-                   height: viewSize.height * 0.92)
+            .frame( width: viewSize.width * 0.97,
+                    height: viewSize.height * 0.98 )
         }
         .withLoadingState(loadingState)
     }
@@ -620,4 +613,4 @@ struct HoldingsView: View {
         }
     }
 
-} 
+}

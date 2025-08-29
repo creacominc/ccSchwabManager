@@ -85,6 +85,22 @@ The Orders tab now features intelligent space allocation between Current Orders 
 - **Responsive Design**: Uses GeometryReader and preference keys to measure content and allocate space dynamically
 - **Better User Experience**: Reduces scrolling in Recommended Orders section when Current Orders doesn't need much space
 
+### Race Condition Fixes
+
+The application has been enhanced with comprehensive fixes for race conditions that were preventing proper order generation:
+
+- **Tax Lot Calculation Synchronization**: Fixed a critical race condition where order calculations were running before tax lot data was fully loaded
+- **Guarded Function Execution**: All order calculation functions now check for tax lot data availability before proceeding
+- **Smart Waiting Logic**: The system now waits for background tax lot calculations to complete before attempting order generation
+- **Enhanced Error Handling**: Clear logging and graceful fallbacks when required data is not available
+- **Improved Data Flow**: Tax lot data is properly cleared and reloaded when symbols change, preventing stale data issues
+
+**Key Improvements:**
+- **No More Zero Tax Lot Counts**: Order calculations now wait for complete tax lot data before proceeding
+- **Proper Sell Order Generation**: Sell orders are now generated with full access to all available tax lots
+- **Better User Experience**: Orders are only calculated when all required data is ready
+- **Robust Error Handling**: Clear error messages when data is not available
+
 ### Enhanced Buy Order Logic
 
 The application now includes sophisticated buy order logic for positions that are below target gain:

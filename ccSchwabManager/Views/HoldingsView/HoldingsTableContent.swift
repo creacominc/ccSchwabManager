@@ -43,8 +43,8 @@ struct HoldingsTableContent: View {
                     ) // table row
                 } // for
             }  // vstack
-            .padding(.horizontal, 5)
-            .padding(.trailing, 40)
+            .padding(.trailing, 15)
+            .padding(.bottom, 15)
         } // scroll
     } // view
 }

@@ -169,7 +169,7 @@ struct SalesCalcTableRowPreviewHelper {
 #Preview("SalesCalcTableRow - Multiple Rows", traits: .landscapeLeft) {
     let samplePositions = [
         SalesCalcPositionsRecord(
-            openDate: "2025-01-15",
+            openDate: "2025-01-15 11:12:13",
             gainLossPct: 15.5,
             gainLossDollar: 150.00,
             quantity: 100.0,
@@ -180,7 +180,7 @@ struct SalesCalcTableRowPreviewHelper {
             splitMultiple: 1.0
         ),
         SalesCalcPositionsRecord(
-            openDate: "2025-02-20",
+            openDate: "2025-02-20 12:13:14",
             gainLossPct: -5.2,
             gainLossDollar: -75.00,
             quantity: 50.0,
@@ -191,7 +191,7 @@ struct SalesCalcTableRowPreviewHelper {
             splitMultiple: 1.0
         ),
         SalesCalcPositionsRecord(
-            openDate: "2025-03-10",
+            openDate: "2025-03-10 15:16:17",
             gainLossPct: 3.8,
             gainLossDollar: 45.00,
             quantity: 75.0,
@@ -241,7 +241,6 @@ struct SalesCalcTableRowPreviewHelper {
                     isEvenRow: index % 2 == 0,
                     showGainLossDollar: showGainLossDollar
                 )
-                Divider()
             }
         }
     }
@@ -251,7 +250,7 @@ struct SalesCalcTableRowPreviewHelper {
 #Preview("SalesCalcTableRow - Narrow Layout (No Gain/Loss $)", traits: .portrait) {
     let samplePositions = [
         SalesCalcPositionsRecord(
-            openDate: "2025-01-15",
+            openDate: "2025-01-15 12:34:56",
             gainLossPct: 15.5,
             gainLossDollar: 150.00,
             quantity: 100.0,
@@ -262,7 +261,7 @@ struct SalesCalcTableRowPreviewHelper {
             splitMultiple: 1.0
         ),
         SalesCalcPositionsRecord(
-            openDate: "2025-02-20",
+            openDate: "2025-02-20 10:11:12",
             gainLossPct: -5.2,
             gainLossDollar: -75.00,
             quantity: 50.0,
@@ -275,10 +274,8 @@ struct SalesCalcTableRowPreviewHelper {
     ]
     
     return GeometryReader { geometry in
-        // Force narrow layout by constraining width to less than iPad Mini landscape width
-        let constrainedWidth: CGFloat = 800 // Less than 1024
-        let showGainLossDollar = SalesCalcTableRowPreviewHelper.shouldShowGainLossDollar(for: constrainedWidth)
-        let calculatedWidths = SalesCalcTableRowPreviewHelper.calculateWidths(for: constrainedWidth, showGainLossDollar: showGainLossDollar)
+        let showGainLossDollar = SalesCalcTableRowPreviewHelper.shouldShowGainLossDollar(for: geometry.size.width)
+        let calculatedWidths = SalesCalcTableRowPreviewHelper.calculateWidths(for: geometry.size.width, showGainLossDollar: showGainLossDollar)
         
         VStack(spacing: 0) {
             // Simulate a table header
@@ -314,10 +311,8 @@ struct SalesCalcTableRowPreviewHelper {
                     isEvenRow: index % 2 == 0,
                     showGainLossDollar: showGainLossDollar
                 )
-                Divider()
             }
         }
-        .frame(width: constrainedWidth)
     }
     .padding()
 }

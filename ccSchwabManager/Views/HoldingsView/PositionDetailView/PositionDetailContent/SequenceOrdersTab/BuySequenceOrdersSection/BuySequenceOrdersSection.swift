@@ -389,19 +389,21 @@ struct BuySequenceOrdersSection: View {
 #endif
     }
     
-    private func rowStyle(for order: BuySequenceOrder) -> Color {
-        if order.orderCost > 1400.0 {
-            return .red
-        } else if order.trailingStop < 1.0 {
-            return .orange
-        } else {
-            return .blue
-        }
-    }
+
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            headerView
+            BuySequenceHeaderView(
+                sequenceOrdersCount: sequenceOrders.count,
+                selectedSequenceOrderIndices: selectedSequenceOrderIndices,
+                onSelectAll: {
+                    selectedSequenceOrderIndices = Set(0..<sequenceOrders.count)
+                },
+                onDeselectAll: {
+                    selectedSequenceOrderIndices.removeAll()
+                }
+            )
+
             contentView
             if copiedValue != "TBD" {
                 Text("Copied: \(copiedValue)")
@@ -443,7 +445,19 @@ struct BuySequenceOrdersSection: View {
             }
         }
         .sheet(isPresented: $showingConfirmationDialog) {
-            confirmationDialogView
+            BuySequenceConfirmationDialogView(
+                orderDescriptions: orderDescriptions,
+                orderJson: orderJson,
+                onCancel: {
+                    showingConfirmationDialog = false
+                    orderToSubmit = nil
+                    orderDescriptions = []
+                    orderJson = ""
+                },
+                onSubmit: {
+                    confirmAndSubmitOrder()
+                }
+            )
         }
         .onChange(of: dialogStateTrigger) { _, _ in
             // Force UI update when trigger changes
@@ -460,226 +474,45 @@ struct BuySequenceOrdersSection: View {
         }
     }
     
-    private var confirmationDialogView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            HStack {
-                Text("Confirm Buy Sequence Order Submission")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                Button("Cancel") {
-                    showingConfirmationDialog = false
-                    orderToSubmit = nil
-                    orderDescriptions = []
-                    orderJson = ""
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal)
-            
-            // Order Descriptions Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Please review the following sequence orders before submission:")
-                    .font(.headline)
-                
 
-                
-                if orderDescriptions.isEmpty {
-                    Text("No order descriptions available")
-                        .foregroundColor(.secondary)
-                        .padding(.vertical, 8)
-                } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(orderDescriptions.enumerated()), id: \.offset) { index, description in
-                            Text(description)
-                                .font(.body)
-                                .foregroundColor(.primary)
-                                .padding(.vertical, 2)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-            }
-            .padding(.horizontal)
-            
-            Divider()
-            
-            // JSON Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("JSON to be submitted:")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                
 
-                
-                ScrollView {
-                    Text(orderJson.isEmpty ? "No JSON available" : orderJson)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 150)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(4)
-            }
-            .padding(.horizontal)
-            
-            Spacer()
-            
-            // Action Buttons
-            HStack {
-                Spacer()
-                
-                Button("Submit Order") {
-                    confirmAndSubmitOrder()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(.horizontal)
-            .padding(.bottom)
-        }
-        .frame(minWidth: 600, minHeight: 400)
-        .padding()
-    }
-    
-    private var headerView: some View {
-        HStack {
-            Text("Buy Sequence Orders")
-                .font(.headline)
-            
-            // Add debugging info
-            Text("(\(sequenceOrders.count) orders)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            if !sequenceOrders.isEmpty {
-                Button(selectedSequenceOrderIndices.count == sequenceOrders.count ? "Deselect All" : "Select All") {
-                    if selectedSequenceOrderIndices.count == sequenceOrders.count {
-                        // Deselect all
-                        selectedSequenceOrderIndices.removeAll()
-                    } else {
-                        // Select all (from top down)
-                        selectedSequenceOrderIndices = Set(0..<sequenceOrders.count)
-                    }
-                }
-                .buttonStyle(.bordered)
-                .font(.caption)
-            }
-        }
-        .padding(.horizontal)
-    }
-    
     private var contentView: some View {
         Group {
             if sequenceOrders.isEmpty {
-                VStack(spacing: 8) {
-                    Text("No buy sequence orders available")
-                        .foregroundColor(.secondary)
-                    
-                    // Add debugging information
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Debug Info:")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                        Text("Symbol: \(symbol)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("ATR: \(atrValue)%")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("Shares Available: \(sharesAvailableForTrading)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("Tax Lots: \(taxLotData.count)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("Quote Data: \(quoteData != nil ? "Available" : "Not Available")")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        // Add options data to debug info
-                        let optionsData = getOptionsDataForSymbol(symbol)
-                        Text("Options Contracts: \(optionsData.contractCount)")
-                            .font(.caption)
-                            .foregroundColor(optionsData.contractCount > 0 ? .green : .red)
-                        if let minStrike = optionsData.minimumStrike {
-                            Text("Min Strike: $\(String(format: "%.2f", minStrike))")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                        } else {
-                            Text("Min Strike: Not Available")
-                                .font(.caption)
-                                .foregroundColor(.red)
-                        }
-                        if let minDTE = optionsData.minimumDTE {
-                            Text("Min DTE: \(minDTE) days")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                        } else {
-                            Text("Min DTE: Not Available")
-                                .font(.caption)
-                                .foregroundColor(.red)
-                        }
-                        
-                        if optionsData.contractCount == 0 {
-                            Text("Note: Buy Sequence Orders require options contracts to be loaded for this symbol")
-                                .font(.caption)
-                                .foregroundColor(.orange)
-                                .padding(.top, 4)
-                        } else {
-                            Text("✅ Options data found - Buy Sequence Orders should be available")
-                                .font(.caption)
-                                .foregroundColor(.green)
-                                .padding(.top, 4)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(4)
-                }
-                .padding()
+                EmptyStateView(
+                    symbol: symbol,
+                    atrValue: atrValue,
+                    sharesAvailableForTrading: sharesAvailableForTrading,
+                    taxLotDataCount: taxLotData.count,
+                    quoteDataAvailable: quoteData != nil,
+                    optionsData: getOptionsDataForSymbol(symbol)
+                )
             } else {
-                orderTableView
-            }
-        }
-    }
-    
-    private var orderTableView: some View {
-        HStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    headerRow
-                    orderRows
-                }
-            }
-            
-            VStack {
-                Spacer()
-                if !selectedSequenceOrderIndices.isEmpty {
-                    Button(action: submitSequenceOrders) {
-                        VStack(spacing: 4) {
-                            Image(systemName: "paperplane.circle.fill")
-                                .font(.title3)
-                            Text("Submit\nSequence")
-                                .font(.caption2)
-                                .multilineTextAlignment(.center)
+                OrderTableView(
+                    sequenceOrders: sequenceOrders,
+                    adjustedSequenceOrders: adjustedSequenceOrders,
+                    selectedSequenceOrderIndices: selectedSequenceOrderIndices,
+                    onOrderSelectionChanged: { index, isSelected in
+                        if isSelected {
+                            // Add this index and all above it
+                            selectedSequenceOrderIndices.insert(index)
+                            for i in 0...index {
+                                selectedSequenceOrderIndices.insert(i)
+                            }
+                        } else {
+                            // Remove this index and all below it
+                            selectedSequenceOrderIndices.remove(index)
+                            // Also remove all indices below this one
+                            for i in (index + 1)..<sequenceOrders.count {
+                                selectedSequenceOrderIndices.remove(i)
+                            }
                         }
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.green)
-                        .cornerRadius(8)
-                    }
-                }
-                Spacer()
+                    },
+                    onSubmitSequenceOrders: submitSequenceOrders,
+                    onCopyToClipboard: copyToClipboard,
+                    onCopyTextToClipboard: copyToClipboard
+                )
             }
-            .padding(.trailing, 8)
         }
     }
     
@@ -838,136 +671,38 @@ struct BuySequenceOrdersSection: View {
             }
         }
     }
-    
-    private var headerRow: some View {
-        HStack {
-            Text("")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 30, alignment: .center)
-            
-            Text("Order")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 60, alignment: .leading)
-            
-            Text("Description")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
-            Text("Shares")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 80, alignment: .trailing)
-            
-            Text("Stop")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 100, alignment: .trailing)
-            
-            Text("Target")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .frame(width: 80, alignment: .trailing)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 4)
-        .background(Color.green.opacity(0.1))
-    }
-    
-    private var orderRows: some View {
-        return ForEach(Array(sequenceOrders.enumerated()), id: \.offset) { index, order in
-            // Use adjusted orders for display if any are selected
-            let displayOrder = !selectedSequenceOrderIndices.isEmpty ? 
-                adjustedSequenceOrders.first { $0.orderIndex == order.orderIndex } ?? order : order
-            orderRow(index: index, order: displayOrder, isSelected: selectedSequenceOrderIndices.contains(index))
-        }
-    }
-    
-    private func orderRow(index: Int, order: BuySequenceOrder, isSelected: Bool) -> some View {
-        VStack(spacing: 4) {
-            // First line: checkbox, order number, shares, stop, target
-            HStack {
-                Button(action: {
-                    if isSelected {
-                        // Remove this index and all below it
-                        selectedSequenceOrderIndices.remove(index)
-                        // Also remove all indices below this one
-                        for i in (index + 1)..<sequenceOrders.count {
-                            selectedSequenceOrderIndices.remove(i)
-                        }
-                    } else {
-                        // Add this index and all above it
-                        selectedSequenceOrderIndices.insert(index)
-                        for i in 0...index {
-                            selectedSequenceOrderIndices.insert(i)
-                        }
-                    }
-                }) {
-                    Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                        .foregroundColor(.green)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .frame(width: 30, alignment: .center)
-                .disabled(false) // Always enabled for selection
-                
-                Text("\(order.orderIndex + 1)")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .frame(width: 60, alignment: .leading)
-                    .foregroundColor(.green)
-                
-                Spacer()
-                
-                Text("\(Int(order.shares))")
-                    .font(.caption)
-                    .frame(width: 80, alignment: .trailing)
-                    .onTapGesture {
-                        copyToClipboard(value: Double(order.shares), format: "%.0f")
-                    }
-                
-                Text(String(format: "%.2f%%", order.trailingStop))
-                    .font(.caption)
-                    .frame(width: 100, alignment: .trailing)
-                    .onTapGesture {
-                        copyToClipboard(value: order.trailingStop, format: "%.2f")
-                    }
-                
-                Text(String(format: "%.2f", order.targetPrice))
-                    .font(.caption)
-                    .frame(width: 80, alignment: .trailing)
-                    .onTapGesture {
-                        copyToClipboard(value: order.targetPrice, format: "%.2f")
-                    }
-            }
-            
-            // Second line: description
-            HStack {
-                Text(order.description)
-                    .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .onTapGesture {
-                        copyToClipboard(text: order.description)
-                    }
-            }
-            .padding(.leading, 90) // Align with content above (30 + 60 for checkbox + order number)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 4)
-        .background(isSelected ? Color.green.opacity(0.2) : rowStyle(for: order).opacity(0.1))
-        .cornerRadius(4)
-    }
 }
 
-// MARK: - BuySequenceOrder Data Structure
-
-public struct BuySequenceOrder {
-    let orderIndex: Int
-    let shares: Double
-    let targetPrice: Double
-    let entryPrice: Double
-    let trailingStop: Double
-    let orderCost: Double
-    let description: String
+#Preview("Buy Sequence Orders Section - Complete View", traits: .landscapeLeft) {
+    // Mock data for preview
+    let mockTaxLotData: [SalesCalcPositionsRecord] = [
+        // Add mock tax lot data here if needed for preview
+    ]
+    
+    return BuySequenceOrdersSection(
+        symbol: "AAPL",
+        atrValue: 2.5,
+        taxLotData: mockTaxLotData,
+        sharesAvailableForTrading: 100.0,
+        quoteData: nil,
+        accountNumber: "123456789"
+    )
 } 
+
+
+//#Preview("Buy Sequence Orders Section - Empty View", traits: .landscapeLeft) {
+//    // Mock data for preview
+//    let mockTaxLotData: [SalesCalcPositionsRecord] = [
+//        // Add mock tax lot data here if needed for preview
+//    ]
+//    
+//    return BuySequenceOrdersSection(
+//        symbol: "AAPL",
+//        atrValue: 2.5,
+//        taxLotData: mockTaxLotData,
+//        sharesAvailableForTrading: 100.0,
+//        quoteData: nil,
+//        accountNumber: "123456789"
+//    )
+//}
+

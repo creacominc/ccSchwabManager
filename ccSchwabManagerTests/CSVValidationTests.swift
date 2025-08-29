@@ -265,10 +265,5 @@ class CSVValidationTests: XCTestCase {
             openDate: "MinBE"
         )
     }
-    
-    private func formatReleaseTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
-        return formatter.string(from: date)
-    }
+
 } 

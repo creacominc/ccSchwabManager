@@ -1,46 +1,11 @@
-//
-//  OrderStatusFormatter.swift
-//  ccSchwabManager
-//
-//  Created by Harold Tomlinson on 2025-01-07.
-//
+import SwiftUI
 
-import Foundation
-
-/**
- * OrderStatusFormatter - Formats order information into detailed human-readable descriptions
- * For example: "BUY +1 PH @BID+3.00% TRSTPLMT BID+0.03% BID GTC SUBMIT AT 7/14/25 09:35:00 WHEN PH BID AT OR ABOVE 741.00"
- */
-public class OrderStatusFormatter {
+struct OrderDetailRow: View {
+    let order: Order
+    let groupOrderId: Int64?
     
-    /**
-     * Format a detailed order description
-     */
-    static func formatDetailedOrderDescription(order: Order) -> String {
+    private func formatOrderDescription(order: Order) -> String {
         var description = ""
-        
-        // Handle OCO orders with child strategies
-        if order.orderStrategyType == .OCO, let childStrategies = order.childOrderStrategies, !childStrategies.isEmpty {
-            // For OCO orders, only format child orders that are open
-            let openStatuses: [OrderStatus] = [.awaitingParentOrder, .awaitingCondition, .awaitingStopCondition, .awaitingManualReview, 
-                                             .accepted, .pendingActivation, .queued, .working, .new, .awaitingReleaseTime, 
-                                             .pendingAcknowledgement, .pendingRecall]
-            
-            let openChildDescriptions = childStrategies.compactMap { childOrder in
-                // Only include child orders that are open
-                if let childStatus = childOrder.status, openStatuses.contains(childStatus) {
-                    return formatDetailedOrderDescription(order: childOrder)
-                }
-                return nil
-            }
-            
-            if !openChildDescriptions.isEmpty {
-                // Return the first open child order description (individual orders will be handled separately)
-                return openChildDescriptions.first ?? "OCO Order - No open child orders"
-            } else {
-                return "OCO Order - All child orders closed"
-            }
-        }
         
         // Get the first order leg for basic information
         guard let firstLeg = order.orderLegCollection?.first else {
@@ -65,14 +30,16 @@ public class OrderStatusFormatter {
             description += " \(priceInfo)"
         }
         
-        // 3. Order Type
-        if let orderType = order.orderType {
-            description += " \(formatOrderType(orderType))"
-        }
-        
-        // 4. Stop/Limit Information (for complex orders)
+        // 3. Stop/Limit Information
         if let stopLimitInfo = formatStopLimitInformation(order: order) {
             description += " \(stopLimitInfo)"
+        }
+        
+        // 4. Order Type
+        if let orderType = order.orderType {
+            description += " \(formatOrderType(orderType))"
+        } else if order.orderStrategyType == .TRIGGER { //  order.orderStrategyType == .SINGLE ||
+            description += " TRSTPLMT"
         }
         
         // 5. Stop Type (for trailing stop orders)
@@ -83,24 +50,37 @@ public class OrderStatusFormatter {
         // 6. Duration
         if let duration = order.duration {
             description += " \(formatDuration(duration))"
+        } else if order.orderStrategyType == .SINGLE || order.orderStrategyType == .TRIGGER {
+            description += " GTC"
         }
         
-        // 7. Strategy Type (for OCO orders)
+        // 7. Strategy Type (for OCO/TRIGGER orders)
         if let strategyType = order.orderStrategyType {
-            description += " \(formatStrategyType(strategyType))"
+            if strategyType == .OCO {
+                description += " OCO"
+            } else if strategyType == .TRIGGER {
+                description += " TRG BY"
+            }
         }
         
-        // 8. Release Time
-        if let releaseTime = order.releaseTime {
-            description += " SUBMIT AT \(formatReleaseTime(releaseTime))"
+        // 8. Order ID
+        if let orderId = order.orderId {
+            description += " #\(orderId)"
+        }
+
+        // 10. Cancel Time
+        if let cancelTimeDate = order.cancelTime {
+            let formatter = ISO8601DateFormatter()
+            let cancelTimeString = formatter.string(from: cancelTimeDate)
+            description += " CANCEL AT \(formatReleaseTime(cancelTimeString))"
         }
         
-        // 9. Activation Condition (if applicable)
+        // 11. Activation Condition (if applicable)
         if let activationInfo = formatActivationCondition(order: order, symbol: symbol) {
             description += " WHEN \(activationInfo)"
         }
-        
-        // 10. Position Effect
+
+        // 13. Position Effect
         if let positionEffect = firstLeg.positionEffect {
             description += " \(formatPositionEffect(positionEffect))"
         }
@@ -108,10 +88,7 @@ public class OrderStatusFormatter {
         return description
     }
     
-    /**
-     * Format the action (BUY/SELL)
-     */
-    private static func formatAction(instruction: OrderInstructionType) -> String {
+    private func formatAction(instruction: OrderInstructionType) -> String {
         switch instruction {
         case .BUY, .BUY_TO_COVER, .BUY_TO_OPEN, .BUY_TO_CLOSE:
             return "BUY"
@@ -122,36 +99,30 @@ public class OrderStatusFormatter {
         }
     }
     
-    /**
-     * Format quantity with position effect
-     */
-    private static func formatQuantity(order: Order, positionEffect: PositionEffectType?) -> String {
+    private func formatQuantity(order: Order, positionEffect: PositionEffectType?) -> String {
         let quantity = order.quantity ?? 0
         
         // Always show quantity as a number of shares
         if let positionEffect = positionEffect {
             switch positionEffect {
             case .OPENING:
-                return "\(Int(quantity))"
+                return "+\(Int(quantity))"
             case .CLOSING:
                 // For closing positions, show negative quantity
                 return "-\(Int(quantity))"
             case .AUTOMATIC:
-                return "\(Int(quantity))"
+                return "+\(Int(quantity))"
             case .UNKNOWN:
-                return "\(Int(quantity))"
+                return "+\(Int(quantity))"
             }
         }
         
-        return "\(Int(quantity))"
+        return "+\(Int(quantity))"
     }
     
-    /**
-     * Format price information
-     */
-    private static func formatPriceInformation(order: Order) -> String? {
+    private func formatPriceInformation(order: Order) -> String? {
         // For trailing stop limit orders, show the price link information
-        if order.orderType == .TRAILING_STOP_LIMIT {
+        if order.orderType == .TRAILING_STOP_LIMIT || order.orderStrategyType == .SINGLE {
             if let priceLinkBasis = order.priceLinkBasis,
                let priceLinkType = order.priceLinkType,
                let priceOffset = order.priceOffset {
@@ -183,10 +154,7 @@ public class OrderStatusFormatter {
         return nil
     }
     
-    /**
-     * Format order type
-     */
-    static func formatOrderType(_ orderType: OrderType) -> String {
+    private func formatOrderType(_ orderType: OrderType) -> String {
         switch orderType {
         case .MARKET:
             return "MKT"
@@ -209,12 +177,9 @@ public class OrderStatusFormatter {
         }
     }
     
-    /**
-     * Format stop/limit information for complex orders
-     */
-    private static func formatStopLimitInformation(order: Order) -> String? {
+    private func formatStopLimitInformation(order: Order) -> String? {
         // For trailing stop limit orders, show the stop price information
-        if order.orderType == .TRAILING_STOP_LIMIT {
+        if order.orderType == .TRAILING_STOP_LIMIT || order.orderStrategyType == .SINGLE {
             if let stopPriceLinkBasis = order.stopPriceLinkBasis,
                let stopPriceLinkType = order.stopPriceLinkType,
                let stopPriceOffset = order.stopPriceOffset {
@@ -258,10 +223,7 @@ public class OrderStatusFormatter {
         return nil
     }
     
-    /**
-     * Format duration
-     */
-    static func formatDuration(_ duration: DurationType) -> String {
+    private func formatDuration(_ duration: DurationType) -> String {
         switch duration {
         case .DAY:
             return "DAY"
@@ -282,10 +244,7 @@ public class OrderStatusFormatter {
         }
     }
     
-    /**
-     * Format release time
-     */
-    private static func formatReleaseTime(_ releaseTime: String) -> String {
+    private func formatReleaseTime(_ releaseTime: String) -> String {
         // Parse the ISO8601 date string and format it
         let formatter = ISO8601DateFormatter()
         if let date = formatter.date(from: releaseTime) {
@@ -296,10 +255,7 @@ public class OrderStatusFormatter {
         return releaseTime
     }
     
-    /**
-     * Format activation condition
-     */
-    private static func formatActivationCondition(order: Order, symbol: String) -> String? {
+    private func formatActivationCondition(order: Order, symbol: String) -> String? {
         // For orders with activation price
         if let activationPrice = order.activationPrice {
             return "STOP \(String(format: "%.2f", activationPrice))"
@@ -321,11 +277,8 @@ public class OrderStatusFormatter {
         
         return nil
     }
-    
-    /**
-     * Format price link basis
-     */
-    private static func formatPriceLinkBasis(_ basis: PriceLinkBasis) -> String {
+
+    private func formatPriceLinkBasis(_ basis: PriceLinkBasis) -> String {
         switch basis {
         case .BID:
             return "BID"
@@ -348,10 +301,7 @@ public class OrderStatusFormatter {
         }
     }
     
-    /**
-     * Format price link type
-     */
-    private static func formatPriceLinkType(_ type: PriceLinkType) -> String {
+    private func formatPriceLinkType(_ type: PriceLinkType) -> String {
         switch type {
         case .VALUE:
             return ""
@@ -362,36 +312,8 @@ public class OrderStatusFormatter {
         }
     }
     
-    /**
-     * Format strategy type
-     */
-    private static func formatStrategyType(_ strategyType: OrderStrategyType) -> String {
-        switch strategyType {
-        case .SINGLE:
-            return ""
-        case .OCO:
-            return "OCO"
-        case .TRIGGER:
-            return "TRIGGER"
-        case .PAIR:
-            return "PAIR"
-        case .FLATTEN:
-            return "FLATTEN"
-        case .TWO_DAY_SWAP:
-            return "TWO_DAY_SWAP"
-        case .BLAST_ALL:
-            return "BLAST_ALL"
-        case .CANCEL:
-            return "CANCEL"
-        case .RECALL:
-            return "RECALL"
-        }
-    }
     
-    /**
-     * Format position effect
-     */
-    private static func formatPositionEffect(_ positionEffect: PositionEffectType) -> String {
+    private func formatPositionEffect(_ positionEffect: PositionEffectType) -> String {
         switch positionEffect {
         case .OPENING:
             return "[TO OPEN]"
@@ -404,10 +326,7 @@ public class OrderStatusFormatter {
         }
     }
     
-    /**
-     * Format stop type
-     */
-    private static func formatStopType(_ stopType: StopType) -> String {
+    private func formatStopType(_ stopType: StopType) -> String {
         switch stopType {
         case .STANDARD:
             return "STD"
@@ -421,4 +340,113 @@ public class OrderStatusFormatter {
             return "MARK"
         }
     }
-} 
+    
+    var body: some View {
+        Text(formatOrderDescription(order: order))
+            .font(.system(.caption, design: .monospaced))
+            .foregroundColor(.primary)
+            .multilineTextAlignment(.leading)
+            .onTapGesture {
+                // Only copy to clipboard, don't toggle checkbox
+                copyToClipboard(text: formatOrderDescription(order: order))
+            }
+    }
+    
+    private func copyToClipboard(text: String) {
+#if os(iOS)
+        UIPasteboard.general.string = text
+#else
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+#endif
+    }
+}
+
+#Preview("OrderDetailRow", traits: .landscapeLeft) {
+    VStack(spacing: 16) {
+        // Sample limit order
+        OrderDetailRow(
+            order: Order(
+                session: nil,
+                duration: .GOOD_TILL_CANCEL,
+                orderType: .LIMIT,
+                quantity: 100,
+                price: 150.50,
+                orderLegCollection: [
+                    OrderLegCollection(
+                        instrument: AccountsInstrument(symbol: "AAPL"),
+                        instruction: .BUY_TO_OPEN,
+                        positionEffect: .OPENING,
+                        quantity: 100
+                    )
+                ],
+                orderStrategyType: .SINGLE,
+                orderId: 12345,
+                status: .working
+            ),
+            groupOrderId: 12345
+        )
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+        
+        // Sample trailing stop limit order
+        OrderDetailRow(
+            order: Order(
+                session: nil,
+                duration: .GOOD_TILL_CANCEL,
+                orderType: .TRAILING_STOP_LIMIT,
+                quantity: 200,
+                stopPriceLinkBasis: .LAST,
+                stopPriceLinkType: .PERCENT,
+                stopPriceOffset: 2.0,
+                priceLinkBasis: .LAST,
+                priceLinkType: .PERCENT,
+                priceOffset: 3.0,
+                orderLegCollection: [
+                    OrderLegCollection(
+                        instrument: AccountsInstrument(symbol: "TSLA"),
+                        instruction: .SELL_TO_CLOSE,
+                        positionEffect: .CLOSING,
+                        quantity: 200
+                    )
+                ],
+                orderStrategyType: .SINGLE,
+                orderId: 12346,
+                status: .working
+            ),
+            groupOrderId: 12346
+        )
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+        
+        // Sample OCO order
+        OrderDetailRow(
+            order: Order(
+                session: nil,
+                duration: .DAY,
+                orderType: .STOP_LIMIT,
+                quantity: 150,
+                stopPrice: 70.00,
+                price: 75.25,
+                orderLegCollection: [
+                    OrderLegCollection(
+                        instrument: AccountsInstrument(symbol: "MSFT"),
+                        instruction: .BUY_TO_OPEN,
+                        positionEffect: .OPENING,
+                        quantity: 150
+                    )
+                ],
+                orderStrategyType: .OCO,
+                orderId: 12347,
+                status: .working
+            ),
+            groupOrderId: 12347
+        )
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
+    .padding()
+}

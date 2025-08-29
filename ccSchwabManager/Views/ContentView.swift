@@ -63,14 +63,5 @@ struct ContentView: View
                     secretsManager.objectWillChange.send()
                 }
         }
-        .onAppear {
-            // Clear any stuck loading states when the view appears
-            SchwabClient.shared.clearLoadingState()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
-            // Clear stuck loading states when app becomes active
-            print("📱 App became active - clearing stuck loading states")
-            SchwabClient.shared.clearLoadingState()
-        }
     }
 }

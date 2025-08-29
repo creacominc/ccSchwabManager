@@ -4,7 +4,7 @@ struct RecommendedOCOOrdersSection: View {
 
     let symbol: String
     let atrValue: Double
-    let taxLotData: [SalesCalcPositionsRecord]
+    @State private var taxLotData: [SalesCalcPositionsRecord] = []
     let sharesAvailableForTrading: Double
     let quoteData: QuoteData?
     let accountNumber: String
@@ -40,62 +40,93 @@ struct RecommendedOCOOrdersSection: View {
     // State to hold the current orders to avoid recomputation on selection changes
     @State private var currentOrders: [(String, Any)] = []
     
+    // Cache for current price to avoid repeated calculations
+    @State private var cachedCurrentPrice: Double?
+    @State private var cachedPriceSymbol: String = ""
+    
+    // Cache for sorted tax lots to avoid repeated sorting
+    @State private var cachedSortedTaxLots: [SalesCalcPositionsRecord] = []
+    @State private var cachedTaxLotsHash: String = ""
+    
+    @State private var isLoadingTaxLots = false
+    @State private var loadingProgress: Double = 0.0
+    @State private var loadingMessage = "Loading tax lot data..."
+    
+    // Background task for tax lot calculation
+    @State private var taxLotCalculationTask: Task<Void, Never>?
+    
     private func getDataHash() -> String {
         // Create a hash of the data that affects calculations
-        let taxLotHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
-        let quoteHash = quoteData?.quote?.lastPrice?.description ?? "nil"
-        let quoteSymbol = quoteData?.symbol ?? "nil"
-        return "\(symbol)-\(quoteSymbol)-\(atrValue)-\(sharesAvailableForTrading)-\(taxLotHash)-\(quoteHash)"
+        // Use more efficient string concatenation and avoid creating new strings on every call
+        var hash = symbol
+        hash += "-"
+        hash += quoteData?.symbol ?? "nil"
+        hash += "-"
+        hash += String(format: "%.2f", atrValue)
+        hash += "-"
+        hash += String(format: "%.0f", sharesAvailableForTrading)
+        hash += "-"
+        
+        // Only process tax lots if they've changed
+        if taxLotData.count <= 10 { // Limit for performance
+            for lot in taxLotData {
+                hash += String(format: "%.0f-%.2f", lot.quantity, lot.costPerShare)
+                hash += "|"
+            }
+        } else {
+            // For large datasets, use a summary hash
+            let totalShares = taxLotData.reduce(0.0) { $0 + $1.quantity }
+            let avgCost = taxLotData.reduce(0.0) { $0 + $1.costBasis } / totalShares
+            hash += String(format: "%.0f-%.2f", totalShares, avgCost)
+        }
+        
+        hash += "-"
+        hash += quoteData?.quote?.lastPrice?.description ?? "nil"
+        return hash
     }
     
-    private func getRecommendedSellOrders() -> [SalesCalcResultsRecord] {
-        let currentDataHash = getDataHash()
-        
-        // Return cached results if data hasn't changed
-        if currentDataHash == lastCalculatedDataHash && !cachedSellOrders.isEmpty {
+    private func getRecommendedSellOrders() async -> [SalesCalcResultsRecord] {
+        // Return cached results if available
+        if !cachedSellOrders.isEmpty {
             return cachedSellOrders
         }
         
         // Calculate new results
-        let orders = calculateRecommendedSellOrders()
+        let orders = await calculateRecommendedSellOrders()
         cachedSellOrders = orders
-        lastCalculatedSymbol = symbol
-        lastCalculatedDataHash = currentDataHash
-        
         return orders
     }
     
     private func getRecommendedBuyOrders() -> [BuyOrderRecord] {
-        let currentDataHash = getDataHash()
-        
-        // Return cached results if data hasn't changed
-        if currentDataHash == lastCalculatedDataHash && !cachedBuyOrders.isEmpty {
+        // Return cached results if available
+        if !cachedBuyOrders.isEmpty {
             return cachedBuyOrders
         }
         
         // Calculate new results
         let orders = calculateRecommendedBuyOrders()
         cachedBuyOrders = orders
-        lastCalculatedSymbol = symbol
-        lastCalculatedDataHash = currentDataHash
-        
         return orders
     }
     
     private func getAllOrders() -> [(String, Any)] {
-        let currentDataHash = getDataHash()
-        
-        // Return cached results if data hasn't changed
-        if currentDataHash == lastCalculatedDataHash && !cachedAllOrders.isEmpty {
+        // Return cached results if available
+        if !cachedAllOrders.isEmpty {
             return cachedAllOrders
+        }
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ getAllOrders: No tax lot data available")
+            return []
         }
         
         var orders: [(String, Any)] = []
         
         AppLogger.shared.debug("=== getAllOrders called ===")
         
-        // Get sell orders
-        let sellOrders = getRecommendedSellOrders()
+        // Get sell orders (these are already calculated and cached)
+        let sellOrders = recommendedSellOrders
         AppLogger.shared.debug("Sell orders count: \(sellOrders.count)")
         
         // Add sell orders first
@@ -104,8 +135,8 @@ struct RecommendedOCOOrdersSection: View {
             orders.append(("SELL", order))
         }
         
-        // Get buy orders
-        let buyOrders = getRecommendedBuyOrders()
+        // Get buy orders (these are already calculated and cached)
+        let buyOrders = recommendedBuyOrders
         AppLogger.shared.debug("Buy orders count: \(buyOrders.count)")
         
         // Add buy orders
@@ -118,19 +149,24 @@ struct RecommendedOCOOrdersSection: View {
         
         // Cache the result
         cachedAllOrders = orders
-        lastCalculatedDataHash = currentDataHash
         return orders
     }
     
-    private func calculateRecommendedSellOrders() -> [SalesCalcResultsRecord] {
+    private func calculateRecommendedSellOrders() async -> [SalesCalcResultsRecord] {
         var recommended: [SalesCalcResultsRecord] = []
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ calculateRecommendedSellOrders: No tax lot data available")
+            return recommended
+        }
         
         guard let currentPrice = getCurrentPrice() else {
             AppLogger.shared.debug("❌ No current price available for \(symbol)")
             return recommended
         }
         
-        let sortedTaxLots = taxLotData.sorted { $0.costPerShare > $1.costPerShare }
+        let sortedTaxLots = getSortedTaxLots()
         
         AppLogger.shared.debug("=== calculateRecommendedSellOrders ===")
         AppLogger.shared.debug("Symbol: \(symbol)")
@@ -140,31 +176,53 @@ struct RecommendedOCOOrdersSection: View {
         AppLogger.shared.debug("Current price: $\(currentPrice)")
         AppLogger.shared.debug("Sorted tax lots by cost per share (highest first): \(sortedTaxLots.count) lots")
         
-        // Calculate Top 100 Order
-        if let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
-            AppLogger.shared.debug("✅ Top 100 order created: \(top100Order.description)")
-            recommended.append(top100Order)
+        // Early exit if no tax lots or insufficient shares
+        guard !sortedTaxLots.isEmpty, sharesAvailableForTrading > 0 else {
+            AppLogger.shared.debug("❌ No tax lots or insufficient shares available")
+            return recommended
         }
         
-        // Calculate Min Shares Order
-        if let minSharesOrder = calculateMinSharesFor5PercentProfit(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
-            AppLogger.shared.debug("✅ Min shares order created: \(minSharesOrder.description)")
-            recommended.append(minSharesOrder)
-        }
-        
-        // Calculate Min Break Even Order
-        if let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots) {
-            AppLogger.shared.debug("✅ Min break even order created: \(minBreakEvenOrder.description)")
-            recommended.append(minBreakEvenOrder)
+        // Use TaskGroup for parallel processing of different order types
+        let orders = await withTaskGroup(of: SalesCalcResultsRecord?.self) { group in
+            var results: [SalesCalcResultsRecord?] = []
             
-            // Calculate additional sell orders from tax lots
+            // Add Top 100 Order calculation
+            group.addTask {
+                return await self.calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
+            }
+            
+            // Add Min Shares Order calculation
+            group.addTask {
+                return await self.calculateMinSharesFor5PercentProfit(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
+            }
+            
+            // Add Min Break Even Order calculation
+            group.addTask {
+                return await self.calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
+            }
+            
+            // Collect results
+            for await result in group {
+                results.append(result)
+            }
+            
+            return results
+        }
+        
+        // Process results and add to recommended list
+        for order in orders {
+            if let order = order {
+                recommended.append(order)
+            }
+        }
+        
+        // Calculate additional orders only if we have a min break even order
+        if let minBreakEvenOrder = orders[2] { // Index 2 is Min Break Even Order
             let additionalOrders = calculateAdditionalSellOrdersFromTaxLots(
                 currentPrice: currentPrice,
                 sortedTaxLots: sortedTaxLots,
                 minBreakEvenOrder: minBreakEvenOrder
             )
-            
-            // Add the additional orders to the recommended list
             recommended.append(contentsOf: additionalOrders)
         }
         
@@ -174,6 +232,12 @@ struct RecommendedOCOOrdersSection: View {
     
     private func calculateRecommendedBuyOrders() -> [BuyOrderRecord] {
         var recommended: [BuyOrderRecord] = []
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ calculateRecommendedBuyOrders: No tax lot data available")
+            return recommended
+        }
         
         guard let currentPrice = getCurrentPrice() else {
             AppLogger.shared.debug("❌ No current price available for \(symbol)")
@@ -406,26 +470,39 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Sell Order Calculations (copied from RecommendedSellOrdersSection)
     
     private func getCurrentPrice() -> Double? {
+        // Use cached price if available and symbol matches
+        if cachedPriceSymbol == symbol, let cachedPrice = cachedCurrentPrice {
+            return cachedPrice
+        }
+        
         // Ensure we never use a quote for the wrong symbol (avoids stale carryover on navigation)
         if let dataSymbol = quoteData?.symbol, dataSymbol != symbol {
             AppLogger.shared.debug("❌ QuoteData symbol (\(dataSymbol)) does not match current symbol (\(symbol)); ignoring quote data and deferring price")
+            cachedCurrentPrice = nil
+            cachedPriceSymbol = ""
             return nil
         } else {
             // First try to get the real-time quote price
             if let quote = quoteData?.quote?.lastPrice {
                 AppLogger.shared.debug("✅ Using real-time quote price: $\(quote)")
+                cachedCurrentPrice = quote
+                cachedPriceSymbol = symbol
                 return quote
             }
             
             // Fallback to extended market price if available
             if let extendedPrice = quoteData?.extended?.lastPrice {
                 AppLogger.shared.debug("✅ Using extended market price: $\(extendedPrice)")
+                cachedCurrentPrice = extendedPrice
+                cachedPriceSymbol = symbol
                 return extendedPrice
             }
             
             // Fallback to regular market price if available
             if let regularPrice = quoteData?.regular?.regularMarketLastPrice {
                 AppLogger.shared.debug("✅ Using regular market price: $\(regularPrice)")
+                cachedCurrentPrice = regularPrice
+                cachedPriceSymbol = symbol
                 return regularPrice
             }
         }
@@ -433,12 +510,14 @@ struct RecommendedOCOOrdersSection: View {
         // If we reach here and still don't have a quote, do not fallback to tax-lot price
         // until we have confirmed data for the current symbol to avoid cross-symbol leakage.
         AppLogger.shared.debug("⚠️ No valid quote available and symbol alignment unknown; returning nil to defer calculation")
+        cachedCurrentPrice = nil
+        cachedPriceSymbol = ""
         return nil
     }
 
     private func isDataReadyForCurrentSymbol() -> Bool {
-        // We consider data ready only when quoteData is present and matches the current symbol
-        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol { return true }
+        // We consider data ready only when quoteData is present, matches the current symbol, and tax lots are available
+        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol && !taxLotData.isEmpty { return true }
         return false
     }
     
@@ -446,39 +525,148 @@ struct RecommendedOCOOrdersSection: View {
         return max(1.0, min(TradingConfig.atrMultiplier, atrValue))
     }
     
-    // OLD CODE - COMMENTED OUT FOR REFERENCE
-    // This timing-related function is no longer needed for simplified orders.
-    /*
-    private func formatReleaseTime(_ date: Date) -> String {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Ensure the date is not in the past
-        var adjustedDate = date
-        if adjustedDate <= now {
-            // Move to the next weekday at 09:40
-            var nextWeekday = calendar.date(byAdding: .day, value: 1, to: now) ?? now
-            while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
-                // Sunday = 1, Saturday = 7
-                nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
-            }
-            adjustedDate = nextWeekday
+    private func getSortedTaxLots() -> [SalesCalcPositionsRecord] {
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ getSortedTaxLots: No tax lot data available")
+            return []
         }
         
-        var components = calendar.dateComponents([.year, .month, .day], from: adjustedDate)
-        components.hour = 9
-        components.minute = 40
-        components.second = 0
+        // Create a simple hash of tax lot data to check if sorting is needed
+        let taxLotsHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
         
-        let targetDate = calendar.date(from: components) ?? adjustedDate
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
-        return formatter.string(from: targetDate)
+        // Return cached result if available and data hasn't changed
+        if cachedTaxLotsHash == taxLotsHash && !cachedSortedTaxLots.isEmpty {
+            return cachedSortedTaxLots
+        }
+        
+        // Sort tax lots by cost per share (highest first)
+        let sorted = taxLotData.sorted { $0.costPerShare > $1.costPerShare }
+        
+        // Cache the result
+        cachedSortedTaxLots = sorted
+        cachedTaxLotsHash = taxLotsHash
+        
+        return sorted
     }
-    */
     
+    private func calculatePreviewOrders() async {
+        // Simplified calculation for previews that processes mock data quickly
+        guard let currentPrice = getCurrentPrice() else {
+            AppLogger.shared.debug("❌ No current price available for preview")
+            return
+        }
+        
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ calculatePreviewOrders: No tax lot data available")
+            return
+        }
+        
+        let sortedTaxLots = getSortedTaxLots()
+        
+        // Quick preview calculations - simplified versions of the full algorithms
+        var sellOrders: [SalesCalcResultsRecord] = []
+        var buyOrders: [BuyOrderRecord] = []
+        
+        // Simple Top 100 order for preview
+        if sortedTaxLots.count > 0 && sharesAvailableForTrading >= 100 {
+            let top100Order = createSimpleTop100Order(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
+            sellOrders.append(top100Order)
+        }
+        
+        // Simple Min Shares order for preview
+        if sortedTaxLots.count > 0 {
+            let minSharesOrder = createSimpleMinSharesOrder(currentPrice: currentPrice, sortedTaxLots: sortedTaxLots)
+            sellOrders.append(minSharesOrder)
+        }
+        
+        // Simple Buy order for preview
+        if let quoteData = quoteData, let lastPrice = quoteData.quote?.lastPrice {
+            let buyOrder = createSimpleBuyOrder(currentPrice: lastPrice)
+            buyOrders.append(buyOrder)
+        }
+        
+        // Update state on main thread
+        await MainActor.run {
+            self.recommendedSellOrders = sellOrders
+            self.recommendedBuyOrders = buyOrders
+            self.currentOrders = self.createPreviewAllOrders(sellOrders: sellOrders, buyOrders: buyOrders)
+            self.cachedAllOrders = self.currentOrders
+        }
+        
+        AppLogger.shared.debug("✅ Preview orders calculated: \(sellOrders.count) sell, \(buyOrders.count) buy")
+    }
+    
+    // MARK: - Preview Helper Functions
+    
+    private func createSimpleTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord {
+        // Simplified Top 100 order for previews
+        let entry = currentPrice * 0.95  // 5% below current price
+        let target = currentPrice * 1.10 // 10% above current price
+        let cancel = currentPrice * 0.90 // 10% below current price
+        
+        var order = SalesCalcResultsRecord()
+        order.sharesToSell = 100.0
+        order.entry = entry
+        order.target = target
+        order.cancel = cancel
+        order.description = "Top 100 Shares - Preview"
+        return order
+    }
+    
+    private func createSimpleMinSharesOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord {
+        // Simplified Min Shares order for previews
+        let minShares = min(50.0, sharesAvailableForTrading)
+        let entry = currentPrice * 0.95  // 5% below current price
+        let target = currentPrice * 1.05 // 5% above current price
+        let cancel = currentPrice * 0.90 // 10% below current price
+        
+        var order = SalesCalcResultsRecord()
+        order.sharesToSell = minShares
+        order.entry = entry
+        order.target = target
+        order.cancel = cancel
+        order.description = "Min Shares - Preview"
+        return order
+    }
+    
+    private func createSimpleBuyOrder(currentPrice: Double) -> BuyOrderRecord {
+        // Simplified Buy order for previews
+        let targetBuyPrice = currentPrice * 0.95  // 5% below current price
+        let entryPrice = currentPrice * 0.97      // 3% below current price
+        let targetGainPercent = 8.0               // 8% target gain
+        
+        var order = BuyOrderRecord()
+        order.sharesToBuy = 100.0
+        order.targetBuyPrice = targetBuyPrice
+        order.entryPrice = entryPrice
+        order.targetGainPercent = targetGainPercent
+        order.description = "Buy Order - Preview"
+        return order
+    }
+    
+    private func createPreviewAllOrders(sellOrders: [SalesCalcResultsRecord], buyOrders: [BuyOrderRecord]) -> [(String, Any)] {
+        var orders: [(String, Any)] = []
+        
+        // Add sell orders
+        for order in sellOrders {
+            orders.append(("SELL", order))
+        }
+        
+        // Add buy orders
+        for order in buyOrders {
+            orders.append(("BUY", order))
+        }
+        
+        return orders
+    }
+
     // --- Top 100 Standing Sell ---
     private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
+        // Early exit conditions for performance
+        guard !sortedTaxLots.isEmpty else { return nil }
+        
         // Check if position has more than 100 shares total (not just available for trading)
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         
@@ -1208,155 +1396,54 @@ struct RecommendedOCOOrdersSection: View {
         return sellOrder
     }
     
-    // OLD CODE - REMOVED: calculateBuyOrder function replaced with new logic
-    
-    // OLD CODE - REMOVED: calculateSecondBuyOrder function no longer needed
-    
-    // OLD CODE - COMMENTED OUT FOR REFERENCE
-    // The following timing-related functions are no longer needed for simplified orders.
-    /*
-    private func calculateSubmitDate() -> (String, Bool) {
-        let calendar : Calendar = Calendar.current
-        let now : Date = Date()
-        
-        // Get the last buy transaction date (7-day rule)
-        let lastBuyDate : Date = getLastBuyTransactionDate() ?? Date()
-        let sevenDaysAfterLastBuy  : Date = calendar.date( byAdding: .day, value: 7, to: lastBuyDate )  ?? Date()
-        
-        // Calculate next trading day (only if we need to submit today)
-        let nextTradingDay : Date = getNextTradingDay()
-        
-        // Use the later of the two dates, but only apply the 09:30 adjustment if the 7-day date is today
-        let today = calendar.startOfDay(for: now)
-        let sevenDaysDate = calendar.startOfDay(for: sevenDaysAfterLastBuy)
-        
-        // Debug logging
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        AppLogger.shared.debug("DEBUG: calculateSubmitDate (OCO) for \(symbol)")
-        AppLogger.shared.debug("DEBUG:   now = \(formatter.string(from: now))")
-        AppLogger.shared.debug("DEBUG:   lastBuyDate = \(formatter.string(from: lastBuyDate))")
-        AppLogger.shared.debug("DEBUG:   sevenDaysAfterLastBuy = \(formatter.string(from: sevenDaysAfterLastBuy))")
-        AppLogger.shared.debug("DEBUG:   nextTradingDay = \(formatter.string(from: nextTradingDay))")
-        AppLogger.shared.debug("DEBUG:   today = \(formatter.string(from: today))")
-        AppLogger.shared.debug("DEBUG:   sevenDaysDate = \(formatter.string(from: sevenDaysDate))")
-        AppLogger.shared.debug("DEBUG:   isSevenDaysToday = \(calendar.isDate(sevenDaysDate, inSameDayAs: today))")
-        
-        let baseDate: Date
-        if calendar.isDate(sevenDaysDate, inSameDayAs: today) {
-            // 7-day rule says today, so use the next trading day logic (which handles 09:30 adjustment)
-            baseDate = nextTradingDay
-            AppLogger.shared.debug("DEBUG:   using nextTradingDay (7-day rule says today)")
-        } else {
-            // 7-day rule says a future date, so use that date directly (no 09:30 adjustment)
-            baseDate = sevenDaysAfterLastBuy
-            AppLogger.shared.debug("DEBUG:   using sevenDaysAfterLastBuy (7-day rule says future date)")
+    private func updateRecommendedOrders() async {
+        // Use cached results if available and data hasn't changed
+        let currentDataHash = getDataHash()
+        if currentDataHash == lastCalculatedDataHash && !cachedAllOrders.isEmpty {
+            AppLogger.shared.debug("✅ Using cached orders, data unchanged")
+            return
         }
         
-        AppLogger.shared.debug("DEBUG:   baseDate = \(formatter.string(from: baseDate))")
+        AppLogger.shared.debug("🔄 Recalculating orders due to data change")
         
-        // Set the time to 09:40:00 using calendar components
-        var targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: baseDate) ?? baseDate
-        AppLogger.shared.debug("DEBUG:   initial targetDate = \(formatter.string(from: targetDate))")
-        
-        // Check if the target date is in the past
-        if targetDate <= now {
-            AppLogger.shared.debug("DEBUG:   targetDate is in the past, moving to next weekday at 09:40")
-            // Move to the next weekday at 09:40
-            var nextWeekday = calendar.date(byAdding: .day, value: 1, to: now) ?? now
-            while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
-                // Sunday = 1, Saturday = 7
-                nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
+        // Wait for tax lot calculation to complete if it's still running
+        if isLoadingTaxLots {
+            AppLogger.shared.debug("⏳ Waiting for tax lot calculation to complete...")
+            // Wait for the tax lot calculation to finish
+            while isLoadingTaxLots {
+                try? await Task.sleep(nanoseconds: 100_000_000) // Wait 100ms
             }
-            targetDate = calendar.date(bySettingHour: 9, minute: 40, second: 0, of: nextWeekday) ?? nextWeekday
-            AppLogger.shared.debug("DEBUG:   adjusted targetDate = \(formatter.string(from: targetDate))")
+            AppLogger.shared.debug("✅ Tax lot calculation completed, proceeding with order calculation")
         }
         
-        let outputFormatter = DateFormatter()
-        outputFormatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
-        let submitDate = outputFormatter.string(from: targetDate)
-        AppLogger.shared.debug("DEBUG:   submitDate = \(submitDate)")
+        // Ensure we have tax lot data before proceeding
+        guard !taxLotData.isEmpty else {
+            AppLogger.shared.debug("❌ No tax lot data available, skipping order calculation")
+            return
+        }
         
-        // Check if we can submit immediately (target date is today and it's before 09:30)
-        let nineThirtyToday = today.addingTimeInterval(9 * 3600 + 30 * 60) // 9 hours and 30 minutes
-        let isImmediate = calendar.isDate(targetDate, inSameDayAs: today) && now < nineThirtyToday
-        
-        return (submitDate, isImmediate)
-    }
-    */
-    
-    // OLD CODE - COMMENTED OUT FOR REFERENCE
-    // These timing-related functions are no longer needed for simplified orders.
-    /*
-    private func getLastBuyTransactionDate() -> Date? {
-        // Get transaction history for this symbol
-        let transactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
-        
-        // Find the most recent buy transaction
-        let buyTransactions = transactions.filter { transaction in
-            // Check if any transfer item is a buy (positive amount) for this symbol
-            transaction.transferItems.contains { item in
-                item.instrument?.symbol == symbol && 
-                (item.amount ?? 0) > 0
+        // Use Task to handle async calculations without blocking the UI
+        Task {
+            // Calculate new orders in parallel
+            async let sellOrders = calculateRecommendedSellOrders()
+            async let buyOrders = calculateRecommendedBuyOrders()
+            
+            // Wait for both to complete
+            let (sellResults, buyResults) = await (sellOrders, buyOrders)
+            
+            await MainActor.run {
+                // Update state on main thread
+                self.recommendedSellOrders = sellResults
+                self.recommendedBuyOrders = buyResults
+                
+                // Update current orders
+                self.currentOrders = self.getAllOrders()
+                
+                // Update cache
+                self.lastCalculatedDataHash = currentDataHash
+                AppLogger.shared.debug("✅ Orders updated and cached")
             }
         }
-        
-        // Sort by date (most recent first) and get the first one
-        let sortedBuyTransactions = buyTransactions.sorted { first, second in
-            let firstTime = first.time ?? ""
-            let secondTime = second.time ?? ""
-            return firstTime > secondTime
-        }
-        
-        guard let mostRecentBuy = sortedBuyTransactions.first,
-              let timeString = mostRecentBuy.time else {
-            return nil
-        }
-        
-        // Parse the time string to Date
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        
-        guard let date = formatter.date(from: timeString) else {
-            return nil
-        }
-        
-        return date
-    }
-    
-    private func getNextTradingDay() -> Date {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // Check if current time is before 09:30
-        let today = calendar.startOfDay(for: now)
-        let nineThirtyToday = today.addingTimeInterval(9 * 3600 + 30 * 60) // 9 hours and 30 minutes
-        
-        var baseDate: Date
-        if now < nineThirtyToday {
-            // Before 09:30, use today
-            baseDate = today
-        } else {
-            // After 09:30, use tomorrow
-            baseDate = today.addingTimeInterval(24 * 3600) // Add 24 hours
-        }
-        
-        // Find the next weekday (skip weekends)
-        var nextWeekday = baseDate
-        while calendar.component(.weekday, from: nextWeekday) == 1 || calendar.component(.weekday, from: nextWeekday) == 7 {
-            // Sunday = 1, Saturday = 7
-            nextWeekday = calendar.date(byAdding: .day, value: 1, to: nextWeekday) ?? nextWeekday
-        }
-        
-        return nextWeekday
-    }
-    */
-    
-    private func updateRecommendedOrders() {
-        recommendedSellOrders = calculateRecommendedSellOrders()
-        recommendedBuyOrders = calculateRecommendedBuyOrders()
-        // Update current orders when underlying data changes
-        currentOrders = getAllOrders()
     }
     
     private func checkAndUpdateSymbol() {
@@ -1372,9 +1459,17 @@ struct RecommendedOCOOrdersSection: View {
             cachedAllOrders.removeAll()
             lastCalculatedSymbol = ""
             lastCalculatedDataHash = ""
+            // Clear price cache
+            cachedCurrentPrice = nil
+            cachedPriceSymbol = ""
+            // Clear tax lots cache
+            cachedSortedTaxLots.removeAll()
+            cachedTaxLotsHash = ""
+            // Clear tax lot data when symbol changes
+            taxLotData.removeAll()
             // Avoid computing with stale data from the previous position. Clear UI and
-            // wait for new quote/tax-lot inputs to arrive; the onChange(getDataHash())
-            // handler will repopulate when fresh data is ready for this symbol.
+            // wait for new quote/tax-lot inputs to arrive; the onChange handlers will
+            // repopulate when fresh data is ready for this symbol.
             currentOrders.removeAll()
         }
     }
@@ -1439,6 +1534,28 @@ struct RecommendedOCOOrdersSection: View {
                 .font(.headline)
                 .foregroundColor(.primary)
             
+            // Loading indicator for tax lot calculation
+            if isLoadingTaxLots {
+                VStack(spacing: 12) {
+                    ProgressView(value: loadingProgress)
+                        .progressViewStyle(LinearProgressViewStyle())
+                        .frame(maxWidth: .infinity)
+                    
+                    Text(loadingMessage)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button("Cancel") {
+                        cancelTaxLotCalculation()
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.caption)
+                }
+                .padding()
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
             HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: 8) {
                     sellOrdersSection
@@ -1471,18 +1588,45 @@ struct RecommendedOCOOrdersSection: View {
             checkAndUpdateSymbol()
         }
         .onAppear {
-            // Only populate when we have aligned data for this symbol
-            if currentOrders.isEmpty, isDataReadyForCurrentSymbol() {
-                currentOrders = getAllOrders()
+            // Load tax lots in background when component appears
+            loadTaxLotsInBackground()
+            
+            // Wait for tax lots to be loaded before calculating orders
+            Task {
+                // Wait for tax lot calculation to complete
+                while isLoadingTaxLots {
+                    try? await Task.sleep(nanoseconds: 100_000_000) // Wait 100ms
+                }
+                
+                // Only populate when we have aligned data for this symbol and tax lots are ready
+                if currentOrders.isEmpty && isDataReadyForCurrentSymbol() && !taxLotData.isEmpty {
+                    await updateRecommendedOrders()
+                }
             }
         }
-        .onChange(of: getDataHash()) { _, _ in
-            // Update orders when underlying data changes and belongs to this symbol
-            guard isDataReadyForCurrentSymbol() else {
-                AppLogger.shared.debug("⏳ Data not ready for symbol \(symbol); skipping recompute")
-                return
+        .onChange(of: symbol) { _, newSymbol in
+            checkAndUpdateSymbol()
+        }
+        .onChange(of: atrValue) { _, _ in
+            // Only recalculate if we have data, the symbol matches, and tax lots are ready
+            guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
+            Task {
+                await updateRecommendedOrders()
             }
-            currentOrders = getAllOrders()
+        }
+        .onChange(of: sharesAvailableForTrading) { _, _ in
+            // Only recalculate if we have data, the symbol matches, and tax lots are ready
+            guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
+            Task {
+                await updateRecommendedOrders()
+            }
+        }
+        .onChange(of: quoteData?.quote?.lastPrice) { _, _ in
+            // Only recalculate if we have data, the symbol matches, and tax lots are ready
+            guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
+            Task {
+                await updateRecommendedOrders()
+            }
         }
         .sheet(isPresented: $showingConfirmationDialog) {
             confirmationDialogView
@@ -2299,4 +2443,190 @@ struct RecommendedOCOOrdersSection: View {
         
         return (sharesToSell, totalGain, actualCostPerShare)
     }
+    
+    // MARK: - Background Loading Methods
+    private func loadTaxLotsInBackground() {
+        guard !isLoadingTaxLots else { 
+            AppLogger.shared.debug("⏳ Tax lot calculation already in progress, skipping...")
+            return 
+        }
+        
+        // Clear any existing tax lot data when starting a new calculation
+        taxLotData.removeAll()
+        
+        isLoadingTaxLots = true
+        loadingProgress = 0.0
+        loadingMessage = "Initializing tax lot calculation..."
+        
+        taxLotCalculationTask = Task {
+            // Simulate progress updates
+            await updateLoadingProgress(0.1, "Fetching transaction history...")
+            
+            // Use the optimized tax lot calculation
+            let currentPrice = await MainActor.run { quoteData?.quote?.lastPrice }
+            let taxLots = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: currentPrice)
+                    continuation.resume(returning: result)
+                }
+            }
+            
+            await updateLoadingProgress(0.8, "Processing tax lot data...")
+            
+            // Update the UI on main thread
+            await MainActor.run {
+                self.taxLotData = taxLots
+                self.isLoadingTaxLots = false
+                self.loadingProgress = 1.0
+                self.loadingMessage = "Tax lot calculation complete!"
+                
+                // Hide the loading message after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.loadingProgress = 0.0
+                    self.loadingMessage = ""
+                }
+            }
+        }
+    }
+    
+    @MainActor
+    private func updateLoadingProgress(_ progress: Double, _ message: String) async {
+        loadingProgress = progress
+        loadingMessage = message
+    }
+    
+    private func cancelTaxLotCalculation() {
+        taxLotCalculationTask?.cancel()
+        taxLotCalculationTask = nil
+        isLoadingTaxLots = false
+        loadingProgress = 0.0
+        loadingMessage = ""
+        // Clear tax lot data when canceling
+        taxLotData.removeAll()
+    }
 } 
+
+// MARK: - Previews
+
+#Preview("RecommendedOCOOrdersSection - Full View", traits: .landscapeLeft) {
+    ScrollView {
+        RecommendedOCOOrdersSection(
+            symbol: "AAPL",
+            atrValue: 2.5,
+            sharesAvailableForTrading: 150,
+            quoteData: QuoteData(
+                assetMainType: "EQUITY",
+                assetSubType: "COE",
+                quoteType: "NBBO",
+                realtime: true,
+                ssid: 123456789,
+                symbol: "AAPL",
+                extended: nil,
+                fundamental: nil,
+                quote: Quote(
+                    m52WeekHigh: 200.0,
+                    m52WeekLow: 120.0,
+                    askMICId: "XNAS",
+                    askPrice: 175.5,
+                    askSize: 100,
+                    askTime: 1736557200000,
+                    bidMICId: "XNAS",
+                    bidPrice: 174.5,
+                    bidSize: 100,
+                    bidTime: 1736557200000,
+                    closePrice: 172.5,
+                    highPrice: 176.0,
+                    lastMICId: "XNAS",
+                    lastPrice: 175.0,
+                    lastSize: 100,
+                    lowPrice: 174.0,
+                    mark: 175.0,
+                    markChange: 2.5,
+                    markPercentChange: 1.45,
+                    netChange: 2.5,
+                    netPercentChange: 1.45,
+                    openPrice: 172.5,
+                    postMarketChange: 0.0,
+                    postMarketPercentChange: 0.0,
+                    quoteTime: 1736557200000,
+                    securityStatus: "Normal",
+                    totalVolume: 50000000,
+                    tradeTime: 1736557200000,
+                    volatility: 0.25
+                ),
+                reference: nil,
+                regular: nil
+            ),
+            accountNumber: "123456789"
+        )
+    }
+    .padding()
+}
+
+#Preview("RecommendedOCOOrdersSection - Simple UI", traits: .landscapeLeft) {
+    ScrollView {
+        RecommendedOCOOrdersSection(
+            symbol: "TSLA",
+            atrValue: 1.8,
+            sharesAvailableForTrading: 25,
+            quoteData: QuoteData(
+                assetMainType: "EQUITY",
+                assetSubType: "COE",
+                quoteType: "NBBO",
+                realtime: true,
+                ssid: 987654321,
+                symbol: "TSLA",
+                extended: nil,
+                fundamental: nil,
+                quote: Quote(
+                    m52WeekHigh: 250.0,
+                    m52WeekLow: 150.0,
+                    askMICId: "XNAS",
+                    askPrice: 180.5,
+                    askSize: 100,
+                    askTime: 1736557200000,
+                    bidMICId: "XNAS",
+                    bidPrice: 179.5,
+                    bidSize: 100,
+                    bidTime: 1736557200000,
+                    closePrice: 185.0,
+                    highPrice: 182.0,
+                    lastMICId: "XNAS",
+                    lastPrice: 180.0,
+                    lastSize: 100,
+                    lowPrice: 178.0,
+                    mark: 180.0,
+                    markChange: -5.0,
+                    markPercentChange: -2.7,
+                    netChange: -5.0,
+                    netPercentChange: -2.7,
+                    openPrice: 185.0,
+                    postMarketChange: 0.0,
+                    postMarketPercentChange: 0.0,
+                    quoteTime: 1736557200000,
+                    securityStatus: "Normal",
+                    totalVolume: 30000000,
+                    tradeTime: 1736557200000,
+                    volatility: 0.35
+                ),
+                reference: nil,
+                regular: nil
+            ),
+            accountNumber: "987654321"
+        )
+    }
+    .padding()
+}
+
+#Preview("RecommendedOCOOrdersSection - Minimal Data", traits: .landscapeLeft) {
+    ScrollView {
+        RecommendedOCOOrdersSection(
+            symbol: "MSFT",
+            atrValue: 1.0,
+            sharesAvailableForTrading: 0,
+            quoteData: nil, // No quote data to avoid calculations
+            accountNumber: "111222333"
+        )
+    }
+    .padding()
+}

@@ -821,10 +821,5 @@ class OrderLogicTests: XCTestCase {
         print("❌ Could not achieve target gain of \(targetGainPercent)%")
         return nil
     }
-    
-    private func formatReleaseTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy/MM/dd HH:mm:ss"
-        return formatter.string(from: date)
-    }
+
 } 

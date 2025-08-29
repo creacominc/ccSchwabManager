@@ -17,8 +17,22 @@ struct PositionDetailContent: View {
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
     let transactions: [Transaction]
-    @Binding var viewSize: CGSize
+//    @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
+    @State private var orders: [Order] = []
+    @State private var isLoadingOrders: Bool = false
+    
+    private var detailsTabView: some View {
+        DetailsTab(
+            position: position,
+            accountNumber: accountNumber,
+            symbol: symbol,
+            atrValue: atrValue,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            lastPrice: getCurrentPrice(),
+            quoteData: quoteData
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,28 +127,16 @@ struct PositionDetailContent: View {
                     // Custom content switcher instead of TabView
                     Group {
                         switch selectedTab {
-                        case 0:
-                            DetailsTab(
-                                position: position,
-                                accountNumber: accountNumber,
-                                symbol: symbol,
-                                atrValue: atrValue,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
-                                lastPrice: getCurrentPrice(),
-                                quoteData: quoteData
-                            )
                         case 1:
                             PriceHistoryTab(
                                 priceHistory: priceHistory,
                                 isLoading: isLoadingPriceHistory,
-                                formatDate: formatDate,
-                                geometry: geometry
+                                formatDate: formatDate
                             )
                         case 2:
                             TransactionsTab(
                                 isLoading: isLoadingTransactions,
                                 symbol: position.instrument?.symbol ?? "",
-                                geometry: geometry,
                                 transactions: transactions
                             )
                         case 3:
@@ -144,11 +146,10 @@ struct PositionDetailContent: View {
                                 sharesAvailableForTrading: sharesAvailableForTrading,
                                 taxLotData: taxLotData,
                                 isLoadingTaxLots: isLoadingTaxLots,
-                                quoteData: quoteData,
-                                geometry: geometry,
+                                quoteData: quoteData
                             )
                         case 4:
-                            CurrentOrdersTab(symbol: symbol)
+                            CurrentOrdersTab(symbol: symbol, orders: orders)
                         case 5:
                             OCOOrdersTab(
                                 symbol: symbol,
@@ -167,23 +168,22 @@ struct PositionDetailContent: View {
                                 quoteData: quoteData,
                                 accountNumber: accountNumber
                             )
+                        case 0:
+                            detailsTabView
                         default:
-                            DetailsTab(
-                                position: position,
-                                accountNumber: accountNumber,
-                                symbol: symbol,
-                                atrValue: atrValue,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
-                                lastPrice: getCurrentPrice(),
-                                quoteData: quoteData
-                            )
+                            detailsTabView
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
-                        viewSize = geometry.size
+//                        viewSize = geometry.size
+                        fetchOrders()
                     }
-                    .onChange(of: geometry.size) { oldValue, newValue in
-                        viewSize = newValue
+//                    .onChange(of: geometry.size) { oldValue, newValue in
+//                        viewSize = newValue
+//                    }
+                    .onChange(of: symbol) { _, _ in
+                        fetchOrders()
                     }
                 }
             }
@@ -201,6 +201,19 @@ struct PositionDetailContent: View {
         } else {
             // Fallback to price history if no quote data is available
             return priceHistory?.candles.last?.close ?? 0.0
+        }
+    }
+    
+    private func fetchOrders() {
+        isLoadingOrders = true
+        
+        Task {
+            let fetchedOrders = SchwabClient.shared.getOrderList()
+            
+            await MainActor.run {
+                self.orders = fetchedOrders
+                self.isLoadingOrders = false
+            }
         }
     }
 }
