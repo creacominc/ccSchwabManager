@@ -20,6 +20,11 @@ struct DetailsTab: View {
         VStack(spacing: 8) {
             // Two-column layout: Left | Spacer | Right
             HStack(spacing: 0) {
+                // Spacer before columns
+                Spacer()
+                    .frame(minWidth: 1)
+                    .padding(.horizontal, 16)
+
                 // Left column
                 VStack(spacing: 0) {
                     ForEach(0..<6) { rowIndex in
@@ -60,6 +65,12 @@ struct DetailsTab: View {
                         .padding(.vertical, 2)
                     }
                 }
+
+                // Spacer after columns
+                Spacer()
+                    .frame(minWidth: 1)
+                    .padding(.horizontal, 16)
+
             }
         }
         .padding()

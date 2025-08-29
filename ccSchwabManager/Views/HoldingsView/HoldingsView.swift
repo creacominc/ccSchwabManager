@@ -225,6 +225,23 @@ struct HoldingsView: View {
                             .onSubmit {
                                 // Optional: Handle search submission
                             }
+                            .onKeyPress(.delete) {
+                                searchText = ""
+                                return .handled
+                            }
+                            .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
+                                searchText = ""
+                                return .handled
+                            }
+                            .onKeyPress { keyPress in
+                                // Handle alphanumeric input for search
+                                let character = keyPress.characters.first
+                                if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
+                                    searchText += String(char)
+                                    return .handled
+                                }
+                                return .ignored
+                            }
                         
                         if !searchText.isEmpty {
                             Button(action: {
@@ -359,38 +376,12 @@ struct HoldingsView: View {
             #if os(macOS)
             .searchable(text: $searchText, prompt: "Search by symbol or description")
             #endif
-            // Keyboard handling for both platforms
-            .focusable()
-            .focused($isSearchFieldFocused)
-            .onKeyPress(.delete) {
-                searchText = ""
-                return .handled
-            }
-            .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
-                searchText = ""
-                return .handled
-            }
-            .onKeyPress { keyPress in
-                // Handle alphanumeric input for search
-                let character = keyPress.characters.first
-                if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
-                    // Focus search field and append character
-                    #if os(iOS)
-                    isSearchFieldFocused = true
-                    #endif
-                    searchText += String(char)
-                    return .handled
-                }
-                return .ignored
-            }
             .onAppear {
-                // Ensure the view can receive keyboard events
+                // Focus the search field when the view appears
                 #if os(iOS)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isSearchFieldFocused = true
                 }
-                #else
-                isSearchFieldFocused = true
                 #endif
             }
             //.navigationTitle("Holdings")
