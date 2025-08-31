@@ -5,83 +5,18 @@ struct BuySequenceConfirmationDialogView: View {
     let orderJson: String
     let onCancel: () -> Void
     let onSubmit: () -> Void
+    let trailingStopValidation: (() -> String?)? // Returns error message if validation fails, nil if passes
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            HStack {
-                Text("Confirm Buy Sequence Order Submission")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                Button("Cancel") {
-                    onCancel()
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal)
-            
-            // Order Descriptions Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Please review the following sequence orders before submission:")
-                    .font(.headline)
-                
-                if orderDescriptions.isEmpty {
-                    Text("No order descriptions available")
-                        .foregroundColor(.secondary)
-                        .padding(.vertical, 8)
-                } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(orderDescriptions.enumerated()), id: \.offset) { index, description in
-                            Text(description)
-                                .font(.body)
-                                .foregroundColor(.primary)
-                                .padding(.vertical, 2)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-            }
-            .padding(.horizontal)
-            
-            Divider()
-            
-            // JSON Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("JSON to be submitted:")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                
-                ScrollView {
-                    Text(orderJson.isEmpty ? "No JSON available" : orderJson)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                //.frame(maxHeight: 150)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(4)
-            }
-            .padding(.horizontal)
-            
-            Spacer()
-            
-            // Action Buttons
-            HStack {
-                Spacer()
-                
-                Button("Submit Order") {
-                    onSubmit()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding(.horizontal)
-            .padding(.bottom)
-        }
-        .padding()
+        // Use the enhanced OrderConfirmationDialog with trailing stop validation
+        OrderConfirmationDialog(
+            isPresented: .constant(true), // This will be managed by the parent view
+            orderDescriptions: orderDescriptions,
+            orderJson: orderJson,
+            onConfirm: onSubmit,
+            onCancel: onCancel,
+            trailingStopValidation: trailingStopValidation
+        )
     }
 }
 
@@ -105,6 +40,7 @@ struct BuySequenceConfirmationDialogView: View {
         }
         """,
         onCancel: {},
-        onSubmit: {}
+        onSubmit: {},
+        trailingStopValidation: nil // No specific validation for this preview
     )
 }

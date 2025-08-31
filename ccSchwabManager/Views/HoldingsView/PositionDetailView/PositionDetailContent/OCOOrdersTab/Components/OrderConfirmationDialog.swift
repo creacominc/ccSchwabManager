@@ -9,6 +9,7 @@ struct OrderConfirmationDialog: View {
     let orderJson: String
     let onConfirm: () -> Void
     let onCancel: () -> Void
+    let trailingStopValidation: (() -> String?)? // Returns error message if validation fails, nil if passes
     
     // MARK: - Body
     var body: some View {
@@ -27,6 +28,21 @@ struct OrderConfirmationDialog: View {
                 .buttonStyle(.bordered)
             }
             .padding(.horizontal)
+            
+            // Trailing Stop Validation Error (if any)
+            if let validationError = trailingStopValidation?() {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                    Text(validationError)
+                        .foregroundColor(.red)
+                        .font(.headline)
+                }
+                .padding()
+                .background(Color.red.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal)
+            }
             
             // Order Descriptions Section
             VStack(alignment: .leading, spacing: 8) {
@@ -81,6 +97,7 @@ struct OrderConfirmationDialog: View {
                     onConfirm()
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(trailingStopValidation?() != nil) // Disable if validation fails
             }
             .padding(.horizontal)
             .padding(.bottom)
@@ -111,7 +128,8 @@ struct OrderConfirmationDialog: View {
         }
         """,
         onConfirm: {},
-        onCancel: {}
+        onCancel: {},
+        trailingStopValidation: nil
     )
 }
 
@@ -121,6 +139,7 @@ struct OrderConfirmationDialog: View {
         orderDescriptions: [],
         orderJson: "",
         onConfirm: {},
-        onCancel: {}
+        onCancel: {},
+        trailingStopValidation: nil
     )
 }

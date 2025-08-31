@@ -1206,7 +1206,7 @@ class SchwabClient
 
         guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
             AppLogger.shared.error("computeATR Failed to fetch price history for \(symbol).")
-            // Don't set the symbol if we failed to get data
+            // Don't set the symbol if we failed to get data - this allows retry on next call
             return 0.0
         }
 
@@ -1217,7 +1217,7 @@ class SchwabClient
         // Need at least 2 candles to compute ATR
         guard candlesCount > 1 else {
             AppLogger.shared.debug("computeATR: Need at least 2 candles, got \(candlesCount) for \(symbol)")
-            // Don't set the symbol if we don't have enough data
+            // Don't set the symbol if we don't have enough data - this allows retry on next call
             return 0.0
         }
         
@@ -1231,12 +1231,12 @@ class SchwabClient
         
         guard validCandles.count > 1 else {
             AppLogger.shared.debug("computeATR: Need at least 2 valid candles, got \(validCandles.count) for \(symbol)")
-            // Don't set the symbol if we don't have valid data
+            // Don't set the symbol if we don't have valid data - this allows retry on next call
             return 0.0
         }
         
         var close : Double  = priceHistory.previousClose ?? 0.0
-        var m_lastFilteredATR : Double  = 0.0
+        var localATR : Double  = 0.0
         
         /*
          * Compute the ATR as the average of the True Range.
@@ -1248,6 +1248,7 @@ class SchwabClient
         // Additional safety check
         guard startIndex >= 0 && startIndex < validCandles.count else {
             AppLogger.shared.debug("computeATR: Invalid startIndex \(startIndex) for validCandlesCount \(validCandles.count) for \(symbol)")
+            // Don't set the symbol if we have invalid data - this allows retry on next call
             return 0.0
         }
         
@@ -1280,18 +1281,19 @@ class SchwabClient
             let low  : Double  = candle.low ?? 0.0
             let tr : Double = max( abs( high - low ), abs( high - prevClose ), abs( low - prevClose ) )
             close = candle.close ?? 0.0
-            m_lastFilteredATR = ( (m_lastFilteredATR * Double(indx)) + tr ) / Double(indx+1)
+            localATR = ( (localATR * Double(indx)) + tr ) / Double(indx+1)
         }
         
         // Validate final values before returning
-        guard close > 0 && m_lastFilteredATR > 0 else {
-            AppLogger.shared.debug("computeATR: Invalid final values - close: \(close), ATR: \(m_lastFilteredATR) for \(symbol)")
+        guard close > 0 && localATR > 0 else {
+            AppLogger.shared.debug("computeATR: Invalid final values - close: \(close), ATR: \(localATR) for \(symbol)")
+            // Don't set the symbol if we have invalid final values - this allows retry on next call
             return 0.0
         }
         
         // Set the symbol and ATR only if we successfully calculated a valid value
         m_lastFilteredATRSymbol = symbol
-        m_lastFilteredATR = (m_lastFilteredATR * 1.08 / close * 100.0)
+        m_lastFilteredATR = (localATR * 1.08 / close * 100.0)
         
         AppLogger.shared.debug("computeATR: Successfully calculated ATR: \(m_lastFilteredATR)% for \(symbol)")
         
@@ -2148,7 +2150,10 @@ class SchwabClient
             
             AppLogger.shared.debug("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
             AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 JSON Body:")
-            AppLogger.shared.debug("📤 [PLACE-ORDER] \(jsonString)")
+            
+            // Sanitize the JSON before logging to hide sensitive account information
+            let sanitizedJson = JSONSanitizer.sanitizeAccountNumbers(in: jsonString)
+            AppLogger.shared.debug("📤 [PLACE-ORDER] \(sanitizedJson)")
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -3290,12 +3295,20 @@ class SchwabClient
             AppLogger.shared.debug("  Cancel: \(sellOrder.cancel)")
             
             // Create the order leg collection for SELL
+            // Round down fractional shares for sell orders since quantity cannot be fractional
+            let roundedQuantity = floor(sellOrder.sharesToSell)
+            
+            // Log if rounding was necessary
+            if roundedQuantity != sellOrder.sharesToSell {
+                AppLogger.shared.info("📊 SELL Order: Rounded quantity from \(sellOrder.sharesToSell) to \(roundedQuantity) shares")
+            }
+            
             let orderLeg = OrderLegCollection(
                 orderLegType: .EQUITY,
                 legId: Int64(legId),
                 instrument: instrument,
                 instruction: .SELL,
-                quantity: sellOrder.sharesToSell
+                quantity: roundedQuantity
             )
             
             // Calculate trailing stop as twice the ATR value (as per user preference)
@@ -3318,7 +3331,7 @@ class SchwabClient
                 duration: .GOOD_TILL_CANCEL,
                 orderType: .TRAILING_STOP_LIMIT,
                 complexOrderStrategyType: .NONE,
-                quantity: sellOrder.sharesToSell,
+                quantity: roundedQuantity,
                 destinationLinkName: "AutoRoute",
                 stopPriceLinkBasis: .ASK,
                 stopPriceLinkType: .PERCENT,
