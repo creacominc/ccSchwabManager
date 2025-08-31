@@ -231,6 +231,25 @@ struct RecommendedOCOOrdersSection: View {
             return 
         }
         
+        // Check if we already have orders for this exact combination of parameters
+        // This prevents unnecessary recalculations when switching tabs for the same security
+        if !viewModel.recommendedSellOrders.isEmpty || !viewModel.recommendedBuyOrders.isEmpty {
+            // Check if the orders are for the current symbol by looking at the first order
+            let hasOrdersForCurrentSymbol = viewModel.currentOrders.first { order in
+                if case ("SELL", let sellOrder as SalesCalcResultsRecord) = order {
+                    return sellOrder.description.contains(symbol)
+                } else if case ("BUY", let buyOrder as BuyOrderRecord) = order {
+                    return buyOrder.description.contains(symbol)
+                }
+                return false
+            } != nil
+            
+            if hasOrdersForCurrentSymbol {
+                print("✅ Using existing orders for \(symbol) - no recalculation needed")
+                return
+            }
+        }
+        
         print("✅ updateOrdersIfReady: calling viewModel.updateRecommendedOrders")
         print("  - symbol: \(symbol)")
         print("  - atrValue: \(atrValue)")

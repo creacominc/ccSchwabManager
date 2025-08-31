@@ -308,20 +308,19 @@ class OrderRecommendationService: ObservableObject {
         
         guard currentProfitPercent >= minProfitPercent else { return nil }
         
-        // Use the same logic as additional sell orders
-        let adjustedATR = atrValue / 5.0
-        let targetTrailingStop = adjustedATR
+        // Use ATR as the trailing stop amount for Min ATR orders
+        let targetTrailingStop = atrValue
         
-        // Calculate entry price
-        let entry = currentPrice * (1.0 - adjustedATR / 100.0)
+        // Calculate entry price (1 ATR below current price)
+        let entry = currentPrice * (1.0 - atrValue / 100.0)
         
         // Calculate target price based on trailing stop
         let target = entry / (1.0 + targetTrailingStop / 100.0)
         
-        // Use the helper function to calculate minimum shares needed to maintain 5% profit on remaining position
-        guard let result = calculateMinimumSharesForRemainingProfit(
-            targetProfitPercent: 5.0,
-            currentPrice: currentPrice,
+        // Use the helper function to calculate minimum shares needed to achieve 5% gain at target price
+        guard let result = calculateMinimumSharesForGain(
+            targetGainPercent: 5.0,
+            targetPrice: target,
             sortedTaxLots: sortedTaxLots
         ) else {
             return nil
@@ -339,8 +338,8 @@ class OrderRecommendationService: ObservableObject {
         // Validate target is above cost per share
         guard target > actualCostPerShare else { return nil }
         
-        // Calculate exit price
-        let exit = max(target * (1.0 - 2.0 * (atrValue / 5.0) / 100.0), actualCostPerShare)
+        // Calculate exit price (2 ATR below target)
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
         
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, "SYMBOL", target, targetTrailingStop, actualCostPerShare)

@@ -18,6 +18,26 @@ class OrderRecommendationViewModel: ObservableObject {
     // MARK: - Private Properties
     private let orderService = OrderRecommendationService()
     
+    // MARK: - Caching Properties
+    private var cachedOrders: [String: CachedOrderData] = [:]
+    private var lastCalculationTime: [String: Date] = [:]
+    
+    // Cache duration - orders are considered fresh for 5 minutes
+    private let cacheValidityDuration: TimeInterval = 300 // 5 minutes
+    
+    // MARK: - Cached Data Structure
+    private struct CachedOrderData {
+        let sellOrders: [SalesCalcResultsRecord]
+        let buyOrders: [BuyOrderRecord]
+        let allOrders: [(String, Any)]
+        let symbol: String
+        let atrValue: Double
+        let taxLotDataHash: Int
+        let sharesAvailableForTrading: Double
+        let currentPrice: Double
+        let timestamp: Date
+    }
+    
     // MARK: - Public Interface
     
     /// Calculates and updates recommended orders based on current data
@@ -157,6 +177,89 @@ class OrderRecommendationViewModel: ObservableObject {
     }
     
     // MARK: - Private Helper Methods
+    
+    // MARK: - Caching Methods
+    
+    /// Checks if cached orders are available and valid for the given parameters
+    private func getCachedOrders(
+        symbol: String,
+        atrValue: Double,
+        taxLotData: [SalesCalcPositionsRecord],
+        sharesAvailableForTrading: Double,
+        currentPrice: Double
+    ) -> CachedOrderData? {
+        
+        guard let cachedData = cachedOrders[symbol] else { return nil }
+        
+        // Check if cache is still valid (within time limit)
+        let now = Date()
+        let timeSinceCalculation = now.timeIntervalSince(cachedData.timestamp)
+        guard timeSinceCalculation < cacheValidityDuration else { return nil }
+        
+        // Check if all parameters match
+        guard cachedData.symbol == symbol,
+              cachedData.atrValue == atrValue,
+              cachedData.sharesAvailableForTrading == sharesAvailableForTrading,
+              cachedData.currentPrice == currentPrice,
+              cachedData.taxLotDataHash == calculateTaxLotDataHash(taxLotData) else {
+            return nil
+        }
+        
+        return cachedData
+    }
+    
+    /// Caches the calculated orders for future use
+    private func cacheOrders(
+        symbol: String,
+        atrValue: Double,
+        taxLotData: [SalesCalcPositionsRecord],
+        sharesAvailableForTrading: Double,
+        currentPrice: Double,
+        sellOrders: [SalesCalcResultsRecord],
+        buyOrders: [BuyOrderRecord],
+        allOrders: [(String, Any)]
+    ) {
+        let cachedData = CachedOrderData(
+            sellOrders: sellOrders,
+            buyOrders: buyOrders,
+            allOrders: allOrders,
+            symbol: symbol,
+            atrValue: atrValue,
+            taxLotDataHash: calculateTaxLotDataHash(taxLotData),
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice,
+            timestamp: Date()
+        )
+        
+        cachedOrders[symbol] = cachedData
+        lastCalculationTime[symbol] = Date()
+    }
+    
+    /// Calculates a hash for tax lot data to detect changes
+    private func calculateTaxLotDataHash(_ taxLotData: [SalesCalcPositionsRecord]) -> Int {
+        var hasher = Hasher()
+        
+        for lot in taxLotData {
+            hasher.combine(lot.quantity)
+            hasher.combine(lot.costPerShare)
+            hasher.combine(lot.costBasis)
+            // Add other relevant fields that would affect order calculations
+        }
+        
+        return hasher.finalize()
+    }
+    
+    /// Clears the cache for a specific symbol
+    private func clearCacheForSymbol(_ symbol: String) {
+        cachedOrders.removeValue(forKey: symbol)
+        lastCalculationTime.removeValue(forKey: symbol)
+    }
+    
+    /// Clears all cached data
+    private func clearAllCaches() {
+        cachedOrders.removeAll()
+        lastCalculationTime.removeAll()
+    }
     
     private func updateLoadingProgress(_ progress: Double, _ message: String) async {
         loadingProgress = progress

@@ -55,7 +55,7 @@ The application now includes sophisticated sell order logic with multiple order 
   - **+1.5ATR**: Additional sell order with trailing stop = min break-even + 1.5 × ATR%
 
 - **Consistent Logic Across All Sell Orders**: All sell orders now use the same calculation methodology:
-  - **Trailing Stop**: Uses `atrValue / 5.0` for Min ATR and Min Break Even, with incremental additions for additional orders
+  - **Trailing Stop**: Uses `atrValue` for Min ATR (minimum shares for 5% gain), `atrValue / 5.0` for Min Break Even, with incremental additions for additional orders
   - **Target Price**: Calculated dynamically based on trailing stop and entry price using `entry / (1.0 + trailingStop / 100.0)`
   - **Entry Price**: Uses consistent calculation `currentPrice * (1.0 - adjustedATR / 100.0)`
   - **Exit Price**: All orders use the same exit price calculation logic
@@ -71,7 +71,7 @@ The application now includes sophisticated sell order logic with multiple order 
 #### Sell Order Example
 For a position with multiple tax lots:
 - **Min BE Order**: Sells 7 shares with 0.38% trailing stop
-- **Min ATR Order**: Sells 13 shares with 0.80% trailing stop (consistent with other orders)
+- **Min ATR Order**: Sells minimum shares needed for 5% gain using ATR as trailing stop
 - **+0.5ATR Order**: Sells 12 shares with 1.32% trailing stop (includes shares from multiple tax lots)
 - **+1.0ATR Order**: Sells 10 shares with 2.27% trailing stop (continues through tax lots)
 - **+1.5ATR Order**: May sell additional shares with even higher trailing stops
