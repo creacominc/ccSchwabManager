@@ -3355,11 +3355,10 @@ class SchwabClient
                 quantity: buyOrder.sharesToBuy
             )
             
-            // Calculate trailing stop as twice the ATR value (as per user preference)
-            // We need to get the ATR value for this symbol to calculate the trailing stop
-            let atrValue = computeATR(symbol: symbol)
-            let trailingStopPercent: Double = 2.0 * atrValue
-            AppLogger.shared.debug("=== createSimplifiedChildOrder:  Trailing Stop Percent: \(trailingStopPercent) = 2.0 * ATR(\(atrValue)%)")
+            // For buy orders, trailing stop should be above current price to trigger the order
+            // Use the trailing stop value from the buy order record (already calculated correctly)
+            let trailingStopPercent: Double = buyOrder.trailingStop
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  Trailing Stop Percent: \(trailingStopPercent) from buy order record")
 
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(buyOrder.targetBuyPrice * 100) / 100

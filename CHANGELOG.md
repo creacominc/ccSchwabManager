@@ -204,6 +204,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed "(1% TS) SELL" order to use consistent logic with Min ATR order
   - "(1% TS) SELL" now calculates minimum shares needed for 5% gain with ATR + 1% trailing stop
   - Ensures Min ATR orders use ATR as trailing stop and calculate minimum shares needed for 5% gain
+  - **ENHANCEMENT**: Recommended sell orders are now sorted by number of shares in descending order for better readability
+  - **FIXED**: Buy order trailing stop calculation was incorrect - now properly calculates stop above current price
+  - Buy orders now calculate trailing stop as percentage from current price to stop level between current and target
 
 ### Added
 - **NEW**: Added copy-to-clipboard functionality to HoldingsTable for consistent UX across all tables

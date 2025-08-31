@@ -94,6 +94,9 @@ class OrderRecommendationService: ObservableObject {
             recommended.append(contentsOf: additionalOrders)
         }
         
+        // Sort sell orders by number of shares in descending order
+        recommended.sort { $0.shares > $1.shares }
+        
         return recommended
     }
     
@@ -168,8 +171,10 @@ class OrderRecommendationService: ObservableObject {
             // Calculate entry price (1 ATR below target)
             let entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
             
-            // Calculate trailing stop as twice the ATR value (as per user preference)
-            let trailingStopPercent = 2.0 * atrValue
+            // For buy orders, trailing stop should be above current price to trigger the order
+            // Calculate trailing stop as percentage from current price to a stop level between current and target
+            let stopPrice = currentPrice + (atrValue / 100.0) * currentPrice
+            let trailingStopPercent = ((stopPrice - currentPrice) / currentPrice) * 100.0
             
             // Calculate order cost
             let orderCost = sharesToBuy * targetBuyPrice
