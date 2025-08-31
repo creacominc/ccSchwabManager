@@ -199,6 +199,124 @@ final class OrderRecommendationServiceTests: XCTestCase {
         XCTAssertNotNil(result, "Should return a result")
     }
     
+    func testCalculateRecommendedBuyOrders_LowPriceSecurity_IncludesAdditionalOrder() async {
+        // Given: A security trading under $350
+        let taxLots = createMockTaxLots()
+        let currentPrice = 25.0 // Under $350 threshold
+        let atrValue = 2.5
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "PENN",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 150,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders")
+        
+        // Find the additional buy order for $500
+        let additionalOrder = result.first { order in
+            order.description.contains("($500)")
+        }
+        
+        XCTAssertNotNil(additionalOrder, "Should include additional buy order for securities under $350")
+        
+        if let additionalOrder = additionalOrder {
+            // Verify it's a buy order
+            XCTAssertEqual(additionalOrder.orderType, "BUY", "Should be a buy order")
+            
+            // Verify shares calculation: $500 / $25 = 20 shares, rounded up
+            let expectedShares = ceil(500.0 / currentPrice)
+            XCTAssertEqual(additionalOrder.shares, expectedShares, "Should calculate correct number of shares for $500")
+            
+            // Verify target price maintains target gain percentage
+            let targetGainPercent = max(5.0, min(35.0, TradingConfig.atrMultiplier * atrValue))
+            let expectedTargetPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
+            XCTAssertEqual(additionalOrder.targetBuyPrice, expectedTargetPrice, accuracy: 0.01, "Target price should maintain gain percentage")
+            
+            // Verify trailing stop is 2x ATR as per user preference
+            let expectedTrailingStop = (atrValue * 2.0 / currentPrice) * 100.0
+            XCTAssertEqual(additionalOrder.trailingStop, expectedTrailingStop, accuracy: 0.01, "Trailing stop should be 2x ATR")
+            
+            // Verify order cost calculation
+            let expectedOrderCost = expectedShares * expectedTargetPrice
+            XCTAssertEqual(additionalOrder.orderCost, expectedOrderCost, accuracy: 0.01, "Order cost should be calculated correctly")
+        }
+    }
+    
+    func testCalculateRecommendedBuyOrders_HighPriceSecurity_NoAdditionalOrder() async {
+        // Given: A security trading above $350
+        let taxLots = createMockTaxLots()
+        let currentPrice = 400.0 // Above $350 threshold
+        let atrValue = 2.5
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "AAPL",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 150,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders")
+        
+        // Verify no additional $500 order is included
+        let additionalOrder = result.first { order in
+            order.description.contains("($500)")
+        }
+        
+        XCTAssertNil(additionalOrder, "Should not include additional buy order for securities above $350")
+    }
+    
+    func testCalculateRecommendedBuyOrders_OrdersSortedByIncreasingShares() async {
+        // Given: A security trading under $350 to trigger additional order
+        let taxLots = createMockTaxLots()
+        let currentPrice = 25.0 // Under $350 threshold
+        let atrValue = 2.5
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "PENN",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 150,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders")
+        XCTAssertGreaterThan(result.count, 1, "Should have multiple orders to test sorting")
+        
+        // Verify orders are sorted by increasing number of shares
+        for i in 0..<(result.count - 1) {
+            XCTAssertLessThanOrEqual(result[i].shares, result[i + 1].shares, 
+                                   "Order at index \(i) should have fewer or equal shares than order at index \(i + 1)")
+        }
+        
+        // Verify the first order has the minimum shares
+        if let firstOrder = result.first {
+            let minShares = result.map { $0.shares }.min() ?? 0
+            XCTAssertEqual(firstOrder.shares, minShares, "First order should have the minimum number of shares")
+        }
+        
+        // Verify the last order has the maximum shares
+        if let lastOrder = result.last {
+            let maxShares = result.map { $0.shares }.max() ?? 0
+            XCTAssertEqual(lastOrder.shares, maxShares, "Last order should have the maximum number of shares")
+        }
+        
+        // Print the order for debugging
+        print("📊 Buy orders sorted by increasing shares:")
+        for (index, order) in result.enumerated() {
+            print("   \(index + 1). \(order.shares) shares - \(order.description)")
+        }
+    }
+    
     // MARK: - Performance Tests
     
     func testPerformance_CalculateRecommendedSellOrders() {

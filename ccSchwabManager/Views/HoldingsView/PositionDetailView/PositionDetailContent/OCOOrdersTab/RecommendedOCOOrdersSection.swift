@@ -10,6 +10,8 @@ struct RecommendedOCOOrdersSection: View {
     let quoteData: QuoteData?
     let accountNumber: String
     
+
+    
     // MARK: - State
     @StateObject private var viewModel = OrderRecommendationViewModel()
     @State private var taxLotData: [SalesCalcPositionsRecord] = []
@@ -21,6 +23,7 @@ struct RecommendedOCOOrdersSection: View {
     @State private var showingSuccessAlert = false
     @State private var showingErrorAlert = false
     @State private var errorMessage = ""
+    @State private var dialogStateTrigger = false
     
     // MARK: - Computed Properties
     private var currentPrice: Double? {
@@ -142,6 +145,9 @@ struct RecommendedOCOOrdersSection: View {
                     orderJson = ""
                 }
             )
+        }
+        .onChange(of: dialogStateTrigger) { _, _ in
+            // Force UI update when trigger changes
         }
         .alert("Order Submission Error", isPresented: $showingErrorAlert) {
             Button("OK", role: .cancel) { }
@@ -297,9 +303,18 @@ struct RecommendedOCOOrdersSection: View {
     
     private func submitOrders() {
         // Allow single orders - at least one must be selected
-        guard hasSelectedOrders else { return }
+        guard hasSelectedOrders else { 
+            AppLogger.shared.error("❌ submitOrders: No orders selected")
+            return 
+        }
         
         let selectedOrders = viewModel.selectedOrders
+        AppLogger.shared.info("📊 submitOrders: Selected orders count: \(selectedOrders.count)")
+        
+        // Debug: Print selected orders
+        for (index, (orderType, order)) in selectedOrders.enumerated() {
+            AppLogger.shared.info("Order \(index + 1): \(orderType) - \(String(describing: order))")
+        }
         
         // Get account number from the position
         guard let accountNumberInt = getAccountNumber() else {
@@ -320,22 +335,45 @@ struct RecommendedOCOOrdersSection: View {
             return
         }
         
+        AppLogger.shared.info("📊 submitOrders: Order created successfully")
+        
         // Create order descriptions for confirmation dialog
         orderDescriptions = createOrderDescriptions(orders: selectedOrders)
+        AppLogger.shared.info("📊 submitOrders: Order descriptions count: \(orderDescriptions.count)")
+        for (index, description) in orderDescriptions.enumerated() {
+            AppLogger.shared.info("   Description \(index + 1): \(description)")
+        }
         
         // Create JSON preview
         do {
-            let encoder = JSONEncoder()
+            let encoder: JSONEncoder = JSONEncoder()
             encoder.outputFormatting = .prettyPrinted
-            let jsonData = try encoder.encode(orderToSubmit)
+            let jsonData: Data = try encoder.encode(orderToSubmit)
             orderJson = String(data: jsonData, encoding: .utf8) ?? "{}"
+            AppLogger.shared.info("📊 submitOrders: JSON created successfully, length: \(orderJson.count)")
+            AppLogger.shared.info("📊 submitOrders: JSON: \(orderJson)")
         } catch {
             orderJson = "Error encoding order: \(error)"
+            AppLogger.shared.error("❌ submitOrders: JSON encoding error: \(error)")
         }
         
         // Store the order and show confirmation dialog
         self.orderToSubmit = orderToSubmit
-        showingConfirmationDialog = true
+        
+        // Force immediate UI update by triggering state change on main thread
+        Task { @MainActor in
+            // Trigger state update to force UI refresh
+            self.dialogStateTrigger.toggle()
+            
+            // Small delay to ensure all state is properly set
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            self.showingConfirmationDialog = true
+            AppLogger.shared.info("📊 submitOrders: ✅ Showing confirmation dialog")
+            AppLogger.shared.info("📊 submitOrders: Final orderDescriptions count: \(self.orderDescriptions.count)")
+            AppLogger.shared.info("📊 submitOrders: Final orderJson length: \(self.orderJson.count)")
+        }
+        
+        AppLogger.shared.info("📊 submitOrders: Dialog should now show with data")
     }
     
     private func getAccountNumber() -> Int64? {
@@ -361,20 +399,32 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func createOrderDescriptions(orders: [(String, Any)]) -> [String] {
+        AppLogger.shared.info("🔍 createOrderDescriptions: Processing \(orders.count) orders")
         var descriptions: [String] = []
-        for (index, (_, order)) in orders.enumerated() {
+        
+        for (index, (orderType, order)) in orders.enumerated() {
+            AppLogger.shared.info("Processing order \(index + 1): \(orderType) - \(type(of: order))")
+            
             if let sellOrder = order as? SalesCalcResultsRecord {
+                AppLogger.shared.info("Sell order: description='\(sellOrder.description)', shares=\(sellOrder.sharesToSell)")
                 let description = sellOrder.description.isEmpty ?
                     "SELL \(sellOrder.sharesToSell) shares at \(sellOrder.entry) (Target: \(sellOrder.target), Cancel: \(sellOrder.cancel))" :
                     sellOrder.description
                 descriptions.append("Order \(index + 1) (SELL): \(description)")
+                AppLogger.shared.info("Final sell description: \(description)")
             } else if let buyOrder = order as? BuyOrderRecord {
+                AppLogger.shared.info("Buy order: description='\(buyOrder.description)', shares=\(buyOrder.sharesToBuy)")
                 let description = buyOrder.description.isEmpty ?
                     "BUY \(buyOrder.sharesToBuy) shares at \(buyOrder.targetBuyPrice) (Entry: \(buyOrder.entryPrice), Target: \(buyOrder.targetGainPercent)%)" :
                     buyOrder.description
                 descriptions.append("Order \(index + 1) (BUY): \(description)")
+                AppLogger.shared.info("Final buy description: \(description)")
+            } else {
+                AppLogger.shared.warning("Unknown order type: \(type(of: order))")
             }
         }
+        
+        AppLogger.shared.info("🔍 createOrderDescriptions: Created \(descriptions.count) descriptions")
         return descriptions
     }
     

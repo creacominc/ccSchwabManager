@@ -212,6 +212,22 @@ class OrderRecommendationService: ObservableObject {
             recommended.append(buyOrder)
         }
         
+        // Add additional buy order for securities trading under $350
+        if currentPrice < 350.0 {
+            let additionalBuyOrder = createAdditionalBuyOrderForLowPriceSecurity(
+                symbol: symbol,
+                currentPrice: currentPrice,
+                atrValue: atrValue,
+                targetGainPercent: targetGainPercent
+            )
+            if let additionalOrder = additionalBuyOrder {
+                recommended.append(additionalOrder)
+            }
+        }
+        
+        // Sort buy orders by increasing number of shares
+        recommended.sort { $0.shares < $1.shares }
+        
         return recommended
     }
     
@@ -860,5 +876,66 @@ class OrderRecommendationService: ObservableObject {
         }
         
         return nil
+    }
+    
+    /// Creates an additional buy order for securities trading under $350
+    /// - Parameters:
+    ///   - symbol: The trading symbol
+    ///   - currentPrice: Current market price
+    ///   - atrValue: Average True Range value
+    ///   - targetGainPercent: Target gain percentage
+    /// - Returns: Additional buy order record or nil if not applicable
+    private func createAdditionalBuyOrderForLowPriceSecurity(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        targetGainPercent: Double
+    ) -> BuyOrderRecord? {
+        
+        // Calculate number of shares that can be bought for $500, rounded up
+        let sharesFor500 = ceil(500.0 / currentPrice)
+        
+        // Ensure we have at least 1 share
+        guard sharesFor500 >= 1.0 else { return nil }
+        
+        // Calculate target price (maintains the same target gain percentage)
+        let targetBuyPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
+        
+        // Calculate entry price (1 ATR below target)
+        let entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
+        
+        // Calculate trailing stop (2x ATR as per user preference)
+        let trailingStopPercent = (atrValue * 2.0 / currentPrice) * 100.0
+        
+        // Calculate actual order cost
+        let orderCost = sharesFor500 * targetBuyPrice
+        
+        // Create description
+        let formattedDescription = String(
+            format: "BUY %.0f %@ ($500) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
+            sharesFor500,
+            symbol,
+            targetBuyPrice,
+            trailingStopPercent,
+            targetGainPercent,
+            orderCost
+        )
+        
+        let additionalBuyOrder = BuyOrderRecord(
+            shares: sharesFor500,
+            targetBuyPrice: targetBuyPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: 0.0, // No existing position gain for this additional order
+            sharesToBuy: sharesFor500,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
+        
+        return additionalBuyOrder
     }
 }
