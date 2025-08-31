@@ -9,7 +9,7 @@ struct SalesCalcTab: View {
     let quoteData: QuoteData?
 
     var body: some View {
-        ScrollView {
+        GeometryReader { geometry in
             SalesCalcView(
                 symbol: symbol,
                 atrValue: atrValue,
@@ -17,9 +17,10 @@ struct SalesCalcTab: View {
                 isLoadingTaxLots: isLoadingTaxLots,
                 quoteData: quoteData
             )
-        }
-        .tabItem {
-            Label("Sales Calc", systemImage: "calculator")
+            .frame( width: geometry.size.width * 0.92, height: geometry.size.height * 0.95 )
+            .tabItem {
+                Label("Sales Calc", systemImage: "calculator")
+            }
         }
     }
 }

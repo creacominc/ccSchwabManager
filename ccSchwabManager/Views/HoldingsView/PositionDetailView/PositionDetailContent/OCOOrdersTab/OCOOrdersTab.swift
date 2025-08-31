@@ -26,7 +26,7 @@ struct OCOOrdersTab: View {
                     .padding(.vertical, 12)
                     .background(Color.green.opacity(0.1))
                     
-                    // Section Content
+                    // Section Content - Using refactored version for better maintainability
                     RecommendedOCOOrdersSection(
                         symbol: symbol,
                         atrValue: atrValue,

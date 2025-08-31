@@ -53,7 +53,6 @@ struct SalesCalcView: View {
                 }
             }
         }
-        .frame(minWidth: 800, minHeight: 400) // Add minimum dimensions for preview
         .onAppear {
             print("SalesCalcView: onAppear - taxLotData count: \(taxLotData.count), isLoadingTaxLots: \(isLoadingTaxLots)")
             if !taxLotData.isEmpty {

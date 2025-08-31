@@ -540,7 +540,6 @@ struct BuySequenceOrdersSection: View {
             AppLogger.shared.error("🔄 [SEQUENCE-SUBMIT] ❌ Could not get account number for position")
             return
         }
-        AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] Account number: \(accountNumberInt)")
         
         // Create sequence order using SchwabClient
         guard let orderToSubmit = SchwabClient.shared.createSequenceOrder(
@@ -602,7 +601,6 @@ struct BuySequenceOrdersSection: View {
         
         for (index, accountContent) in accounts.enumerated() {
             AppLogger.shared.debug("Account \(index + 1):")
-            AppLogger.shared.debug("  Securities account: \(accountContent.securitiesAccount?.accountNumber ?? "nil")")
             AppLogger.shared.debug("  Positions count: \(accountContent.securitiesAccount?.positions.count ?? 0)")
             
             // Check if this account contains the current symbol
@@ -612,7 +610,6 @@ struct BuySequenceOrdersSection: View {
                         AppLogger.shared.debug("  ✅ Found position for symbol \(symbol) in this account")
                         if let fullAccountNumber = accountContent.securitiesAccount?.accountNumber,
                            let accountNumberInt = Int64(fullAccountNumber) {
-                            AppLogger.shared.debug("  ✅ Using full account number: \(fullAccountNumber)")
                             return accountNumberInt
                         } else {
                             AppLogger.shared.error("  ❌ Could not convert account number to Int64")
@@ -623,7 +620,6 @@ struct BuySequenceOrdersSection: View {
         }
         
         // Fallback to the truncated version if full account number not found
-        AppLogger.shared.error("❌ No matching account found for symbol \(symbol), using truncated account number: \(accountNumber)")
         return Int64(accountNumber)
     }
     

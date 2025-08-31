@@ -191,14 +191,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensures copy-to-clipboard works consistently on both iOS and macOS platforms
   - Users can now click on any field in the sales calc table to copy values to clipboard
 - **FIXED**: Min ATR sell order logic inconsistency
-  - Updated Min ATR order to use consistent calculation methodology with other sell orders
-  - Replaced fixed target calculation (3.25% above cost) with dynamic logic based on trailing stop
-  - Now uses same trailing stop calculation as other orders (`atrValue / 5.0`)
+  - Updated Min ATR order to use correct trailing stop calculation: `atrValue` (not `atrValue / 5.0`)
+  - Replaced incorrect `atrValue / 5.0` calculation that was causing trailing stop to be too small
+  - Now correctly calculates trailing stop as the actual ATR value for proper risk management
+  - Fixed share calculation to use `calculateMinimumSharesForGain` instead of `calculateMinimumSharesForRemainingProfit`
+  - Now calculates minimum shares needed to achieve 5% gain at target price (not to maintain profit on remaining position)
   - Calculates target price using `entry / (1.0 + trailingStop / 100.0)` like additional orders
-  - Uses same entry price calculation as Min Break Even (`currentPrice * (1.0 - adjustedATR / 100.0)`)
+  - Uses correct entry price calculation: `currentPrice * (1.0 - atrValue / 100.0)` (1 ATR below current price)
   - Maintains same exit price calculation as other sell orders
-  - Fixes inconsistency where Min ATR had lower trailing stop but higher target than +1.5ATR orders
-  - Ensures all sell orders follow consistent logic pattern for predictable behavior
+  - Fixes bug where Min ATR had much lower trailing stop than intended (e.g., 0.85% instead of 4.27% for MOD)
+  - Fixes bug where Min ATR was calculating 201 shares instead of ~7 shares needed for 5% gain
+  - Fixed "(1% TS) SELL" order to use consistent logic with Min ATR order
+  - "(1% TS) SELL" now calculates minimum shares needed for 5% gain with ATR + 1% trailing stop
+  - Ensures Min ATR orders use ATR as trailing stop and calculate minimum shares needed for 5% gain
+  - **ENHANCEMENT**: Recommended sell orders are now sorted by number of shares in descending order for better readability
+  - **FIXED**: Buy order trailing stop calculation was incorrect - now properly calculates stop above current price
+  - Buy orders now calculate trailing stop as percentage from current price to stop level between current and target
 
 ### Added
 - **NEW**: Added copy-to-clipboard functionality to HoldingsTable for consistent UX across all tables
