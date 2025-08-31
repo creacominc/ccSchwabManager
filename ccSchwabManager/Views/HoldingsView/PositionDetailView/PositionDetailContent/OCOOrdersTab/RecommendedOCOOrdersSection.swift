@@ -143,7 +143,8 @@ struct RecommendedOCOOrdersSection: View {
                     orderToSubmit = nil
                     orderDescriptions = []
                     orderJson = ""
-                }
+                },
+                trailingStopValidation: validateTrailingStop
             )
         }
         .onChange(of: dialogStateTrigger) { _, _ in
@@ -252,8 +253,14 @@ struct RecommendedOCOOrdersSection: View {
             
             if hasOrdersForCurrentSymbol {
                 print("✅ Using existing orders for \(symbol) - no recalculation needed")
+                print("  - Current sell orders: \(viewModel.recommendedSellOrders.count)")
+                print("  - Current buy orders: \(viewModel.recommendedBuyOrders.count)")
                 return
+            } else {
+                print("⚠️ Orders exist but not for current symbol \(symbol), will recalculate")
             }
+        } else {
+            print("📝 No existing orders found, will calculate new ones")
         }
         
         print("✅ updateOrdersIfReady: calling viewModel.updateRecommendedOrders")
@@ -456,6 +463,22 @@ struct RecommendedOCOOrdersSection: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Trailing Stop Validation
+    
+    private func validateTrailingStop() -> String? {
+        // Check if any sell orders have trailing stops less than 0.1%
+        for (_, order) in viewModel.currentOrders {
+            if let sellOrder = order as? SalesCalcResultsRecord {
+                if sellOrder.trailingStop < 0.1 {
+                    // Clear ATR cache to force fresh calculation
+                    SchwabClient.shared.clearATRCache()
+                    return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", sellOrder.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
+                }
+            }
+        }
+        return nil // No validation errors
     }
 }
 

@@ -456,7 +456,8 @@ struct BuySequenceOrdersSection: View {
                 },
                 onSubmit: {
                     confirmAndSubmitOrder()
-                }
+                },
+                trailingStopValidation: validateTrailingStop
             )
         }
         .onChange(of: dialogStateTrigger) { _, _ in
@@ -669,6 +670,20 @@ struct BuySequenceOrdersSection: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Trailing Stop Validation
+    
+    private func validateTrailingStop() -> String? {
+        // Check if any buy sequence orders have trailing stops less than 0.1%
+        for order in adjustedSequenceOrders {
+            if order.trailingStop < 0.1 {
+                // Clear ATR cache to force fresh calculation
+                SchwabClient.shared.clearATRCache()
+                return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", order.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
+            }
+        }
+        return nil // No validation errors
     }
 }
 

@@ -63,6 +63,23 @@ class OrderRecommendationViewModel: ObservableObject {
             return
         }
         
+        // Check cache first before calculating
+        if let cachedData = getCachedOrders(
+            symbol: symbol,
+            atrValue: atrValue,
+            taxLotData: taxLotData,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice
+        ) {
+            print("✅ Using cached orders for \(symbol)")
+            recommendedSellOrders = cachedData.sellOrders
+            recommendedBuyOrders = cachedData.buyOrders
+            currentOrders = cachedData.allOrders
+            return
+        }
+        
+        print("🔄 No cache hit for \(symbol), calculating new orders...")
+        
         // Calculate orders in parallel
         async let sellOrders = orderService.calculateRecommendedSellOrders(
             symbol: symbol,
@@ -87,6 +104,20 @@ class OrderRecommendationViewModel: ObservableObject {
         recommendedSellOrders = sellResults
         recommendedBuyOrders = buyResults
         currentOrders = createAllOrders(sellOrders: sellResults, buyOrders: buyResults)
+        
+        // Cache the results for future use
+        cacheOrders(
+            symbol: symbol,
+            atrValue: atrValue,
+            taxLotData: taxLotData,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice,
+            sellOrders: sellResults,
+            buyOrders: buyResults,
+            allOrders: currentOrders
+        )
+        
+        print("💾 Cached orders for \(symbol) - \(sellResults.count) sell orders, \(buyResults.count) buy orders")
     }
     
     /// Loads tax lots in the background
@@ -189,12 +220,18 @@ class OrderRecommendationViewModel: ObservableObject {
         currentPrice: Double
     ) -> CachedOrderData? {
         
-        guard let cachedData = cachedOrders[symbol] else { return nil }
+        guard let cachedData = cachedOrders[symbol] else { 
+            print("❌ No cached data found for \(symbol)")
+            return nil 
+        }
         
         // Check if cache is still valid (within time limit)
         let now = Date()
         let timeSinceCalculation = now.timeIntervalSince(cachedData.timestamp)
-        guard timeSinceCalculation < cacheValidityDuration else { return nil }
+        guard timeSinceCalculation < cacheValidityDuration else { 
+            print("❌ Cache expired for \(symbol) (age: \(String(format: "%.1f", timeSinceCalculation))s)")
+            return nil 
+        }
         
         // Check if all parameters match
         guard cachedData.symbol == symbol,
@@ -202,9 +239,17 @@ class OrderRecommendationViewModel: ObservableObject {
               cachedData.sharesAvailableForTrading == sharesAvailableForTrading,
               cachedData.currentPrice == currentPrice,
               cachedData.taxLotDataHash == calculateTaxLotDataHash(taxLotData) else {
+            
+            print("❌ Cache parameters don't match for \(symbol):")
+            print("  - symbol: \(cachedData.symbol) vs \(symbol)")
+            print("  - atrValue: \(cachedData.atrValue) vs \(atrValue)")
+            print("  - sharesAvailableForTrading: \(cachedData.sharesAvailableForTrading) vs \(sharesAvailableForTrading)")
+            print("  - currentPrice: \(cachedData.currentPrice) vs \(currentPrice)")
+            print("  - taxLotDataHash: \(cachedData.taxLotDataHash) vs \(calculateTaxLotDataHash(taxLotData))")
             return nil
         }
         
+        print("✅ Cache hit for \(symbol) - \(cachedData.sellOrders.count) sell orders, \(cachedData.buyOrders.count) buy orders")
         return cachedData
     }
     
