@@ -569,7 +569,10 @@ struct BuySequenceOrdersSection: View {
             AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] JSON created successfully, length: \(orderJson.count)")
             AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] orderJson length after assignment: \(orderJson.count)")
             AppLogger.shared.debug("🔄 [SEQUENCE-SUBMIT] Complete JSON:")
-            AppLogger.shared.debug(orderJson)
+            
+            // Sanitize the JSON before logging to hide sensitive account information
+            let sanitizedJson = JSONSanitizer.sanitizeAccountNumbers(in: orderJson)
+            AppLogger.shared.debug(sanitizedJson)
         } catch {
             orderJson = "Error encoding order: \(error)"
             AppLogger.shared.error("🔄 [SEQUENCE-SUBMIT] ❌ JSON encoding error: \(error)")

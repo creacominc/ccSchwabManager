@@ -351,7 +351,10 @@ struct RecommendedOCOOrdersSection: View {
             let jsonData: Data = try encoder.encode(orderToSubmit)
             orderJson = String(data: jsonData, encoding: .utf8) ?? "{}"
             AppLogger.shared.info("📊 submitOrders: JSON created successfully, length: \(orderJson.count)")
-            AppLogger.shared.info("📊 submitOrders: JSON: \(orderJson)")
+            
+            // Sanitize the JSON before logging to hide sensitive account information
+            let sanitizedJson = JSONSanitizer.sanitizeAccountNumbers(in: orderJson)
+            AppLogger.shared.info("📊 submitOrders: JSON: \(sanitizedJson)")
         } catch {
             orderJson = "Error encoding order: \(error)"
             AppLogger.shared.error("❌ submitOrders: JSON encoding error: \(error)")

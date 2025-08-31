@@ -2148,7 +2148,10 @@ class SchwabClient
             
             AppLogger.shared.debug("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
             AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 JSON Body:")
-            AppLogger.shared.debug("📤 [PLACE-ORDER] \(jsonString)")
+            
+            // Sanitize the JSON before logging to hide sensitive account information
+            let sanitizedJson = JSONSanitizer.sanitizeAccountNumbers(in: jsonString)
+            AppLogger.shared.debug("📤 [PLACE-ORDER] \(sanitizedJson)")
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -3290,12 +3293,20 @@ class SchwabClient
             AppLogger.shared.debug("  Cancel: \(sellOrder.cancel)")
             
             // Create the order leg collection for SELL
+            // Round down fractional shares for sell orders since quantity cannot be fractional
+            let roundedQuantity = floor(sellOrder.sharesToSell)
+            
+            // Log if rounding was necessary
+            if roundedQuantity != sellOrder.sharesToSell {
+                AppLogger.shared.info("📊 SELL Order: Rounded quantity from \(sellOrder.sharesToSell) to \(roundedQuantity) shares")
+            }
+            
             let orderLeg = OrderLegCollection(
                 orderLegType: .EQUITY,
                 legId: Int64(legId),
                 instrument: instrument,
                 instruction: .SELL,
-                quantity: sellOrder.sharesToSell
+                quantity: roundedQuantity
             )
             
             // Calculate trailing stop as twice the ATR value (as per user preference)
@@ -3318,7 +3329,7 @@ class SchwabClient
                 duration: .GOOD_TILL_CANCEL,
                 orderType: .TRAILING_STOP_LIMIT,
                 complexOrderStrategyType: .NONE,
-                quantity: sellOrder.sharesToSell,
+                quantity: roundedQuantity,
                 destinationLinkName: "AutoRoute",
                 stopPriceLinkBasis: .ASK,
                 stopPriceLinkType: .PERCENT,
