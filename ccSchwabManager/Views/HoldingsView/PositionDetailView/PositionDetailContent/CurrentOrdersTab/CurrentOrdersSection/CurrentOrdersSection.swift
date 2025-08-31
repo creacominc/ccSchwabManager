@@ -20,6 +20,12 @@ struct CurrentOrdersSection: View {
         print("[CurrentOrdersSection] Checking open orders for symbol: \(symbol)")
         print("[CurrentOrdersSection] Total orders passed in: \(orders.count)")
         
+        // Debug: Log all orders being processed
+        print("[CurrentOrdersSection] All orders being processed:")
+        for (index, order) in orders.enumerated() {
+            print("[CurrentOrdersSection]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
+        }
+        
         for order in orders {
             // Check if order matches the symbol
             var orderMatchesSymbol = false
@@ -88,13 +94,28 @@ struct CurrentOrdersSection: View {
         
         print("[CurrentOrdersSection] Found \(filteredOrders.count) open orders for symbol \(symbol)")
         
-        // // Debug: Print all order IDs being returned
-        // print("[CurrentOrdersSection] Order IDs being returned:")
-        // for (index, order) in filteredOrders.enumerated() {
-        //     print("[CurrentOrdersSection]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil")")
-        // }
+        // Deduplicate orders by orderId to prevent UI duplication
+        var seenOrderIds: Set<Int64> = []
+        var uniqueOrders: [Order] = []
         
-        return filteredOrders
+        for order in filteredOrders {
+            if let orderId = order.orderId {
+                if !seenOrderIds.contains(orderId) {
+                    seenOrderIds.insert(orderId)
+                    uniqueOrders.append(order)
+                }
+            }
+        }
+        
+        print("[CurrentOrdersSection] After deduplication: \(uniqueOrders.count) unique orders")
+        
+        // Debug: Print all order IDs being returned
+        print("[CurrentOrdersSection] Order IDs being returned:")
+        for (index, order) in uniqueOrders.enumerated() {
+            print("[CurrentOrdersSection]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
+        }
+        
+        return uniqueOrders
     }
     
     private func performCancellations() {

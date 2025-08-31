@@ -149,14 +149,13 @@ class BuyOrderCalculationTests: XCTestCase {
         XCTAssertGreaterThan(targetPrice, avgCostPerShare)
         XCTAssertLessThan(targetPrice, avgCostPerShare * 2.0) // Should be less than double the cost
         
-        // Test trailing stop calculation (75% of distance from current price to target)
-        let currentPrice = 10.0
-        let fullDistancePercent = ((targetPrice - currentPrice) / currentPrice) * 100.0
-        let trailingStopPercent = fullDistancePercent * 0.75
+        // Test trailing stop calculation (now uses 2 * ATR instead of 75% of distance)
+        let atrValue = 2.5 // Example ATR value
+        let trailingStopPercent = 2.0 * atrValue
         
-        // Verify trailing stop is 75% of the full distance
-        XCTAssertEqual(trailingStopPercent, fullDistancePercent * 0.75, accuracy: 0.01)
-        XCTAssertLessThan(trailingStopPercent, fullDistancePercent) // Should be less than full distance
+        // Verify trailing stop is twice the ATR value
+        XCTAssertEqual(trailingStopPercent, 2.0 * atrValue, accuracy: 0.01)
+        XCTAssertEqual(trailingStopPercent, 5.0, accuracy: 0.01) // 2 * 2.5 = 5.0
     }
     
     func testTargetPriceBounds() {

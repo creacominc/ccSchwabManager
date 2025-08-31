@@ -14,18 +14,23 @@ struct OrderGroupView: View {
         var orders: [Order] = []
         
         func collectOrdersRecursively(_ order: Order) {
-            // Add the current order if it's open and has order legs (or is not an OCO parent)
-            if let status = order.status, openStatuses.contains(status) {
-                // For OCO parent orders, only add if they have order legs
-                if order.orderStrategyType == .OCO {
-                    if let orderLegs = order.orderLegCollection, !orderLegs.isEmpty {
-                        orders.append(order)
+            // For OCO parent orders, don't add them directly - only process their children
+            if order.orderStrategyType == .OCO {
+                // Recursively add child orders for OCO
+                if let childStrategies = order.childOrderStrategies, !childStrategies.isEmpty {
+                    for child in childStrategies {
+                        collectOrdersRecursively(child)
                     }
-                } else {
-                    orders.append(order)
                 }
+                return
             }
-            // Recursively add child orders for TRIGGER and OCO
+            
+            // Add the current order if it's open and has order legs (for non-OCO orders)
+            if let status = order.status, openStatuses.contains(status) {
+                orders.append(order)
+            }
+            
+            // Recursively add child orders for TRIGGER orders
             if let childStrategies = order.childOrderStrategies, !childStrategies.isEmpty {
                 for child in childStrategies {
                     collectOrdersRecursively(child)
@@ -34,6 +39,7 @@ struct OrderGroupView: View {
         }
         
         collectOrdersRecursively(order)
+        
         // Sort: active order (not AWAITING_PARENT_ORDER) first, then children
         let sorted = orders.sorted { lhs, rhs in
             let lhsIsParent = lhs.status != .awaitingParentOrder
@@ -43,11 +49,12 @@ struct OrderGroupView: View {
             }
             return lhsIsParent && !rhsIsParent
         }
+        
         return sorted
     }
     
     private var groupOrderId: Int64? {
-        // For OCO orders, use the parent order ID
+        // For OCO orders, use the parent order ID (even though we don't display it directly)
         if order.orderStrategyType == .OCO {
             return order.orderId
         } else {

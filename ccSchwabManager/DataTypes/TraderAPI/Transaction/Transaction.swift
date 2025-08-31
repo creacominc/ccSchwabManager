@@ -132,7 +132,6 @@ class Transaction: Codable, Identifiable, Hashable
         print("Time: \(String(describing: time))")
         print("User: \(String(describing: user))")
         print("Description: \(String(describing: description))")
-        print("Account Number: \(String(describing: accountNumber))")
         print("Type: \(String(describing: type))")
         print("Status: \(String(describing: status))")
         print("Sub Account: \(String(describing: subAccount))")

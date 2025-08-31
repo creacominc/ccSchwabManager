@@ -1882,6 +1882,21 @@ class SchwabClient
 
         AppLogger.shared.info("fetchOrderHistory 📊 Fetched \(m_orderList.count) orders for all accounts")
 
+        // Deduplicate orders by orderId
+        var seenOrderIds: Set<Int64> = []
+        var uniqueOrders: [Order] = []
+        
+        for order in m_orderList {
+            if let orderId = order.orderId {
+                if !seenOrderIds.contains(orderId) {
+                    seenOrderIds.insert(orderId)
+                    uniqueOrders.append(order)
+                }
+            }
+        }
+        
+        m_orderList = uniqueOrders
+        
         AppLogger.shared.info("fetchOrderHistory 📊 After deduplication: \(m_orderList.count) unique orders")
         updateSymbolsWithOrders()
     }
@@ -2011,7 +2026,6 @@ class SchwabClient
                     AppLogger.shared.debug("🔍 DELETE REQUEST VERIFICATION:")
                     AppLogger.shared.debug("  📍 URL: \(cancelOrderUrl)")
                     AppLogger.shared.debug("  🆔 Order ID: \(orderId)")
-                    AppLogger.shared.debug("  🏦 Order Account Number: \(orderAccountNumber)")
                     AppLogger.shared.debug("  🔑 Account Hash: \(hashValue)")
                     AppLogger.shared.debug("  🏷️  HTTP Method: \(request.httpMethod ?? "nil")")
                     AppLogger.shared.debug("  📋 Headers:")
@@ -2133,9 +2147,6 @@ class SchwabClient
             let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
             
             AppLogger.shared.debug("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
-            // AppLogger.shared.debug("📤 [PLACE-ORDER]   📍 URL: \(placeOrderUrl)")
-            // AppLogger.shared.debug("📤 [PLACE-ORDER]   🏦 Account Number: \(orderAccountNumber)")
-            // AppLogger.shared.debug("📤 [PLACE-ORDER]   🔑 Account Hash: \(hashValue)")
             AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 JSON Body:")
             AppLogger.shared.debug("📤 [PLACE-ORDER] \(jsonString)")
             
@@ -3016,35 +3027,24 @@ class SchwabClient
     ) -> Order? {
         AppLogger.shared.debug("=== createOrder ===")
         AppLogger.shared.debug("Symbol: \(symbol)")
-        AppLogger.shared.debug("Account Number: \(accountNumber)")
         AppLogger.shared.debug("Selected Orders Count: \(selectedOrders.count)")
         AppLogger.shared.debug("Release Time: \(releaseTime)")
         
-        // Extract current price from the first order (they should all have the same current price)
+        // Get the actual current market price for the symbol
         let currentPrice: Double
-        if let firstOrder = selectedOrders.first {
-            let (orderType, order) = firstOrder
-            if orderType == "BUY", let buyOrder = order as? BuyOrderRecord {
-                // For buy orders, we can calculate current price from the trailing stop calculation
-                // The trailing stop was calculated as: ((targetBuyPrice / currentPrice) - 1.0) * 100.0
-                // So: currentPrice = targetBuyPrice / (1.0 + trailingStopPercent / 100.0)
-                let targetBuyPrice = buyOrder.targetBuyPrice
-                let trailingStopPercent = buyOrder.trailingStop
-                currentPrice = targetBuyPrice / (1.0 + trailingStopPercent / 100.0)
-                AppLogger.shared.debug("📊 Calculated current price from BUY order: $\(currentPrice)")
-            } else if orderType == "SELL", let sellOrder = order as? SalesCalcResultsRecord {
-                // For sell orders, we can estimate current price from the entry price
-                // The entry price is typically close to current price for sell orders
-                currentPrice = sellOrder.entry
-                AppLogger.shared.debug("📊 Using entry price as current price for SELL order: $\(currentPrice)")
-            } else {
-                // Fallback to a reasonable default
-                currentPrice = 50.0
-                AppLogger.shared.debug("⚠️ Using fallback current price: $\(currentPrice)")
-            }
+        if let quote = fetchQuote(symbol: symbol)?.quote?.lastPrice {
+            currentPrice = quote
+            AppLogger.shared.debug("📊 Using real-time quote price: $\(currentPrice)")
+        } else if let extended = fetchQuote(symbol: symbol)?.extended?.lastPrice {
+            currentPrice = extended
+            AppLogger.shared.debug("📊 Using extended hours quote price: $\(currentPrice)")
+        } else if let regular = fetchQuote(symbol: symbol)?.regular?.regularMarketLastPrice {
+            currentPrice = regular
+            AppLogger.shared.debug("📊 Using regular market quote price: $\(currentPrice)")
         } else {
+            // Fallback to a reasonable default if no quote data available
             currentPrice = 50.0
-            AppLogger.shared.debug("⚠️ No orders provided, using fallback current price: $\(currentPrice)")
+            AppLogger.shared.debug("⚠️ No quote data available, using fallback current price: $\(currentPrice)")
         }
         
         // If there's only one order, return it directly without OCO wrapper
@@ -3075,6 +3075,9 @@ class SchwabClient
         var childOrderStrategies: [Order] = []
         
         for (index, (orderType, order)) in selectedOrders.enumerated() {
+            // Use the same current market price for all orders to ensure consistency
+            AppLogger.shared.debug("📊 Order \(index + 1) (\(orderType)): Using current market price: $\(currentPrice)")
+            
             if let childOrder = createSimplifiedChildOrder(
                 symbol: symbol,
                 accountNumber: accountNumber,
@@ -3117,7 +3120,6 @@ class SchwabClient
     ) -> Order? {
         AppLogger.shared.debug("=== createSequenceOrder ===")
         AppLogger.shared.debug("Symbol: \(symbol)")
-        AppLogger.shared.debug("Account Number: \(accountNumber)")
         AppLogger.shared.debug("Selected Orders Count: \(selectedOrders.count)")
         
         guard !selectedOrders.isEmpty else {
@@ -3215,7 +3217,6 @@ class SchwabClient
         AppLogger.shared.debug("    orderStrategyType: .SINGLE")
         AppLogger.shared.debug("    cancelable: true")
         AppLogger.shared.debug("    editable: false")
-        AppLogger.shared.debug("    accountNumber: \(accountNumber)")
         
         // Determine order strategy type and child orders
         let orderStrategyType: OrderStrategyType
@@ -3297,10 +3298,11 @@ class SchwabClient
                 quantity: sellOrder.sharesToSell
             )
             
-            // Calculate trailing stop as 90% of the percentage from target to current price
-            // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent: Double = ((sellOrder.entry - sellOrder.target) / sellOrder.entry) * 100.0 * 0.90
-            AppLogger.shared.debug("=== createSimplifiedChildOrder:  trailingStopPercent: \(trailingStopPercent) = (( entry: \(sellOrder.entry) - target: \(sellOrder.target) ) / entry: \(sellOrder.entry) ) * 100.0 * 0.90")
+            // Calculate trailing stop as twice the ATR value (as per user preference)
+            // We need to get the ATR value for this symbol to calculate the trailing stop
+            let atrValue = computeATR(symbol: symbol)
+            let trailingStopPercent: Double = 2.0 * atrValue
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  trailingStopPercent: \(trailingStopPercent) = 2.0 * ATR(\(atrValue)%)")
 
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(sellOrder.target * 100) / 100
@@ -3353,10 +3355,11 @@ class SchwabClient
                 quantity: buyOrder.sharesToBuy
             )
             
-            // Calculate trailing stop as 90% of the percentage from current price to target
-            // This reflects how far the price would have to move to reach the target
-            let trailingStopPercent: Double = ((buyOrder.targetBuyPrice - currentPrice) / currentPrice) * 100.0 * 0.90
-            AppLogger.shared.debug("=== createSimplifiedChildOrder:  Trailing Stop Percent: \(trailingStopPercent) = (( targetBuyPrice: \(buyOrder.targetBuyPrice) - currentPrice: \(currentPrice) ) / currentPrice: \(currentPrice) ) * 100.0 * 0.90")
+            // Calculate trailing stop as twice the ATR value (as per user preference)
+            // We need to get the ATR value for this symbol to calculate the trailing stop
+            let atrValue = computeATR(symbol: symbol)
+            let trailingStopPercent: Double = 2.0 * atrValue
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  Trailing Stop Percent: \(trailingStopPercent) = 2.0 * ATR(\(atrValue)%)")
 
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(buyOrder.targetBuyPrice * 100) / 100
@@ -3636,6 +3639,8 @@ class SchwabClient
         
         return m_lastFilteredPositionRecords
     }
+
+
 
 } // SchwabClient
 
