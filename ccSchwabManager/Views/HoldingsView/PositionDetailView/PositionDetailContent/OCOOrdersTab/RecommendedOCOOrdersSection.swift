@@ -168,33 +168,75 @@ struct RecommendedOCOOrdersSection: View {
     }
     
     private func loadTaxLotsInBackground() {
-        viewModel.loadTaxLotsInBackground(symbol: symbol)
-        
-        // Wait for tax lots to be loaded before calculating orders
+        print("🔄 loadTaxLotsInBackground called for symbol: \(symbol)")
         Task {
-            // Wait for tax lot calculation to complete
-            while viewModel.isLoadingTaxLots {
-                try? await Task.sleep(nanoseconds: 100_000_000) // Wait 100ms
+            // Load tax lots and get the result
+            let computedTaxLots = await viewModel.loadTaxLotsInBackground(symbol: symbol)
+            
+            print("📦 Received \(computedTaxLots.count) tax lots for \(symbol)")
+            
+            // Update the local tax lot data
+            await MainActor.run {
+                taxLotData = computedTaxLots
+                print("💾 Updated taxLotData with \(taxLotData.count) tax lots")
             }
             
             // Only populate when we have aligned data for this symbol and tax lots are ready
             if viewModel.currentOrders.isEmpty && isDataReadyForCurrentSymbol() && !taxLotData.isEmpty {
+                print("🚀 Calling updateOrdersIfReady for \(symbol)")
                 updateOrdersIfReady()
+            } else {
+                print("⏸️ Not calling updateOrdersIfReady:")
+                print("  - viewModel.currentOrders.isEmpty: \(viewModel.currentOrders.isEmpty)")
+                print("  - isDataReadyForCurrentSymbol(): \(isDataReadyForCurrentSymbol())")
+                print("  - !taxLotData.isEmpty: \(!taxLotData.isEmpty)")
             }
         }
     }
     
     private func isDataReadyForCurrentSymbol() -> Bool {
         // We consider data ready only when quoteData is present, matches the current symbol, and tax lots are available
-        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol && !taxLotData.isEmpty { return true }
+        let hasQuoteData = quoteData != nil
+        let hasMatchingSymbol = quoteData?.symbol == symbol
+        let hasTaxLots = !taxLotData.isEmpty
+        
+        print("🔍 isDataReadyForCurrentSymbol debug:")
+        print("  - hasQuoteData: \(hasQuoteData)")
+        print("  - hasMatchingSymbol: \(hasMatchingSymbol)")
+        print("  - hasTaxLots: \(hasTaxLots)")
+        print("  - quoteData?.symbol: \(quoteData?.symbol ?? "nil")")
+        print("  - symbol: \(symbol)")
+        print("  - taxLotData.count: \(taxLotData.count)")
+        
+        if let dataSymbol = quoteData?.symbol, dataSymbol == symbol && !taxLotData.isEmpty { 
+            print("✅ Data is ready for symbol \(symbol)")
+            return true 
+        }
+        
+        print("❌ Data is NOT ready for symbol \(symbol)")
         return false
     }
     
     private func updateOrdersIfReady() {
-        // Only recalculate if we have data, the symbol matches, and tax lots are ready
-        guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { return }
+        print("🔄 updateOrdersIfReady called for symbol: \(symbol)")
         
-        guard let currentPrice = currentPrice else { return }
+        // Only recalculate if we have data, the symbol matches, and tax lots are ready
+        guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { 
+            print("❌ updateOrdersIfReady guard failed")
+            return 
+        }
+        
+        guard let currentPrice = currentPrice else { 
+            print("❌ updateOrdersIfReady: no current price")
+            return 
+        }
+        
+        print("✅ updateOrdersIfReady: calling viewModel.updateRecommendedOrders")
+        print("  - symbol: \(symbol)")
+        print("  - atrValue: \(atrValue)")
+        print("  - taxLotData.count: \(taxLotData.count)")
+        print("  - sharesAvailableForTrading: \(sharesAvailableForTrading)")
+        print("  - currentPrice: \(currentPrice)")
         
         Task {
             await viewModel.updateRecommendedOrders(
@@ -204,6 +246,10 @@ struct RecommendedOCOOrdersSection: View {
                 sharesAvailableForTrading: sharesAvailableForTrading,
                 currentPrice: currentPrice
             )
+            
+            print("✅ updateRecommendedOrders completed")
+            print("  - recommendedSellOrders.count: \(viewModel.recommendedSellOrders.count)")
+            print("  - recommendedBuyOrders.count: \(viewModel.recommendedBuyOrders.count)")
         }
     }
     
@@ -342,9 +388,9 @@ struct RecommendedOCOOrdersSection: View {
 }
 
 // MARK: - Previews
-#Preview("RefactoredRecommendedOCOOrdersSection - Full View", traits: .landscapeLeft) {
+#Preview("RecommendedOCOOrdersSection - Full View", traits: .landscapeLeft) {
     ScrollView {
-                            RecommendedOCOOrdersSection(
+        RecommendedOCOOrdersSection(
             symbol: "AAPL",
             atrValue: 2.5,
             sharesAvailableForTrading: 150,
@@ -397,9 +443,9 @@ struct RecommendedOCOOrdersSection: View {
     .padding()
 }
 
-#Preview("RefactoredRecommendedOCOOrdersSection - Simple UI", traits: .landscapeLeft) {
+#Preview("RecommendedOCOOrdersSection - Simple UI", traits: .landscapeLeft) {
     ScrollView {
-                            RecommendedOCOOrdersSection(
+        RecommendedOCOOrdersSection(
             symbol: "TSLA",
             atrValue: 1.8,
             sharesAvailableForTrading: 25,
@@ -452,9 +498,9 @@ struct RecommendedOCOOrdersSection: View {
     .padding()
 }
 
-#Preview("RefactoredRecommendedOCOOrdersSection - Minimal Data", traits: .landscapeLeft) {
+#Preview("RecommendedOCOOrdersSection - Minimal Data", traits: .landscapeLeft) {
     ScrollView {
-                            RecommendedOCOOrdersSection(
+        RecommendedOCOOrdersSection(
             symbol: "MSFT",
             atrValue: 1.0,
             sharesAvailableForTrading: 0,

@@ -27,7 +27,7 @@ struct OCOOrdersTab: View {
                     .background(Color.green.opacity(0.1))
                     
                     // Section Content - Using refactored version for better maintainability
-                    RefactoredRecommendedOCOOrdersSection(
+                    RecommendedOCOOrdersSection(
                         symbol: symbol,
                         atrValue: atrValue,
                         sharesAvailableForTrading: sharesAvailableForTrading,

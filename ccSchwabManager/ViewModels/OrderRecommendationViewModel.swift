@@ -17,7 +17,6 @@ class OrderRecommendationViewModel: ObservableObject {
     
     // MARK: - Private Properties
     private let orderService = OrderRecommendationService()
-    private var taxLotCalculationTask: Task<Void, Never>?
     
     // MARK: - Public Interface
     
@@ -72,47 +71,49 @@ class OrderRecommendationViewModel: ObservableObject {
     
     /// Loads tax lots in the background
     /// - Parameter symbol: The trading symbol to load tax lots for
-    func loadTaxLotsInBackground(symbol: String) {
-        guard !isLoadingTaxLots else { return }
+    /// - Returns: The computed tax lots
+    func loadTaxLotsInBackground(symbol: String) async -> [SalesCalcPositionsRecord] {
+        guard !isLoadingTaxLots else { return [] }
         
         isLoadingTaxLots = true
         loadingProgress = 0.0
         loadingMessage = "Initializing tax lot calculation..."
         
-        taxLotCalculationTask = Task {
-            // Simulate progress updates
-            await updateLoadingProgress(0.1, "Fetching transaction history...")
-            
-            // Use the optimized tax lot calculation
-            let _ = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let result = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: nil)
-                    continuation.resume(returning: result)
-                }
-            }
-            
-            await updateLoadingProgress(0.8, "Processing tax lot data...")
-            
-            // Update the UI
+        defer {
             isLoadingTaxLots = false
-            loadingProgress = 1.0
-            loadingMessage = "Tax lot calculation complete!"
-            
-            // Hide the loading message after a short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.loadingProgress = 0.0
-                self.loadingMessage = ""
+            loadingProgress = 0.0
+            loadingMessage = ""
+        }
+        
+        // Simulate progress updates
+        await updateLoadingProgress(0.1, "Fetching transaction history...")
+        
+        // Use the optimized tax lot calculation
+        let taxLots = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: nil)
+                continuation.resume(returning: result)
             }
         }
+        
+        await updateLoadingProgress(0.8, "Processing tax lot data...")
+        
+        // Update the UI
+        loadingProgress = 1.0
+        loadingMessage = "Tax lot calculation complete!"
+        
+        // Hide the loading message after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.loadingProgress = 0.0
+            self.loadingMessage = ""
+        }
+        
+        return taxLots
     }
     
     /// Cancels the current tax lot calculation
     func cancelTaxLotCalculation() {
-        taxLotCalculationTask?.cancel()
-        taxLotCalculationTask = nil
-        isLoadingTaxLots = false
-        loadingProgress = 0.0
-        loadingMessage = ""
+        // No longer needed as tax lot calculation is not managed by a Task
     }
     
     /// Clears all cached data and resets the view model state

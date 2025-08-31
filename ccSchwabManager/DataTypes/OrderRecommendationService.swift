@@ -1,6 +1,7 @@
 import Foundation
 
 /// Service responsible for calculating recommended trading orders based on market data and tax lot information
+@MainActor
 class OrderRecommendationService: ObservableObject {
     
     // MARK: - Configuration

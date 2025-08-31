@@ -23,38 +23,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "DA86D76E-40AB-4026-BEC5-12AFA315C11A"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "32"
-            endingLineNumber = "32"
-            landmarkName = "calculateRecommendedSellOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "C24D71CF-E076-4CA2-940A-F725EB0B17C0"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "29"
-            endingLineNumber = "29"
-            landmarkName = "calculateRecommendedSellOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "614F39C8-CAD5-4BAA-942F-4C2F118BDBE6"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -114,36 +82,6 @@
             endingLineNumber = "228"
             landmarkName = "calculateTop100Order(currentPrice:sortedTaxLots:sharesAvailableForTrading:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "AF433B2A-8D6A-4B63-975F-78B7465B5499 - 5a1de174dd8160a8"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(1) suspend resume partial function for ccSchwabManager.OrderRecommendationService.calculateTop100Order(currentPrice: Swift.Double, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;, sharesAvailableForTrading: Swift.Double) async -&gt; Swift.Optional&lt;ccSchwabManager.SalesCalcResultsRecord&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "228"
-                  endingLineNumber = "228">
-               </Location>
-               <Location
-                  uuid = "AF433B2A-8D6A-4B63-975F-78B7465B5499 - dbf396927a9b4f7b"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 (Swift.Double, ccSchwabManager.SalesCalcPositionsRecord) -&gt; Swift.Double in ccSchwabManager.OrderRecommendationService.calculateTop100Order(currentPrice: Swift.Double, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;, sharesAvailableForTrading: Swift.Double) async -&gt; Swift.Optional&lt;ccSchwabManager.SalesCalcResultsRecord&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "228"
-                  endingLineNumber = "228">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -160,36 +98,6 @@
             endingLineNumber = "302"
             landmarkName = "calculateMinSharesFor5PercentProfit(currentPrice:sortedTaxLots:atrValue:sharesAvailableForTrading:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "B37D224D-8D23-4286-BA4E-48A89C501837 - d221d5101c7f24c7"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(1) suspend resume partial function for ccSchwabManager.OrderRecommendationService.calculateMinSharesFor5PercentProfit(currentPrice: Swift.Double, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;, atrValue: Swift.Double, sharesAvailableForTrading: Swift.Double) async -&gt; Swift.Optional&lt;ccSchwabManager.SalesCalcResultsRecord&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "302"
-                  endingLineNumber = "302">
-               </Location>
-               <Location
-                  uuid = "B37D224D-8D23-4286-BA4E-48A89C501837 - 9a83681e42feea4c"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 (Swift.Double, ccSchwabManager.SalesCalcPositionsRecord) -&gt; Swift.Double in ccSchwabManager.OrderRecommendationService.calculateMinSharesFor5PercentProfit(currentPrice: Swift.Double, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;, atrValue: Swift.Double, sharesAvailableForTrading: Swift.Double) async -&gt; Swift.Optional&lt;ccSchwabManager.SalesCalcResultsRecord&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "302"
-                  endingLineNumber = "302">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -259,22 +167,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "DFB14149-00A3-42FA-A73D-275B230A374D"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "680"
-            endingLineNumber = "680"
-            landmarkName = "calculateMinimumSharesForGain(targetGainPercent:targetPrice:sortedTaxLots:)"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "02D3F373-ADD7-42ED-A73A-93705A2BA9BC"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -286,36 +178,6 @@
             endingLineNumber = "766"
             landmarkName = "calculateMinimumSharesForRemainingProfit(targetProfitPercent:currentPrice:sortedTaxLots:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "02D3F373-ADD7-42ED-A73A-93705A2BA9BC - 2a06978a0028d3b4"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "ccSchwabManager.OrderRecommendationService.calculateMinimumSharesForRemainingProfit(targetProfitPercent: Swift.Double, currentPrice: Swift.Double, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;) -&gt; Swift.Optional&lt;(sharesToSell: Swift.Double, totalGain: Swift.Double, actualCostPerShare: Swift.Double)&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "766"
-                  endingLineNumber = "766">
-               </Location>
-               <Location
-                  uuid = "02D3F373-ADD7-42ED-A73A-93705A2BA9BC - 328cab6fac84064d"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 (Swift.Double, ccSchwabManager.SalesCalcPositionsRecord) -&gt; Swift.Double in ccSchwabManager.OrderRecommendationService.calculateMinimumSharesForRemainingProfit(targetProfitPercent: Swift.Double, currentPrice: Swift.Double, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;) -&gt; Swift.Optional&lt;(sharesToSell: Swift.Double, totalGain: Swift.Double, actualCostPerShare: Swift.Double)&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "766"
-                  endingLineNumber = "766">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -332,36 +194,6 @@
             endingLineNumber = "841"
             landmarkName = "calculateCostBasisForShares(sharesNeeded:startingTaxLotIndex:sortedTaxLots:cumulativeSharesUsed:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "586703D5-C09A-400E-B243-B6E27D325188 - 230e9033d117a195"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "ccSchwabManager.OrderRecommendationService.calculateCostBasisForShares(sharesNeeded: Swift.Double, startingTaxLotIndex: Swift.Int, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;, cumulativeSharesUsed: Swift.Double) -&gt; Swift.Optional&lt;(actualCostPerShare: Swift.Double, sharesUsed: Swift.Double)&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "841"
-                  endingLineNumber = "841">
-               </Location>
-               <Location
-                  uuid = "586703D5-C09A-400E-B243-B6E27D325188 - 230e9033d117a195"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "ccSchwabManager.OrderRecommendationService.calculateCostBasisForShares(sharesNeeded: Swift.Double, startingTaxLotIndex: Swift.Int, sortedTaxLots: Swift.Array&lt;ccSchwabManager.SalesCalcPositionsRecord&gt;, cumulativeSharesUsed: Swift.Double) -&gt; Swift.Optional&lt;(actualCostPerShare: Swift.Double, sharesUsed: Swift.Double)&gt;"
-                  moduleName = "ccSchwabManager.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/haroldt/Documents/Workspace/ccSchwabManager/ccSchwabManager/DataTypes/OrderRecommendationService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "841"
-                  endingLineNumber = "841">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
