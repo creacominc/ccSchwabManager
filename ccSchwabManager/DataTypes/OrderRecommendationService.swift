@@ -500,62 +500,55 @@ class OrderRecommendationService: ObservableObject {
         sharesAvailableForTrading: Double
     ) -> SalesCalcResultsRecord? {
         
-        // Calculate 1% higher trailing stop than Min BE order
-        let targetTrailingStop: Double = minBreakEvenOrder.trailingStop + 1.0
+        // Calculate trailing stop as ATR + 1% (similar to Min ATR but with higher trailing stop)
+        // Extract ATR from Min BE order (Min BE uses atrValue / 5.0, so multiply by 5 to get ATR)
+        let atrValue = minBreakEvenOrder.trailingStop * 5.0
+        let targetTrailingStop: Double = atrValue + 1.0
         
-        // Calculate the stop price based on the target trailing stop
-        let stopPrice: Double = currentPrice * (1.0 - targetTrailingStop / 100.0)
+        // Calculate entry price (1 ATR below current price)
+        let entry = currentPrice * (1.0 - atrValue / 100.0)
         
-        // Find the maximum number of shares where the weighted average cost per share is below the stop price
-        var cumulativeShares: Double = 0
-        var cumulativeCost: Double = 0
-        var maxShares = 0
+        // Calculate target price based on trailing stop
+        let target = entry / (1.0 + targetTrailingStop / 100.0)
         
-        for (_, taxLot) in sortedTaxLots.enumerated() {
-            // Add all shares from this tax lot
-            let sharesToAdd: Double = taxLot.quantity
-            let costToAdd: Double = taxLot.costBasis
-            
-            // Calculate new weighted average cost
-            let newCumulativeShares = cumulativeShares + sharesToAdd
-            let newCumulativeCost = cumulativeCost + costToAdd
-            let newWeightedAvgCost = newCumulativeCost / newCumulativeShares
-            
-            // Accept these shares
-            cumulativeShares = newCumulativeShares
-            cumulativeCost = newCumulativeCost
-            maxShares = Int(cumulativeShares)
-            
-            if newCumulativeShares > sharesAvailableForTrading {
-                break
-            }
-            
-            // Stop when the cost per share is low enough
-            if newWeightedAvgCost < stopPrice {
-                break
-            }
+        // Use the helper function to calculate minimum shares needed to achieve 5% gain at target price
+        guard let result = calculateMinimumSharesForGain(
+            targetGainPercent: 5.0,
+            targetPrice: target,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            return nil
         }
         
-        guard maxShares > 0 else { return nil }
+        let sharesToSell = result.sharesToSell
+        let actualCostPerShare = result.actualCostPerShare
         
-        let avgCostPerShare = cumulativeCost / cumulativeShares
+        // Validate shares to sell
+        guard sharesToSell >= 1.0 && sharesToSell <= sharesAvailableForTrading else {
+            return nil
+        }
         
-        // Calculate a profitable target price (above the average cost per share)
-        let targetPrice = max(stopPrice + (avgCostPerShare - stopPrice) / 2.0, avgCostPerShare * 1.005)
+        // Validate target is above cost per share
+        guard target > actualCostPerShare else { return nil }
+        
+        // Calculate exit price (2 ATR below target)
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         
         let sellOrder = SalesCalcResultsRecord(
-            shares: Double(maxShares),
-            rollingGainLoss: Double(maxShares) * (targetPrice - avgCostPerShare),
-            breakEven: avgCostPerShare,
-            gain: ((targetPrice - avgCostPerShare) / avgCostPerShare) * 100.0,
-            sharesToSell: Double(maxShares),
+            shares: sharesToSell,
+            rollingGainLoss: sharesToSell * (target - actualCostPerShare),
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: sharesToSell,
             trailingStop: targetTrailingStop,
-            entry: stopPrice,
-            target: targetPrice,
-            cancel: targetPrice * 0.95,
+            entry: entry,
+            target: target,
+            cancel: exit,
             description: String(format: "(1%% TS) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                               Double(maxShares), "SYMBOL", targetPrice, targetTrailingStop, avgCostPerShare),
-            openDate: "1%HigherTS"
+                               sharesToSell, "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+            openDate: "1%TS"
         )
         
         return sellOrder

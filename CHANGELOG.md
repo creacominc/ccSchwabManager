@@ -201,6 +201,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Maintains same exit price calculation as other sell orders
   - Fixes bug where Min ATR had much lower trailing stop than intended (e.g., 0.85% instead of 4.27% for MOD)
   - Fixes bug where Min ATR was calculating 201 shares instead of ~7 shares needed for 5% gain
+  - Fixed "(1% TS) SELL" order to use consistent logic with Min ATR order
+  - "(1% TS) SELL" now calculates minimum shares needed for 5% gain with ATR + 1% trailing stop
   - Ensures Min ATR orders use ATR as trailing stop and calculate minimum shares needed for 5% gain
 
 ### Added
