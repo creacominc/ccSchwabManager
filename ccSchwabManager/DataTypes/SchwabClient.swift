@@ -3311,11 +3311,9 @@ class SchwabClient
                 quantity: roundedQuantity
             )
             
-            // Calculate trailing stop as twice the ATR value (as per user preference)
-            // We need to get the ATR value for this symbol to calculate the trailing stop
-            let atrValue = computeATR(symbol: symbol)
-            let trailingStopPercent: Double = 2.0 * atrValue
-            AppLogger.shared.debug("=== createSimplifiedChildOrder:  trailingStopPercent: \(trailingStopPercent) = 2.0 * ATR(\(atrValue)%)")
+            // Use the trailing stop percentage from the sell order record (already calculated correctly)
+            let trailingStopPercent: Double = sellOrder.trailingStop
+            AppLogger.shared.debug("=== createSimplifiedChildOrder:  trailingStopPercent: \(trailingStopPercent) from sell order record")
 
             // Round prices and percentages to the penny (2 decimal places)
             let roundedTargetPrice = round(sellOrder.target * 100) / 100

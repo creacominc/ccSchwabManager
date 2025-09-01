@@ -7,20 +7,26 @@ struct OCOOrdersTab: View {
     let sharesAvailableForTrading: Double
     let quoteData: QuoteData?
     let accountNumber: String
+    let position: Position
+    let lastPrice: Double
     
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
                 // OCO Orders Section
                 VStack(alignment: .leading, spacing: 0) {
-                    // Section Header
+                    // Section Header with critical information
                     HStack {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .foregroundColor(.green)
                         Text("Recommended Orders (Single or OCO)")
                             .font(.headline)
                             .fontWeight(.semibold)
+                        
                         Spacer()
+                        
+                        // Critical information on the same line
+                        criticalInfoRow
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -48,6 +54,85 @@ struct OCOOrdersTab: View {
         }
         .background(Color.black.opacity(0.1))
     }
+    
+    private var criticalInfoRow: some View {
+        HStack(spacing: 16) {
+            // P/L%
+            HStack(spacing: 4) {
+                Text("P/L%:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.1f%%", calculatePLPercent()))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(getPLColor())
+            }
+            
+            // Last Price
+            HStack(spacing: 4) {
+                Text("Last:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.2f", lastPrice))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+            }
+            
+            // Quantity
+            HStack(spacing: 4) {
+                Text("Qty:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.2f", (position.longQuantity ?? 0) + (position.shortQuantity ?? 0)))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+            }
+            
+            // ATR
+            HStack(spacing: 4) {
+                Text("ATR:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.2f%%", atrValue))
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+            }
+            
+            // DTE/# (empty for equity, could be populated for options)
+            HStack(spacing: 4) {
+                Text("DTE/#:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("") // Empty for equity, could be populated for options
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+            }
+        }
+    }
+    
+    private func calculatePLPercent() -> Double {
+        let pl = position.longOpenProfitLoss ?? 0
+        let mv = position.marketValue ?? 0
+        let costBasis = mv - pl
+        return costBasis != 0 ? (pl / costBasis) * 100 : 0
+    }
+    
+    private func getPLColor() -> Color {
+        let plPercent = calculatePLPercent()
+        if plPercent < 0 {
+            return .red
+        }
+        let threshold = min(5.0, 2 * atrValue)
+        if plPercent <= threshold {
+            return .orange
+        } else {
+            return .green
+        }
+    }
 }
 
 #Preview("OCOOrdersTab - With Data", traits: .landscapeLeft) {
@@ -59,7 +144,9 @@ struct OCOOrdersTab: View {
             taxLotData: createMockTaxLotData(),
             sharesAvailableForTrading: 500.0,
             quoteData: createMockQuoteData(),
-            accountNumber: "123456789"
+            accountNumber: "123456789",
+            position: Position(shortQuantity: 50, longQuantity: 100, marketValue: 17550.0, longOpenProfitLoss: 2525.0),
+            lastPrice: 175.50
         )
         .background(Color.blue.opacity(0.1))
     }
@@ -74,7 +161,9 @@ struct OCOOrdersTab: View {
             taxLotData: [],
             sharesAvailableForTrading: 0.0,
             quoteData: nil,
-            accountNumber: "987654321"
+            accountNumber: "987654321",
+            position: Position(shortQuantity: 0, longQuantity: 0, marketValue: 0.0, longOpenProfitLoss: 0.0),
+            lastPrice: 0.0
         )
         .background(Color.blue.opacity(0.1))
     }

@@ -94,8 +94,13 @@ class OrderRecommendationService: ObservableObject {
             recommended.append(contentsOf: additionalOrders)
         }
         
-        // Sort sell orders by number of shares in descending order
-        recommended.sort { $0.shares > $1.shares }
+        // Sort sell orders by shares descending, then by trailing stop ascending
+        recommended.sort { first, second in
+            if first.shares != second.shares {
+                return first.shares > second.shares
+            }
+            return first.trailingStop < second.trailingStop
+        }
         
         return recommended
     }
@@ -225,8 +230,13 @@ class OrderRecommendationService: ObservableObject {
             }
         }
         
-        // Sort buy orders by increasing number of shares
-        recommended.sort { $0.shares < $1.shares }
+        // Sort buy orders by shares ascending, then by trailing stop descending
+        recommended.sort { first, second in
+            if first.shares != second.shares {
+                return first.shares < second.shares
+            }
+            return first.trailingStop > second.trailingStop
+        }
         
         return recommended
     }
@@ -329,26 +339,24 @@ class OrderRecommendationService: ObservableObject {
         
         guard currentProfitPercent >= minProfitPercent else { return nil }
         
-        // Use ATR as the trailing stop amount for Min ATR orders
+        // Use 1 * ATR as the trailing stop amount for Min ATR orders
         let targetTrailingStop = atrValue
         
-        // Calculate entry price (1 ATR below current price)
-        let entry = currentPrice * (1.0 - atrValue / 100.0)
+        // Calculate stop price (1 * ATR below current price)
+        let stopPrice = currentPrice * (1.0 - targetTrailingStop / 100.0)
         
-        // Calculate target price based on trailing stop
-        let target = entry / (1.0 + targetTrailingStop / 100.0)
-        
-        // Use the helper function to calculate minimum shares needed to achieve 5% gain at target price
+        // Use the helper function to calculate minimum shares needed to achieve 5% gain
+        // We'll use a temporary target price for the calculation, then adjust it based on the new logic
+        let tempTarget = stopPrice * 1.01 // Temporary target for calculation
         guard let result = calculateMinimumSharesForGain(
             targetGainPercent: 5.0,
-            targetPrice: target,
+            targetPrice: tempTarget,
             sortedTaxLots: sortedTaxLots
         ) else {
             return nil
         }
         
         let sharesToSell = result.sharesToSell
-        let totalGain = result.totalGain
         let actualCostPerShare = result.actualCostPerShare
         
         // Validate shares to sell
@@ -356,24 +364,45 @@ class OrderRecommendationService: ObservableObject {
             return nil
         }
         
-        // Validate target is above cost per share
-        guard target > actualCostPerShare else { return nil }
+        // Calculate the final target price based on the new logic:
+        // If cost-per-share is below 2*ATR below last price, use 2*ATR below last as limit
+        // Otherwise, use midpoint between stop price and cost-per-share
+        let twoATRBelowLast = currentPrice * (1.0 - 2.0 * atrValue / 100.0)
+        let target: Double
         
-        // Calculate exit price (2 ATR below target)
-        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        if actualCostPerShare < twoATRBelowLast {
+            // Cost-per-share is below 2*ATR below last price
+            target = twoATRBelowLast
+        } else {
+            // Cost-per-share is at or above 2*ATR below last price
+            // Use midpoint between stop price and cost-per-share
+            target = (stopPrice + actualCostPerShare) / 2.0
+        }
         
-        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, "SYMBOL", target, targetTrailingStop, actualCostPerShare)
+        // Ensure target is never higher than last price minus trailing stop percent
+        let maxTarget = currentPrice * (1.0 - targetTrailingStop / 100.0)
+        let finalTarget = min(target, maxTarget)
+        
+        // Validate final target is above cost per share
+        guard finalTarget > actualCostPerShare else { return nil }
+        
+        // Calculate exit price (2 ATR below final target)
+        let exit = max(finalTarget * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        // Recalculate total gain with the final target
+        let finalTotalGain = sharesToSell * (finalTarget - actualCostPerShare)
+        let gain = actualCostPerShare > 0 ? ((finalTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, "SYMBOL", finalTarget, targetTrailingStop, actualCostPerShare)
         
         return SalesCalcResultsRecord(
             shares: sharesToSell,
-            rollingGainLoss: totalGain,
+            rollingGainLoss: finalTotalGain,
             breakEven: actualCostPerShare,
             gain: gain,
             sharesToSell: sharesToSell,
             trailingStop: targetTrailingStop,
-            entry: entry,
-            target: target,
+            entry: stopPrice,
+            target: finalTarget,
             cancel: exit,
             description: formattedDescription,
             openDate: "MinATR"

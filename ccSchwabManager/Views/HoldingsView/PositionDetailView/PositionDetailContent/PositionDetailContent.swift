@@ -157,7 +157,9 @@ struct PositionDetailContent: View {
                                 taxLotData: taxLotData,
                                 sharesAvailableForTrading: sharesAvailableForTrading,
                                 quoteData: quoteData,
-                                accountNumber: accountNumber
+                                accountNumber: accountNumber,
+                                position: position,
+                                lastPrice: getCurrentPrice()
                             )
                         case 6:
                             SequenceOrdersTab(
@@ -166,7 +168,9 @@ struct PositionDetailContent: View {
                                 taxLotData: taxLotData,
                                 sharesAvailableForTrading: sharesAvailableForTrading,
                                 quoteData: quoteData,
-                                accountNumber: accountNumber
+                                accountNumber: accountNumber,
+                                position: position,
+                                lastPrice: getCurrentPrice()
                             )
                         case 0:
                             detailsTabView
