@@ -46,6 +46,9 @@ struct HoldingsTableContent: View {
             .padding(.trailing, 15)
             .padding(.bottom, 15)
         } // scroll
+#if os(iOS)
+        .scrollDismissesKeyboard(.immediately)
+#endif
     } // view
 }
 

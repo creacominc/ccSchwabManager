@@ -88,6 +88,8 @@ struct HoldingsView: View {
     
     // Search field focus state for iOS
     @FocusState private var isSearchFieldFocused: Bool
+    // Visibility of the search bar on iOS (collapsible to save space)
+    @State private var isSearchVisible: Bool = false
     
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
@@ -214,50 +216,94 @@ struct HoldingsView: View {
             VStack {
                 // Platform-specific search implementation
                 #if os(iOS)
-                // Custom search bar for iOS that's always visible
+                // Top controls for showing/hiding search and keyboard on iPhone
                 HStack {
+                    Button(action: {
+                        withAnimation {
+                            isSearchVisible.toggle()
+                        }
+                        if isSearchVisible {
+                            // Focus when opening search
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                isSearchFieldFocused = true
+                            }
+                        } else {
+                            // Dismiss keyboard when hiding search
+                            isSearchFieldFocused = false
+                        }
+                    }) {
+                        Label(isSearchVisible ? "Hide Search" : "Show Search", systemImage: "magnifyingglass")
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Spacer()
+                    
+                    if isSearchFieldFocused {
+                        Button(action: { isSearchFieldFocused = false }) {
+                            Label("Hide Keyboard", systemImage: "keyboard.chevron.compact.down")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+                if isSearchVisible {
                     HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        TextField("Search by symbol or description", text: $searchText)
-                            .focused($isSearchFieldFocused)
-                            .textFieldStyle(.plain)
-                            .onSubmit {
-                                // Optional: Handle search submission
-                            }
-                            .onKeyPress(.delete) {
-                                searchText = ""
-                                return .handled
-                            }
-                            .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
-                                searchText = ""
-                                return .handled
-                            }
-                            .onKeyPress { keyPress in
-                                // Handle alphanumeric input for search
-                                let character = keyPress.characters.first
-                                if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
-                                    searchText += String(char)
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.secondary)
+                            TextField("Search by symbol or description", text: $searchText)
+                                .focused($isSearchFieldFocused)
+                                .textFieldStyle(.plain)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    // Optional: Handle search submission
+                                }
+                                .onKeyPress(.delete) {
+                                    searchText = ""
                                     return .handled
                                 }
-                                return .ignored
-                            }
-                        
-                        if !searchText.isEmpty {
-                            Button(action: {
-                                searchText = ""
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
+                                .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
+                                    searchText = ""
+                                    return .handled
+                                }
+                                .onKeyPress { keyPress in
+                                    // Handle alphanumeric input for search
+                                    let character = keyPress.characters.first
+                                    if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
+                                        searchText += String(char)
+                                        return .handled
+                                    }
+                                    return .ignored
+                                }
+                            
+                            if !searchText.isEmpty {
+                                Button(action: {
+                                    searchText = ""
+                                }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
                             }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        
+                        Button(action: {
+                            withAnimation { isSearchVisible = false }
+                            isSearchFieldFocused = false
+                        }) {
+                            Image(systemName: "chevron.up.circle")
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 6)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(10)
                     .padding(.horizontal)
-                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 #endif
                 
@@ -377,13 +423,17 @@ struct HoldingsView: View {
             .searchable(text: $searchText, prompt: "Search by symbol or description")
             #endif
             .onAppear {
-                // Focus the search field when the view appears
-                #if os(iOS)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isSearchFieldFocused = true
-                }
-                #endif
+                // Do not auto-focus search on iOS to avoid keyboard covering content
             }
+            #if os(iOS)
+            // Add a keyboard toolbar with a Done button to dismiss
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isSearchFieldFocused = false }
+                }
+            }
+            #endif
             //.navigationTitle("Holdings")
             .task {
                 defer { isLoadingAccounts = false }
