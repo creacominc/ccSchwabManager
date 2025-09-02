@@ -41,19 +41,19 @@ struct HoldingsTableHeader: View {
                     let isWide = geometry.size.width >= 1024
                     HStack(spacing: 4) {
                         // Symbol column (always shown)
-                        HStack {
-                            columnHeader(title: "Symbol", column: .symbol)
-                            Button(action: {
-                                CSVExporter.exportHoldings(sortedHoldings, accountPositions: accountPositions, tradeDates: tradeDateCache, orderStatuses: orderStatusCache)
-                            }) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                            }
-                            .buttonStyle(.plain)
+                        columnHeader(title: "Symbol", column: .symbol)
+                            .frame(width: HoldingsTableRow.getColumnWidth(0, viewWidth: geometry.size.width, isWide: isWide),
+                                   alignment: .leading)
+                        
+                        // Export button (separate element like in data rows)
+                        Button(action: {
+                            CSVExporter.exportHoldings(sortedHoldings, accountPositions: accountPositions, tradeDates: tradeDateCache, orderStatuses: orderStatusCache)
+                        }) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.caption)
+                                .foregroundColor(.blue)
                         }
-                        .frame(width: HoldingsTableRow.getColumnWidth(0, viewWidth: geometry.size.width, isWide: isWide),
-                               alignment: .leading )
+                        .buttonStyle(.plain)
                         
                         // Quantity column (always shown)
                         columnHeader(title: "Qty", column: .quantity, alignment: .trailing)
@@ -96,7 +96,7 @@ struct HoldingsTableHeader: View {
                         }
                         
                         // Last Trade column (always shown)
-                        columnHeader(title: "Last Trade", column: .lastTradeDate)
+                        columnHeader(title: "Last", column: .lastTradeDate)
                             .frame(width: HoldingsTableRow.getColumnWidth(8, viewWidth: geometry.size.width, isWide: isWide),
                                    alignment: .leading)
                         

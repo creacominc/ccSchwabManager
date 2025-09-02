@@ -19,7 +19,7 @@ struct OCOOrdersTab: View {
                     HStack {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .foregroundColor(.green)
-                        Text("Recommended Orders (Single or OCO)")
+                        Text("Recommended")
                             .font(.headline)
                             .fontWeight(.semibold)
                         
