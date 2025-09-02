@@ -468,16 +468,63 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Trailing Stop Validation
     
     private func validateTrailingStop() -> String? {
-        // Check if any sell orders have trailing stops less than 0.1%
-        for (_, order) in viewModel.currentOrders {
+        AppLogger.shared.debug("=== validateTrailingStop ===")
+        AppLogger.shared.debug("Selected sell order index: \(viewModel.selectedSellOrderIndex?.description ?? "nil")")
+        AppLogger.shared.debug("Selected buy order index: \(viewModel.selectedBuyOrderIndex?.description ?? "nil")")
+        
+        // Only validate selected orders, not all recommended orders
+        var selectedOrdersToValidate: [(String, Any)] = []
+        
+        // Add selected sell order if any
+        if let sellIndex = viewModel.selectedSellOrderIndex,
+           sellIndex < viewModel.recommendedSellOrders.count {
+            let sellOrder = viewModel.recommendedSellOrders[sellIndex]
+            selectedOrdersToValidate.append(("SELL", sellOrder))
+            AppLogger.shared.debug("  Selected sell order: index=\(sellIndex), trailingStop=\(sellOrder.trailingStop)%, shares=\(sellOrder.shares), target=\(sellOrder.target)")
+        }
+        
+        // Add selected buy order if any
+        if let buyIndex = viewModel.selectedBuyOrderIndex,
+           buyIndex < viewModel.recommendedBuyOrders.count {
+            let buyOrder = viewModel.recommendedBuyOrders[buyIndex]
+            selectedOrdersToValidate.append(("BUY", buyOrder))
+            AppLogger.shared.debug("  Selected buy order: index=\(buyIndex), trailingStop=\(buyOrder.trailingStop)%, shares=\(buyOrder.shares), target=\(buyOrder.targetBuyPrice)")
+        }
+        
+        AppLogger.shared.debug("Selected orders to validate: \(selectedOrdersToValidate.count)")
+        
+        // Check if any selected orders have trailing stops less than 0.1%
+        for (index, (orderType, order)) in selectedOrdersToValidate.enumerated() {
+            AppLogger.shared.debug("Validating selected order \(index + 1): type=\(orderType)")
+            
             if let sellOrder = order as? SalesCalcResultsRecord {
+                AppLogger.shared.debug("  Selected sell order: trailingStop=\(sellOrder.trailingStop)%, shares=\(sellOrder.shares), target=\(sellOrder.target)")
+                
                 if sellOrder.trailingStop < 0.1 {
+                    AppLogger.shared.error("⚠️ Trailing stop validation failed: selected sell order has trailingStop=\(sellOrder.trailingStop)% which is below 0.1%")
+                    AppLogger.shared.error("  Order details: shares=\(sellOrder.shares), target=\(sellOrder.target), entry=\(sellOrder.entry)")
+                    
                     // Clear ATR cache to force fresh calculation
                     SchwabClient.shared.clearATRCache()
                     return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", sellOrder.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
                 }
+            } else if let buyOrder = order as? BuyOrderRecord {
+                AppLogger.shared.debug("  Selected buy order: trailingStop=\(buyOrder.trailingStop)%, shares=\(buyOrder.shares), target=\(buyOrder.targetBuyPrice)")
+                
+                if buyOrder.trailingStop < 0.1 {
+                    AppLogger.shared.error("⚠️ Trailing stop validation failed: selected buy order has trailingStop=\(buyOrder.trailingStop)% which is below 0.1%")
+                    AppLogger.shared.error("  Order details: shares=\(buyOrder.shares), target=\(buyOrder.targetBuyPrice), entry=\(buyOrder.entryPrice)")
+                    
+                    // Clear ATR cache to force fresh calculation
+                    SchwabClient.shared.clearATRCache()
+                    return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", buyOrder.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
+                }
+            } else {
+                AppLogger.shared.warning("  Unknown selected order type: \(type(of: order))")
             }
         }
+        
+        AppLogger.shared.debug("✅ Trailing stop validation passed for all selected orders")
         return nil // No validation errors
     }
 }

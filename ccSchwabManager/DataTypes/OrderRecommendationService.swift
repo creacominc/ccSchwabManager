@@ -25,6 +25,15 @@ class OrderRecommendationService: ObservableObject {
         currentPrice: Double
     ) async -> [SalesCalcResultsRecord] {
         
+        AppLogger.shared.debug("=== calculateRecommendedSellOrders ===")
+        AppLogger.shared.debug("Symbol: \(symbol), ATR: \(atrValue)%, Current Price: \(currentPrice), Shares Available: \(sharesAvailableForTrading)")
+        
+        // Validate ATR value is reasonable (should be between 0.1% and 50%)
+        guard atrValue >= 0.1 && atrValue <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid ATR value: \(atrValue)%. Expected range: 0.1% to 50%")
+            return []
+        }
+        
         // Early validation
         guard !taxLotData.isEmpty, sharesAvailableForTrading > 0 else {
             return []
@@ -41,7 +50,8 @@ class OrderRecommendationService: ObservableObject {
                 return await self.calculateTop100Order(
                     currentPrice: currentPrice,
                     sortedTaxLots: sortedTaxLots,
-                    sharesAvailableForTrading: sharesAvailableForTrading
+                    sharesAvailableForTrading: sharesAvailableForTrading,
+                    atrValue: atrValue
                 )
             }
             
@@ -121,6 +131,15 @@ class OrderRecommendationService: ObservableObject {
         currentPrice: Double
     ) -> [BuyOrderRecord] {
         
+        AppLogger.shared.debug("=== calculateRecommendedBuyOrders ===")
+        AppLogger.shared.debug("Symbol: \(symbol), ATR: \(atrValue)%, Current Price: \(currentPrice), Shares Available: \(sharesAvailableForTrading)")
+        
+        // Validate ATR value is reasonable (should be between 0.1% and 50%)
+        guard atrValue >= 0.1 && atrValue <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid ATR value: \(atrValue)%. Expected range: 0.1% to 50%")
+            return []
+        }
+        
         // Early validation
         guard !taxLotData.isEmpty else { return [] }
         
@@ -181,6 +200,8 @@ class OrderRecommendationService: ObservableObject {
             let stopPrice = currentPrice + (atrValue / 100.0) * currentPrice
             let trailingStopPercent = ((stopPrice - currentPrice) / currentPrice) * 100.0
             
+            AppLogger.shared.debug("  Buy order calculation: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
+            
             // Calculate order cost
             let orderCost = sharesToBuy * targetBuyPrice
             
@@ -198,6 +219,14 @@ class OrderRecommendationService: ObservableObject {
                 targetGainPercent,
                 orderCost
             )
+            
+            AppLogger.shared.debug("  Creating buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesToBuy), target=\(targetBuyPrice)")
+            
+            // Final validation of trailing stop value
+            guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
+                AppLogger.shared.error("⚠️ Invalid trailing stop value in buy order: \(trailingStopPercent)%")
+                continue
+            }
             
             let buyOrder = BuyOrderRecord(
                 shares: sharesToBuy,
@@ -250,8 +279,11 @@ class OrderRecommendationService: ObservableObject {
     private func calculateTop100Order(
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        sharesAvailableForTrading: Double
+        sharesAvailableForTrading: Double,
+        atrValue: Double
     ) async -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("  Top 100 order: ATR=\(atrValue)%")
         
         // Early exit conditions
         guard !sortedTaxLots.isEmpty else { return nil }
@@ -275,10 +307,12 @@ class OrderRecommendationService: ObservableObject {
         }
         
         let actualCostPerShare = totalCostOfTop100 / finalSharesToConsider
+        AppLogger.shared.debug("  Top 100 cost calculation: totalCost=\(totalCostOfTop100), shares=\(finalSharesToConsider), costPerShare=\(actualCostPerShare)")
         
         // Check if the top 100 shares are profitable at current price
         let currentProfitPercent = ((currentPrice - actualCostPerShare) / actualCostPerShare) * 100.0
         let isTop100Profitable = currentProfitPercent > 0
+        AppLogger.shared.debug("  Profit check: currentProfit=\(currentProfitPercent)%, isProfitable=\(isTop100Profitable)")
         
         let entry: Double
         let target: Double
@@ -289,16 +323,17 @@ class OrderRecommendationService: ObservableObject {
             target = (currentPrice + actualCostPerShare) / 2.0
             entry = (currentPrice - actualCostPerShare) / 4.0 + target
             trailingStop = ((entry - target) / target) * 100.0
+            AppLogger.shared.debug("  Top 100 profitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
         } else {
             // If top 100 shares are not profitable, use ATR-based logic
-            let adjustedATR = 1.0 // Simplified ATR calculation
-            entry = currentPrice * (1.0 - adjustedATR / 100.0)
-            target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
-            trailingStop = adjustedATR
+            entry = currentPrice * (1.0 - atrValue / 100.0)
+            target = entry * (1.0 - 2.0 * atrValue / 100.0)
+            trailingStop = atrValue
+            AppLogger.shared.debug("  Top 100 unprofitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
         }
         
         // Calculate exit price
-        let exit = max(target * (1.0 - 2.0 * 0.2 / 100.0), actualCostPerShare)
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
         
         let totalGain = finalSharesToConsider * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
@@ -307,6 +342,14 @@ class OrderRecommendationService: ObservableObject {
         let profitIndicator = isTop100Profitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
         let formattedDescription = String(format: "%@ SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
                                           profitIndicator, finalSharesToConsider, "SYMBOL", target, trailingStop, actualCostPerShare)
+        
+        // Final validation of trailing stop value
+        guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in Top 100 order: \(trailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating Top 100 order: trailingStop=\(trailingStop)%, shares=\(finalSharesToConsider), target=\(target)")
         
         return SalesCalcResultsRecord(
             shares: finalSharesToConsider,
@@ -330,6 +373,8 @@ class OrderRecommendationService: ObservableObject {
         sharesAvailableForTrading: Double
     ) async -> SalesCalcResultsRecord? {
         
+        AppLogger.shared.debug("  Min Shares order: ATR=\(atrValue)%")
+        
         // Only show if position is at least 6% and at least (3.5 * ATR) profitable
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
@@ -337,10 +382,13 @@ class OrderRecommendationService: ObservableObject {
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
         let minProfitPercent = max(6.0, 3.5 * min(atrValue, TradingConfig.atrMultiplier))
         
+        AppLogger.shared.debug("  Profit check: currentProfit=\(currentProfitPercent)%, minRequired=\(minProfitPercent)%")
+        
         guard currentProfitPercent >= minProfitPercent else { return nil }
         
         // Use 1 * ATR as the trailing stop amount for Min ATR orders
         let targetTrailingStop = atrValue
+        AppLogger.shared.debug("  Min ATR order: ATR=\(atrValue)%, targetTrailingStop=\(targetTrailingStop)%")
         
         // Calculate stop price (1 * ATR below current price)
         let stopPrice = currentPrice * (1.0 - targetTrailingStop / 100.0)
@@ -373,10 +421,12 @@ class OrderRecommendationService: ObservableObject {
         if actualCostPerShare < twoATRBelowLast {
             // Cost-per-share is below 2*ATR below last price
             target = twoATRBelowLast
+            AppLogger.shared.debug("  Min Shares: cost below 2*ATR, target=\(target)")
         } else {
             // Cost-per-share is at or above 2*ATR below last price
             // Use midpoint between stop price and cost-per-share
             target = (stopPrice + actualCostPerShare) / 2.0
+            AppLogger.shared.debug("  Min Shares: cost above 2*ATR, target=\(target)")
         }
         
         // Ensure target is never higher than last price minus trailing stop percent
@@ -393,6 +443,14 @@ class OrderRecommendationService: ObservableObject {
         let finalTotalGain = sharesToSell * (finalTarget - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((finalTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, "SYMBOL", finalTarget, targetTrailingStop, actualCostPerShare)
+        
+        AppLogger.shared.debug("  Creating Min ATR order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(finalTarget)")
+        
+        // Final validation of trailing stop value
+        guard targetTrailingStop >= 0.1 && targetTrailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in Min ATR order: \(targetTrailingStop)%")
+            return nil
+        }
         
         return SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -417,18 +475,21 @@ class OrderRecommendationService: ObservableObject {
     ) async -> SalesCalcResultsRecord? {
         
         let adjustedATR = atrValue / 5.0
+        AppLogger.shared.debug("  Min Break Even order: ATR=\(atrValue)%, adjustedATR=\(adjustedATR)%")
         
         // Only show if position is at least 1% profitable
         let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
         let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
         let avgCostPerShare = totalCost / totalShares
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        AppLogger.shared.debug("  Profit check: currentProfit=\(currentProfitPercent)%, minRequired=1.0%")
         guard currentProfitPercent >= 1.0 else { return nil }
         
         // Check if the highest cost-per-share tax lot is profitable
         guard let highestCostLot = sortedTaxLots.first else { return nil }
         let highestCostProfitPercent = ((currentPrice - highestCostLot.costPerShare) / highestCostLot.costPerShare) * 100.0
         let isHighestCostLotProfitable = highestCostProfitPercent > 0
+        AppLogger.shared.debug("  Highest cost lot: costPerShare=\(highestCostLot.costPerShare), profitPercent=\(highestCostProfitPercent)%, isProfitable=\(isHighestCostLotProfitable)")
         
         let entry: Double
         let target: Double
@@ -445,10 +506,12 @@ class OrderRecommendationService: ObservableObject {
             
             target = (lastPrice + costPerShare) / 2.0
             entry = (lastPrice - costPerShare) / 4.0 + target
+            AppLogger.shared.debug("  Min BE profitable: entry=\(entry), target=\(target)")
         } else {
             // Original logic: Entry = Last - 1 AATR%, Target = Entry - 2 AATR%
             entry = currentPrice * (1.0 - adjustedATR / 100.0)
             target = entry * (1.0 - 2.0 * adjustedATR / 100.0)
+            AppLogger.shared.debug("  Min BE unprofitable: entry=\(entry), target=\(target)")
             
             // Use the helper function to calculate minimum shares needed to achieve 1% gain at target price
             guard let result = calculateMinimumSharesForGain(
@@ -484,12 +547,19 @@ class OrderRecommendationService: ObservableObject {
         let totalGain = sharesToSell * (target - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
         
-        // Calculate trailing stop value
-        let trailingStopValue = isHighestCostLotProfitable ? 
-            ((entry - target) / target) * 100.0 : adjustedATR
+        // Calculate trailing stop value - always use ATR-based values for consistency
+        let trailingStopValue = adjustedATR
         
         let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
                                           sharesToSell, "SYMBOL", target, trailingStopValue, actualCostPerShare)
+        
+        // Final validation of trailing stop value
+        guard trailingStopValue >= 0.1 && trailingStopValue <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in Min Break Even order: \(trailingStopValue)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating Min Break Even order: trailingStop=\(trailingStopValue)%, shares=\(sharesToSell), target=\(target)")
         
         return SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -514,6 +584,8 @@ class OrderRecommendationService: ObservableObject {
         atrValue: Double
     ) -> [SalesCalcResultsRecord] {
         
+        AppLogger.shared.debug("  Additional sell orders: ATR=\(atrValue)%")
+        
         var additionalOrders: [SalesCalcResultsRecord] = []
         var currentTaxLotIndex = 0
         
@@ -523,7 +595,8 @@ class OrderRecommendationService: ObservableObject {
             sortedTaxLots: sortedTaxLots,
             minBreakEvenOrder: minBreakEvenOrder,
             currentTaxLotIndex: &currentTaxLotIndex,
-            sharesAvailableForTrading: sharesAvailableForTrading
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
         ) {
             additionalOrders.append(higherTSOrder)
         }
@@ -547,19 +620,23 @@ class OrderRecommendationService: ObservableObject {
         sortedTaxLots: [SalesCalcPositionsRecord],
         minBreakEvenOrder: SalesCalcResultsRecord,
         currentTaxLotIndex: inout Int,
-        sharesAvailableForTrading: Double
+        sharesAvailableForTrading: Double,
+        atrValue: Double
     ) -> SalesCalcResultsRecord? {
         
+        AppLogger.shared.debug("  Creating 1% higher trailing stop order: ATR=\(atrValue)%, minBreakEven trailingStop=\(minBreakEvenOrder.trailingStop)%")
+        
         // Calculate trailing stop as ATR + 1% (similar to Min ATR but with higher trailing stop)
-        // Extract ATR from Min BE order (Min BE uses atrValue / 5.0, so multiply by 5 to get ATR)
-        let atrValue = minBreakEvenOrder.trailingStop * 5.0
         let targetTrailingStop: Double = atrValue + 1.0
+        AppLogger.shared.debug("  Target trailing stop calculation: ATR + 1% = \(atrValue)% + 1% = \(targetTrailingStop)%")
         
         // Calculate entry price (1 ATR below current price)
         let entry = currentPrice * (1.0 - atrValue / 100.0)
+        AppLogger.shared.debug("  Entry calculation: currentPrice=\(currentPrice), ATR=\(atrValue)%, entry=\(entry)")
         
         // Calculate target price based on trailing stop
         let target = entry / (1.0 + targetTrailingStop / 100.0)
+        AppLogger.shared.debug("  Target calculation: entry=\(entry), targetTrailingStop=\(targetTrailingStop)%, target=\(target)")
         
         // Use the helper function to calculate minimum shares needed to achieve 5% gain at target price
         guard let result = calculateMinimumSharesForGain(
@@ -572,6 +649,7 @@ class OrderRecommendationService: ObservableObject {
         
         let sharesToSell = result.sharesToSell
         let actualCostPerShare = result.actualCostPerShare
+        AppLogger.shared.debug("  Shares calculation: sharesToSell=\(sharesToSell), actualCostPerShare=\(actualCostPerShare)")
         
         // Validate shares to sell
         guard sharesToSell >= 1.0 && sharesToSell <= sharesAvailableForTrading else {
@@ -585,6 +663,14 @@ class OrderRecommendationService: ObservableObject {
         let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
         
         let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        // Final validation of trailing stop value
+        guard targetTrailingStop >= 0.1 && targetTrailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in 1% higher trailing stop order: \(targetTrailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating 1% higher trailing stop order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(target)")
         
         let sellOrder = SalesCalcResultsRecord(
             shares: sharesToSell,
@@ -630,12 +716,18 @@ class OrderRecommendationService: ObservableObject {
         
         // Calculate a profitable target (1% above cost per share)
         let profitableTarget = actualCostPerShare * 1.01
+        AppLogger.shared.debug("  Profitable target calculation: actualCostPerShare=\(actualCostPerShare), profitableTarget=\(profitableTarget)")
         
         // Calculate the trailing stop from current price to this target
         let trailingStop = ((currentPrice - profitableTarget) / currentPrice) * 100.0
         
+        AppLogger.shared.debug("  Max shares order calculation: currentPrice=\(currentPrice), profitableTarget=\(profitableTarget), trailingStop=\(trailingStop)%")
+        
         // Validate the trailing stop is reasonable
-        guard trailingStop >= 0.5 else { return nil }
+        guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in max shares order: \(trailingStop)%")
+            return nil
+        }
         
         // Calculate the proper target price: midway between stop price and cost per share
         let stopPrice = currentPrice * (1.0 - trailingStop / 100.0)
@@ -653,6 +745,8 @@ class OrderRecommendationService: ObservableObject {
             trailingStop,
             actualCostPerShare
         )
+        
+        AppLogger.shared.debug("  Creating max shares order: trailingStop=\(trailingStop)%, shares=\(sharesUsed), target=\(targetPrice)")
         
         let sellOrder = SalesCalcResultsRecord(
             shares: sharesUsed,
@@ -936,6 +1030,8 @@ class OrderRecommendationService: ObservableObject {
         // Calculate trailing stop (2x ATR as per user preference)
         let trailingStopPercent = (atrValue * 2.0 / currentPrice) * 100.0
         
+        AppLogger.shared.debug("  Additional buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
+        
         // Calculate actual order cost
         let orderCost = sharesFor500 * targetBuyPrice
         
@@ -949,6 +1045,14 @@ class OrderRecommendationService: ObservableObject {
             targetGainPercent,
             orderCost
         )
+        
+        AppLogger.shared.debug("  Creating additional buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor500), target=\(targetBuyPrice)")
+        
+        // Final validation of trailing stop value
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in additional buy order: \(trailingStopPercent)%")
+            return nil
+        }
         
         let additionalBuyOrder = BuyOrderRecord(
             shares: sharesFor500,

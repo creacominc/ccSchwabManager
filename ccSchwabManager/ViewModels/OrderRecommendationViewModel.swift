@@ -100,10 +100,31 @@ class OrderRecommendationViewModel: ObservableObject {
         // Wait for both to complete
         let (sellResults, buyResults) = await (sellOrders, buyOrders)
         
+        AppLogger.shared.debug("=== updateRecommendedOrders: Results received ===")
+        AppLogger.shared.debug("Sell results: \(sellResults.count) orders")
+        for (index, order) in sellResults.enumerated() {
+            AppLogger.shared.debug("  Sell result \(index + 1): trailingStop=\(order.trailingStop)%, shares=\(order.shares), target=\(order.target)")
+        }
+        
+        AppLogger.shared.debug("Buy results: \(buyResults.count) orders")
+        for (index, order) in buyResults.enumerated() {
+            AppLogger.shared.debug("  Buy result \(index + 1): trailingStop=\(order.trailingStop)%, shares=\(order.shares), target=\(order.targetBuyPrice)")
+        }
+        
         // Update state
         recommendedSellOrders = sellResults
         recommendedBuyOrders = buyResults
         currentOrders = createAllOrders(sellOrders: sellResults, buyOrders: buyResults)
+        
+        AppLogger.shared.debug("=== updateRecommendedOrders: State updated ===")
+        AppLogger.shared.debug("Current orders count: \(currentOrders.count)")
+        for (index, (orderType, order)) in currentOrders.enumerated() {
+            if let sellOrder = order as? SalesCalcResultsRecord {
+                AppLogger.shared.debug("  Current order \(index + 1) (\(orderType)): trailingStop=\(sellOrder.trailingStop)%, shares=\(sellOrder.shares)")
+            } else if let buyOrder = order as? BuyOrderRecord {
+                AppLogger.shared.debug("  Current order \(index + 1) (\(orderType)): trailingStop=\(buyOrder.trailingStop)%, shares=\(buyOrder.shares)")
+            }
+        }
         
         // Cache the results for future use
         cacheOrders(
@@ -312,18 +333,24 @@ class OrderRecommendationViewModel: ObservableObject {
     }
     
     private func createAllOrders(sellOrders: [SalesCalcResultsRecord], buyOrders: [BuyOrderRecord]) -> [(String, Any)] {
+        AppLogger.shared.debug("=== createAllOrders ===")
+        AppLogger.shared.debug("Input: \(sellOrders.count) sell orders, \(buyOrders.count) buy orders")
+        
         var orders: [(String, Any)] = []
         
         // Add sell orders first
-        for order in sellOrders {
+        for (index, order) in sellOrders.enumerated() {
+            AppLogger.shared.debug("  Sell order \(index + 1): trailingStop=\(order.trailingStop)%, shares=\(order.shares), target=\(order.target)")
             orders.append(("SELL", order))
         }
         
         // Add buy orders
-        for order in buyOrders {
+        for (index, order) in buyOrders.enumerated() {
+            AppLogger.shared.debug("  Buy order \(index + 1): trailingStop=\(order.trailingStop)%, shares=\(order.shares), target=\(order.targetBuyPrice)")
             orders.append(("BUY", order))
         }
         
+        AppLogger.shared.debug("Created \(orders.count) total orders")
         return orders
     }
 }

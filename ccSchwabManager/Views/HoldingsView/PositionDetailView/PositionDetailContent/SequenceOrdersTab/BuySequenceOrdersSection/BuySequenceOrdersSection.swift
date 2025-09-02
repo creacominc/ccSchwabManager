@@ -675,14 +675,37 @@ struct BuySequenceOrdersSection: View {
     // MARK: - Trailing Stop Validation
     
     private func validateTrailingStop() -> String? {
-        // Check if any buy sequence orders have trailing stops less than 0.1%
-        for order in adjustedSequenceOrders {
+        AppLogger.shared.debug("=== validateTrailingStop (BuySequenceOrdersSection) ===")
+        AppLogger.shared.debug("Selected sequence order indices: \(selectedSequenceOrderIndices)")
+        AppLogger.shared.debug("Adjusted sequence orders count: \(adjustedSequenceOrders.count)")
+        
+        // Only validate selected orders, not all sequence orders
+        guard !selectedSequenceOrderIndices.isEmpty else {
+            AppLogger.shared.debug("  No orders selected for validation")
+            return nil
+        }
+        
+        // Check if any selected buy sequence orders have trailing stops less than 0.1%
+        for index in selectedSequenceOrderIndices {
+            guard index < adjustedSequenceOrders.count else {
+                AppLogger.shared.warning("  Selected index \(index) is out of bounds for adjustedSequenceOrders")
+                continue
+            }
+            
+            let order = adjustedSequenceOrders[index]
+            AppLogger.shared.debug("Validating selected buy sequence order \(index): trailingStop=\(order.trailingStop)%, shares=\(order.shares), target=\(order.targetPrice)")
+            
             if order.trailingStop < 0.1 {
+                AppLogger.shared.error("⚠️ Trailing stop validation failed: selected buy sequence order \(index) has trailingStop=\(order.trailingStop)% which is below 0.1%")
+                AppLogger.shared.error("  Order details: shares=\(order.shares), target=\(order.targetPrice), entry=\(order.entryPrice)")
+                
                 // Clear ATR cache to force fresh calculation
                 SchwabClient.shared.clearATRCache()
                 return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", order.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
             }
         }
+        
+        AppLogger.shared.debug("✅ Trailing stop validation passed for all selected buy sequence orders")
         return nil // No validation errors
     }
 }
