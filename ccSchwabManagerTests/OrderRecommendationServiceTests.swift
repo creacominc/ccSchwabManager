@@ -317,6 +317,255 @@ final class OrderRecommendationServiceTests: XCTestCase {
         }
     }
     
+    // MARK: - Buy Order Logic Tests (Target > Stop Price > Current Price)
+    
+    func testBuyOrderLogic_TargetAboveStopPrice() async {
+        // Given: APLD scenario with current price 14.12, ATR 9.66%
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 72.0, // 72% profitable
+                gainLossDollar: 720.0,
+                quantity: 193.0,
+                price: 14.12,
+                costPerShare: 8.22, // Average cost from logs
+                marketValue: 2725.16,
+                costBasis: 1586.46
+            )
+        ]
+        let currentPrice = 14.12
+        let atrValue = 9.66 // APLD's ATR from logs
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "APLD",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 193,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders for APLD")
+        
+        // Verify each buy order follows the correct logic: Target > Stop Price > Current Price
+        for order in result {
+            let stopPrice = currentPrice * (1.0 + order.trailingStop / 100.0)
+            
+            // Target should be above stop price
+            XCTAssertGreaterThan(order.targetBuyPrice, stopPrice, 
+                               "Target price (\(order.targetBuyPrice)) should be above stop price (\(stopPrice)) for order: \(order.description)")
+            
+            // Stop price should be above current price
+            XCTAssertGreaterThan(stopPrice, currentPrice, 
+                               "Stop price (\(stopPrice)) should be above current price (\(currentPrice)) for order: \(order.description)")
+            
+            // Verify trailing stop is 2x ATR as per user preference
+            let expectedTrailingStop = atrValue * 2.0 // 19.32%
+            XCTAssertEqual(order.trailingStop, expectedTrailingStop, accuracy: 0.01,
+                          "Trailing stop should be 2x ATR (\(expectedTrailingStop)%) for order: \(order.description)")
+            
+            print("✅ Order: \(order.shares) shares")
+            print("   Current: $\(currentPrice)")
+            print("   Stop: $\(stopPrice) (\(order.trailingStop)%)")
+            print("   Target: $\(order.targetBuyPrice)")
+            print("   Logic: Target > Stop > Current ✓")
+        }
+    }
+    
+    func testBuyOrderLogic_2xATRTrailingStop() async {
+        // Given: Test with various ATR values to ensure 2x ATR is used
+        let testCases: [(atr: Double, expectedTrailingStop: Double)] = [
+            (2.5, 5.0),   // 2.5% ATR -> 5.0% trailing stop
+            (4.0, 8.0),   // 4.0% ATR -> 8.0% trailing stop
+            (9.66, 19.32), // 9.66% ATR -> 19.32% trailing stop (APLD)
+            (15.0, 30.0)  // 15.0% ATR -> 30.0% trailing stop
+        ]
+        
+        for testCase in testCases {
+            let taxLots = [
+                SalesCalcPositionsRecord(
+                    openDate: "2023-01-01",
+                    gainLossPct: 20.0,
+                    gainLossDollar: 200.0,
+                    quantity: 100.0,
+                    price: 50.0,
+                    costPerShare: 40.0,
+                    marketValue: 5000.0,
+                    costBasis: 4000.0
+                )
+            ]
+            let currentPrice = 50.0
+            
+            // When
+            let result = await service.calculateRecommendedBuyOrders(
+                symbol: "TEST",
+                atrValue: testCase.atr,
+                taxLotData: taxLots,
+                sharesAvailableForTrading: 100,
+                currentPrice: currentPrice
+            )
+            
+            // Then
+            XCTAssertFalse(result.isEmpty, "Should return buy orders for ATR \(testCase.atr)%")
+            
+            // Verify all orders use 2x ATR for trailing stop
+            for order in result {
+                XCTAssertEqual(order.trailingStop, testCase.expectedTrailingStop, accuracy: 0.01,
+                              "Trailing stop should be 2x ATR (\(testCase.expectedTrailingStop)%) for ATR \(testCase.atr)%")
+            }
+            
+            print("✅ ATR \(testCase.atr)% -> Trailing Stop \(testCase.expectedTrailingStop)% ✓")
+        }
+    }
+    
+    func testBuyOrderLogic_MinimumTargetAboveStop() async {
+        // Given: Test that target price is always at least 2% above stop price
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 10.0,
+                gainLossDollar: 100.0,
+                quantity: 100.0,
+                price: 20.0,
+                costPerShare: 18.0,
+                marketValue: 2000.0,
+                costBasis: 1800.0
+            )
+        ]
+        let currentPrice = 20.0
+        let atrValue = 5.0
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 100,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders")
+        
+        for order in result {
+            let stopPrice = currentPrice * (1.0 + order.trailingStop / 100.0)
+            let minTargetPrice = stopPrice * 1.02 // 2% above stop price
+            
+            // Target should be at least 2% above stop price
+            XCTAssertGreaterThanOrEqual(order.targetBuyPrice, minTargetPrice,
+                                      "Target price (\(order.targetBuyPrice)) should be at least 2% above stop price (\(stopPrice))")
+            
+            print("✅ Order: \(order.shares) shares")
+            print("   Stop: $\(stopPrice)")
+            print("   Min Target: $\(minTargetPrice)")
+            print("   Actual Target: $\(order.targetBuyPrice)")
+            print("   Gap: \(((order.targetBuyPrice - stopPrice) / stopPrice * 100))% ✓")
+        }
+    }
+    
+    func testBuyOrderLogic_APLDSpecificScenario() async {
+        // Given: Exact APLD scenario from the logs
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 72.0,
+                gainLossDollar: 1586.46,
+                quantity: 193.0,
+                price: 14.12,
+                costPerShare: 8.22,
+                marketValue: 2725.16,
+                costBasis: 1586.46
+            )
+        ]
+        let currentPrice = 14.12
+        let atrValue = 9.66
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "APLD",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 193,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders for APLD")
+        
+        // Find the 1% order (first order)
+        let onePercentOrder = result.first { order in
+            order.description.contains("(1%)")
+        }
+        
+        XCTAssertNotNil(onePercentOrder, "Should include 1% buy order")
+        
+        if let order = onePercentOrder {
+            let stopPrice = currentPrice * (1.0 + order.trailingStop / 100.0)
+            
+            // Verify the specific calculations
+            XCTAssertEqual(order.trailingStop, 19.32, accuracy: 0.01, "Trailing stop should be 2x ATR (19.32%)")
+            XCTAssertEqual(stopPrice, 16.85, accuracy: 0.01, "Stop price should be 16.85")
+            XCTAssertGreaterThan(order.targetBuyPrice, stopPrice, "Target should be above stop price")
+            
+            print("📊 APLD 1% Buy Order:")
+            print("   Current Price: $\(currentPrice)")
+            print("   ATR: \(atrValue)%")
+            print("   Trailing Stop: \(order.trailingStop)% (2x ATR)")
+            print("   Stop Price: $\(stopPrice)")
+            print("   Target Price: $\(order.targetBuyPrice)")
+            print("   Shares: \(order.shares)")
+            print("   Order Cost: $\(order.orderCost)")
+            print("   ✅ Target > Stop > Current: $\(order.targetBuyPrice) > $\(stopPrice) > $\(currentPrice)")
+        }
+    }
+    
+    func testBuyOrderLogic_EdgeCaseHighATR() async {
+        // Given: Test with very high ATR to ensure logic still works
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 15.0,
+                gainLossDollar: 150.0,
+                quantity: 100.0,
+                price: 30.0,
+                costPerShare: 26.0,
+                marketValue: 3000.0,
+                costBasis: 2600.0
+            )
+        ]
+        let currentPrice = 30.0
+        let atrValue = 25.0 // Very high ATR
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 100,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders even with high ATR")
+        
+        for order in result {
+            let stopPrice = currentPrice * (1.0 + order.trailingStop / 100.0)
+            
+            // Verify trailing stop is 2x ATR (50%)
+            XCTAssertEqual(order.trailingStop, 50.0, accuracy: 0.01, "Trailing stop should be 2x ATR (50%)")
+            
+            // Verify Target > Stop > Current logic still holds
+            XCTAssertGreaterThan(order.targetBuyPrice, stopPrice, "Target should be above stop even with high ATR")
+            XCTAssertGreaterThan(stopPrice, currentPrice, "Stop should be above current even with high ATR")
+            
+            print("✅ High ATR Order: \(order.shares) shares")
+            print("   Current: $\(currentPrice)")
+            print("   Stop: $\(stopPrice) (\(order.trailingStop)%)")
+            print("   Target: $\(order.targetBuyPrice)")
+        }
+    }
+    
     // MARK: - Performance Tests
     
     func testPerformance_CalculateRecommendedSellOrders() {

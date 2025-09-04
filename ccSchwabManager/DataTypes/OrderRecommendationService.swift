@@ -192,18 +192,22 @@ class OrderRecommendationService: ObservableObject {
                 continue
             }
             
+            // For buy orders, we need Target > Stop Price > Current Price
+            // Calculate trailing stop as 2x ATR above current price, also > 1% and <= 15%
+            let trailingStopPercent = max( 1, min( 15, atrValue * 2.0 ) )  // 2x ATR as per user preference
+            let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+            
             // Calculate entry price (1 ATR below target)
             let entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
             
-            // For buy orders, trailing stop should be above current price to trigger the order
-            // Calculate trailing stop as percentage from current price to a stop level between current and target
-            let stopPrice = currentPrice + (atrValue / 100.0) * currentPrice
-            let trailingStopPercent = ((stopPrice - currentPrice) / currentPrice) * 100.0
+            // Ensure target price is above stop price for logical buy order
+            let minTargetPrice = stopPrice * 1.02  // Target must be at least 2% above stop price
+            let finalTargetPrice = max(targetBuyPrice, minTargetPrice)
             
             AppLogger.shared.debug("  Buy order calculation: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
             
-            // Calculate order cost
-            let orderCost = sharesToBuy * targetBuyPrice
+            // Calculate order cost using final target price
+            let orderCost = sharesToBuy * finalTargetPrice
             
             // Skip orders that cost more than $2000
             guard orderCost < 2000.0 else { continue }
@@ -214,13 +218,13 @@ class OrderRecommendationService: ObservableObject {
                 sharesToBuy,
                 symbol,
                 percentage,
-                targetBuyPrice,
+                finalTargetPrice,
                 trailingStopPercent,
                 targetGainPercent,
                 orderCost
             )
             
-            AppLogger.shared.debug("  Creating buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesToBuy), target=\(targetBuyPrice)")
+            AppLogger.shared.debug("  Creating buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesToBuy), target=\(finalTargetPrice)")
             
             // Final validation of trailing stop value
             guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
@@ -230,7 +234,7 @@ class OrderRecommendationService: ObservableObject {
             
             let buyOrder = BuyOrderRecord(
                 shares: sharesToBuy,
-                targetBuyPrice: targetBuyPrice,
+                targetBuyPrice: finalTargetPrice,
                 entryPrice: entryPrice,
                 trailingStop: trailingStopPercent,
                 targetGainPercent: targetGainPercent,
@@ -1024,29 +1028,34 @@ class OrderRecommendationService: ObservableObject {
         // Calculate target price (maintains the same target gain percentage)
         let targetBuyPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
         
-        // Calculate entry price (1 ATR below target)
-        let entryPrice = targetBuyPrice * (1.0 - atrValue / 100.0)
-        
         // Calculate trailing stop (2x ATR as per user preference)
-        let trailingStopPercent = (atrValue * 2.0 / currentPrice) * 100.0
+        let trailingStopPercent = atrValue * 2.0
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        
+        // Ensure target price is above stop price for logical buy order
+        let minTargetPrice = stopPrice * 1.02  // Target must be at least 2% above stop price
+        let finalTargetPrice = max(targetBuyPrice, minTargetPrice)
+        
+        // Calculate entry price (1 ATR below target)
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
         
         AppLogger.shared.debug("  Additional buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
         
         // Calculate actual order cost
-        let orderCost = sharesFor500 * targetBuyPrice
+        let orderCost = sharesFor500 * finalTargetPrice
         
         // Create description
         let formattedDescription = String(
             format: "BUY %.0f %@ ($500) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
             sharesFor500,
             symbol,
-            targetBuyPrice,
+            finalTargetPrice,
             trailingStopPercent,
             targetGainPercent,
             orderCost
         )
         
-        AppLogger.shared.debug("  Creating additional buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor500), target=\(targetBuyPrice)")
+        AppLogger.shared.debug("  Creating additional buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor500), target=\(finalTargetPrice)")
         
         // Final validation of trailing stop value
         guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
@@ -1056,7 +1065,7 @@ class OrderRecommendationService: ObservableObject {
         
         let additionalBuyOrder = BuyOrderRecord(
             shares: sharesFor500,
-            targetBuyPrice: targetBuyPrice,
+            targetBuyPrice: finalTargetPrice,
             entryPrice: entryPrice,
             trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,

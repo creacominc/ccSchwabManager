@@ -16,7 +16,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "573"
             endingLineNumber = "573"
-            landmarkName = "createMaxSharesSellOrder(currentPrice:sortedTaxLots:minBreakEvenOrder:currentTaxLotIndex:sharesAvailableForTrading:)"
+            landmarkName = "calculateMinBreakEvenOrder(currentPrice:sortedTaxLots:atrValue:sharesAvailableForTrading:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -32,8 +32,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "119"
             endingLineNumber = "119"
-            landmarkName = "calculateRecommendedBuyOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
-            landmarkType = "7">
+            landmarkName = "OrderRecommendationService"
+            landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -48,7 +48,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "116"
             endingLineNumber = "116"
-            landmarkName = "calculateRecommendedBuyOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
+            landmarkName = "calculateRecommendedSellOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -64,7 +64,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "225"
             endingLineNumber = "225"
-            landmarkName = "calculateTop100Order(currentPrice:sortedTaxLots:sharesAvailableForTrading:)"
+            landmarkName = "calculateRecommendedBuyOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -80,7 +80,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "228"
             endingLineNumber = "228"
-            landmarkName = "calculateTop100Order(currentPrice:sortedTaxLots:sharesAvailableForTrading:)"
+            landmarkName = "calculateRecommendedBuyOrders(symbol:atrValue:taxLotData:sharesAvailableForTrading:currentPrice:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -96,7 +96,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "302"
             endingLineNumber = "302"
-            landmarkName = "calculateMinSharesFor5PercentProfit(currentPrice:sortedTaxLots:atrValue:sharesAvailableForTrading:)"
+            landmarkName = "calculateTop100Order(currentPrice:sortedTaxLots:sharesAvailableForTrading:atrValue:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -112,7 +112,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "369"
             endingLineNumber = "369"
-            landmarkName = "calculateMinBreakEvenOrder(currentPrice:sortedTaxLots:atrValue:sharesAvailableForTrading:)"
+            landmarkName = "calculateTop100Order(currentPrice:sortedTaxLots:sharesAvailableForTrading:atrValue:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -128,7 +128,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "471"
             endingLineNumber = "471"
-            landmarkName = "calculateAdditionalSellOrdersFromTaxLots(currentPrice:sortedTaxLots:minBreakEvenOrder:sharesAvailableForTrading:atrValue:)"
+            landmarkName = "calculateMinSharesFor5PercentProfit(currentPrice:sortedTaxLots:atrValue:sharesAvailableForTrading:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -144,7 +144,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "504"
             endingLineNumber = "504"
-            landmarkName = "createOnePercentHigherTrailingStopOrder(currentPrice:sortedTaxLots:minBreakEvenOrder:currentTaxLotIndex:sharesAvailableForTrading:)"
+            landmarkName = "calculateMinBreakEvenOrder(currentPrice:sortedTaxLots:atrValue:sharesAvailableForTrading:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -160,7 +160,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "641"
             endingLineNumber = "641"
-            landmarkName = "calculateTargetPriceForGain(currentPrice:avgCostPerShare:currentProfitPercent:targetGainPercent:totalShares:sharesToBuy:)"
+            landmarkName = "createOnePercentHigherTrailingStopOrder(currentPrice:sortedTaxLots:minBreakEvenOrder:currentTaxLotIndex:sharesAvailableForTrading:atrValue:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -176,7 +176,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "766"
             endingLineNumber = "766"
-            landmarkName = "calculateMinimumSharesForRemainingProfit(targetProfitPercent:currentPrice:sortedTaxLots:)"
+            landmarkName = "createMaxSharesSellOrder(currentPrice:sortedTaxLots:minBreakEvenOrder:currentTaxLotIndex:sharesAvailableForTrading:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -192,7 +192,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "841"
             endingLineNumber = "841"
-            landmarkName = "calculateCostBasisForShares(sharesNeeded:startingTaxLotIndex:sortedTaxLots:cumulativeSharesUsed:)"
+            landmarkName = "calculateMinimumSharesForGain(targetGainPercent:targetPrice:sortedTaxLots:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
