@@ -622,8 +622,8 @@ struct HoldingsView: View {
                 print("✅ Trade dates updated and cache populated")
             }
             
-            // Fetch remaining quarters in background for complete history
-            let remainingQuarters = min(SchwabClient.shared.maxQuarterDelta - 4, 8 )
+            // Fetch remaining quarters in background for complete history (up to maxQuarterDelta)
+            let remainingQuarters = max(SchwabClient.shared.maxQuarterDelta - 4, 0)
             if remainingQuarters > 0 {
                 print("🚀 Fetching remaining \(remainingQuarters) quarters in background")
                 
