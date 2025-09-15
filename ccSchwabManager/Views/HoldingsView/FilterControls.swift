@@ -3,8 +3,11 @@ import SwiftUI
 struct FilterControls: View {
     @Binding var selectedAssetTypes: Set<AssetType>
     @Binding var selectedAccountNumbers: Set<String>
+    @Binding var selectedOrderStatuses: Set<ActiveOrderStatus>
+    @Binding var includeNAStatus: Bool
     let uniqueAssetTypes: [AssetType]
     let uniqueAccountNumbers: [String]
+    let uniqueOrderStatuses: [ActiveOrderStatus]
     
     var body: some View {
         VStack(spacing: 8) {
@@ -62,6 +65,46 @@ struct FilterControls: View {
                     }
                     .padding(.horizontal)
                 }
+                
+                Spacer()
+                
+                Text("Status:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .padding(.leading)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        // N/A button
+                        Button(action: {
+                            includeNAStatus.toggle()
+                        }) {
+                            Text("N/A")
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(includeNAStatus ? Color.blue : Color.gray.opacity(0.2))
+                                .foregroundColor(includeNAStatus ? .white : .primary)
+                                .cornerRadius(8)
+                        }
+                        
+                        ForEach(uniqueOrderStatuses, id: \.self) { status in
+                            Button(action: {
+                                if selectedOrderStatuses.contains(status) {
+                                    selectedOrderStatuses.remove(status)
+                                } else {
+                                    selectedOrderStatuses.insert(status)
+                                }
+                            }) {
+                                Text(status.shortDisplayName)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(selectedOrderStatuses.contains(status) ? Color.blue : Color.gray.opacity(0.2))
+                                    .foregroundColor(selectedOrderStatuses.contains(status) ? .white : .primary)
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
             }
         }
         .padding(.vertical, 8)
@@ -72,8 +115,11 @@ struct FilterControls: View {
     FilterControls(
         selectedAssetTypes: .constant([ .EQUITY, .OPTION ]),
         selectedAccountNumbers: .constant(["789"]),
+        selectedOrderStatuses: .constant([.working, .accepted]),
+        includeNAStatus: .constant(true),
         uniqueAssetTypes: AssetType.allCases,
-        uniqueAccountNumbers: ["789", "321", "777"]
+        uniqueAccountNumbers: ["789", "321", "777"],
+        uniqueOrderStatuses: [.working, .accepted, .awaitingSellStopCondition, .awaitingBuyStopCondition]
     )
 }
 

@@ -75,6 +75,8 @@ struct HoldingsView: View {
     @State private var selectedAssetTypes: Set<AssetType> = []
     @State private var accountPositions: [(Position, String, String)] = []
     @State private var selectedAccountNumbers: Set<String> = []
+    @State private var selectedOrderStatuses: Set<ActiveOrderStatus> = []
+    @State private var includeNAStatus: Bool = false
     @State private var selectedPosition: SelectedPosition? = nil
     @State private var viewSize: CGSize = .zero
     @StateObject private var viewModel = HoldingsViewModel()
@@ -117,8 +119,26 @@ struct HoldingsView: View {
             let accountInfo = accountPositions.first { $0.0 === position }
             let matchesAccount = selectedAccountNumbers.isEmpty || 
                 (accountInfo?.1).map { selectedAccountNumbers.contains($0) } ?? false
-            return matchesText && matchesAssetType && matchesAccount
+            
+            let orderStatus = orderStatusCache[position.instrument?.symbol ?? ""] ?? nil
+            let matchesOrderStatus: Bool
+            if selectedOrderStatuses.isEmpty && !includeNAStatus {
+                // No status filters selected - show all
+                matchesOrderStatus = true
+            } else {
+                // Check if position matches any selected filters
+                let matchesSpecificStatus = orderStatus != nil && selectedOrderStatuses.contains(orderStatus!)
+                let matchesNAStatus = orderStatus == nil && includeNAStatus
+                matchesOrderStatus = matchesSpecificStatus || matchesNAStatus
+            }
+            
+            return matchesText && matchesAssetType && matchesAccount && matchesOrderStatus
         }
+    }
+    
+    var uniqueOrderStatuses: [ActiveOrderStatus] {
+        let statuses = orderStatusCache.values.compactMap { $0 }
+        return Array(Set(statuses)).sorted { $0.priority < $1.priority }
     }
 
     var sortedHoldings: [Position] {
@@ -392,8 +412,11 @@ struct HoldingsView: View {
                         FilterControls(
                             selectedAssetTypes: $selectedAssetTypes,
                             selectedAccountNumbers: $selectedAccountNumbers,
+                            selectedOrderStatuses: $selectedOrderStatuses,
+                            includeNAStatus: $includeNAStatus,
                             uniqueAssetTypes: viewModel.uniqueAssetTypes,
-                            uniqueAccountNumbers: viewModel.uniqueAccountNumbers
+                            uniqueAccountNumbers: viewModel.uniqueAccountNumbers,
+                            uniqueOrderStatuses: uniqueOrderStatuses
                         )
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
