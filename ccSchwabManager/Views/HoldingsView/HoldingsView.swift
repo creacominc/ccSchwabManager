@@ -178,11 +178,22 @@ struct HoldingsView: View {
                 let firstOrderStatus = orderStatusCache[firstSymbol] ?? nil
                 let secondOrderStatus = orderStatusCache[secondSymbol] ?? nil
                 
-                // Sort by priority (lower number = higher priority)
-                // None (nil) gets priority 0 (highest), Stop/S gets priority 2
-                let firstPriority = firstOrderStatus?.priority ?? 0
-                let secondPriority = secondOrderStatus?.priority ?? 0
+                // Custom sorting logic for order status
+                // Special case: Stop/B orders should appear before Stop/S orders for user action priority
+                if let firstStatus = firstOrderStatus, let secondStatus = secondOrderStatus {
+                    // If one is Stop/B and the other is Stop/S, prioritize Stop/B
+                    if firstStatus == .awaitingBuyStopCondition && secondStatus == .awaitingSellStopCondition {
+                        return ascending ? true : false // Stop/B comes first
+                    } else if firstStatus == .awaitingSellStopCondition && secondStatus == .awaitingBuyStopCondition {
+                        return ascending ? false : true // Stop/B comes first
+                    }
+                }
                 
+                // For all other cases, use normal priority sorting
+                // None (nil) gets priority 0 (highest), Stop/S gets priority 2, Stop/B gets priority 3
+                let firstPriority : Int = firstOrderStatus?.priority ?? 0
+                let secondPriority : Int = secondOrderStatus?.priority ?? 0
+
                 return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
             case .dte:
                 // Use the same logic as display: extractExpirationDate for options, getMinimumDTEForSymbol for others
