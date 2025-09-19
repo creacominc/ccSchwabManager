@@ -344,8 +344,8 @@ class OrderRecommendationService: ObservableObject {
         
         // Create description
         let profitIndicator = isTop100Profitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
-        let formattedDescription = String(format: "%@ SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
-                                          profitIndicator, finalSharesToConsider, "SYMBOL", target, trailingStop, actualCostPerShare)
+        let formattedDescription = String(format: "%@ SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
+                                          profitIndicator, Int(finalSharesToConsider), "SYMBOL", target, trailingStop, actualCostPerShare)
         
         // Final validation of trailing stop value
         guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
@@ -446,7 +446,7 @@ class OrderRecommendationService: ObservableObject {
         // Recalculate total gain with the final target
         let finalTotalGain = sharesToSell * (finalTarget - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((finalTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let formattedDescription = String(format: "(Min ATR) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f", sharesToSell, "SYMBOL", finalTarget, targetTrailingStop, actualCostPerShare)
+        let formattedDescription = String(format: "(Min ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f", Int(sharesToSell), "SYMBOL", finalTarget, targetTrailingStop, actualCostPerShare)
         
         AppLogger.shared.debug("  Creating Min ATR order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(finalTarget)")
         
@@ -554,8 +554,8 @@ class OrderRecommendationService: ObservableObject {
         // Calculate trailing stop value - always use ATR-based values for consistency
         let trailingStopValue = adjustedATR
         
-        let formattedDescription = String(format: "(Min BE) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                                          sharesToSell, "SYMBOL", target, trailingStopValue, actualCostPerShare)
+        let formattedDescription = String(format: "(Min BE) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                                          Int(sharesToSell), "SYMBOL", target, trailingStopValue, actualCostPerShare)
         
         // Final validation of trailing stop value
         guard trailingStopValue >= 0.1 && trailingStopValue <= 50.0 else {
@@ -603,6 +603,30 @@ class OrderRecommendationService: ObservableObject {
             atrValue: atrValue
         ) {
             additionalOrders.append(higherTSOrder)
+        }
+        
+        // Create 1.5*ATR sell order
+        if let onePointFiveATROrder = createOnePointFiveATRSellOrder(
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            minBreakEvenOrder: minBreakEvenOrder,
+            currentTaxLotIndex: &currentTaxLotIndex,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        ) {
+            additionalOrders.append(onePointFiveATROrder)
+        }
+        
+        // Create 2*ATR sell order
+        if let twoATROrder = createTwoATRSellOrder(
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            minBreakEvenOrder: minBreakEvenOrder,
+            currentTaxLotIndex: &currentTaxLotIndex,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        ) {
+            additionalOrders.append(twoATROrder)
         }
         
         // Create max shares sell order
@@ -686,9 +710,161 @@ class OrderRecommendationService: ObservableObject {
             entry: entry,
             target: target,
             cancel: exit,
-            description: String(format: "(1%% TS) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                               sharesToSell, "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+            description: String(format: "(1%% TS) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                               Int(sharesToSell), "SYMBOL", target, targetTrailingStop, actualCostPerShare),
             openDate: "1%TS"
+        )
+        
+        return sellOrder
+    }
+    
+    private func createOnePointFiveATRSellOrder(
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord,
+        currentTaxLotIndex: inout Int,
+        sharesAvailableForTrading: Double,
+        atrValue: Double
+    ) -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("  Creating 1.5*ATR sell order: ATR=\(atrValue)%, trailingStop=\(atrValue * 1.5)%")
+        
+        // Calculate trailing stop as 1.5 * ATR
+        let targetTrailingStop: Double = atrValue * 1.5
+        AppLogger.shared.debug("  Target trailing stop calculation: 1.5 * ATR = 1.5 * \(atrValue)% = \(targetTrailingStop)%")
+        
+        // Calculate entry price (1 ATR below current price)
+        let entry = currentPrice * (1.0 - atrValue / 100.0)
+        AppLogger.shared.debug("  Entry calculation: currentPrice=\(currentPrice), ATR=\(atrValue)%, entry=\(entry)")
+        
+        // Calculate target price based on trailing stop
+        let target = entry / (1.0 + targetTrailingStop / 100.0)
+        AppLogger.shared.debug("  Target calculation: entry=\(entry), targetTrailingStop=\(targetTrailingStop)%, target=\(target)")
+        
+        // For ATR orders, prioritize selling the most expensive shares first
+        // Calculate shares needed to achieve 5% gain using highest cost shares
+        guard let result = calculateSharesForATROrder(
+            targetGainPercent: 5.0,
+            targetPrice: target,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            return nil
+        }
+        
+        let sharesToSell = result.sharesToSell
+        let actualCostPerShare = result.actualCostPerShare
+        AppLogger.shared.debug("  Shares calculation: sharesToSell=\(sharesToSell), actualCostPerShare=\(actualCostPerShare)")
+        
+        // Validate shares to sell
+        guard sharesToSell >= 1.0 && sharesToSell <= sharesAvailableForTrading else {
+            return nil
+        }
+        
+        // Validate target is above cost per share
+        guard target > actualCostPerShare else { return nil }
+        
+        // Calculate exit price (2 ATR below target)
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        // Final validation of trailing stop value
+        guard targetTrailingStop >= 0.1 && targetTrailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in 1.5*ATR order: \(targetTrailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating 1.5*ATR order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(target)")
+        
+        let sellOrder = SalesCalcResultsRecord(
+            shares: sharesToSell,
+            rollingGainLoss: sharesToSell * (target - actualCostPerShare),
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: sharesToSell,
+            trailingStop: targetTrailingStop,
+            entry: entry,
+            target: target,
+            cancel: exit,
+            description: String(format: "(1.5*ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                               Int(sharesToSell), "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+            openDate: "1.5ATR"
+        )
+        
+        return sellOrder
+    }
+    
+    private func createTwoATRSellOrder(
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord,
+        currentTaxLotIndex: inout Int,
+        sharesAvailableForTrading: Double,
+        atrValue: Double
+    ) -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("  Creating 2*ATR sell order: ATR=\(atrValue)%, trailingStop=\(atrValue * 2.0)%")
+        
+        // Calculate trailing stop as 2 * ATR
+        let targetTrailingStop: Double = atrValue * 2.0
+        AppLogger.shared.debug("  Target trailing stop calculation: 2 * ATR = 2 * \(atrValue)% = \(targetTrailingStop)%")
+        
+        // Calculate entry price (1 ATR below current price)
+        let entry = currentPrice * (1.0 - atrValue / 100.0)
+        AppLogger.shared.debug("  Entry calculation: currentPrice=\(currentPrice), ATR=\(atrValue)%, entry=\(entry)")
+        
+        // Calculate target price based on trailing stop
+        let target = entry / (1.0 + targetTrailingStop / 100.0)
+        AppLogger.shared.debug("  Target calculation: entry=\(entry), targetTrailingStop=\(targetTrailingStop)%, target=\(target)")
+        
+        // For ATR orders, prioritize selling the most expensive shares first
+        // Calculate shares needed to achieve 5% gain using highest cost shares
+        guard let result = calculateSharesForATROrder(
+            targetGainPercent: 5.0,
+            targetPrice: target,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            return nil
+        }
+        
+        let sharesToSell = result.sharesToSell
+        let actualCostPerShare = result.actualCostPerShare
+        AppLogger.shared.debug("  Shares calculation: sharesToSell=\(sharesToSell), actualCostPerShare=\(actualCostPerShare)")
+        
+        // Validate shares to sell
+        guard sharesToSell >= 1.0 && sharesToSell <= sharesAvailableForTrading else {
+            return nil
+        }
+        
+        // Validate target is above cost per share
+        guard target > actualCostPerShare else { return nil }
+        
+        // Calculate exit price (2 ATR below target)
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        // Final validation of trailing stop value
+        guard targetTrailingStop >= 0.1 && targetTrailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in 2*ATR order: \(targetTrailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating 2*ATR order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(target)")
+        
+        let sellOrder = SalesCalcResultsRecord(
+            shares: sharesToSell,
+            rollingGainLoss: sharesToSell * (target - actualCostPerShare),
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: sharesToSell,
+            trailingStop: targetTrailingStop,
+            entry: entry,
+            target: target,
+            cancel: exit,
+            description: String(format: "(2*ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                               Int(sharesToSell), "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+            openDate: "2ATR"
         )
         
         return sellOrder
@@ -742,8 +918,8 @@ class OrderRecommendationService: ObservableObject {
         
         // Create the sell order
         let description = String(
-            format: "(Max Shares) SELL -%.0f %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-            sharesUsed,
+            format: "(Max Shares) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+            Int(sharesUsed),
             "SYMBOL",
             targetPrice,
             trailingStop,
@@ -817,31 +993,41 @@ class OrderRecommendationService: ObservableObject {
         sortedTaxLots: [SalesCalcPositionsRecord]
     ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
         
-        // First, separate profitable and unprofitable lots
-        var profitableLots: [SalesCalcPositionsRecord] = []
-        var unprofitableLots: [SalesCalcPositionsRecord] = []
-        
-        for lot in sortedTaxLots {
-            let gainAtTarget = ((targetPrice - lot.costPerShare) / lot.costPerShare) * 100.0
-            
-            if gainAtTarget > 0 {
-                profitableLots.append(lot)
-            } else {
-                unprofitableLots.append(lot)
-            }
-        }
-        
-        // Always start with unprofitable shares first (FIFO-like selling)
-        // Then add minimum profitable shares needed to achieve target gain
+        // Always prioritize selling the most expensive shares first (highest-cost first)
+        // Start with the highest cost shares and work down until we achieve target gain
+        // Only use whole shares - truncate fractional shares
         var cumulativeShares: Double = 0
         var cumulativeCost: Double = 0
         
-        // First, add unprofitable shares
-        for lot in unprofitableLots {
-            let sharesFromLot = lot.quantity
-            let costFromLot = sharesFromLot * lot.costPerShare
+        for lot in sortedTaxLots {
+            // Only add whole shares from this lot (truncate fractional shares)
+            let wholeSharesFromLot = floor(lot.quantity)
             
-            cumulativeShares += sharesFromLot
+            // Skip if no whole shares available in this lot
+            if wholeSharesFromLot < 1.0 {
+                continue
+            }
+            
+            // Try adding shares from this lot one by one (whole shares only)
+            for sharesToAdd in stride(from: 1.0, through: wholeSharesFromLot, by: 1.0) {
+                let testShares = cumulativeShares + sharesToAdd
+                let testCost = cumulativeCost + (sharesToAdd * lot.costPerShare)
+                let testAvgCost = testCost / testShares
+                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
+                
+                if testGainPercent >= targetGainPercent {
+                    let sharesToSell = testShares
+                    let totalGain = testShares * (targetPrice - testAvgCost)
+                    let actualCostPerShare = testAvgCost
+                    
+                    return (sharesToSell, totalGain, actualCostPerShare)
+                }
+            }
+            
+            // If we get here, we need all whole shares from this lot
+            let costFromLot = wholeSharesFromLot * lot.costPerShare
+            
+            cumulativeShares += wholeSharesFromLot
             cumulativeCost += costFromLot
             let avgCost = cumulativeCost / cumulativeShares
             
@@ -857,29 +1043,33 @@ class OrderRecommendationService: ObservableObject {
             }
         }
         
-        // If we still need more shares, add profitable shares one by one
-        for lot in profitableLots {
-            // Try adding shares from this lot one by one
-            for sharesToAdd in stride(from: 1.0, through: lot.quantity, by: 1.0) {
-                let testShares = cumulativeShares + sharesToAdd
-                let testCost = cumulativeCost + (sharesToAdd * lot.costPerShare)
-                let testAvgCost = testCost / testShares
-                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
-                
-                if testGainPercent >= targetGainPercent {
-                    let sharesToSell = testShares
-                    let totalGain = testShares * (targetPrice - testAvgCost)
-                    let actualCostPerShare = testAvgCost
-                    
-                    return (sharesToSell, totalGain, actualCostPerShare)
-                }
+        return nil
+    }
+    
+    private func calculateSharesForATROrder(
+        targetGainPercent: Double,
+        targetPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
+        
+        // For ATR orders, prioritize selling the most expensive shares first (highest-cost first)
+        // Start with the highest cost shares and work down until we achieve target gain
+        // Only use whole shares - truncate fractional shares
+        var cumulativeShares: Double = 0
+        var cumulativeCost: Double = 0
+        
+        for lot in sortedTaxLots {
+            // Only add whole shares from this lot (truncate fractional shares)
+            let wholeSharesFromLot = floor(lot.quantity)
+            
+            // Skip if no whole shares available in this lot
+            if wholeSharesFromLot < 1.0 {
+                continue
             }
             
-            // If we get here, we need all shares from this lot
-            let sharesFromLot = lot.quantity
-            let costFromLot = sharesFromLot * lot.costPerShare
+            let costFromLot = wholeSharesFromLot * lot.costPerShare
             
-            cumulativeShares += sharesFromLot
+            cumulativeShares += wholeSharesFromLot
             cumulativeCost += costFromLot
             let avgCost = cumulativeCost / cumulativeShares
             
@@ -890,6 +1080,8 @@ class OrderRecommendationService: ObservableObject {
                 let sharesToSell = cumulativeShares
                 let totalGain = cumulativeShares * (targetPrice - avgCost)
                 let actualCostPerShare = avgCost
+                
+                AppLogger.shared.debug("  ATR order calculation: sharesToSell=\(sharesToSell), actualCostPerShare=\(actualCostPerShare), gainPercent=\(gainPercent)%")
                 
                 return (sharesToSell, totalGain, actualCostPerShare)
             }
@@ -979,12 +1171,13 @@ class OrderRecommendationService: ObservableObject {
         var sharesRemaining = sharesNeeded
         
         // Start from the highest cost tax lots (index 0) and work down
+        // Only use whole shares - truncate fractional shares
         for taxLotIndex in startingTaxLotIndex..<sortedTaxLots.count {
             let taxLot = sortedTaxLots[taxLotIndex]
             
-            // Calculate how many shares are available from this tax lot
-            let sharesAvailableFromLot = taxLot.quantity
-            let sharesToUseFromLot = min(sharesAvailableFromLot, sharesRemaining)
+            // Calculate how many whole shares are available from this tax lot
+            let wholeSharesAvailableFromLot = floor(taxLot.quantity)
+            let sharesToUseFromLot = min(wholeSharesAvailableFromLot, sharesRemaining)
             
             if sharesToUseFromLot > 0 {
                 let costFromLot = sharesToUseFromLot * taxLot.costPerShare
