@@ -8,7 +8,7 @@ let package = Package(
         .iOS(.v18)    // iOS 18.2 deployment target
     ],
     products: [
-        .executable(
+        .library(
             name: "ccSchwabManager",
             targets: ["ccSchwabManager"]
         )
