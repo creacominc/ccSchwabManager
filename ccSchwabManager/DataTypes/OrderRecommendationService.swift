@@ -48,6 +48,7 @@ class OrderRecommendationService: ObservableObject {
             // Top 100 Order
             group.addTask {
                 return await self.calculateTop100Order(
+                    symbol: symbol,
                     currentPrice: currentPrice,
                     sortedTaxLots: sortedTaxLots,
                     sharesAvailableForTrading: sharesAvailableForTrading,
@@ -58,6 +59,7 @@ class OrderRecommendationService: ObservableObject {
             // Min Shares Order
             group.addTask {
                 return await self.calculateMinSharesFor5PercentProfit(
+                    symbol: symbol,
                     currentPrice: currentPrice,
                     sortedTaxLots: sortedTaxLots,
                     atrValue: atrValue,
@@ -68,6 +70,7 @@ class OrderRecommendationService: ObservableObject {
             // Min Break Even Order
             group.addTask {
                 return await self.calculateMinBreakEvenOrder(
+                    symbol: symbol,
                     currentPrice: currentPrice,
                     sortedTaxLots: sortedTaxLots,
                     atrValue: atrValue,
@@ -95,6 +98,7 @@ class OrderRecommendationService: ObservableObject {
         // Calculate additional orders if we have a min break even order
         if let minBreakEvenOrder = orders[2] {
             let additionalOrders = calculateAdditionalSellOrdersFromTaxLots(
+                symbol: symbol,
                 currentPrice: currentPrice,
                 sortedTaxLots: sortedTaxLots,
                 minBreakEvenOrder: minBreakEvenOrder,
@@ -281,6 +285,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func calculateTop100Order(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         sharesAvailableForTrading: Double,
@@ -345,7 +350,7 @@ class OrderRecommendationService: ObservableObject {
         // Create description
         let profitIndicator = isTop100Profitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
         let formattedDescription = String(format: "%@ SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
-                                          profitIndicator, Int(finalSharesToConsider), "SYMBOL", target, trailingStop, actualCostPerShare)
+                                          profitIndicator, Int(finalSharesToConsider), symbol, target, trailingStop, actualCostPerShare)
         
         // Final validation of trailing stop value
         guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
@@ -371,6 +376,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func calculateMinSharesFor5PercentProfit(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         atrValue: Double,
@@ -446,7 +452,9 @@ class OrderRecommendationService: ObservableObject {
         // Recalculate total gain with the final target
         let finalTotalGain = sharesToSell * (finalTarget - actualCostPerShare)
         let gain = actualCostPerShare > 0 ? ((finalTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        let formattedDescription = String(format: "(Min ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f", Int(sharesToSell), "SYMBOL", finalTarget, targetTrailingStop, actualCostPerShare)
+        let formattedDescription = String( format: "(Min ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
+                                                    Int(sharesToSell), symbol, finalTarget, 
+                                                    targetTrailingStop, actualCostPerShare )
         
         AppLogger.shared.debug("  Creating Min ATR order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(finalTarget)")
         
@@ -472,6 +480,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func calculateMinBreakEvenOrder(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         atrValue: Double,
@@ -555,7 +564,7 @@ class OrderRecommendationService: ObservableObject {
         let trailingStopValue = adjustedATR
         
         let formattedDescription = String(format: "(Min BE) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                                          Int(sharesToSell), "SYMBOL", target, trailingStopValue, actualCostPerShare)
+                                          Int(sharesToSell), symbol, target, trailingStopValue, actualCostPerShare)
         
         // Final validation of trailing stop value
         guard trailingStopValue >= 0.1 && trailingStopValue <= 50.0 else {
@@ -581,6 +590,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func calculateAdditionalSellOrdersFromTaxLots(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         minBreakEvenOrder: SalesCalcResultsRecord,
@@ -595,6 +605,7 @@ class OrderRecommendationService: ObservableObject {
         
         // Create 1% higher trailing stop order
         if let higherTSOrder = createOnePercentHigherTrailingStopOrder(
+            symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
             minBreakEvenOrder: minBreakEvenOrder,
@@ -607,6 +618,7 @@ class OrderRecommendationService: ObservableObject {
         
         // Create 1.5*ATR sell order
         if let onePointFiveATROrder = createOnePointFiveATRSellOrder(
+            symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
             minBreakEvenOrder: minBreakEvenOrder,
@@ -619,6 +631,7 @@ class OrderRecommendationService: ObservableObject {
         
         // Create 2*ATR sell order
         if let twoATROrder = createTwoATRSellOrder(
+            symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
             minBreakEvenOrder: minBreakEvenOrder,
@@ -631,6 +644,7 @@ class OrderRecommendationService: ObservableObject {
         
         // Create max shares sell order
         if let maxSharesOrder = createMaxSharesSellOrder(
+            symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
             minBreakEvenOrder: minBreakEvenOrder,
@@ -644,6 +658,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func createOnePercentHigherTrailingStopOrder(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         minBreakEvenOrder: SalesCalcResultsRecord,
@@ -711,7 +726,7 @@ class OrderRecommendationService: ObservableObject {
             target: target,
             cancel: exit,
             description: String(format: "(1%% TS) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                               Int(sharesToSell), "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+                               Int(sharesToSell), symbol, target, targetTrailingStop, actualCostPerShare),
             openDate: "1%TS"
         )
         
@@ -719,6 +734,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func createOnePointFiveATRSellOrder(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         minBreakEvenOrder: SalesCalcResultsRecord,
@@ -787,7 +803,7 @@ class OrderRecommendationService: ObservableObject {
             target: target,
             cancel: exit,
             description: String(format: "(1.5*ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                               Int(sharesToSell), "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+                               Int(sharesToSell), symbol, target, targetTrailingStop, actualCostPerShare),
             openDate: "1.5ATR"
         )
         
@@ -795,6 +811,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func createTwoATRSellOrder(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         minBreakEvenOrder: SalesCalcResultsRecord,
@@ -863,7 +880,7 @@ class OrderRecommendationService: ObservableObject {
             target: target,
             cancel: exit,
             description: String(format: "(2*ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
-                               Int(sharesToSell), "SYMBOL", target, targetTrailingStop, actualCostPerShare),
+                               Int(sharesToSell), symbol, target, targetTrailingStop, actualCostPerShare),
             openDate: "2ATR"
         )
         
@@ -871,6 +888,7 @@ class OrderRecommendationService: ObservableObject {
     }
     
     private func createMaxSharesSellOrder(
+        symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
         minBreakEvenOrder: SalesCalcResultsRecord,
@@ -920,7 +938,7 @@ class OrderRecommendationService: ObservableObject {
         let description = String(
             format: "(Max Shares) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
             Int(sharesUsed),
-            "SYMBOL",
+            symbol,
             targetPrice,
             trailingStop,
             actualCostPerShare
