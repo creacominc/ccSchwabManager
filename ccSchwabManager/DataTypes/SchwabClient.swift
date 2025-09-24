@@ -3103,12 +3103,24 @@ class SchwabClient
             return nil
         }
         
+        // If any selected BUY order prefers DAY duration, force all child orders to use DAY for consistency
+        let forceDayDuration: Bool = selectedOrders.contains { (orderType, order) in
+            if orderType == "BUY", let buy = order as? BuyOrderRecord { return buy.preferDayDuration }
+            return false
+        }
+
+        if forceDayDuration {
+            for child in childOrderStrategies {
+                child.duration = .DAY
+            }
+        }
+
         // Create the parent OCO order (simplified - no timing constraints)
         let ocoOrder = Order(
             orderStrategyType: .OCO,
             accountNumber: accountNumber,
             childOrderStrategies: childOrderStrategies,
-            statusDescription: "Simplified OCO order"
+            statusDescription: forceDayDuration ? "Simplified OCO order (DAY)" : "Simplified OCO order"
         )
         
         AppLogger.shared.debug("✅ Created simplified OCO order with \(childOrderStrategies.count) child orders")
@@ -3382,7 +3394,7 @@ class SchwabClient
             // Create simplified BUY order matching sample_order7.py pattern
             let childOrder = Order(
                 session: .NORMAL,
-                duration: .GOOD_TILL_CANCEL,
+                duration: buyOrder.preferDayDuration ? .DAY : .GOOD_TILL_CANCEL,
                 orderType: .TRAILING_STOP_LIMIT,
                 complexOrderStrategyType: .NONE,
                 quantity: buyOrder.sharesToBuy,

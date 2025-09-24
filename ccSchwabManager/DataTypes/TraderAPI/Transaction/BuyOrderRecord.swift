@@ -22,4 +22,6 @@ struct BuyOrderRecord: Identifiable
     var orderType: String = ""
     var submitDate: String = ""
     var isImmediate: Bool = false
+    // When true, this buy prefers a DAY time-in-force instead of GTC
+    var preferDayDuration: Bool = false
 }
