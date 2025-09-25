@@ -1731,8 +1731,9 @@ class SchwabClient
         AppLogger.shared.debug("  Using provided tax lots for accurate share calculation")
         AppLogger.shared.debug("  Found \(taxLots.count) tax lots for \(symbol)")
         
-        // Calculate shares held for over 30 days from tax lots
+        // Calculate shares held for over 30 days and under 30 days from tax lots
         var sharesOver30Days: Double = 0.0
+        var sharesUnder30Days: Double = 0.0
         let currentDate = Date()
         
         AppLogger.shared.debug("  === Processing Tax Lots ===")
@@ -1755,23 +1756,29 @@ class SchwabClient
                 sharesOver30Days += taxLot.quantity
                 AppLogger.shared.debug("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
             } else {
+                sharesUnder30Days += taxLot.quantity
                 AppLogger.shared.debug("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
             }
         }
         
         AppLogger.shared.debug("  Total shares held for over 30 days: \(sharesOver30Days)")
+        AppLogger.shared.debug("  Total shares held for under or equal to 30 days: \(sharesUnder30Days)")
         
-        // Get shares under contract
-        let sharesUnderContract = getContractCountForSymbol(symbol) * 100.0
-        AppLogger.shared.debug("  Shares under contract: \(sharesUnderContract) (contracts: \(getContractCountForSymbol(symbol)))")
+        // Get total shares under contract and offset them by <30 day shares first
+        let totalContractShares = getContractCountForSymbol(symbol) * 100.0
+        let contractsAbsorbedByUnder30 = min(sharesUnder30Days, totalContractShares)
+        let sharesUnderContractAffectingOver30 = totalContractShares - contractsAbsorbedByUnder30
+        AppLogger.shared.debug("  Contract shares (raw): \(totalContractShares) (contracts: \(getContractCountForSymbol(symbol)))")
+        AppLogger.shared.debug("  Contract shares absorbed by <30d holdings: \(contractsAbsorbedByUnder30)")
+        AppLogger.shared.debug("  Contract shares affecting >30d holdings: \(sharesUnderContractAffectingOver30)")
         
-        // Calculate available shares
-        let availableShares = sharesOver30Days - sharesUnderContract
+        // Calculate available shares: >30 day shares reduced only by contracts not covered by <30 day shares
+        let availableShares = sharesOver30Days - sharesUnderContractAffectingOver30
         let finalAvailableShares = max(0.0, availableShares)
         
         AppLogger.shared.debug("  === Final Calculation ===")
         AppLogger.shared.debug("    Shares over 30 days: \(sharesOver30Days)")
-        AppLogger.shared.debug("    Shares under contract: \(sharesUnderContract)")
+        AppLogger.shared.debug("    Shares under contract affecting >30d: \(sharesUnderContractAffectingOver30)")
         AppLogger.shared.debug("    Available shares: \(finalAvailableShares)")
         AppLogger.shared.debug("    Total shares owned: \(taxLots.reduce(0.0) { $0 + $1.quantity })")
         
