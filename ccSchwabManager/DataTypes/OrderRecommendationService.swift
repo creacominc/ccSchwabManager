@@ -278,6 +278,16 @@ class OrderRecommendationService: ObservableObject {
             }
         }
         
+        // Add special 1-share buy with trailing stop = 5% + ATR%
+        if let oneShareOrder = createOneShareBuyOrderWithFivePlusATRTrail(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            atrValue: atrValue,
+            targetGainPercent: targetGainPercent
+        ) {
+            recommended.append(oneShareOrder)
+        }
+        
         // Add special 5% DAY buy with 0.95% trail of current holdings
         do {
             let specialPercentage: Double = 5.0
@@ -789,6 +799,19 @@ class OrderRecommendationService: ObservableObject {
             additionalOrders.append(twoATROrder)
         }
         
+        // Create 3*ATR sell order (larger gap)
+        if let threeATROrder = createThreeATRSellOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            minBreakEvenOrder: minBreakEvenOrder,
+            currentTaxLotIndex: &currentTaxLotIndex,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        ) {
+            additionalOrders.append(threeATROrder)
+        }
+        
         // Create max shares sell order
         if let maxSharesOrder = createMaxSharesSellOrder(
             symbol: symbol,
@@ -1034,6 +1057,82 @@ class OrderRecommendationService: ObservableObject {
         return sellOrder
     }
     
+    private func createThreeATRSellOrder(
+        symbol: String,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        minBreakEvenOrder: SalesCalcResultsRecord,
+        currentTaxLotIndex: inout Int,
+        sharesAvailableForTrading: Double,
+        atrValue: Double
+    ) -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("  Creating 3*ATR sell order: ATR=\(atrValue)%, trailingStop=\(atrValue * 3.0)%")
+        
+        // Calculate trailing stop as 3 * ATR
+        let targetTrailingStop: Double = atrValue * 3.0
+        AppLogger.shared.debug("  Target trailing stop calculation: 3 * ATR = 3 * \(atrValue)% = \(targetTrailingStop)%")
+        
+        // Calculate entry price (1 ATR below current price)
+        let entry = currentPrice * (1.0 - atrValue / 100.0)
+        AppLogger.shared.debug("  Entry calculation: currentPrice=\(currentPrice), ATR=\(atrValue)%, entry=\(entry)")
+        
+        // Calculate target price based on trailing stop
+        let target = entry / (1.0 + targetTrailingStop / 100.0)
+        AppLogger.shared.debug("  Target calculation: entry=\(entry), targetTrailingStop=\(targetTrailingStop)%, target=\(target)")
+        
+        // For ATR orders, prioritize selling the most expensive shares first
+        guard let result = calculateSharesForATROrder(
+            targetGainPercent: 5.0,
+            targetPrice: target,
+            sortedTaxLots: sortedTaxLots
+        ) else {
+            return nil
+        }
+        
+        let sharesToSell = result.sharesToSell
+        let actualCostPerShare = result.actualCostPerShare
+        AppLogger.shared.debug("  Shares calculation: sharesToSell=\(sharesToSell), actualCostPerShare=\(actualCostPerShare)")
+        
+        // Validate shares to sell
+        guard sharesToSell >= 1.0 && sharesToSell <= sharesAvailableForTrading else {
+            return nil
+        }
+        
+        // Validate target is above cost per share
+        guard target > actualCostPerShare else { return nil }
+        
+        // Calculate exit price (2 ATR below target)
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        // Final validation of trailing stop value
+        guard targetTrailingStop >= 0.1 && targetTrailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in 3*ATR order: \(targetTrailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating 3*ATR order: trailingStop=\(targetTrailingStop)%, shares=\(sharesToSell), target=\(target)")
+        
+        let sellOrder = SalesCalcResultsRecord(
+            shares: sharesToSell,
+            rollingGainLoss: sharesToSell * (target - actualCostPerShare),
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: sharesToSell,
+            trailingStop: targetTrailingStop,
+            entry: entry,
+            target: target,
+            cancel: exit,
+            description: String(format: "(3*ATR) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                               Int(sharesToSell), symbol, target, targetTrailingStop, actualCostPerShare),
+            openDate: "3ATR"
+        )
+        
+        return sellOrder
+    }
+
     private func createMaxSharesSellOrder(
         symbol: String,
         currentPrice: Double,
@@ -1437,5 +1536,61 @@ class OrderRecommendationService: ObservableObject {
         )
         
         return additionalBuyOrder
+    }
+
+    private func createOneShareBuyOrderWithFivePlusATRTrail(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        targetGainPercent: Double
+    ) -> BuyOrderRecord? {
+        // Fixed one share
+        let sharesToBuy: Double = 1.0
+        
+        // Trailing stop percent = 5% + ATR%
+        let trailingStopPercent = max(0.1, min(50.0, 5.0 + atrValue))
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        
+        // Target maintains the same target gain percent, but must be at least 2% above stop
+        let baseTargetPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
+        let minTargetPrice = stopPrice * 1.02
+        let finalTargetPrice = max(baseTargetPrice, minTargetPrice)
+        
+        // Entry price one ATR below target
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
+        
+        // Order cost threshold consistent with other small buys ($2000 cap)
+        let orderCost = sharesToBuy * finalTargetPrice
+        guard orderCost < 2000.0 else { return nil }
+        
+        let formattedDescription = String(
+            format: "BUY %.0f %@ (1 sh, 5%%+ATR) Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
+            sharesToBuy,
+            symbol,
+            finalTargetPrice,
+            trailingStopPercent,
+            targetGainPercent,
+            orderCost
+        )
+        
+        // Final trailing stop validation
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else { return nil }
+        
+        AppLogger.shared.debug("  One-share buy: TS=\(trailingStopPercent)% (5%+ATR), target=\(finalTargetPrice)")
+        
+        return BuyOrderRecord(
+            shares: sharesToBuy,
+            targetBuyPrice: finalTargetPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: 0.0,
+            sharesToBuy: sharesToBuy,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
     }
 }

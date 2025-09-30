@@ -566,6 +566,113 @@ final class OrderRecommendationServiceTests: XCTestCase {
         }
     }
     
+    func testSellOrderLogic_IncludesThreeATROrder() async {
+        // Given: Position with enough profitability to generate Min BE and additional ATR orders
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 20.0,
+                gainLossDollar: 200.0,
+                quantity: 120.0,
+                price: 50.0,
+                costPerShare: 40.0,
+                marketValue: 6000.0,
+                costBasis: 4800.0
+            )
+        ]
+        let currentPrice = 50.0
+        let atrValue = 2.5
+        let sharesAvailableForTrading = 120.0
+        
+        // When
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return sell orders")
+        
+        // Find the 3*ATR order
+        let threeATROrder = result.first { order in
+            order.description.contains("(3*ATR)")
+        }
+        
+        XCTAssertNotNil(threeATROrder, "Should include 3*ATR sell order when criteria allow")
+        
+        if let order = threeATROrder {
+            // Verify trailing stop equals 3x ATR
+            let expectedTS = atrValue * 3.0
+            XCTAssertEqual(order.trailingStop, expectedTS, accuracy: 0.01, "3*ATR order should have 3x ATR trailing stop")
+            
+            // Validate target is above cost per share
+            XCTAssertGreaterThan(order.target, order.breakEven, "Target should be above cost per share")
+            
+            // Validate shares to sell are not more than available
+            XCTAssertLessThanOrEqual(order.sharesToSell, sharesAvailableForTrading, "Shares to sell should not exceed availability")
+        }
+    }
+    
+    func testBuyOrder_IncludesOneShareFivePlusATRTrail() async {
+        // Given: Any existing position
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 10.0,
+                gainLossDollar: 100.0,
+                quantity: 10.0,
+                price: 20.0,
+                costPerShare: 18.0,
+                marketValue: 200.0,
+                costBasis: 180.0
+            )
+        ]
+        let currentPrice = 20.0
+        let atrValue = 2.5 // -> trailing stop should be 7.5%
+        
+        // When
+        let result = await service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 10.0,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        XCTAssertFalse(result.isEmpty, "Should return buy orders")
+        
+        // Find the 1-share order marked with 5%+ATR
+        let oneShareOrder = result.first { order in
+            order.description.contains("(1 sh, 5%+ATR)")
+        }
+        
+        XCTAssertNotNil(oneShareOrder, "Should include 1-share buy with 5%+ATR trailing stop")
+        
+        if let order = oneShareOrder {
+            // Trailing stop should be 5% + ATR%
+            let expectedTS = 5.0 + atrValue
+            XCTAssertEqual(order.trailingStop, expectedTS, accuracy: 0.01, "Trailing stop should be 5% + ATR%")
+            
+            // Stop above current price
+            let stopPrice = currentPrice * (1.0 + order.trailingStop / 100.0)
+            XCTAssertGreaterThan(stopPrice, currentPrice, "Stop should be above current price")
+            
+            // Target >= 2% above stop
+            let minTarget = stopPrice * 1.02
+            XCTAssertGreaterThanOrEqual(order.targetBuyPrice, minTarget, "Target should be at least 2% above stop")
+            
+            // Exactly 1 share
+            XCTAssertEqual(order.shares, 1.0, "Should recommend exactly 1 share")
+            
+            // Cost under $2000 per constraints
+            XCTAssertLessThan(order.orderCost, 2000.0, "Order cost should be under $2000")
+        }
+    }
+    
     // MARK: - Performance Tests
     
     func testPerformance_CalculateRecommendedSellOrders() {
