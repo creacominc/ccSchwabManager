@@ -11,11 +11,11 @@ struct OCOOrdersTab: View {
     let lastPrice: Double
     
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 20) {
-                // OCO Orders Section
+        GeometryReader { _ in
+            VStack(spacing: 0) {
+                // OCO Orders Section with fixed header and scrollable content
                 VStack(alignment: .leading, spacing: 0) {
-                    // Section Header with critical information
+                    // Section Header with critical information (fixed)
                     HStack {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .foregroundColor(.green)
@@ -32,27 +32,31 @@ struct OCOOrdersTab: View {
                     .padding(.vertical, 12)
                     .background(Color.green.opacity(0.1))
                     
-                    // Section Content - Using refactored version for better maintainability
-                    RecommendedOCOOrdersSection(
-                        symbol: symbol,
-                        atrValue: atrValue,
-                        sharesAvailableForTrading: sharesAvailableForTrading,
-                        quoteData: quoteData,
-                        accountNumber: accountNumber
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    // Scrollable section content
+                    ScrollView {
+                        RecommendedOCOOrdersSection(
+                            symbol: symbol,
+                            atrValue: atrValue,
+                            sharesAvailableForTrading: sharesAvailableForTrading,
+                            quoteData: quoteData,
+                            accountNumber: accountNumber
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        
+                        // Add bottom padding to ensure content is fully visible
+                        Spacer(minLength: 20)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(8)
-                
-                // Add bottom padding to ensure content is fully visible
-                Spacer(minLength: 20)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black.opacity(0.1))
         }
-        .background(Color.black.opacity(0.1))
     }
     
     private var criticalInfoRow: some View {
