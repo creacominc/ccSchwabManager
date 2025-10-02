@@ -9,6 +9,7 @@ struct RecommendedOCOOrdersSection: View {
     let sharesAvailableForTrading: Double
     let quoteData: QuoteData?
     let accountNumber: String
+    let position: Position
     
 
     
@@ -52,10 +53,7 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Body
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recommended Orders")
-                .font(.headline)
-                .foregroundColor(.primary)
-            
+
             // Loading indicator for tax lot calculation
             TaxLotLoadingIndicator(
                 isLoading: viewModel.isLoadingTaxLots,
@@ -65,7 +63,7 @@ struct RecommendedOCOOrdersSection: View {
                     viewModel.cancelTaxLotCalculation()
                 }
             )
-            
+
             HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: 8) {
                     // Sell Orders Section
@@ -79,7 +77,7 @@ struct RecommendedOCOOrdersSection: View {
                         onCopyValue: copyToClipboard,
                         onCopyText: copyToClipboard
                     )
-                    
+
                     // Buy Orders Section
                     BuyOrdersSection(
                         buyOrders: viewModel.recommendedBuyOrders,
@@ -92,7 +90,7 @@ struct RecommendedOCOOrdersSection: View {
                     )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                
+
                 // Submit Button Section
                 SubmitButtonSection(
                     hasSelectedOrders: hasSelectedOrders,
@@ -100,7 +98,7 @@ struct RecommendedOCOOrdersSection: View {
                 )
                 .frame(maxHeight: .infinity)
             }
-            
+
             // Copy feedback text
             if copiedValue != "TBD" {
                 HStack {
@@ -270,13 +268,26 @@ struct RecommendedOCOOrdersSection: View {
         print("  - sharesAvailableForTrading: \(sharesAvailableForTrading)")
         print("  - currentPrice: \(currentPrice)")
         
+        // Calculate position values from Position object (same as DetailsTab)
+        let totalShares = (position.longQuantity ?? 0) + (position.shortQuantity ?? 0)
+        let avgCostPerShare = position.averagePrice ?? 0
+        let totalCost = avgCostPerShare * totalShares
+        let pl = position.longOpenProfitLoss ?? 0
+        let mv = position.marketValue ?? 0
+        let costBasis = mv - pl
+        let currentProfitPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+        
         Task {
             await viewModel.updateRecommendedOrders(
                 symbol: symbol,
                 atrValue: atrValue,
                 taxLotData: taxLotData,
                 sharesAvailableForTrading: sharesAvailableForTrading,
-                currentPrice: currentPrice
+                currentPrice: currentPrice,
+                totalShares: totalShares,
+                totalCost: totalCost,
+                avgCostPerShare: avgCostPerShare,
+                currentProfitPercent: currentProfitPercent
             )
             
             print("✅ updateRecommendedOrders completed")
@@ -579,7 +590,8 @@ struct RecommendedOCOOrdersSection: View {
                 reference: nil,
                 regular: nil
             ),
-            accountNumber: "123456789"
+            accountNumber: "123456789",
+            position: Position(shortQuantity: 0, averagePrice: 150.0, longQuantity: 150, marketValue: 26250.0, longOpenProfitLoss: 3750.0)
         )
     }
     .padding()
@@ -634,7 +646,8 @@ struct RecommendedOCOOrdersSection: View {
                 reference: nil,
                 regular: nil
             ),
-            accountNumber: "987654321"
+            accountNumber: "987654321",
+            position: Position(shortQuantity: 0, averagePrice: 180.0, longQuantity: 25, marketValue: 4750.0, longOpenProfitLoss: 250.0)
         )
     }
     .padding()
@@ -647,7 +660,8 @@ struct RecommendedOCOOrdersSection: View {
             atrValue: 1.0,
             sharesAvailableForTrading: 0,
             quoteData: nil, // No quote data to avoid calculations
-            accountNumber: "111222333"
+            accountNumber: "111222333",
+            position: Position(shortQuantity: 0, averagePrice: 300.0, longQuantity: 0, marketValue: 0.0, longOpenProfitLoss: 0.0)
         )
     }
     .padding()

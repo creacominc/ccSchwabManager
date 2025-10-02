@@ -41,6 +41,14 @@ final class OrderRecommendationViewModelTests: XCTestCase {
         ]
     }
     
+    private func calculatePositionValues(taxLots: [SalesCalcPositionsRecord], currentPrice: Double) -> (totalShares: Double, totalCost: Double, avgCostPerShare: Double, currentProfitPercent: Double) {
+        let totalShares = taxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = taxLots.reduce(0.0) { $0 + $1.costBasis }
+        let avgCostPerShare = totalShares > 0 ? totalCost / totalShares : 0
+        let currentProfitPercent = avgCostPerShare > 0 ? ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0 : 0
+        return (totalShares, totalCost, avgCostPerShare, currentProfitPercent)
+    }
+    
     // MARK: - Initial State Tests
     
     func testInitialState_AllPropertiesAreEmpty() {
@@ -60,6 +68,8 @@ final class OrderRecommendationViewModelTests: XCTestCase {
     func testUpdateRecommendedOrders_EmptyTaxLots_ClearsAllOrders() async {
         // Given
         let emptyTaxLots: [SalesCalcPositionsRecord] = []
+        let currentPrice = 160.0
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: emptyTaxLots, currentPrice: currentPrice)
         
         // When
         await viewModel.updateRecommendedOrders(
@@ -67,7 +77,11 @@ final class OrderRecommendationViewModelTests: XCTestCase {
             atrValue: 2.5,
             taxLotData: emptyTaxLots,
             sharesAvailableForTrading: 0,
-            currentPrice: 160.0
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -80,6 +94,7 @@ final class OrderRecommendationViewModelTests: XCTestCase {
         // Given
         let taxLots = createMockTaxLots()
         let currentPrice = 160.0
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         
         // When
         await viewModel.updateRecommendedOrders(
@@ -87,7 +102,11 @@ final class OrderRecommendationViewModelTests: XCTestCase {
             atrValue: 2.5,
             taxLotData: taxLots,
             sharesAvailableForTrading: 150,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then

@@ -43,6 +43,14 @@ final class OrderRecommendationServiceTests: XCTestCase {
         ]
     }
     
+    private func calculatePositionValues(taxLots: [SalesCalcPositionsRecord], currentPrice: Double) -> (totalShares: Double, totalCost: Double, avgCostPerShare: Double, currentProfitPercent: Double) {
+        let totalShares = taxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = taxLots.reduce(0.0) { $0 + $1.costBasis }
+        let avgCostPerShare = totalShares > 0 ? totalCost / totalShares : 0
+        let currentProfitPercent = avgCostPerShare > 0 ? ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0 : 0
+        return (totalShares, totalCost, avgCostPerShare, currentProfitPercent)
+    }
+    
     // MARK: - Sell Orders Tests
     
     func testCalculateRecommendedSellOrders_EmptyTaxLots_ReturnsEmptyArray() async {
@@ -165,6 +173,7 @@ final class OrderRecommendationServiceTests: XCTestCase {
         // Given
         let taxLots: [SalesCalcPositionsRecord] = []
         let currentPrice = 160.0
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         
         // When
         let result = await service.calculateRecommendedBuyOrders(
@@ -172,7 +181,11 @@ final class OrderRecommendationServiceTests: XCTestCase {
             atrValue: 2.5,
             taxLotData: taxLots,
             sharesAvailableForTrading: 150,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then

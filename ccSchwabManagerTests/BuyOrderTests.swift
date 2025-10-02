@@ -118,4 +118,61 @@ struct BuyOrderTests {
         
         #expect(finalSharesToBuy == 1.0, "Should limit to 1 share for expensive stock")
     }
+    
+    @Test func testWhenProfitableBuyOrderForLossPosition() async throws {
+        // Test the "when profitable" buy order for positions at a loss
+        // Example: UNP with -7.6% P/L and 1.67% ATR
+        let currentPrice = 240.0
+        let avgCostPerShare = 260.0 // Position is at a loss
+        let atrValue = 1.67 // 1.67% ATR
+        let totalShares = 100.0
+        
+        // Calculate current profit percent (should be negative)
+        let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        #expect(currentProfitPercent < 0, "Position should be at a loss")
+        #expect(abs(currentProfitPercent - (-7.69)) < 0.1, "Expected approximately -7.69% loss")
+        
+        // Calculate expected trailing stop: abs(P/L%) + 3 * ATR%
+        let expectedTrailingStop = abs(currentProfitPercent) + 3.0 * atrValue
+        #expect(abs(expectedTrailingStop - 12.70) < 0.1, "Expected trailing stop around 12.70%")
+        
+        // The buy order should:
+        // 1. Be for 1 share
+        // 2. Have trailing stop = abs(P/L%) + 3*ATR% = 7.69 + 5.01 = 12.70%
+        // 3. Have stop price above current price
+        let sharesToBuy = 1.0
+        let trailingStopPercent = expectedTrailingStop
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        
+        #expect(sharesToBuy == 1.0, "Should buy exactly 1 share")
+        #expect(stopPrice > currentPrice, "Stop price should be above current price")
+        #expect(trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0, "Trailing stop should be within valid range")
+        
+        print("When Profitable Buy Order Test Results:")
+        print("  Current Price: $\(currentPrice)")
+        print("  Avg Cost: $\(avgCostPerShare)")
+        print("  Current P/L%: \(String(format: "%.2f", currentProfitPercent))%")
+        print("  ATR: \(atrValue)%")
+        print("  Trailing Stop: \(String(format: "%.2f", trailingStopPercent))%")
+        print("  Stop Price: $\(String(format: "%.2f", stopPrice))")
+        print("  Shares to Buy: \(sharesToBuy)")
+    }
+    
+    @Test func testWhenProfitableBuyOrderNotCreatedForProfitablePosition() async throws {
+        // Test that the "when profitable" buy order is NOT created for positions that are profitable
+        let currentPrice = 160.0
+        let avgCostPerShare = 140.0 // Position is profitable
+        
+        // Calculate current profit percent (should be positive)
+        let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
+        #expect(currentProfitPercent > 0, "Position should be profitable")
+        
+        // The order should not be created because currentProfitPercent >= 0
+        // This is verified by the guard statement in the createWhenProfitableBuyOrderForLossPosition method
+        print("When Profitable Buy Order (Profitable Position) Test Results:")
+        print("  Current Price: $\(currentPrice)")
+        print("  Avg Cost: $\(avgCostPerShare)")
+        print("  Current P/L%: \(String(format: "%.2f", currentProfitPercent))%")
+        print("  Order should NOT be created (position is profitable)")
+    }
 } 

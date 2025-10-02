@@ -137,13 +137,21 @@ class OrderRecommendationService: ObservableObject {
     ///   - taxLotData: Tax lot information for the position
     ///   - sharesAvailableForTrading: Number of shares available for trading
     ///   - currentPrice: Current market price
+    ///   - totalShares: Total shares from position (Quantity)
+    ///   - totalCost: Total cost from position (Average Price * Quantity)
+    ///   - avgCostPerShare: Average cost per share from position (Average Price)
+    ///   - currentProfitPercent: Current profit percentage from position (P/L%)
     /// - Returns: Array of recommended buy orders
     func calculateRecommendedBuyOrders(
         symbol: String,
         atrValue: Double,
         taxLotData: [SalesCalcPositionsRecord],
         sharesAvailableForTrading: Double,
-        currentPrice: Double
+        currentPrice: Double,
+        totalShares: Double,
+        totalCost: Double,
+        avgCostPerShare: Double,
+        currentProfitPercent: Double
     ) -> [BuyOrderRecord] {
         
         AppLogger.shared.debug("=== calculateRecommendedBuyOrders ===")
@@ -154,16 +162,20 @@ class OrderRecommendationService: ObservableObject {
             AppLogger.shared.error("⚠️ Invalid ATR value: \(atrValue)%. Expected range: 0.1% to 50%")
             return []
         }
-        
+
         // Early validation
         guard !taxLotData.isEmpty else { return [] }
+
         
-        // Calculate total shares and average cost
-        let totalShares = taxLotData.reduce(0.0) { $0 + $1.quantity }
-        let totalCost = taxLotData.reduce(0.0) { $0 + $1.costBasis }
-        let avgCostPerShare = totalCost / totalShares
-        let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
-        
+
+        // Use values from position object (passed from higher levels, same source as DetailsTab)
+        // totalShares, totalCost, avgCostPerShare, currentProfitPercent are now parameters
+
+        // the currentProfitPercent does not seem to match the value from the call to calculatePLPercent
+        /** remove */
+        AppLogger.shared.info( "symbol: \(symbol), atrValue: \(atrValue)%, sharesAvailableForTrading: \(sharesAvailableForTrading), currentPrice: \(currentPrice), avgCostPerShare: \(avgCostPerShare), currentProfitPercent: \(currentProfitPercent)%  " )
+        /** remove */
+
         // Only show buy orders if we have an existing position
         guard totalShares > 0 else { return [] }
         
@@ -330,6 +342,24 @@ class OrderRecommendationService: ObservableObject {
 
                     recommended.append(specialBuy)
                 }
+            }
+        }
+
+
+        AppLogger.shared.debug("    symbol=\(symbol), currentPrice=\(currentPrice), atrValue=\(atrValue), targetGainPercent=\(targetGainPercent), currentProfitPercent=\(currentProfitPercent)")
+
+        // Add special 1-share "when profitable" buy for positions at a loss
+        // Trail = abs(P/L%) + 3*ATR%
+        if currentProfitPercent < 0 {
+            if let whenProfitableOrder = createWhenProfitableBuyOrderForLossPosition(
+                symbol: symbol,
+                currentPrice: currentPrice,
+                atrValue: atrValue,
+                targetGainPercent: targetGainPercent,
+                currentProfitPercent: currentProfitPercent
+            ) {
+                AppLogger.shared.debug("  whenProfitableOrder=\(whenProfitableOrder)")
+                recommended.append(whenProfitableOrder)
             }
         }
 
@@ -1763,6 +1793,81 @@ class OrderRecommendationService: ObservableObject {
             trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,
             currentGainPercent: 0.0,
+            sharesToBuy: sharesToBuy,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
+    }
+    
+    /// Creates a "when profitable" buy order for positions currently at a loss
+    /// - Parameters:
+    ///   - symbol: The trading symbol
+    ///   - currentPrice: Current market price
+    ///   - atrValue: Average True Range value
+    ///   - targetGainPercent: Target gain percentage
+    ///   - currentProfitPercent: Current profit percentage (negative for loss positions)
+    /// - Returns: Buy order record or nil if not applicable
+    private func createWhenProfitableBuyOrderForLossPosition(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        targetGainPercent: Double,
+        currentProfitPercent: Double
+    ) -> BuyOrderRecord? {
+        // Only for positions at a loss
+        guard currentProfitPercent < 0 else { return nil }
+        
+        // Fixed one share
+        let sharesToBuy: Double = 1.0
+        
+        // Trailing stop percent = abs(P/L%) + 3 * ATR%
+        // Example: -7.6% P/L + 3 * 1.67% ATR = 7.6 + 5.01 = 12.61%
+        let lossPercent = abs(currentProfitPercent)
+        let trailingStopPercent = max(0.1, min(50.0, lossPercent + 3.0 * atrValue))
+        
+        // For buy orders: current price < stop price < target price
+        // Stop price is current price + trailing stop percentage
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        
+        // Target price should be above stop price
+        // Use the standard target gain percent or at least 2% above stop
+        let baseTargetPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
+        let minTargetPrice = stopPrice * 1.02
+        let finalTargetPrice = max(baseTargetPrice, minTargetPrice)
+        
+        // Entry price one ATR below target
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
+        
+        // Order cost threshold consistent with other small buys ($2000 cap)
+        let orderCost = sharesToBuy * finalTargetPrice
+        guard orderCost < 2000.0 else { return nil }
+        
+        let formattedDescription = String(
+            format: "BUY %.0f %@ (When Profitable) P/L=%.1f%% Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
+            sharesToBuy,
+            symbol,
+            currentProfitPercent,
+            finalTargetPrice,
+            trailingStopPercent,
+            targetGainPercent,
+            orderCost
+        )
+        
+        // Final trailing stop validation
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else { return nil }
+        
+        AppLogger.shared.debug("  When Profitable buy: currentP/L=\(currentProfitPercent)%, loss=\(lossPercent)%, ATR=\(atrValue)%, TS=\(trailingStopPercent)%, target=\(finalTargetPrice)")
+        
+        return BuyOrderRecord(
+            shares: sharesToBuy,
+            targetBuyPrice: finalTargetPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: currentProfitPercent,
             sharesToBuy: sharesToBuy,
             orderCost: orderCost,
             description: formattedDescription,

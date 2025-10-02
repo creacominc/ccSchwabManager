@@ -47,12 +47,20 @@ class OrderRecommendationViewModel: ObservableObject {
     ///   - taxLotData: Tax lot information for the position
     ///   - sharesAvailableForTrading: Number of shares available for trading
     ///   - currentPrice: Current market price
+    ///   - totalShares: Total shares from position (Quantity)
+    ///   - totalCost: Total cost from position (Average Price * Quantity)
+    ///   - avgCostPerShare: Average cost per share from position (Average Price)
+    ///   - currentProfitPercent: Current profit percentage from position (P/L%)
     func updateRecommendedOrders(
         symbol: String,
         atrValue: Double,
         taxLotData: [SalesCalcPositionsRecord],
         sharesAvailableForTrading: Double,
-        currentPrice: Double
+        currentPrice: Double,
+        totalShares: Double,
+        totalCost: Double,
+        avgCostPerShare: Double,
+        currentProfitPercent: Double
     ) async {
         
         // Early validation
@@ -94,7 +102,11 @@ class OrderRecommendationViewModel: ObservableObject {
             atrValue: atrValue,
             taxLotData: taxLotData,
             sharesAvailableForTrading: sharesAvailableForTrading,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Wait for both to complete

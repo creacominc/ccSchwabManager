@@ -39,7 +39,8 @@ struct OCOOrdersTab: View {
                             atrValue: atrValue,
                             sharesAvailableForTrading: sharesAvailableForTrading,
                             quoteData: quoteData,
-                            accountNumber: accountNumber
+                            accountNumber: accountNumber,
+                            position: position
                         )
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
