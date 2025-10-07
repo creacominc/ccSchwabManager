@@ -89,6 +89,28 @@ class OrderRecommendationService: ObservableObject {
                 )
             }
             
+            // Top 300 Order
+            group.addTask {
+                return await self.calculateTop300Order(
+                    symbol: symbol,
+                    currentPrice: currentPrice,
+                    sortedTaxLots: sortedTaxLots,
+                    sharesAvailableForTrading: sharesAvailableForTrading,
+                    atrValue: atrValue
+                )
+            }
+            
+            // Top 400 Order
+            group.addTask {
+                return await self.calculateTop400Order(
+                    symbol: symbol,
+                    currentPrice: currentPrice,
+                    sortedTaxLots: sortedTaxLots,
+                    sharesAvailableForTrading: sharesAvailableForTrading,
+                    atrValue: atrValue
+                )
+            }
+            
             // Collect results
             for await result in group {
                 results.append(result)
@@ -559,6 +581,172 @@ class OrderRecommendationService: ObservableObject {
             cancel: exit,
             description: formattedDescription,
             openDate: "Top200"
+        )
+    }
+
+    private func calculateTop300Order(
+        symbol: String,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        sharesAvailableForTrading: Double,
+        atrValue: Double
+    ) async -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("  Top 300 order: ATR=\(atrValue)%")
+        
+        guard !sortedTaxLots.isEmpty else { return nil }
+        
+        // Check if position has at least 300 shares total
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        guard totalShares >= 300.0 else { return nil }
+        
+        let finalSharesToConsider = 300.0
+        
+        // Calculate the cost per share for the 300 most expensive shares
+        var sharesRemaining = finalSharesToConsider
+        var totalCostOfTop300 = 0.0
+        
+        for lot in sortedTaxLots {
+            if sharesRemaining <= 0 { break }
+            let sharesFromThisLot = min(lot.quantity, sharesRemaining)
+            totalCostOfTop300 += sharesFromThisLot * lot.costPerShare
+            sharesRemaining -= sharesFromThisLot
+        }
+        
+        let actualCostPerShare = totalCostOfTop300 / finalSharesToConsider
+        AppLogger.shared.debug("  Top 300 cost calculation: totalCost=\(totalCostOfTop300), shares=\(finalSharesToConsider), costPerShare=\(actualCostPerShare)")
+        
+        let currentProfitPercent = ((currentPrice - actualCostPerShare) / actualCostPerShare) * 100.0
+        let isTop300Profitable = currentProfitPercent > 0
+        AppLogger.shared.debug("  Profit check (Top 300): currentProfit=\(currentProfitPercent)%, isProfitable=\(isTop300Profitable)")
+        
+        let entry: Double
+        let target: Double
+        let trailingStop: Double
+        
+        if isTop300Profitable {
+            target = (currentPrice + actualCostPerShare) / 2.0
+            entry = (currentPrice - actualCostPerShare) / 4.0 + target
+            trailingStop = ((entry - target) / target) * 100.0
+            AppLogger.shared.debug("  Top 300 profitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
+        } else {
+            entry = currentPrice * (1.0 - atrValue / 100.0)
+            target = entry * (1.0 - 2.0 * atrValue / 100.0)
+            trailingStop = atrValue
+            AppLogger.shared.debug("  Top 300 unprofitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
+        }
+        
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        let totalGain = finalSharesToConsider * (target - actualCostPerShare)
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        let profitIndicator = isTop300Profitable ? "(Top 300)" : "(Top 300 - UNPROFITABLE)"
+        let formattedDescription = String(format: "%@ SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                                          profitIndicator, Int(finalSharesToConsider), symbol, target, trailingStop, actualCostPerShare)
+        
+        guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in Top 300 order: \(trailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating Top 300 order: trailingStop=\(trailingStop)%, shares=\(finalSharesToConsider), target=\(target)")
+        
+        return SalesCalcResultsRecord(
+            shares: finalSharesToConsider,
+            rollingGainLoss: totalGain,
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: finalSharesToConsider,
+            trailingStop: trailingStop,
+            entry: entry,
+            target: target,
+            cancel: exit,
+            description: formattedDescription,
+            openDate: "Top300"
+        )
+    }
+
+    private func calculateTop400Order(
+        symbol: String,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        sharesAvailableForTrading: Double,
+        atrValue: Double
+    ) async -> SalesCalcResultsRecord? {
+        
+        AppLogger.shared.debug("  Top 400 order: ATR=\(atrValue)%")
+        
+        guard !sortedTaxLots.isEmpty else { return nil }
+        
+        // Check if position has at least 400 shares total
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        guard totalShares >= 400.0 else { return nil }
+        
+        let finalSharesToConsider = 400.0
+        
+        // Calculate the cost per share for the 400 most expensive shares
+        var sharesRemaining = finalSharesToConsider
+        var totalCostOfTop400 = 0.0
+        
+        for lot in sortedTaxLots {
+            if sharesRemaining <= 0 { break }
+            let sharesFromThisLot = min(lot.quantity, sharesRemaining)
+            totalCostOfTop400 += sharesFromThisLot * lot.costPerShare
+            sharesRemaining -= sharesFromThisLot
+        }
+        
+        let actualCostPerShare = totalCostOfTop400 / finalSharesToConsider
+        AppLogger.shared.debug("  Top 400 cost calculation: totalCost=\(totalCostOfTop400), shares=\(finalSharesToConsider), costPerShare=\(actualCostPerShare)")
+        
+        let currentProfitPercent = ((currentPrice - actualCostPerShare) / actualCostPerShare) * 100.0
+        let isTop400Profitable = currentProfitPercent > 0
+        AppLogger.shared.debug("  Profit check (Top 400): currentProfit=\(currentProfitPercent)%, isProfitable=\(isTop400Profitable)")
+        
+        let entry: Double
+        let target: Double
+        let trailingStop: Double
+        
+        if isTop400Profitable {
+            target = (currentPrice + actualCostPerShare) / 2.0
+            entry = (currentPrice - actualCostPerShare) / 4.0 + target
+            trailingStop = ((entry - target) / target) * 100.0
+            AppLogger.shared.debug("  Top 400 profitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
+        } else {
+            entry = currentPrice * (1.0 - atrValue / 100.0)
+            target = entry * (1.0 - 2.0 * atrValue / 100.0)
+            trailingStop = atrValue
+            AppLogger.shared.debug("  Top 400 unprofitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
+        }
+        
+        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
+        
+        let totalGain = finalSharesToConsider * (target - actualCostPerShare)
+        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+        
+        let profitIndicator = isTop400Profitable ? "(Top 400)" : "(Top 400 - UNPROFITABLE)"
+        let formattedDescription = String(format: "%@ SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+                                          profitIndicator, Int(finalSharesToConsider), symbol, target, trailingStop, actualCostPerShare)
+        
+        guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in Top 400 order: \(trailingStop)%")
+            return nil
+        }
+        
+        AppLogger.shared.debug("  Creating Top 400 order: trailingStop=\(trailingStop)%, shares=\(finalSharesToConsider), target=\(target)")
+        
+        return SalesCalcResultsRecord(
+            shares: finalSharesToConsider,
+            rollingGainLoss: totalGain,
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: finalSharesToConsider,
+            trailingStop: trailingStop,
+            entry: entry,
+            target: target,
+            cancel: exit,
+            description: formattedDescription,
+            openDate: "Top400"
         )
     }
     
