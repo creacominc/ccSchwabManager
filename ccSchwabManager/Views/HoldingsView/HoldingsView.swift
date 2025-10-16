@@ -109,9 +109,11 @@ struct HoldingsView: View {
 
     var filteredHoldings: [Position] {
         holdings.filter { position in
-            let matchesText = searchText.isEmpty ||
-                (position.instrument?.symbol?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                (position.instrument?.description?.localizedCaseInsensitiveContains(searchText) ?? false)
+            // Trim trailing (and leading) spaces from the search query for matching
+            let trimmedQuery = searchText.trimmingCharacters(in: .whitespaces)
+            let matchesText = trimmedQuery.isEmpty ||
+                (position.instrument?.symbol?.localizedCaseInsensitiveContains(trimmedQuery) ?? false) ||
+                (position.instrument?.description?.localizedCaseInsensitiveContains(trimmedQuery) ?? false)
             
             let matchesAssetType = selectedAssetTypes.isEmpty || 
                 (position.instrument?.assetType).map { selectedAssetTypes.contains($0) } ?? false
@@ -287,6 +289,9 @@ struct HoldingsView: View {
                             TextField("Search by symbol or description", text: $searchText)
                                 .focused($isSearchFieldFocused)
                                 .textFieldStyle(.plain)
+                                .textInputAutocapitalization(.never)
+                                .disableAutocorrection(true)
+                                .keyboardType(.asciiCapable)
                                 .submitLabel(.done)
                                 .onSubmit {
                                     // Optional: Handle search submission
