@@ -6,7 +6,7 @@ struct RecommendedOCOOrdersSection: View {
     // MARK: - Properties
     let symbol: String
     let atrValue: Double
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
     let quoteData: QuoteData?
     let accountNumber: String
     let position: Position
@@ -70,7 +70,7 @@ struct RecommendedOCOOrdersSection: View {
                     SellOrdersSection(
                         sellOrders: viewModel.recommendedSellOrders,
                         selectedIndex: viewModel.selectedSellOrderIndex,
-                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        sharesAvailableForTrading: $sharesAvailableForTrading,
                         onOrderSelection: { index in
                             viewModel.selectedSellOrderIndex = index
                         },
@@ -543,12 +543,16 @@ struct RecommendedOCOOrdersSection: View {
 }
 
 // MARK: - Previews
-#Preview("RecommendedOCOOrdersSection - Full View", traits: .landscapeLeft) {
-    ScrollView {
+#Preview("RecommendedOCOOrdersSection - Full View", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 150
+
+    ScrollView
+    {
         RecommendedOCOOrdersSection(
             symbol: "AAPL",
             atrValue: 2.5,
-            sharesAvailableForTrading: 150,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
             quoteData: QuoteData(
                 assetMainType: "EQUITY",
                 assetSubType: "COE",
@@ -599,12 +603,16 @@ struct RecommendedOCOOrdersSection: View {
     .padding()
 }
 
-#Preview("RecommendedOCOOrdersSection - Simple UI", traits: .landscapeLeft) {
-    ScrollView {
+#Preview("RecommendedOCOOrdersSection - Simple UI", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 25
+
+    ScrollView
+    {
         RecommendedOCOOrdersSection(
             symbol: "TSLA",
             atrValue: 1.8,
-            sharesAvailableForTrading: 25,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
             quoteData: QuoteData(
                 assetMainType: "EQUITY",
                 assetSubType: "COE",
@@ -655,12 +663,16 @@ struct RecommendedOCOOrdersSection: View {
     .padding()
 }
 
-#Preview("RecommendedOCOOrdersSection - Minimal Data", traits: .landscapeLeft) {
-    ScrollView {
+#Preview("RecommendedOCOOrdersSection - Minimal Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 0
+
+    ScrollView
+    {
         RecommendedOCOOrdersSection(
             symbol: "MSFT",
             atrValue: 1.0,
-            sharesAvailableForTrading: 0,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
             quoteData: nil, // No quote data to avoid calculations
             accountNumber: "111222333",
             position: Position(shortQuantity: 0, averagePrice: 300.0, longQuantity: 0, marketValue: 0.0, longOpenProfitLoss: 0.0)

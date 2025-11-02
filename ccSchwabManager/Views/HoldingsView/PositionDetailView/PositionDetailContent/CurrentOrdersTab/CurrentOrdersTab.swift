@@ -1,22 +1,42 @@
 import SwiftUI
 
-struct CurrentOrdersTab: View {
+struct CurrentOrdersTab: View
+{
     let symbol: String
     let orders: [Order]
-    
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 20) {
+    let position: Position
+    @Binding var sharesAvailableForTrading: Double // Initial value from parent, will be recomputed
+    @Binding var marketValue: Double
+    let atrValue: Double // Initial value from parent, will be recomputed
+    let lastPrice: Double
+
+    var body: some View
+    {
+        ScrollView
+        {
+            LazyVStack(spacing: 20)
+            {
                 // Current Orders Section
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0)
+                {
                     // Section Header
-                    HStack {
+                    HStack
+                    {
                         Image(systemName: "clock.arrow.circlepath")
                             .foregroundColor(.blue)
                         Text("Current Orders")
                             .font(.headline)
                             .fontWeight(.semibold)
                         Spacer()
+                        
+                        // Critical information on the same line
+                        CriticalInfoRow(
+                            sharesAvailableForTrading: sharesAvailableForTrading,
+                            marketValue: marketValue,
+                            position: position,
+                            lastPrice: lastPrice,
+                            atrValue: atrValue
+                        )
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -40,22 +60,47 @@ struct CurrentOrdersTab: View {
     }
 }
 
-#Preview("CurrentOrdersTab - With Orders", traits: .landscapeLeft) {
+#Preview("CurrentOrdersTab - With Orders", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 42.1
+    @Previewable @State var marketValue: Double = 300.0
+    let atrValue: Double = 3.2 // Initial value from parent, will be recomputed
+    let lastPrice: Double = 50.50
+
     VStack {
         createMockTabBar()
         CurrentOrdersTab(
             symbol: "AAPL",
-            orders: createMockOrders()
+            orders: createMockOrders(),
+            position: Position(shortQuantity: 0, longQuantity: 0,
+                               marketValue: marketValue, longOpenProfitLoss: 0.0),
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
+            atrValue: atrValue,
+            lastPrice: lastPrice
         )
     }
 }
 
-#Preview("CurrentOrdersTab - No Orders", traits: .landscapeLeft) {
-    VStack {
+#Preview("CurrentOrdersTab - No Orders", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 42.1
+    @Previewable @State var marketValue: Double = 300.0
+    let atrValue: Double = 3.2 // Initial value from parent, will be recomputed
+    let lastPrice: Double = 50.50
+
+    VStack
+    {
         createMockTabBar()
         CurrentOrdersTab(
             symbol: "XYZ",
-            orders: []
+            orders: [],
+            position: Position(shortQuantity: 0, longQuantity: 0,
+                               marketValue: marketValue, longOpenProfitLoss: 0.0),
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
+            atrValue: atrValue,
+            lastPrice: lastPrice
         )
     }
 }
@@ -113,7 +158,7 @@ private func createMockTabBar() -> some View {
         )
         TabButton(
             title: "Sales Calc",
-            icon: "calculator",
+            icon: "number.circle.fill",
             isSelected: false,
             action: {}
         )

@@ -6,7 +6,7 @@ struct SellOrdersSection: View {
     // MARK: - Properties
     let sellOrders: [SalesCalcResultsRecord]
     let selectedIndex: Int?
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
     let onOrderSelection: (Int?) -> Void
     let onCopyValue: (Double, String) -> Void
     let onCopyText: (String) -> Void
@@ -73,7 +73,7 @@ struct SellOrdersSection: View {
                 Button(action: {
                     onOrderSelection(isSelected ? nil : index)
                 }) {
-                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    Image(systemName: isSelected ? "circle.inset.filled" : "circle")
                         .foregroundColor(.red)
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -122,7 +122,9 @@ struct SellOrdersSection: View {
 }
 
 // MARK: - Previews
-#Preview("SellOrdersSection - With Orders") {
+#Preview("SellOrdersSection - With Orders")
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 150
     let mockOrders = [
         SalesCalcResultsRecord(
             shares: 100,
@@ -151,11 +153,11 @@ struct SellOrdersSection: View {
             openDate: "MinBE"
         )
     ]
-    
-    return SellOrdersSection(
+
+    SellOrdersSection(
         sellOrders: mockOrders,
         selectedIndex: 0,
-        sharesAvailableForTrading: 150,
+        sharesAvailableForTrading: $sharesAvailableForTrading,
         onOrderSelection: { _ in },
         onCopyValue: { _, _ in },
         onCopyText: { _ in }
@@ -163,11 +165,13 @@ struct SellOrdersSection: View {
     .padding()
 }
 
-#Preview("SellOrdersSection - Empty") {
+#Preview("SellOrdersSection - Empty")
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 0
     SellOrdersSection(
         sellOrders: [],
         selectedIndex: nil,
-        sharesAvailableForTrading: 0,
+        sharesAvailableForTrading: $sharesAvailableForTrading,
         onOrderSelection: { _ in },
         onCopyValue: { _, _ in },
         onCopyText: { _ in }

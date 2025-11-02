@@ -1,13 +1,17 @@
 import SwiftUI
 
-struct PriceHistoryTab: View {
+struct PriceHistoryTab: View
+{
     let priceHistory: CandleList?
     let isLoading: Bool
     let formatDate: (Int64?) -> String
 
-    var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
+    var body: some View
+    {
+        GeometryReader
+        { geometry in
+            ScrollView
+            {
                 PriceHistorySection(
                     priceHistory: priceHistory,
                     isLoading: isLoading,
@@ -245,7 +249,7 @@ private func createMockTabBar() -> some View {
         )
         TabButton(
             title: "Sales Calc",
-            icon: "calculator",
+            icon: "number.circle.fill",
             isSelected: false,
             action: {}
         )

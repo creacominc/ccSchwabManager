@@ -67,7 +67,8 @@ enum SortableColumn: String, CaseIterable, Identifiable {
  * - Delete key clears search on both platforms
  */
 
-struct HoldingsView: View {
+struct HoldingsView: View
+{
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var holdings: [Position] = []
     @State private var searchText = ""
@@ -84,6 +85,7 @@ struct HoldingsView: View {
     @State private var isFilterExpanded = false
     @State private var atrValue: Double = 0.0
     @State private var sharesAvailableForTrading: Double = 0.0
+    @State private var marketValue: Double = 0.0
     @State private var selectedTab: Int = 0
     @StateObject private var loadingState = LoadingState()
     @State private var isNavigating = false
@@ -274,7 +276,7 @@ struct HoldingsView: View {
                     
                     if isSearchFieldFocused {
                         Button(action: { isSearchFieldFocused = false }) {
-                            Label("Hide Keyboard", systemImage: "keyboard.chevron.compact.down")
+                            Label("Hide Keyboard", systemImage: "keyboard")
                         }
                         .buttonStyle(.plain)
                     }
@@ -514,7 +516,8 @@ struct HoldingsView: View {
                 totalPositions: sortedHoldings.count,
                 symbol: selected.position.instrument?.symbol ?? "",
                 atrValue: atrValue,
-                sharesAvailableForTrading: sharesAvailableForTrading,
+                sharesAvailableForTrading: $sharesAvailableForTrading,
+                marketValue: $marketValue,
                 onNavigate: { newIndex in
                     guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
                     guard !isNavigating else { return } // Prevent rapid navigation

@@ -1,13 +1,15 @@
 import SwiftUI
 
-struct PositionDetailContent: View {
+struct PositionDetailContent: View
+{
     let position: Position
     let accountNumber: String
     let currentIndex: Int
     let totalPositions: Int
     let symbol: String
     let atrValue: Double
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
+    @Binding var marketValue: Double
     let onNavigate: (Int) -> Void
     let priceHistory: CandleList?
     let isLoadingPriceHistory: Bool
@@ -17,31 +19,36 @@ struct PositionDetailContent: View {
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
     let transactions: [Transaction]
-//    @Binding var viewSize: CGSize
     @Binding var selectedTab: Int
     @State private var orders: [Order] = []
     @State private var isLoadingOrders: Bool = false
-    
-    private var detailsTabView: some View {
+
+    private var detailsTabView: some View
+    {
         DetailsTab(
             position: position,
             accountNumber: accountNumber,
             symbol: symbol,
             atrValue: atrValue,
-            sharesAvailableForTrading: sharesAvailableForTrading,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
             lastPrice: getCurrentPrice(),
             quoteData: quoteData
         )
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
+    var body: some View
+    {
+        VStack(spacing: 0)
+        {
             // Custom tab bar with integrated navigation
-            VStack(spacing: 0) {
+            VStack(spacing: 0)
+            {
                 // Navigation and tab header row
-                HStack(spacing: 0) {
+                HStack(spacing: 0)
+                {
                     // Previous Position Button
-                    Button(action: { onNavigate(currentIndex - 1) }) {
+                    Button(action: { onNavigate(currentIndex - 1) })
+                    {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 14))
                             .foregroundColor(.accentColor)
@@ -52,37 +59,38 @@ struct PositionDetailContent: View {
                     .padding(.vertical, 8)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(6)
-                    
+
                     // Tab buttons
-                    HStack(spacing: 0) {
+                    HStack(spacing: 0)
+                    {
                         TabButton(
                             title: position.instrument?.symbol ?? "Summary",
                             icon: "list.bullet",
                             isSelected: selectedTab == 0,
                             action: { selectedTab = 0 }
                         )
-                        
+
                         TabButton(
                             title: "Price History",
                             icon: "chart.line.uptrend.xyaxis",
                             isSelected: selectedTab == 1,
                             action: { selectedTab = 1 }
                         )
-                        
+
                         TabButton(
                             title: "Transactions",
                             icon: "list.bullet.rectangle",
                             isSelected: selectedTab == 2,
                             action: { selectedTab = 2 }
                         )
-                        
+
                         TabButton(
                             title: "Sales Calc",
-                            icon: "calculator",
+                            icon: "number.circle.fill",
                             isSelected: selectedTab == 3,
                             action: { selectedTab = 3 }
                         )
-                        
+
                         TabButton(
                             title: "Current",
                             icon: "clock.arrow.circlepath",
@@ -96,7 +104,7 @@ struct PositionDetailContent: View {
                             isSelected: selectedTab == 5,
                             action: { selectedTab = 5 }
                         )
-                        
+
                         TabButton(
                             title: "Sequence",
                             icon: "arrow.up.circle",
@@ -105,9 +113,10 @@ struct PositionDetailContent: View {
                         )
                     }
                     .background(Color.gray.opacity(0.1))
-                    
+
                     // Next Position Button
-                    Button(action: { onNavigate(currentIndex + 1) }) {
+                    Button(action: { onNavigate(currentIndex + 1) })
+                    {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 14))
                             .foregroundColor(.accentColor)
@@ -121,12 +130,15 @@ struct PositionDetailContent: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 2)
-                
+
                 // Tab content area
-                GeometryReader { geometry in
+                GeometryReader
+                { geometry in
                     // Custom content switcher instead of TabView
-                    Group {
-                        switch selectedTab {
+                    Group
+                    {
+                        switch selectedTab
+                        {
                         case 1:
                             PriceHistoryTab(
                                 priceHistory: priceHistory,
@@ -143,19 +155,30 @@ struct PositionDetailContent: View {
                             SalesCalcTab(
                                 symbol: symbol,
                                 atrValue: atrValue,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
+                                position: position,
+                                sharesAvailableForTrading: $sharesAvailableForTrading,
+                                marketValue: $marketValue,
                                 taxLotData: taxLotData,
                                 isLoadingTaxLots: isLoadingTaxLots,
-                                quoteData: quoteData
+                                quoteData: quoteData,
+                                lastPrice: getCurrentPrice()
                             )
                         case 4:
-                            CurrentOrdersTab(symbol: symbol, orders: orders)
+                            CurrentOrdersTab(
+                                symbol: symbol, orders: orders,
+                                position: position,
+                                sharesAvailableForTrading: $sharesAvailableForTrading,
+                                marketValue: $marketValue,
+                                atrValue: atrValue,
+                                lastPrice: getCurrentPrice()
+                            )
                         case 5:
                             OCOOrdersTab(
                                 symbol: symbol,
                                 atrValue: atrValue,
                                 taxLotData: taxLotData,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
+                                sharesAvailableForTrading: $sharesAvailableForTrading,
+                                marketValue: $marketValue,
                                 quoteData: quoteData,
                                 accountNumber: accountNumber,
                                 position: position,
@@ -166,7 +189,8 @@ struct PositionDetailContent: View {
                                 symbol: symbol,
                                 atrValue: atrValue,
                                 taxLotData: taxLotData,
-                                sharesAvailableForTrading: sharesAvailableForTrading,
+                                sharesAvailableForTrading: $sharesAvailableForTrading,
+                                marketValue: $marketValue,
                                 quoteData: quoteData,
                                 accountNumber: accountNumber,
                                 position: position,
@@ -180,12 +204,8 @@ struct PositionDetailContent: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onAppear {
-//                        viewSize = geometry.size
                         fetchOrders()
                     }
-//                    .onChange(of: geometry.size) { oldValue, newValue in
-//                        viewSize = newValue
-//                    }
                     .onChange(of: symbol) { _, _ in
                         fetchOrders()
                     }
@@ -193,8 +213,9 @@ struct PositionDetailContent: View {
             }
         }
     }
-    
-    private func getCurrentPrice() -> Double {
+
+    private func getCurrentPrice() -> Double
+    {
         // Use quote data for current price, fallback to price history if quote is not available
         if let quote = quoteData?.quote?.lastPrice {
             return quote
@@ -207,13 +228,13 @@ struct PositionDetailContent: View {
             return priceHistory?.candles.last?.close ?? 0.0
         }
     }
-    
-    private func fetchOrders() {
+
+    private func fetchOrders()
+    {
         isLoadingOrders = true
-        
-        Task {
+        Task
+        {
             let fetchedOrders = SchwabClient.shared.getOrderList()
-            
             await MainActor.run {
                 self.orders = fetchedOrders
                 self.isLoadingOrders = false

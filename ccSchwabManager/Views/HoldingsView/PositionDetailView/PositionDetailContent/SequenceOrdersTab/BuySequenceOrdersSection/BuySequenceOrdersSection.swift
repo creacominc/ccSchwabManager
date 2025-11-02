@@ -4,7 +4,7 @@ struct BuySequenceOrdersSection: View {
     let symbol: String
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
     let quoteData: QuoteData?
     let accountNumber: String
     
@@ -31,7 +31,8 @@ struct BuySequenceOrdersSection: View {
     @State private var lastCalculatedDataHash: String = ""
     
     // Computed property to get adjusted orders with trailing stop modifications
-    private var adjustedSequenceOrders: [BuySequenceOrder] {
+    private var adjustedSequenceOrders: [BuySequenceOrder]
+    {
         guard !selectedSequenceOrderIndices.isEmpty else { return sequenceOrders }
         
         // Sort selected indices to ensure they're in order
@@ -80,14 +81,16 @@ struct BuySequenceOrdersSection: View {
         return adjustedOrders
     }
     
-    private func getDataHash() -> String {
+    private func getDataHash() -> String
+    {
         // Create a hash of the data that affects calculations
         let taxLotHash = taxLotData.map { "\($0.quantity)-\($0.costPerShare)" }.joined(separator: "|")
         let quoteHash = quoteData?.quote?.lastPrice?.description ?? "nil"
         return "\(symbol)-\(atrValue)-\(sharesAvailableForTrading)-\(taxLotHash)-\(quoteHash)"
     }
     
-    private func getSequenceOrders() -> [BuySequenceOrder] {
+    private func getSequenceOrders() -> [BuySequenceOrder]
+    {
         let currentDataHash = getDataHash()
         
         // Return cached results if data hasn't changed
@@ -104,7 +107,8 @@ struct BuySequenceOrdersSection: View {
         return orders
     }
     
-    private func calculateBuySequenceOrders() -> [BuySequenceOrder] {
+    private func calculateBuySequenceOrders() -> [BuySequenceOrder]
+    {
         var sequenceOrders: [BuySequenceOrder] = []
         
         AppLogger.shared.debug("=== calculateBuySequenceOrders START ===")
@@ -170,7 +174,8 @@ struct BuySequenceOrdersSection: View {
         var orderIndex = 0
         var currentTarget = lastOrderTarget
         
-        while orderIndex < maxOrders {
+        while orderIndex < maxOrders
+        {
             // Calculate target price for this order
             let targetPrice = currentTarget
             
@@ -239,7 +244,8 @@ struct BuySequenceOrdersSection: View {
     }
     
     // Helper function to get options data directly from positions
-    private func getOptionsDataForSymbol(_ symbol: String) -> (minimumStrike: Double?, minimumDTE: Int?, contractCount: Int) {
+    private func getOptionsDataForSymbol(_ symbol: String) -> (minimumStrike: Double?, minimumDTE: Int?, contractCount: Int)
+    {
         let accounts = SchwabClient.shared.getAccounts()
         var minimumStrike: Double?
         var minimumDTE: Int?
@@ -294,7 +300,8 @@ struct BuySequenceOrdersSection: View {
     
 
     
-    private func getCurrentPrice() -> Double? {
+    private func getCurrentPrice() -> Double?
+    {
         AppLogger.shared.debug("getCurrentPrice() called for symbol: \(symbol)")
         AppLogger.shared.debug("Quote data symbol: \(quoteData?.symbol ?? "nil")")
         AppLogger.shared.debug("Quote data available: \(quoteData != nil)")
@@ -479,18 +486,23 @@ struct BuySequenceOrdersSection: View {
     
 
 
-    private var contentView: some View {
-        Group {
-            if sequenceOrders.isEmpty {
+    private var contentView: some View
+    {
+        Group
+        {
+            if sequenceOrders.isEmpty
+            {
                 EmptyStateView(
                     symbol: symbol,
                     atrValue: atrValue,
-                    sharesAvailableForTrading: sharesAvailableForTrading,
+                    sharesAvailableForTrading: $sharesAvailableForTrading,
                     taxLotDataCount: taxLotData.count,
                     quoteDataAvailable: quoteData != nil,
                     optionsData: getOptionsDataForSymbol(symbol)
                 )
-            } else {
+            }
+            else
+            {
                 OrderTableView(
                     sequenceOrders: sequenceOrders,
                     adjustedSequenceOrders: adjustedSequenceOrders,
@@ -712,17 +724,19 @@ struct BuySequenceOrdersSection: View {
     }
 }
 
-#Preview("Buy Sequence Orders Section - Complete View", traits: .landscapeLeft) {
+#Preview("Buy Sequence Orders Section - Complete View", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 100
     // Mock data for preview
     let mockTaxLotData: [SalesCalcPositionsRecord] = [
         // Add mock tax lot data here if needed for preview
     ]
-    
+
     return BuySequenceOrdersSection(
         symbol: "AAPL",
         atrValue: 2.5,
         taxLotData: mockTaxLotData,
-        sharesAvailableForTrading: 100.0,
+        sharesAvailableForTrading: $sharesAvailableForTrading,
         quoteData: nil,
         accountNumber: "123456789"
     )

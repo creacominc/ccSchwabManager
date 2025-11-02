@@ -1,13 +1,17 @@
 import SwiftUI
 
-struct TransactionsTab: View {
+struct TransactionsTab: View
+{
     let isLoading: Bool
     let symbol: String
     let transactions: [Transaction]
-    
-    var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
+
+    var body: some View
+    {
+        GeometryReader
+        { geometry in
+            ScrollView
+            {
                 TransactionHistorySection(
                     isLoading: isLoading,
                     symbol: symbol,
@@ -22,7 +26,8 @@ struct TransactionsTab: View {
     }
 }
 
-#Preview("TransactionsTab - With Data", traits: .landscapeLeft) {
+#Preview("TransactionsTab - With Data", traits: .landscapeLeft)
+{
     let sampleTransactions = [
         Transaction(
             activityId: 12345,
@@ -73,7 +78,8 @@ struct TransactionsTab: View {
     .padding()
 }
 
-#Preview("TransactionsTab - Loading State", traits: .landscapeLeft) {
+#Preview("TransactionsTab - Loading State", traits: .landscapeLeft)
+{
     return GeometryReader { geometry in
         VStack{
             createMockTabBar()
@@ -87,7 +93,8 @@ struct TransactionsTab: View {
     .padding()
 }
 
-#Preview("TransactionsTab - Different Symbol", traits: .landscapeLeft) {
+#Preview("TransactionsTab - Different Symbol", traits: .landscapeLeft)
+{
     let sampleTransactions = [
         Transaction(
             activityId: 12347,
@@ -122,7 +129,8 @@ struct TransactionsTab: View {
 }
 
 @MainActor
-private func createMockTabBar() -> some View {
+private func createMockTabBar() -> some View
+{
     HStack(spacing: 0) {
         TabButton(
             title: "Details",
@@ -144,7 +152,7 @@ private func createMockTabBar() -> some View {
         )
         TabButton(
             title: "Sales Calc",
-            icon: "calculator",
+            icon: "number.circle.fill",
             isSelected: false,
             action: {}
         )

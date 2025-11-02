@@ -1,18 +1,23 @@
 import SwiftUI
 
-struct OCOOrdersTab: View {
+struct OCOOrdersTab: View
+{
     let symbol: String
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
+    @Binding var marketValue: Double
     let quoteData: QuoteData?
     let accountNumber: String
     let position: Position
     let lastPrice: Double
-    
-    var body: some View {
-        GeometryReader { _ in
-            VStack(spacing: 0) {
+
+    var body: some View
+    {
+        GeometryReader
+        { _ in
+            VStack(spacing: 0)
+            {
                 // OCO Orders Section with fixed header and scrollable content
                 VStack(alignment: .leading, spacing: 0) {
                     // Section Header with critical information (fixed)
@@ -22,29 +27,35 @@ struct OCOOrdersTab: View {
                         Text("Recommended")
                             .font(.headline)
                             .fontWeight(.semibold)
-                        
+
                         Spacer()
-                        
+
                         // Critical information on the same line
-                        criticalInfoRow
+                        CriticalInfoRow(
+                            sharesAvailableForTrading: sharesAvailableForTrading,
+                            marketValue: marketValue,
+                            position: position,
+                            lastPrice: lastPrice,
+                            atrValue: atrValue
+                        )
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(Color.green.opacity(0.1))
-                    
+
                     // Scrollable section content
                     ScrollView {
                         RecommendedOCOOrdersSection(
                             symbol: symbol,
                             atrValue: atrValue,
-                            sharesAvailableForTrading: sharesAvailableForTrading,
+                            sharesAvailableForTrading: $sharesAvailableForTrading,
                             quoteData: quoteData,
                             accountNumber: accountNumber,
                             position: position
                         )
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
-                        
+
                         // Add bottom padding to ensure content is fully visible
                         Spacer(minLength: 20)
                     }
@@ -59,115 +70,48 @@ struct OCOOrdersTab: View {
             .background(Color.black.opacity(0.1))
         }
     }
-    
-    private var criticalInfoRow: some View {
-        HStack(spacing: 16) {
-            // P/L%
-            HStack(spacing: 4) {
-                Text("P/L%:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(String(format: "%.1f%%", calculatePLPercent()))
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(getPLColor())
-            }
-            
-            // Last Price
-            HStack(spacing: 4) {
-                Text("Last:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(String(format: "%.2f", lastPrice))
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-            }
-            
-            // Quantity
-            HStack(spacing: 4) {
-                Text("Qty:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(String(format: "%.2f", (position.longQuantity ?? 0) + (position.shortQuantity ?? 0)))
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-            }
-            
-            // ATR
-            HStack(spacing: 4) {
-                Text("ATR:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text(String(format: "%.2f%%", atrValue))
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-            }
-            
-            // DTE/# (empty for equity, could be populated for options)
-            HStack(spacing: 4) {
-                Text("DTE/#:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("") // Empty for equity, could be populated for options
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-            }
-        }
-    }
-    
-    private func calculatePLPercent() -> Double {
-        let pl = position.longOpenProfitLoss ?? 0
-        let mv = position.marketValue ?? 0
-        let costBasis = mv - pl
-        return costBasis != 0 ? (pl / costBasis) * 100 : 0
-    }
-    
-    private func getPLColor() -> Color {
-        let plPercent = calculatePLPercent()
-        if plPercent < 0 {
-            return .red
-        }
-        let threshold = min(5.0, 2 * atrValue)
-        if plPercent <= threshold {
-            return .orange
-        } else {
-            return .green
-        }
-    }
 }
 
-#Preview("OCOOrdersTab - With Data", traits: .landscapeLeft) {
-    VStack(spacing: 0) {
+#Preview("OCOOrdersTab - With Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 500
+    @Previewable @State var marketValue: Double = 17550.0
+
+    VStack(spacing: 0)
+    {
         createMockTabBar()
         OCOOrdersTab(
             symbol: "AAPL",
             atrValue: 2.45,
             taxLotData: createMockTaxLotData(),
-            sharesAvailableForTrading: 500.0,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
             quoteData: createMockQuoteData(),
             accountNumber: "123456789",
-            position: Position(shortQuantity: 50, longQuantity: 100, marketValue: 17550.0, longOpenProfitLoss: 2525.0),
+            position: Position(shortQuantity: 50, longQuantity: 100, marketValue: marketValue, longOpenProfitLoss: 2525.0),
             lastPrice: 175.50
         )
         .background(Color.blue.opacity(0.1))
     }
 }
 
-#Preview("OCOOrdersTab - No Data", traits: .landscapeLeft) {
+#Preview("OCOOrdersTab - No Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 42.1
+    @Previewable @State var marketValue: Double = 0.0
+
     VStack(spacing: 0) {
         createMockTabBar()
         OCOOrdersTab(
             symbol: "XYZ",
             atrValue: 0.0,
             taxLotData: [],
-            sharesAvailableForTrading: 0.0,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
             quoteData: nil,
             accountNumber: "987654321",
-            position: Position(shortQuantity: 0, longQuantity: 0, marketValue: 0.0, longOpenProfitLoss: 0.0),
+            position: Position(shortQuantity: 0, longQuantity: 0,
+                               marketValue: marketValue, longOpenProfitLoss: 0.0),
             lastPrice: 0.0
         )
         .background(Color.blue.opacity(0.1))
@@ -175,7 +119,8 @@ struct OCOOrdersTab: View {
 }
 
 // MARK: - Mock Data for Previews
-private func createMockTaxLotData() -> [SalesCalcPositionsRecord] {
+private func createMockTaxLotData() -> [SalesCalcPositionsRecord]
+{
     return [
         SalesCalcPositionsRecord(
             openDate: "2024-01-15 09:30:43",
@@ -210,7 +155,8 @@ private func createMockTaxLotData() -> [SalesCalcPositionsRecord] {
     ]
 }
 
-private func createMockQuoteData() -> QuoteData {
+private func createMockQuoteData() -> QuoteData
+{
     let quote = Quote(
         askPrice: 175.55,
         askSize: 150,
@@ -249,8 +195,10 @@ private func createMockQuoteData() -> QuoteData {
 }
 
 @MainActor
-private func createMockTabBar() -> some View {
-    HStack(spacing: 0) {
+private func createMockTabBar() -> some View
+{
+    HStack(spacing: 0)
+    {
         TabButton(
             title: "Details",
             icon: "info.circle",
@@ -271,7 +219,7 @@ private func createMockTabBar() -> some View {
         )
         TabButton(
             title: "Sales Calc",
-            icon: "calculator",
+            icon: "number.circle.fill",
             isSelected: false,
             action: {}
         )

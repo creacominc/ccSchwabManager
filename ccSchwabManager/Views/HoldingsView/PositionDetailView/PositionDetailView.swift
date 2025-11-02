@@ -1,13 +1,15 @@
 import SwiftUI
 
-struct PositionDetailView: View {
+struct PositionDetailView: View
+{
     let position: Position
     let accountNumber: String
     let currentIndex: Int
     let totalPositions: Int
     let symbol: String
     let atrValue: Double // Initial value from parent, will be recomputed
-    let sharesAvailableForTrading: Double // Initial value from parent, will be recomputed
+    @Binding var sharesAvailableForTrading: Double // Initial value from parent, will be recomputed
+    @Binding var marketValue: Double
     let onNavigate: (Int) -> Void
     @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
@@ -25,7 +27,8 @@ struct PositionDetailView: View {
     @StateObject private var loadingState = LoadingState()
     @State private var isRefreshing = false
 
-    private func formatDate(_ timestamp: Int64?) -> String {
+    private func formatDate(_ timestamp: Int64?) -> String
+    {
         guard let timestamp = timestamp else { return "" }
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
         let formatter = DateFormatter()
@@ -33,13 +36,14 @@ struct PositionDetailView: View {
         return formatter.string(from: date)
     }
 
-    private func fetchDataForSymbol() {
+    private func fetchDataForSymbol()
+    {
         guard let symbol = position.instrument?.symbol else {
-            print("PositionDetailView: No symbol found for position")
+            AppLogger.shared.debug("PositionDetailView: No symbol found for position")
             return
         }
         
-        print("PositionDetailView: Fetching data for symbol \(symbol)")
+        AppLogger.shared.debug("PositionDetailView: Fetching data for symbol \(symbol)")
         
         // Show loading indicator immediately
         loadingState.setLoading(true)
@@ -53,7 +57,8 @@ struct PositionDetailView: View {
         isLoadingTaxLots = true
         
         // Run data fetching in background thread to allow UI to update
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async
+        {
             // Clear caches to ensure fresh data
             SchwabClient.shared.clearATRCache()
             SchwabClient.shared.clearPriceHistoryCache()
@@ -65,7 +70,7 @@ struct PositionDetailView: View {
             
             // Compute ATR from price history
             let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
-            print("PositionDetailView: Computed ATR for \(symbol): \(fetchedATRValue)")
+            AppLogger.shared.debug("PositionDetailView: Computed ATR for \(symbol): \(fetchedATRValue)")
             
             // Fetch tax lot data as part of the main data fetch
             // Get current price from quote for tax lot calculations
@@ -73,11 +78,11 @@ struct PositionDetailView: View {
                               fetchedQuote?.extended?.lastPrice ?? 
                               fetchedQuote?.regular?.regularMarketLastPrice
             let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
-            print("PositionDetailView: Fetched \(fetchedTaxLots.count) tax lots for \(symbol)")
+            AppLogger.shared.debug("PositionDetailView: Fetched \(fetchedTaxLots.count) tax lots for \(symbol)")
             
             // Compute shares available for trading using the tax lots
             let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
-            print("PositionDetailView: Computed shares available for \(symbol): \(fetchedSharesAvailable)")
+            AppLogger.shared.debug("PositionDetailView: Computed shares available for \(symbol): \(fetchedSharesAvailable)")
             
             // Update UI on main thread
             DispatchQueue.main.async {
@@ -99,11 +104,15 @@ struct PositionDetailView: View {
         }
     }
 
-    var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
+    var body: some View
+    {
+        ZStack
+        {
+            VStack(spacing: 0)
+            {
                 // Refresh button at the top
-                HStack {
+                HStack
+                {
                     Spacer()
                     Button(action: {
                         isRefreshing = true
@@ -131,7 +140,7 @@ struct PositionDetailView: View {
                     .padding(.vertical, 4)
                 }
                 .background(Color.gray.opacity(0.1))
-                
+
                 PositionDetailContent(
                     position: position,
                     accountNumber: accountNumber,
@@ -139,7 +148,8 @@ struct PositionDetailView: View {
                     totalPositions: totalPositions,
                     symbol: symbol,
                     atrValue: computedATRValue > 0 ? computedATRValue : atrValue,
-                    sharesAvailableForTrading: computedSharesAvailableForTrading > 0 ? computedSharesAvailableForTrading : sharesAvailableForTrading,
+                    sharesAvailableForTrading: $computedSharesAvailableForTrading,
+                    marketValue: $marketValue,
                     onNavigate: { newIndex in
                         guard newIndex >= 0 && newIndex < totalPositions else { return }
                         loadingState.isLoading = true
@@ -153,7 +163,6 @@ struct PositionDetailView: View {
                     taxLotData: taxLotData,
                     isLoadingTaxLots: isLoadingTaxLots,
                     transactions: transactions,
-//                    viewSize: $viewSize,
                     selectedTab: $selectedTab,
                 )
                 .padding(.horizontal)
@@ -163,6 +172,7 @@ struct PositionDetailView: View {
             // Initialize computed values with parent values
             computedATRValue = atrValue
             computedSharesAvailableForTrading = sharesAvailableForTrading
+            marketValue = position.marketValue ?? 0.0
             
             // Fetch data asynchronously
             fetchDataForSymbol()
@@ -170,7 +180,7 @@ struct PositionDetailView: View {
             // Add a safety timeout to clear loading state if it gets stuck
             DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
                 if loadingState.isLoading {
-                    print("PositionDetailView: Loading timeout - clearing stuck loading state")
+                    AppLogger.shared.debug("PositionDetailView: Loading timeout - clearing stuck loading state")
                     loadingState.forceClearLoading()
                 }
             }
@@ -178,13 +188,14 @@ struct PositionDetailView: View {
         .onChange(of: position.instrument?.symbol) { oldValue, newValue in
             // Refetch data when position changes (navigation)
             if oldValue != newValue {
-                print("PositionDetailView: Position changed from \(oldValue ?? "nil") to \(newValue ?? "nil")")
+                AppLogger.shared.debug("PositionDetailView: Position changed from \(oldValue ?? "nil") to \(newValue ?? "nil")")
+                marketValue = position.marketValue ?? 0.0
                 fetchDataForSymbol()
                 
                 // Add a safety timeout to clear loading state if it gets stuck
                 DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
                     if loadingState.isLoading {
-                        print("PositionDetailView: Loading timeout - clearing stuck loading state")
+                        AppLogger.shared.debug("PositionDetailView: Loading timeout - clearing stuck loading state")
                         loadingState.forceClearLoading()
                     }
                 }

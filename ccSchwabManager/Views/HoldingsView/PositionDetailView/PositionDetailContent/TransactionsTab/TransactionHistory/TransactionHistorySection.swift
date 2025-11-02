@@ -6,38 +6,76 @@ struct TransactionHistorySection: View {
     let transactions: [Transaction]
     @State private var currentSort: TransactionSortConfig? = TransactionSortConfig(column: .date, ascending: TransactionSortableColumn.date.defaultAscending)
     @State private var copiedValue: String = "TBD"
-
-    // Pre-compute transactions with computed prices to avoid repeated API calls
-    private var transactionsWithComputedPrices: [TransactionWithComputedPrice] {
-        return transactions.map { TransactionWithComputedPrice(transaction: $0, symbol: symbol) }
-    }
-
-    private var sortedTransactions: [TransactionWithComputedPrice] {
-        guard let sortConfig = currentSort else { return transactionsWithComputedPrices }
-        print( "=== Sorting transactions ===  \(symbol)" )
-        return transactionsWithComputedPrices.sorted { t1, t2 in
-            let ascending = sortConfig.ascending
-            switch sortConfig.column {
-            case .date:
-                let date1 = t1.transaction.tradeDate ?? ""
-                let date2 = t2.transaction.tradeDate ?? ""
-                return ascending ? date1 < date2 : date1 > date2
-            case .type:
-                let type1 = t1.transactionType
-                let type2 = t2.transactionType
-                return ascending ? type1 < type2 : type1 > type2
-            case .quantity:
-                let qty1 = t1.amount
-                let qty2 = t2.amount
-                return ascending ? qty1 < qty2 : qty1 > qty2
-            case .price:
-                let price1 = t1.computedPrice
-                let price2 = t2.computedPrice
-                return ascending ? price1 < price2 : price1 > price2
-            case .netAmount:
-                let amount1 = t1.transaction.netAmount ?? 0
-                let amount2 = t2.transaction.netAmount ?? 0
-                return ascending ? amount1 < amount2 : amount1 > amount2
+    @State private var sortedTransactions: [TransactionWithComputedPrice] = []
+    @State private var isProcessing: Bool = false
+    
+    // Track when transactions or sort config changes to trigger reprocessing
+    @State private var lastProcessedTransactions: [Transaction] = []
+    @State private var lastProcessedSort: TransactionSortConfig?
+    
+    private func processTransactions() {
+        // Check if we need to reprocess
+        let transactionsChanged = transactions.count != lastProcessedTransactions.count || 
+                                 transactions.first?.activityId != lastProcessedTransactions.first?.activityId
+        let sortChanged = currentSort?.column != lastProcessedSort?.column || 
+                         currentSort?.ascending != lastProcessedSort?.ascending
+        
+        guard transactionsChanged || sortChanged else { return }
+        
+        // Show loading indicator for processing
+        isProcessing = true
+        
+        // Capture values before detached task
+        let transactionsToProcess = transactions
+        let sortConfig = currentSort
+        let symbolToProcess = symbol
+        
+        Task.detached(priority: .userInitiated) {
+            print("=== Processing transactions for \(symbolToProcess) ===")
+            
+            // Compute prices for all transactions
+            let withPrices = transactionsToProcess.map { TransactionWithComputedPrice(transaction: $0, symbol: symbolToProcess) }
+            
+            // Sort transactions
+            let sorted: [TransactionWithComputedPrice]
+            if let sortConfig = sortConfig {
+                print("=== Sorting transactions ===  \(symbolToProcess)")
+                sorted = withPrices.sorted { t1, t2 in
+                    let ascending = sortConfig.ascending
+                    switch sortConfig.column {
+                    case .date:
+                        let date1 = t1.transaction.tradeDate ?? ""
+                        let date2 = t2.transaction.tradeDate ?? ""
+                        return ascending ? date1 < date2 : date1 > date2
+                    case .type:
+                        let type1 = t1.transactionType
+                        let type2 = t2.transactionType
+                        return ascending ? type1 < type2 : type1 > type2
+                    case .quantity:
+                        let qty1 = t1.amount
+                        let qty2 = t2.amount
+                        return ascending ? qty1 < qty2 : qty1 > qty2
+                    case .price:
+                        let price1 = t1.computedPrice
+                        let price2 = t2.computedPrice
+                        return ascending ? price1 < price2 : price1 > price2
+                    case .netAmount:
+                        let amount1 = t1.transaction.netAmount ?? 0
+                        let amount2 = t2.transaction.netAmount ?? 0
+                        return ascending ? amount1 < amount2 : amount1 > amount2
+                    }
+                }
+            } else {
+                sorted = withPrices
+            }
+            
+            // Update UI on main thread
+            await MainActor.run {
+                self.sortedTransactions = sorted
+                self.lastProcessedTransactions = transactionsToProcess
+                self.lastProcessedSort = sortConfig
+                self.isProcessing = false
+                print("=== Finished processing \(sorted.count) transactions for \(symbolToProcess) ===")
             }
         }
     }
@@ -75,6 +113,8 @@ struct TransactionHistorySection: View {
             } else {
                 currentSort = TransactionSortConfig(column: column, ascending: column.defaultAscending)
             }
+            // Trigger reprocessing when sort changes
+            processTransactions()
         }) {
             HStack {
                 if alignment == .trailing {
@@ -108,7 +148,7 @@ struct TransactionHistorySection: View {
             let calculatedWidths = TransactionRow.columnProportions.map { $0 * availableWidthForColumns }
             
             VStack(alignment: .leading, spacing: 0) {
-                if isLoading {
+                if isLoading || isProcessing {
                     ProgressView()
                         .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
                         .scaleEffect(2.0, anchor: .center)
@@ -174,6 +214,14 @@ struct TransactionHistorySection: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            // Process transactions when view first appears
+            processTransactions()
+        }
+        .onChange(of: transactions.count) { oldValue, newValue in
+            // Reprocess when transactions change
+            processTransactions()
         }
     }
 

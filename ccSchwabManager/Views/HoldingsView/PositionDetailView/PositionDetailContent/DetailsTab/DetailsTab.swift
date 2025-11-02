@@ -5,7 +5,7 @@ struct DetailsTab: View {
     let accountNumber: String
     let symbol: String
     let atrValue: Double
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
     let lastPrice: Double
     let quoteData: QuoteData?
 
@@ -112,7 +112,7 @@ struct DetailsTab: View {
                     case 2: return String(format: "%.2f", position.averagePrice ?? 0)
                     case 3: return String(format: "%.2f", lastPrice)
                     case 4: return accountNumber
-                    case 5: return String(format: "%.2f", sharesAvailableForTrading)
+                    case 5: return String(format: "%.0f", sharesAvailableForTrading)
                     default: return ""
                 }
 
@@ -171,7 +171,9 @@ struct DetailsTab: View {
 
 }
 
-#Preview("Details", traits: .landscapeLeft) {
+#Preview("Details", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 7.0
     let samplePosition = Position(
         shortQuantity: 0.0,
         averagePrice: 35.48,
@@ -182,15 +184,16 @@ struct DetailsTab: View {
             description: "TAT Technologies Ltd."
         )
     )
-    
-    return VStack {
+
+    VStack
+    {
         createMockTabBar()
         DetailsTab(
             position: samplePosition,
             accountNumber: "767",
             symbol: "TATT",
             atrValue: 7.70,
-            sharesAvailableForTrading: 7.0,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
             lastPrice: 36.55,
             quoteData: nil
         )
@@ -221,7 +224,7 @@ private func createMockTabBar() -> some View {
         )
         TabButton(
             title: "Sales Calc",
-            icon: "calculator",
+            icon: "number.circle.fill",
             isSelected: false,
             action: {}
         )
