@@ -44,7 +44,8 @@ struct TransactionHistorySection: View {
 
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
-#if os(iOS)
+        // IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
         UIPasteboard.general.string = formattedValue
         copiedValue = UIPasteboard.general.string ?? "no value"
 #else
@@ -55,7 +56,8 @@ struct TransactionHistorySection: View {
     }
     
     private func copyToClipboard(text: String) {
-#if os(iOS)
+        // IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
         UIPasteboard.general.string = text
         copiedValue = UIPasteboard.general.string ?? "no value"
 #else

@@ -352,8 +352,10 @@ struct OrderDetailRow: View {
             }
     }
     
-    private func copyToClipboard(text: String) {
-#if os(iOS)
+    private func copyToClipboard(text: String)
+    {
+        // IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
         UIPasteboard.general.string = text
 #else
         NSPasteboard.general.clearContents()

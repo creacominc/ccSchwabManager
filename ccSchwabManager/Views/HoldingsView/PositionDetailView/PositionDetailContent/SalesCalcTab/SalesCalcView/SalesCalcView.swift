@@ -1,6 +1,7 @@
 import SwiftUI
 
-#if os(iOS)
+// IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
 import UIKit
 #elseif os(macOS)
 import AppKit

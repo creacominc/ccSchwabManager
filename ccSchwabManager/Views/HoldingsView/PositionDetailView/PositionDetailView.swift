@@ -6,8 +6,8 @@ struct PositionDetailView: View {
     let currentIndex: Int
     let totalPositions: Int
     let symbol: String
-    let atrValue: Double
-    let sharesAvailableForTrading: Double
+    let atrValue: Double // Initial value from parent, will be recomputed
+    let sharesAvailableForTrading: Double // Initial value from parent, will be recomputed
     let onNavigate: (Int) -> Void
     @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
@@ -17,6 +17,7 @@ struct PositionDetailView: View {
     @State private var isLoadingQuote = false
     @State private var taxLotData: [SalesCalcPositionsRecord] = []
     @State private var isLoadingTaxLots = false
+    @State private var computedATRValue: Double = 0.0
     @State private var computedSharesAvailableForTrading: Double = 0.0
     @State private var transactions: [Transaction] = []
     @EnvironmentObject var secretsManager: SecretsManager
@@ -33,7 +34,15 @@ struct PositionDetailView: View {
     }
 
     private func fetchDataForSymbol() {
-        loadingState.isLoading = true
+        guard let symbol = position.instrument?.symbol else {
+            print("PositionDetailView: No symbol found for position")
+            return
+        }
+        
+        print("PositionDetailView: Fetching data for symbol \(symbol)")
+        
+        // Show loading indicator immediately
+        loadingState.setLoading(true)
         
         // Connect loading state to SchwabClient
         SchwabClient.shared.loadingDelegate = loadingState
@@ -43,32 +52,51 @@ struct PositionDetailView: View {
         isLoadingQuote = true
         isLoadingTaxLots = true
         
-        defer { 
-            loadingState.isLoading = false
-            isLoadingPriceHistory = false
-            isLoadingTransactions = false
-            isLoadingQuote = false
-            isLoadingTaxLots = false
+        // Run data fetching in background thread to allow UI to update
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Clear caches to ensure fresh data
+            SchwabClient.shared.clearATRCache()
+            SchwabClient.shared.clearPriceHistoryCache()
+            
+            // Fetch all position-related data
+            let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+            
+            // Compute ATR from price history
+            let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+            print("PositionDetailView: Computed ATR for \(symbol): \(fetchedATRValue)")
+            
+            // Fetch tax lot data as part of the main data fetch
+            // Get current price from quote for tax lot calculations
+            let currentPrice = fetchedQuote?.quote?.lastPrice ?? 
+                              fetchedQuote?.extended?.lastPrice ?? 
+                              fetchedQuote?.regular?.regularMarketLastPrice
+            let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+            print("PositionDetailView: Fetched \(fetchedTaxLots.count) tax lots for \(symbol)")
+            
+            // Compute shares available for trading using the tax lots
+            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            print("PositionDetailView: Computed shares available for \(symbol): \(fetchedSharesAvailable)")
+            
+            // Update UI on main thread
+            DispatchQueue.main.async {
+                self.priceHistory = fetchedPriceHistory
+                self.transactions = fetchedTransactions
+                self.quoteData = fetchedQuote
+                self.computedATRValue = fetchedATRValue
+                self.taxLotData = fetchedTaxLots
+                self.computedSharesAvailableForTrading = fetchedSharesAvailable
+                
+                self.isLoadingPriceHistory = false
+                self.isLoadingTransactions = false
+                self.isLoadingQuote = false
+                self.isLoadingTaxLots = false
+                
+                // Clear loading state
+                self.loadingState.setLoading(false)
+            }
         }
-        guard let symbol = position.instrument?.symbol else {
-            print("PositionDetailView: No symbol found for position")
-            return
-        }
-        print("PositionDetailView: Fetching data for symbol \(symbol)")
-        // Fetch all position-related data in parallel
-        priceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-        transactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
-        quoteData = SchwabClient.shared.fetchQuote(symbol: symbol)
-        // Fetch tax lot data as part of the main data fetch
-        // Get current price from quote for tax lot calculations
-        let currentPrice = quoteData?.quote?.lastPrice ?? 
-                          quoteData?.extended?.lastPrice ?? 
-                          quoteData?.regular?.regularMarketLastPrice
-        taxLotData = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
-        print("PositionDetailView: Fetched \(taxLotData.count) tax lots for \(symbol)")
-        // Compute shares available for trading using the tax lots
-        computedSharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: taxLotData)
-        print("PositionDetailView: Computed shares available for \(symbol): \(computedSharesAvailableForTrading)")
     }
 
     var body: some View {
@@ -110,8 +138,8 @@ struct PositionDetailView: View {
                     currentIndex: currentIndex,
                     totalPositions: totalPositions,
                     symbol: symbol,
-                    atrValue: atrValue,
-                    sharesAvailableForTrading: computedSharesAvailableForTrading,
+                    atrValue: computedATRValue > 0 ? computedATRValue : atrValue,
+                    sharesAvailableForTrading: computedSharesAvailableForTrading > 0 ? computedSharesAvailableForTrading : sharesAvailableForTrading,
                     onNavigate: { newIndex in
                         guard newIndex >= 0 && newIndex < totalPositions else { return }
                         loadingState.isLoading = true
@@ -132,18 +160,29 @@ struct PositionDetailView: View {
             }
         }
         .onAppear {
-            loadingState.isLoading = true
+            // Initialize computed values with parent values
+            computedATRValue = atrValue
+            computedSharesAvailableForTrading = sharesAvailableForTrading
+            
+            // Fetch data asynchronously
             fetchDataForSymbol()
+            
+            // Add a safety timeout to clear loading state if it gets stuck
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
+                if loadingState.isLoading {
+                    print("PositionDetailView: Loading timeout - clearing stuck loading state")
+                    loadingState.forceClearLoading()
+                }
+            }
         }
         .onChange(of: position.instrument?.symbol) { oldValue, newValue in
             // Refetch data when position changes (navigation)
             if oldValue != newValue {
                 print("PositionDetailView: Position changed from \(oldValue ?? "nil") to \(newValue ?? "nil")")
-                loadingState.isLoading = true
                 fetchDataForSymbol()
                 
                 // Add a safety timeout to clear loading state if it gets stuck
-                DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
                     if loadingState.isLoading {
                         print("PositionDetailView: Loading timeout - clearing stuck loading state")
                         loadingState.forceClearLoading()

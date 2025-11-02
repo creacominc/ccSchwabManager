@@ -248,7 +248,8 @@ struct HoldingsView: View {
         GeometryReader { geometry in
             VStack {
                 // Platform-specific search implementation
-                #if os(iOS)
+                // IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
                 // Top controls for showing/hiding search and keyboard on iPhone
                 HStack {
                     Button(action: {
@@ -443,7 +444,13 @@ struct HoldingsView: View {
                                 if let newId: Position.ID = newId,
                                    let position: Position = sortedHoldings.first(where: { $0.id == newId }),
                                    let accountNumber: String = accountPositions.first(where: { $0.0.id == newId })?.1 {
+                                    // Show loading indicator immediately when position is selected
+                                    loadingState.setLoading(true)
                                     selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
+                                    // Clear loading after a short delay to allow sheet to show its own indicator
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                        loadingState.setLoading(false)
+                                    }
                                 }
                             }
                         ),
@@ -464,7 +471,8 @@ struct HoldingsView: View {
             .onAppear {
                 // Do not auto-focus search on iOS to avoid keyboard covering content
             }
-            #if os(iOS)
+            // IOS or VisionOS
+#if os(iOS)
             // Add a keyboard toolbar with a Done button to dismiss
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -472,7 +480,7 @@ struct HoldingsView: View {
                     Button("Done") { isSearchFieldFocused = false }
                 }
             }
-            #endif
+#endif // os(iOS)
             //.navigationTitle("Holdings")
             .task {
                 defer { isLoadingAccounts = false }
@@ -529,32 +537,12 @@ struct HoldingsView: View {
                 selectedTab: $selectedTab,
             )
             .task {
-                if let tmpsymbol = selected.position.instrument?.symbol {
-                    // Clear caches to ensure fresh data
-                    SchwabClient.shared.clearATRCache()
-                    SchwabClient.shared.clearPriceHistoryCache()
-                    
-                    atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
-                    
-                    // Compute shares available for trading using tax lots
-                    let taxLots = SchwabClient.shared.computeTaxLots(symbol: tmpsymbol)
-                    sharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: tmpsymbol, taxLots: taxLots)
-                }
+                // Note: Data fetching moved to PositionDetailView to ensure loading indicator is visible
+                // The detail view will handle ATR and tax lot computation when it appears
             }
             .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
-                if let tmpsymbol = newValue {
-                    Task {
-                        // Clear caches to ensure fresh data when symbol changes
-                        SchwabClient.shared.clearATRCache()
-                        SchwabClient.shared.clearPriceHistoryCache()
-                        
-                        atrValue = SchwabClient.shared.computeATR(symbol: tmpsymbol)
-                        
-                        // Compute shares available for trading using tax lots
-                        let taxLots = SchwabClient.shared.computeTaxLots(symbol: tmpsymbol)
-                        sharesAvailableForTrading = SchwabClient.shared.computeSharesAvailableForTrading(symbol: tmpsymbol, taxLots: taxLots)
-                    }
-                }
+                // Note: Data fetching moved to PositionDetailView to ensure loading indicator is visible
+                // The detail view will handle ATR and tax lot computation on symbol changes
             }
             .frame( width: viewSize.width * 0.97,
                     height: viewSize.height * 0.98 )

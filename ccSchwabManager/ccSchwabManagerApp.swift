@@ -6,7 +6,8 @@
 //
 
 import SwiftUI
-#if os(iOS)
+// IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
 import UIKit
 #elseif os(macOS)
 import AppKit
@@ -82,7 +83,8 @@ struct ccSchwabManagerApp: App
     }
     
     var didBecomeActiveNotification: Notification.Name {
-#if os(iOS)
+        // IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
         return UIApplication.didBecomeActiveNotification
 #else
         return NSApplication.didBecomeActiveNotification

@@ -46,6 +46,7 @@ struct HoldingsTableContent: View {
             .padding(.trailing, 15)
             .padding(.bottom, 15)
         } // scroll
+          // IOS or VisionOS
 #if os(iOS)
         .scrollDismissesKeyboard(.immediately)
 #endif

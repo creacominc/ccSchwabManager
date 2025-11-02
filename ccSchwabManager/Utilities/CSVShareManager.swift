@@ -25,7 +25,8 @@ class CSVShareManager: ObservableObject {
     }
 }
 
-#if os(iOS)
+// IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
 import UIKit
 
 // SwiftUI wrapper for UIActivityViewController (iOS only)

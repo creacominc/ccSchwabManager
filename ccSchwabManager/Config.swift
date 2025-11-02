@@ -1,6 +1,7 @@
 import Foundation
 
-#if os(iOS)
+// IOS or VisionOS
+#if os(iOS) ||  os(visionOS)
 import UIKit
 #elseif os(macOS)
 import AppKit
@@ -22,6 +23,9 @@ public struct TradingConfig {
 public typealias PlatformView = NSView
 #elseif os(iOS)
 @available(iOS 18.2, *)
+public typealias PlatformView = UIView
+#elseif os(visionOS)
+@available(visionOS 2.0, *)
 public typealias PlatformView = UIView
 #endif
 
