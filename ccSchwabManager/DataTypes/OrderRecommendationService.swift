@@ -129,17 +129,14 @@ class OrderRecommendationService: ObservableObject {
         }
         
         // Calculate additional orders if we have a min break even order
-        if let minBreakEvenOrder = orders[2] {
-            let additionalOrders = calculateAdditionalSellOrdersFromTaxLots(
-                symbol: symbol,
-                currentPrice: currentPrice,
-                sortedTaxLots: sortedTaxLots,
-                minBreakEvenOrder: minBreakEvenOrder,
-                sharesAvailableForTrading: sharesAvailableForTrading,
-                atrValue: atrValue
-            )
-            recommended.append(contentsOf: additionalOrders)
-        }
+        let additionalOrders = calculateAdditionalSellOrdersFromTaxLots(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        )
+        recommended.append(contentsOf: additionalOrders)
         
         // Sort sell orders by shares descending, then by trailing stop ascending
         recommended.sort { first, second in
@@ -968,26 +965,25 @@ class OrderRecommendationService: ObservableObject {
         symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        minBreakEvenOrder: SalesCalcResultsRecord,
         sharesAvailableForTrading: Double,
         atrValue: Double
-    ) -> [SalesCalcResultsRecord] {
-        
+    ) -> [SalesCalcResultsRecord]
+    {
         AppLogger.shared.debug("  Additional sell orders: ATR=\(atrValue)%")
-        
+
         var additionalOrders: [SalesCalcResultsRecord] = []
         var currentTaxLotIndex = 0
-        
+
         // Create 1% higher trailing stop order
         if let higherTSOrder = createOnePercentHigherTrailingStopOrder(
             symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
-            minBreakEvenOrder: minBreakEvenOrder,
             currentTaxLotIndex: &currentTaxLotIndex,
             sharesAvailableForTrading: sharesAvailableForTrading,
             atrValue: atrValue
-        ) {
+        )
+        {
             additionalOrders.append(higherTSOrder)
         }
         
@@ -996,11 +992,11 @@ class OrderRecommendationService: ObservableObject {
             symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
-            minBreakEvenOrder: minBreakEvenOrder,
             currentTaxLotIndex: &currentTaxLotIndex,
             sharesAvailableForTrading: sharesAvailableForTrading,
             atrValue: atrValue
-        ) {
+        )
+        {
             additionalOrders.append(onePointFiveATROrder)
         }
         
@@ -1009,11 +1005,11 @@ class OrderRecommendationService: ObservableObject {
             symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
-            minBreakEvenOrder: minBreakEvenOrder,
             currentTaxLotIndex: &currentTaxLotIndex,
             sharesAvailableForTrading: sharesAvailableForTrading,
             atrValue: atrValue
-        ) {
+        )
+        {
             additionalOrders.append(twoATROrder)
         }
         
@@ -1022,52 +1018,52 @@ class OrderRecommendationService: ObservableObject {
             symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
-            minBreakEvenOrder: minBreakEvenOrder,
             currentTaxLotIndex: &currentTaxLotIndex,
             sharesAvailableForTrading: sharesAvailableForTrading,
             atrValue: atrValue
-        ) {
+        )
+        {
             additionalOrders.append(threeATROrder)
         }
-	        
-	        // Create 4*ATR sell order (even larger gap)
-	        if let fourATROrder = createFourATRSellOrder(
-	            symbol: symbol,
-	            currentPrice: currentPrice,
-	            sortedTaxLots: sortedTaxLots,
-	            minBreakEvenOrder: minBreakEvenOrder,
-	            currentTaxLotIndex: &currentTaxLotIndex,
-	            sharesAvailableForTrading: sharesAvailableForTrading,
-	            atrValue: atrValue
-	        ) {
-	            additionalOrders.append(fourATROrder)
-	        }
-	        
-	        // Create 5*ATR sell order (largest gap)
-	        if let fiveATROrder = createFiveATRSellOrder(
-	            symbol: symbol,
-	            currentPrice: currentPrice,
-	            sortedTaxLots: sortedTaxLots,
-	            minBreakEvenOrder: minBreakEvenOrder,
-	            currentTaxLotIndex: &currentTaxLotIndex,
-	            sharesAvailableForTrading: sharesAvailableForTrading,
-	            atrValue: atrValue
-	        ) {
-	            additionalOrders.append(fiveATROrder)
-	        }
+
+        // Create 4*ATR sell order (even larger gap)
+        if let fourATROrder = createFourATRSellOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            currentTaxLotIndex: &currentTaxLotIndex,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        )
+        {
+            additionalOrders.append(fourATROrder)
+        }
         
+        // Create 5*ATR sell order (largest gap)
+        if let fiveATROrder = createFiveATRSellOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            currentTaxLotIndex: &currentTaxLotIndex,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        )
+        {
+            additionalOrders.append(fiveATROrder)
+        }
+
         // Create max shares sell order
         if let maxSharesOrder = createMaxSharesSellOrder(
             symbol: symbol,
             currentPrice: currentPrice,
             sortedTaxLots: sortedTaxLots,
-            minBreakEvenOrder: minBreakEvenOrder,
             currentTaxLotIndex: &currentTaxLotIndex,
             sharesAvailableForTrading: sharesAvailableForTrading
-        ) {
+        )
+        {
             additionalOrders.append(maxSharesOrder)
         }
-        
+
         return additionalOrders
     }
     
@@ -1075,13 +1071,12 @@ class OrderRecommendationService: ObservableObject {
         symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        minBreakEvenOrder: SalesCalcResultsRecord,
         currentTaxLotIndex: inout Int,
         sharesAvailableForTrading: Double,
         atrValue: Double
     ) -> SalesCalcResultsRecord? {
         
-        AppLogger.shared.debug("  Creating 1% higher trailing stop order: ATR=\(atrValue)%, minBreakEven trailingStop=\(minBreakEvenOrder.trailingStop)%")
+        AppLogger.shared.debug("  Creating 1% higher trailing stop order: ATR=\(atrValue)%")
         
         // Calculate trailing stop as ATR + 1% (similar to Min ATR but with higher trailing stop)
         let targetTrailingStop: Double = atrValue + 1.0
@@ -1151,7 +1146,6 @@ class OrderRecommendationService: ObservableObject {
         symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        minBreakEvenOrder: SalesCalcResultsRecord,
         currentTaxLotIndex: inout Int,
         sharesAvailableForTrading: Double,
         atrValue: Double
@@ -1228,11 +1222,11 @@ class OrderRecommendationService: ObservableObject {
         symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        minBreakEvenOrder: SalesCalcResultsRecord,
         currentTaxLotIndex: inout Int,
         sharesAvailableForTrading: Double,
         atrValue: Double
-    ) -> SalesCalcResultsRecord? {
+    ) -> SalesCalcResultsRecord?
+    {
         
         AppLogger.shared.debug("  Creating 2*ATR sell order: ATR=\(atrValue)%, trailingStop=\(atrValue * 2.0)%")
         
@@ -1305,7 +1299,6 @@ class OrderRecommendationService: ObservableObject {
         symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        minBreakEvenOrder: SalesCalcResultsRecord,
         currentTaxLotIndex: inout Int,
         sharesAvailableForTrading: Double,
         atrValue: Double
@@ -1381,7 +1374,6 @@ class OrderRecommendationService: ObservableObject {
 	        symbol: String,
 	        currentPrice: Double,
 	        sortedTaxLots: [SalesCalcPositionsRecord],
-	        minBreakEvenOrder: SalesCalcResultsRecord,
 	        currentTaxLotIndex: inout Int,
 	        sharesAvailableForTrading: Double,
 	        atrValue: Double
@@ -1457,7 +1449,6 @@ class OrderRecommendationService: ObservableObject {
 	        symbol: String,
 	        currentPrice: Double,
 	        sortedTaxLots: [SalesCalcPositionsRecord],
-	        minBreakEvenOrder: SalesCalcResultsRecord,
 	        currentTaxLotIndex: inout Int,
 	        sharesAvailableForTrading: Double,
 	        atrValue: Double
@@ -1533,15 +1524,20 @@ class OrderRecommendationService: ObservableObject {
         symbol: String,
         currentPrice: Double,
         sortedTaxLots: [SalesCalcPositionsRecord],
-        minBreakEvenOrder: SalesCalcResultsRecord,
         currentTaxLotIndex: inout Int,
         sharesAvailableForTrading: Double
-    ) -> SalesCalcResultsRecord? {
-        
+    ) -> SalesCalcResultsRecord?
+    {
+        AppLogger.shared.debug( " createMaxSharesSellOrder called" )
         // Calculate remaining shares available
         let remainingShares = sharesAvailableForTrading
-        guard remainingShares >= 1.0 else { return nil }
-        
+        guard remainingShares >= 1.0
+        else
+        {
+            AppLogger.shared.debug( " createMaxSharesSellOrder no shares remaining" )
+            return nil
+        }
+
         // Calculate cost basis for all remaining shares
         let costBasisResult = calculateCostBasisForShares(
             sharesNeeded: remainingShares,
@@ -1549,20 +1545,23 @@ class OrderRecommendationService: ObservableObject {
             sortedTaxLots: sortedTaxLots,
             cumulativeSharesUsed: 0.0
         )
-        
-        guard let (actualCostPerShare, sharesUsed) = costBasisResult else {
+
+        guard let (actualCostPerShare, sharesUsed) = costBasisResult
+        else
+        {
+            AppLogger.shared.debug( " createMaxSharesSellOrder lacking actualCostPerShare or sharesUsed from calculateCostBasisForShares" )
             return nil
         }
-        
+
         // Calculate a profitable target (1% above cost per share)
         let profitableTarget = actualCostPerShare * 1.01
         AppLogger.shared.debug("  Profitable target calculation: actualCostPerShare=\(actualCostPerShare), profitableTarget=\(profitableTarget)")
-        
+
         // Calculate the trailing stop from current price to this target
         let trailingStop = ((currentPrice - profitableTarget) / currentPrice) * 100.0
-        
+
         AppLogger.shared.debug("  Max shares order calculation: currentPrice=\(currentPrice), profitableTarget=\(profitableTarget), trailingStop=\(trailingStop)%")
-        
+
         // Validate the trailing stop is reasonable
         guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
             AppLogger.shared.error("⚠️ Invalid trailing stop value in max shares order: \(trailingStop)%")
