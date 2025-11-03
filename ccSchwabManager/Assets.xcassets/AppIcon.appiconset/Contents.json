@@ -89,6 +89,12 @@
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "512x512"
+    },
+    {
+      "filename" : "icon_1024 3.png",
+      "idiom" : "universal",
+      "platform" : "xros",
+      "size" : "1024x1024"
     }
   ],
   "info" : {

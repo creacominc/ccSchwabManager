@@ -146,3 +146,4 @@ struct CriticalInfoRow: View
     }
 }
 
+
