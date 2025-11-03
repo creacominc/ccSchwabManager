@@ -15,59 +15,47 @@ struct OCOOrdersTab: View
     var body: some View
     {
         GeometryReader
-        { _ in
-            VStack(spacing: 0)
+        { geometry in
+            VStack(alignment: .leading, spacing: 0)
             {
-                // OCO Orders Section with fixed header and scrollable content
-                VStack(alignment: .leading, spacing: 0) {
-                    // Section Header with critical information (fixed)
-                    HStack {
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .foregroundColor(.green)
-                        Text("Recommended")
-                            .font(.headline)
-                            .fontWeight(.semibold)
+                // Section Header
+                HStack {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .foregroundColor(.green)
+                    Text("Recommended OCO Orders")
+                        .font(.headline)
+                        .fontWeight(.semibold)
 
-                        Spacer()
+                    Spacer()
 
-                        // Critical information on the same line
-                        CriticalInfoRow(
-                            sharesAvailableForTrading: sharesAvailableForTrading,
-                            marketValue: marketValue,
-                            position: position,
-                            lastPrice: lastPrice,
-                            atrValue: atrValue
-                        )
-                    }
+                    // Critical information on the same line
+                    CriticalInfoRow(
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        marketValue: marketValue,
+                        position: position,
+                        lastPrice: lastPrice,
+                        atrValue: atrValue
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.green.opacity(0.1))
+
+                // Scrollable section content
+                ScrollView {
+                    RecommendedOCOOrdersSection(
+                        symbol: symbol,
+                        atrValue: atrValue,
+                        sharesAvailableForTrading: $sharesAvailableForTrading,
+                        quoteData: quoteData,
+                        accountNumber: accountNumber,
+                        position: position
+                    )
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Color.green.opacity(0.1))
-
-                    // Scrollable section content
-                    ScrollView {
-                        RecommendedOCOOrdersSection(
-                            symbol: symbol,
-                            atrValue: atrValue,
-                            sharesAvailableForTrading: $sharesAvailableForTrading,
-                            quoteData: quoteData,
-                            accountNumber: accountNumber,
-                            position: position
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-
-                        // Add bottom padding to ensure content is fully visible
-                        Spacer(minLength: 20)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+                .frame(height: geometry.size.height - 50) // Subtract approximate header height
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black.opacity(0.1))
         }
     }
 }

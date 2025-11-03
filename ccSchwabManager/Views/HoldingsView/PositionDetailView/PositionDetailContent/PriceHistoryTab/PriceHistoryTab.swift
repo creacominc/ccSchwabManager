@@ -5,28 +5,58 @@ struct PriceHistoryTab: View
     let priceHistory: CandleList?
     let isLoading: Bool
     let formatDate: (Int64?) -> String
+    let atrValue: Double
+    let position: Position
+    @Binding var sharesAvailableForTrading: Double
+    @Binding var marketValue: Double
+    let lastPrice: Double
 
     var body: some View
     {
         GeometryReader
         { geometry in
-            ScrollView
+            VStack(alignment: .leading, spacing: 0)
             {
+                // Section Header
+                HStack
+                {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .foregroundColor(.blue)
+                    Text("Price History")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    
+                    // Critical information on the same line
+                    CriticalInfoRow(
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        marketValue: marketValue,
+                        position: position,
+                        lastPrice: lastPrice,
+                        atrValue: atrValue
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.blue.opacity(0.1))
+
                 PriceHistorySection(
                     priceHistory: priceHistory,
                     isLoading: isLoading,
                     formatDate: formatDate
                 )
-                .frame( width: geometry.size.width * 0.98, height: geometry.size.height * 0.95 )
-            }
-            .tabItem {
-                Label("Price History", systemImage: "chart.line.uptrend.xyaxis")
+                .frame(height: geometry.size.height - 50) // Subtract approximate header height
             }
         }
     }
 }
 
-#Preview("PriceHistoryTab - With Data", traits: .landscapeLeft) {
+#Preview("PriceHistoryTab - With Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 500
+    @Previewable @State var marketValue: Double = 300.0
+    @Previewable @State var lastPrice: Double = 50.50
+    let atrValue: Double = 2.45 // Initial value from parent, will be recomputed
     let calendar = Calendar.current
     let now = Date()
     
@@ -163,7 +193,7 @@ struct PriceHistoryTab: View
         symbol: "AAPL"
     )
     
-    return GeometryReader { geometry in
+    GeometryReader { geometry in
         VStack {
             createMockTabBar()
             PriceHistoryTab(
@@ -175,17 +205,30 @@ struct PriceHistoryTab: View
                         return date.formatted(date: .abbreviated, time: .omitted)
                     }
                     return "N/A"
-                } // ,
-                // geometry: geometry
+                },
+                atrValue: atrValue,
+                position: Position(shortQuantity: 0, longQuantity: 0,
+                                   marketValue: marketValue, longOpenProfitLoss: 0.0),
+                sharesAvailableForTrading: $sharesAvailableForTrading,
+                marketValue: $marketValue,
+                lastPrice: lastPrice
             )
         }
     }
     .padding()
 }
 
-#Preview("PriceHistoryTab - Loading", traits: .landscapeLeft) {
-    GeometryReader { geometry in
-        VStack {
+#Preview("PriceHistoryTab - Loading", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 500
+    @Previewable @State var marketValue: Double = 300.0
+    @Previewable @State var lastPrice: Double = 50.50
+    let atrValue: Double = 2.45 // Initial value from parent, will be recomputed
+
+    GeometryReader
+    { geometry in
+        VStack
+        {
             createMockTabBar()
             PriceHistoryTab(
                 priceHistory: nil,
@@ -196,17 +239,30 @@ struct PriceHistoryTab: View
                         return date.formatted(date: .abbreviated, time: .omitted)
                     }
                     return "N/A"
-                } // ,
-                // geometry: geometry
+                },
+                atrValue: atrValue,
+                position: Position(shortQuantity: 0, longQuantity: 0,
+                                   marketValue: marketValue, longOpenProfitLoss: 0.0),
+                sharesAvailableForTrading: $sharesAvailableForTrading,
+                marketValue: $marketValue,
+                lastPrice: lastPrice
             )
         }
     }
     .padding()
 }
 
-#Preview("PriceHistoryTab - No Data", traits: .landscapeLeft) {
-    GeometryReader { geometry in
-        VStack {
+#Preview("PriceHistoryTab - No Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 500
+    @Previewable @State var marketValue: Double = 300.0
+    @Previewable @State var lastPrice: Double = 50.50
+    let atrValue: Double = 2.45 // Initial value from parent, will be recomputed
+
+    GeometryReader
+    { geometry in
+        VStack
+        {
             createMockTabBar()
             PriceHistoryTab(
                 priceHistory: nil,
@@ -217,8 +273,13 @@ struct PriceHistoryTab: View
                         return date.formatted(date: .abbreviated, time: .omitted)
                     }
                     return "N/A"
-                } // ,
-                // geometry: geometry
+                },
+                atrValue: atrValue,
+                position: Position(shortQuantity: 0, longQuantity: 0,
+                                   marketValue: marketValue, longOpenProfitLoss: 0.0),
+                sharesAvailableForTrading: $sharesAvailableForTrading,
+                marketValue: $marketValue,
+                lastPrice: lastPrice
             )
         }
     }

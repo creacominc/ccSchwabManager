@@ -143,13 +143,23 @@ struct PositionDetailContent: View
                             PriceHistoryTab(
                                 priceHistory: priceHistory,
                                 isLoading: isLoadingPriceHistory,
-                                formatDate: formatDate
+                                formatDate: formatDate,
+                                atrValue: atrValue,
+                                position: position,
+                                sharesAvailableForTrading: $sharesAvailableForTrading,
+                                marketValue: $marketValue,
+                                lastPrice: getCurrentPrice()
                             )
                         case 2:
                             TransactionsTab(
                                 isLoading: isLoadingTransactions,
                                 symbol: position.instrument?.symbol ?? "",
-                                transactions: transactions
+                                transactions: transactions,
+                                atrValue: atrValue,
+                                position: position,
+                                sharesAvailableForTrading: $sharesAvailableForTrading,
+                                marketValue: $marketValue,
+                                lastPrice: getCurrentPrice()
                             )
                         case 3:
                             SalesCalcTab(

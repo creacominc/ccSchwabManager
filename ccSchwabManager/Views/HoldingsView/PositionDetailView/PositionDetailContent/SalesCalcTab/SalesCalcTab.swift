@@ -16,32 +16,31 @@ struct SalesCalcTab: View
     {
         GeometryReader
         { geometry in
-        VStack(alignment: .leading, spacing: 0)
-        {
-            // Section Header
-            HStack
+            VStack(alignment: .leading, spacing: 0)
             {
-                Image(systemName: "number.circle.fill")
-                    .foregroundColor(.blue)
-                Text("Sales Calc")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                Spacer()
-                
-                // Critical information on the same line
-                CriticalInfoRow(
-                    sharesAvailableForTrading: sharesAvailableForTrading,
-                    marketValue: marketValue,
-                    position: position,
-                    lastPrice: lastPrice,
-                    atrValue: atrValue
-                )
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.blue.opacity(0.1))
+                // Section Header
+                HStack
+                {
+                    Image(systemName: "number.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("Sales Calc")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    
+                    // Critical information on the same line
+                    CriticalInfoRow(
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        marketValue: marketValue,
+                        position: position,
+                        lastPrice: lastPrice,
+                        atrValue: atrValue
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.blue.opacity(0.1))
 
-            // Section Content
                 SalesCalcView(
                     symbol: symbol,
                     atrValue: atrValue,
@@ -49,10 +48,7 @@ struct SalesCalcTab: View
                     isLoadingTaxLots: isLoadingTaxLots,
                     quoteData: quoteData
                 )
-//                .frame( width: geometry.size.width * 0.92, height: geometry.size.height * 0.95 )
-                .tabItem {
-                    Label("Sales Calc", systemImage: "number.circle.fill")
-                }
+                .frame(height: geometry.size.height - 50) // Subtract approximate header height
             }
         }
     }
@@ -62,7 +58,7 @@ struct SalesCalcTab: View
 {
     @Previewable @State var sharesAvailableForTrading: Double = 500
     @Previewable @State var marketValue: Double = 300.0
-    let atrValue: Double = 3.2 // Initial value from parent, will be recomputed
+    let atrValue: Double = 2.45 // Initial value from parent, will be recomputed
     let lastPrice: Double = 50.50
     
     VStack(spacing: 0)
@@ -72,7 +68,7 @@ struct SalesCalcTab: View
         // Tab content area
         SalesCalcTab(
             symbol: "AAPL",
-            atrValue: 2.45,
+            atrValue: atrValue,
             position: Position(shortQuantity: 0, longQuantity: 0,
                                marketValue: marketValue, longOpenProfitLoss: 0.0),
             sharesAvailableForTrading: $sharesAvailableForTrading,
