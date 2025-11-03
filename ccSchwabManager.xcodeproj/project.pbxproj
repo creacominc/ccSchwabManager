@@ -425,7 +425,8 @@
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ccSchwabManager;
-				"INFOPLIST_KEY_CFBundleIcons~xros" = "<dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>";
+				INFOPLIST_KEY_CFBundleIcons_CFBundlePrimaryIcon_CFBundleIconName = AppIcon;
+				"INFOPLIST_KEY_CFBundleIcons~xros_CFBundlePrimaryIcon_CFBundleIconName" = AppIcon;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -473,7 +474,8 @@
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = ccSchwabManager;
-				"INFOPLIST_KEY_CFBundleIcons~xros" = "<dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconName</key><string>AppIcon</string></dict></dict>";
+				INFOPLIST_KEY_CFBundleIcons_CFBundlePrimaryIcon_CFBundleIconName = AppIcon;
+				"INFOPLIST_KEY_CFBundleIcons~xros_CFBundlePrimaryIcon_CFBundleIconName" = AppIcon;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
