@@ -3,4 +3,5 @@ description: platforms to target and build/test for
 globs: 
 alwaysApply: false
 ---
-Please make code changes suitable for the latest MacOS and IOS.  These are the only platform targets.  Please build and test for these targets.
+Please make code changes suitable for the latest MacOS and IOS.  These are the only platform targets.  Please build and test for these targets.  After building and running tests, please also verify that a package can be created by runnnig the xcodebuild archive and verify commands for each target platform.
+

@@ -1,9 +1,10 @@
 import SwiftUI
 
-struct EmptyStateView: View {
+struct EmptyStateView: View
+{
     let symbol: String
     let atrValue: Double
-    let sharesAvailableForTrading: Double
+    @Binding var sharesAvailableForTrading: Double
     let taxLotDataCount: Int
     let quoteDataAvailable: Bool
     let optionsData: (minimumStrike: Double?, minimumDTE: Int?, contractCount: Int)
@@ -78,22 +79,26 @@ struct EmptyStateView: View {
     }
 }
 
-#Preview("Empty State - No Options Available", traits: .landscapeLeft) {
+#Preview("Empty State - No Options Available", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 100.0
     EmptyStateView(
         symbol: "AAPL",
         atrValue: 2.5,
-        sharesAvailableForTrading: 100.0,
+        sharesAvailableForTrading: $sharesAvailableForTrading,
         taxLotDataCount: 3,
         quoteDataAvailable: true,
         optionsData: (minimumStrike: nil, minimumDTE: nil, contractCount: 0)
     )
 }
 
-#Preview("Empty State - Options Data Available", traits: .landscapeLeft) {
+#Preview("Empty State - Options Data Available", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 50.0
     EmptyStateView(
         symbol: "TSLA",
         atrValue: 3.2,
-        sharesAvailableForTrading: 50.0,
+        sharesAvailableForTrading: $sharesAvailableForTrading,
         taxLotDataCount: 2,
         quoteDataAvailable: false,
         optionsData: (minimumStrike: 180.0, minimumDTE: 45, contractCount: 5)

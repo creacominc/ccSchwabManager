@@ -1,83 +1,146 @@
 import SwiftUI
 
-struct SalesCalcTab: View {
+struct SalesCalcTab: View
+{
     let symbol: String
     let atrValue: Double
-    let sharesAvailableForTrading: Double
+    let position: Position
+    @Binding var sharesAvailableForTrading: Double
+    @Binding var marketValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
     let quoteData: QuoteData?
+    let lastPrice: Double
 
-    var body: some View {
-        GeometryReader { geometry in
-            SalesCalcView(
-                symbol: symbol,
-                atrValue: atrValue,
-                taxLotData: taxLotData,
-                isLoadingTaxLots: isLoadingTaxLots,
-                quoteData: quoteData
-            )
-            .frame( width: geometry.size.width * 0.92, height: geometry.size.height * 0.95 )
-            .tabItem {
-                Label("Sales Calc", systemImage: "calculator")
+    var body: some View
+    {
+        GeometryReader
+        { geometry in
+            VStack(alignment: .leading, spacing: 0)
+            {
+                // Section Header
+                HStack
+                {
+                    Image(systemName: "number.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("Sales Calc")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    
+                    // Critical information on the same line
+                    CriticalInfoRow(
+                        sharesAvailableForTrading: sharesAvailableForTrading,
+                        marketValue: marketValue,
+                        position: position,
+                        lastPrice: lastPrice,
+                        atrValue: atrValue
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.blue.opacity(0.1))
+
+                SalesCalcView(
+                    symbol: symbol,
+                    atrValue: atrValue,
+                    taxLotData: taxLotData,
+                    isLoadingTaxLots: isLoadingTaxLots,
+                    quoteData: quoteData
+                )
+                .frame(height: geometry.size.height - 50) // Subtract approximate header height
             }
         }
     }
 }
 
-#Preview("SalesCalcTab - With Data", traits: .landscapeLeft) {
-    VStack(spacing: 0) {
+#Preview("SalesCalcTab - With Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 500
+    @Previewable @State var marketValue: Double = 300.0
+    let atrValue: Double = 2.45 // Initial value from parent, will be recomputed
+    let lastPrice: Double = 50.50
+    
+    VStack(spacing: 0)
+    {
         // Simulate the tab button area
         createMockTabBar()
         // Tab content area
         SalesCalcTab(
             symbol: "AAPL",
-            atrValue: 2.45,
-            sharesAvailableForTrading: 500.0,
+            atrValue: atrValue,
+            position: Position(shortQuantity: 0, longQuantity: 0,
+                               marketValue: marketValue, longOpenProfitLoss: 0.0),
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
             taxLotData: createMockTaxLotData(),
             isLoadingTaxLots: false,
-            quoteData: createMockQuoteData()
+            quoteData: createMockQuoteData(),
+            lastPrice: lastPrice
         )
         .background(Color.blue.opacity(0.1)) // Add background to see the content area
     }
 }
 
-#Preview("SalesCalcTab - Loading State", traits: .landscapeLeft) {
-    VStack(spacing: 0) {
+#Preview("SalesCalcTab - Loading State", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 300.0
+    @Previewable @State var marketValue: Double = 300.0
+    let atrValue: Double = 3.12 // Initial value from parent, will be recomputed
+    let lastPrice: Double = 50.50
+
+    VStack(spacing: 0)
+    {
         // Simulate the tab button area
         createMockTabBar()
         
         // Tab content area
         SalesCalcTab(
             symbol: "TSLA",
-            atrValue: 3.12,
-            sharesAvailableForTrading: 300.0,
-            taxLotData: [],
+            atrValue: atrValue,
+            position: Position(shortQuantity: 0, longQuantity: 0,
+                               marketValue: marketValue, longOpenProfitLoss: 0.0),
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
+            taxLotData: createMockTaxLotData(),
             isLoadingTaxLots: true,
-            quoteData: nil
+            quoteData: createMockQuoteData(),
+            lastPrice: lastPrice
         )
     }
 }
 
-#Preview("SalesCalcTab - No Data", traits: .landscapeLeft) {
-    VStack(spacing: 0) {
+#Preview("SalesCalcTab - No Data", traits: .landscapeLeft)
+{
+    @Previewable @State var sharesAvailableForTrading: Double = 200.0
+    @Previewable @State var marketValue: Double = 300.0
+    let atrValue: Double = 1.87 // Initial value from parent, will be recomputed
+    let lastPrice: Double = 50.50
+
+    VStack(spacing: 0)
+    {
         // Simulate the tab button area
         createMockTabBar()
-        
+
         // Tab content area
         SalesCalcTab(
             symbol: "NVDA",
-            atrValue: 1.87,
-            sharesAvailableForTrading: 200.0,
+            atrValue: atrValue,
+            position: Position(shortQuantity: 0, longQuantity: 0,
+                               marketValue: marketValue, longOpenProfitLoss: 0.0),
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
             taxLotData: [],
             isLoadingTaxLots: false,
-            quoteData: nil
+            quoteData: createMockQuoteData(),
+            lastPrice: lastPrice
         )
     }
 }
 
 // MARK: - Mock Data for Previews
-private func createMockTaxLotData() -> [SalesCalcPositionsRecord] {
+private func createMockTaxLotData() -> [SalesCalcPositionsRecord]
+{
     return [
         SalesCalcPositionsRecord(
             openDate: "2024-01-15 09:30:43",
@@ -112,7 +175,8 @@ private func createMockTaxLotData() -> [SalesCalcPositionsRecord] {
     ]
 }
 
-private func createMockQuoteData() -> QuoteData {
+private func createMockQuoteData() -> QuoteData
+{
     let quote = Quote(
         askPrice: 175.55,
         askSize: 150,
@@ -151,7 +215,8 @@ private func createMockQuoteData() -> QuoteData {
 } 
 
 @MainActor
-private func createMockTabBar() -> some View {
+private func createMockTabBar() -> some View
+{
     HStack(spacing: 0) {
         TabButton(
             title: "Details",
@@ -173,7 +238,7 @@ private func createMockTabBar() -> some View {
         )
         TabButton(
             title: "Sales Calc",
-            icon: "calculator",
+            icon: "number.circle.fill",
             isSelected: true,
             action: {}
         )

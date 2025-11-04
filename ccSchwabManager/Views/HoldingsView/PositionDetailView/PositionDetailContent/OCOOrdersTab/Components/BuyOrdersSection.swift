@@ -72,7 +72,7 @@ struct BuyOrdersSection: View {
                 Button(action: {
                     onOrderSelection(isSelected ? nil : index)
                 }) {
-                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    Image(systemName: isSelected ? "circle.inset.filled" : "circle")
                         .foregroundColor(.blue)
                 }
                 .buttonStyle(PlainButtonStyle())

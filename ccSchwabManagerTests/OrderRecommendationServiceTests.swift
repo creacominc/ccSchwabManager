@@ -196,6 +196,7 @@ final class OrderRecommendationServiceTests: XCTestCase {
         // Given
         let taxLots = createMockTaxLots()
         let currentPrice = 160.0
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         
         // When
         let result = await service.calculateRecommendedBuyOrders(
@@ -203,7 +204,11 @@ final class OrderRecommendationServiceTests: XCTestCase {
             atrValue: 2.5,
             taxLotData: taxLots,
             sharesAvailableForTrading: 150,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -217,6 +222,7 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let taxLots = createMockTaxLots()
         let currentPrice = 25.0 // Under $350 threshold
         let atrValue = 2.5
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         
         // When
         let result = await service.calculateRecommendedBuyOrders(
@@ -224,7 +230,11 @@ final class OrderRecommendationServiceTests: XCTestCase {
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 150,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -265,6 +275,7 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let taxLots = createMockTaxLots()
         let currentPrice = 400.0 // Above $350 threshold
         let atrValue = 2.5
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         
         // When
         let result = await service.calculateRecommendedBuyOrders(
@@ -272,7 +283,11 @@ final class OrderRecommendationServiceTests: XCTestCase {
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 150,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -291,6 +306,7 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let taxLots = createMockTaxLots()
         let currentPrice = 25.0 // Under $350 threshold
         let atrValue = 2.5
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         
         // When
         let result = await service.calculateRecommendedBuyOrders(
@@ -298,7 +314,11 @@ final class OrderRecommendationServiceTests: XCTestCase {
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 150,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -350,12 +370,17 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let atrValue = 9.66 // APLD's ATR from logs
         
         // When
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         let result = await service.calculateRecommendedBuyOrders(
             symbol: "APLD",
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 193,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -411,12 +436,17 @@ final class OrderRecommendationServiceTests: XCTestCase {
             let currentPrice = 50.0
             
             // When
+            let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
             let result = await service.calculateRecommendedBuyOrders(
                 symbol: "TEST",
                 atrValue: testCase.atr,
                 taxLotData: taxLots,
                 sharesAvailableForTrading: 100,
-                currentPrice: currentPrice
+                currentPrice: currentPrice,
+                totalShares: totalShares,
+                totalCost: totalCost,
+                avgCostPerShare: avgCostPerShare,
+                currentProfitPercent: currentProfitPercent
             )
             
             // Then
@@ -450,12 +480,17 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let atrValue = 5.0
         
         // When
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         let result = await service.calculateRecommendedBuyOrders(
             symbol: "TEST",
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 100,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -495,12 +530,17 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let atrValue = 9.66
         
         // When
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         let result = await service.calculateRecommendedBuyOrders(
             symbol: "APLD",
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 193,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -551,12 +591,17 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let atrValue = 25.0 // Very high ATR
         
         // When
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         let result = await service.calculateRecommendedBuyOrders(
             symbol: "TEST",
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 100,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -647,12 +692,17 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let atrValue = 2.5 // -> trailing stop should be 7.5%
         
         // When
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         let result = await service.calculateRecommendedBuyOrders(
             symbol: "TEST",
             atrValue: atrValue,
             taxLotData: taxLots,
             sharesAvailableForTrading: 10.0,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
         )
         
         // Then
@@ -713,6 +763,7 @@ final class OrderRecommendationServiceTests: XCTestCase {
         let currentPrice = 160.0
         
         // When & Then
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
         measure {
             Task {
                 _ = await service.calculateRecommendedBuyOrders(
@@ -720,7 +771,11 @@ final class OrderRecommendationServiceTests: XCTestCase {
                     atrValue: 2.5,
                     taxLotData: taxLots,
                     sharesAvailableForTrading: 150,
-                    currentPrice: currentPrice
+                    currentPrice: currentPrice,
+                    totalShares: totalShares,
+                    totalCost: totalCost,
+                    avgCostPerShare: avgCostPerShare,
+                    currentProfitPercent: currentProfitPercent
                 )
             }
         }

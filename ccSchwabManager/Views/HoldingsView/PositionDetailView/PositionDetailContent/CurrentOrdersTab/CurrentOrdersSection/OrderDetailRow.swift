@@ -352,7 +352,8 @@ struct OrderDetailRow: View {
             }
     }
     
-    private func copyToClipboard(text: String) {
+    private func copyToClipboard(text: String)
+    {
 #if os(iOS)
         UIPasteboard.general.string = text
 #else

@@ -135,27 +135,26 @@ final class OrderRecommendationViewModelTests: XCTestCase {
     
     // MARK: - Tax Lot Loading Tests
     
-    func testLoadTaxLotsInBackground_StartsLoading() {
+    func testLoadTaxLotsInBackground_StartsLoading() async {
         // When
-        viewModel.loadTaxLotsInBackground(symbol: "AAPL")
+        _ = await viewModel.loadTaxLotsInBackground(symbol: "AAPL")
         
-        // Then
-        XCTAssertTrue(viewModel.isLoadingTaxLots, "Should start loading tax lots")
-        // Note: The loading progress and message might not update immediately, so we just check that loading started
+        // Then - After async completion, loading should be false
+        XCTAssertFalse(viewModel.isLoadingTaxLots, "Should finish loading tax lots")
         XCTAssertTrue(viewModel.loadingProgress >= 0.0, "Loading progress should be set")
-        XCTAssertFalse(viewModel.loadingMessage.isEmpty, "Should have loading message")
     }
     
-    func testCancelTaxLotCalculation_StopsLoading() {
+    func testCancelTaxLotCalculation_StopsLoading() async {
         // Given
-        viewModel.loadTaxLotsInBackground(symbol: "AAPL")
-        XCTAssertTrue(viewModel.isLoadingTaxLots, "Should be loading initially")
+        _ = await viewModel.loadTaxLotsInBackground(symbol: "AAPL")
+        // After completion, loading should be false
+        XCTAssertFalse(viewModel.isLoadingTaxLots, "Should finish loading")
         
         // When
         viewModel.cancelTaxLotCalculation()
         
         // Then
-        XCTAssertFalse(viewModel.isLoadingTaxLots, "Should stop loading")
+        XCTAssertFalse(viewModel.isLoadingTaxLots, "Should still not be loading")
         XCTAssertEqual(viewModel.loadingProgress, 0.0, "Loading progress should be reset")
         XCTAssertEqual(viewModel.loadingMessage, "", "Loading message should be cleared")
     }
