@@ -119,13 +119,14 @@ struct BuyOrderTests {
         #expect(finalSharesToBuy == 1.0, "Should limit to 1 share for expensive stock")
     }
     
-    @Test func testWhenProfitableBuyOrderForLossPosition() async throws {
+    @Test func testWhenProfitableBuyOrderForLossPosition() async throws
+    {
         // Test the "when profitable" buy order for positions at a loss
         // Example: UNP with -7.6% P/L and 1.67% ATR
         let currentPrice = 240.0
         let avgCostPerShare = 260.0 // Position is at a loss
         let atrValue = 1.67 // 1.67% ATR
-        let totalShares = 100.0
+        //let totalShares = 100.0
         
         // Calculate current profit percent (should be negative)
         let currentProfitPercent = ((currentPrice - avgCostPerShare) / avgCostPerShare) * 100.0
