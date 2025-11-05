@@ -375,7 +375,10 @@ struct BuySequenceOrdersSection: View {
     
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
-#if os(iOS)
+#if os(visionOS)
+        UIPasteboard.general.string = formattedValue
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#elseif os(iOS)
         UIPasteboard.general.string = formattedValue
         copiedValue = UIPasteboard.general.string ?? "no value"
 #else
@@ -386,7 +389,10 @@ struct BuySequenceOrdersSection: View {
     }
     
     private func copyToClipboard(text: String) {
-#if os(iOS)
+#if os(visionOS)
+        UIPasteboard.general.string = text
+        copiedValue = UIPasteboard.general.string ?? "no value"
+#elseif os(iOS)
         UIPasteboard.general.string = text
         copiedValue = UIPasteboard.general.string ?? "no value"
 #else

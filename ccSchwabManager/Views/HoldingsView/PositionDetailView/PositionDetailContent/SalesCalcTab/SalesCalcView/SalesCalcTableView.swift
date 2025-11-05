@@ -110,7 +110,12 @@ struct SalesCalcTable: View
     private func copyToClipboard(value: Double, format: String) {
         let formattedValue = String(format: format, value)
         print("SalesCalcTableView: copyToClipboard(value: \(value), format: \(format)) -> formattedValue: \(formattedValue)")
-#if os(iOS)
+#if os(visionOS)
+        UIPasteboard.general.string = formattedValue
+        let pastedValue = UIPasteboard.general.string ?? "no value"
+        copiedValue = pastedValue
+        print("SalesCalcTableView: iOS pasteboard - set: \(formattedValue), retrieved: \(pastedValue)")
+#elseif os(iOS)
         UIPasteboard.general.string = formattedValue
         let pastedValue = UIPasteboard.general.string ?? "no value"
         copiedValue = pastedValue
@@ -124,7 +129,12 @@ struct SalesCalcTable: View
     
     private func copyToClipboard(text: String) {
         print("SalesCalcTableView: copyToClipboard(text: \(text))")
-#if os(iOS)
+#if os(visionOS)
+        UIPasteboard.general.string = text
+        let pastedValue = UIPasteboard.general.string ?? "no value"
+        copiedValue = pastedValue
+        print("SalesCalcTableView: iOS pasteboard - set: \(text), retrieved: \(pastedValue)")
+#elseif os(iOS)
         UIPasteboard.general.string = text
         let pastedValue = UIPasteboard.general.string ?? "no value"
         copiedValue = pastedValue

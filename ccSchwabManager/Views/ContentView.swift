@@ -6,7 +6,9 @@
 //
 
 import SwiftUI
-#if os(iOS)
+#if os(visionOS)
+import UIKit
+#elseif os(iOS)
 import UIKit
 #elseif os(macOS)
 import AppKit
@@ -21,7 +23,9 @@ struct ContentView: View
     @State private var isLoading = false
     
     var didBecomeActiveNotification: Notification.Name {
-#if os(iOS)
+#if os(visionOS)
+        return UIApplication.didBecomeActiveNotification
+#elseif os(iOS)
         return UIApplication.didBecomeActiveNotification
 #else
         return NSApplication.didBecomeActiveNotification
