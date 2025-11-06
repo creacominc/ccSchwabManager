@@ -10,12 +10,13 @@ struct RecommendedOCOOrdersSection: View {
     let quoteData: QuoteData?
     let accountNumber: String
     let position: Position
+    let taxLotData: [SalesCalcPositionsRecord]
+    let isLoadingTaxLots: Bool
     
 
     
     // MARK: - State
     @StateObject private var viewModel = OrderRecommendationViewModel()
-    @State private var taxLotData: [SalesCalcPositionsRecord] = []
     @State private var copiedValue: String = "TBD"
     @State private var showingConfirmationDialog = false
     @State private var orderToSubmit: Order?
@@ -56,12 +57,10 @@ struct RecommendedOCOOrdersSection: View {
 
             // Loading indicator for tax lot calculation
             TaxLotLoadingIndicator(
-                isLoading: viewModel.isLoadingTaxLots,
-                progress: viewModel.loadingProgress,
-                message: viewModel.loadingMessage,
-                onCancel: {
-                    viewModel.cancelTaxLotCalculation()
-                }
+                isLoading: isLoadingTaxLots,
+                progress: isLoadingTaxLots ? 0.0 : 1.0,
+                message: isLoadingTaxLots ? "Loading tax lot data..." : "",
+                onCancel: {}
             )
 
             HStack(alignment: .top, spacing: 0) {
@@ -119,7 +118,15 @@ struct RecommendedOCOOrdersSection: View {
             handleSymbolChange(newSymbol)
         }
         .onAppear {
-            loadTaxLotsInBackground()
+            updateOrdersIfReady()
+        }
+        .onChange(of: taxLotData) { _, _ in
+            updateOrdersIfReady()
+        }
+        .onChange(of: isLoadingTaxLots) { _, isLoading in
+            if !isLoading {
+                updateOrdersIfReady()
+            }
         }
         .onChange(of: atrValue) { _, _ in
             updateOrdersIfReady()
@@ -165,38 +172,8 @@ struct RecommendedOCOOrdersSection: View {
     private func handleSymbolChange(_ newSymbol: String) {
         // Clear cache when symbol changes
         viewModel.clearCache()
-        taxLotData.removeAll()
         copiedValue = "TBD"
-        
-        // Load tax lots for new symbol
-        loadTaxLotsInBackground()
-    }
-    
-    private func loadTaxLotsInBackground() {
-        print("🔄 loadTaxLotsInBackground called for symbol: \(symbol)")
-        Task {
-            // Load tax lots and get the result
-            let computedTaxLots = await viewModel.loadTaxLotsInBackground(symbol: symbol)
-            
-            print("📦 Received \(computedTaxLots.count) tax lots for \(symbol)")
-            
-            // Update the local tax lot data
-            await MainActor.run {
-                taxLotData = computedTaxLots
-                print("💾 Updated taxLotData with \(taxLotData.count) tax lots")
-            }
-            
-            // Only populate when we have aligned data for this symbol and tax lots are ready
-            if viewModel.currentOrders.isEmpty && isDataReadyForCurrentSymbol() && !taxLotData.isEmpty {
-                print("🚀 Calling updateOrdersIfReady for \(symbol)")
-                updateOrdersIfReady()
-            } else {
-                print("⏸️ Not calling updateOrdersIfReady:")
-                print("  - viewModel.currentOrders.isEmpty: \(viewModel.currentOrders.isEmpty)")
-                print("  - isDataReadyForCurrentSymbol(): \(isDataReadyForCurrentSymbol())")
-                print("  - !taxLotData.isEmpty: \(!taxLotData.isEmpty)")
-            }
-        }
+        updateOrdersIfReady()
     }
     
     private func isDataReadyForCurrentSymbol() -> Bool {
@@ -222,14 +199,19 @@ struct RecommendedOCOOrdersSection: View {
         return false
     }
     
-    private func updateOrdersIfReady() {
-        print("🔄 updateOrdersIfReady called for symbol: \(symbol)")
-        
-        // Only recalculate if we have data, the symbol matches, and tax lots are ready
-        guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { 
-            print("❌ updateOrdersIfReady guard failed")
-            return 
-        }
+      private func updateOrdersIfReady() {
+          print("🔄 updateOrdersIfReady called for symbol: \(symbol)")
+          
+          guard !isLoadingTaxLots else {
+              print("⏳ updateOrdersIfReady: Waiting for tax lot load to finish")
+              return
+          }
+
+          // Only recalculate if we have data, the symbol matches, and tax lots are ready
+          guard isDataReadyForCurrentSymbol() && !taxLotData.isEmpty else { 
+              print("❌ updateOrdersIfReady guard failed")
+              return 
+          }
         
         guard let currentPrice = currentPrice else { 
             print("❌ updateOrdersIfReady: no current price")
@@ -603,7 +585,9 @@ struct RecommendedOCOOrdersSection: View {
                 regular: nil
             ),
             accountNumber: "123456789",
-            position: Position(shortQuantity: 0, averagePrice: 150.0, longQuantity: 150, marketValue: 26250.0, longOpenProfitLoss: 3750.0)
+              position: Position(shortQuantity: 0, averagePrice: 150.0, longQuantity: 150, marketValue: 26250.0, longOpenProfitLoss: 3750.0),
+              taxLotData: [],
+              isLoadingTaxLots: false
         )
     }
     .padding()
@@ -663,7 +647,9 @@ struct RecommendedOCOOrdersSection: View {
                 regular: nil
             ),
             accountNumber: "987654321",
-            position: Position(shortQuantity: 0, averagePrice: 180.0, longQuantity: 25, marketValue: 4750.0, longOpenProfitLoss: 250.0)
+              position: Position(shortQuantity: 0, averagePrice: 180.0, longQuantity: 25, marketValue: 4750.0, longOpenProfitLoss: 250.0),
+              taxLotData: [],
+              isLoadingTaxLots: false
         )
     }
     .padding()
@@ -680,8 +666,10 @@ struct RecommendedOCOOrdersSection: View {
             atrValue: 1.0,
             sharesAvailableForTrading: $sharesAvailableForTrading,
             quoteData: nil, // No quote data to avoid calculations
-            accountNumber: "111222333",
-            position: Position(shortQuantity: 0, averagePrice: 300.0, longQuantity: 0, marketValue: 0.0, longOpenProfitLoss: 0.0)
+              accountNumber: "111222333",
+              position: Position(shortQuantity: 0, averagePrice: 300.0, longQuantity: 0, marketValue: 0.0, longOpenProfitLoss: 0.0),
+              taxLotData: [],
+              isLoadingTaxLots: false
         )
     }
     .padding()

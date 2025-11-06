@@ -17,7 +17,9 @@ final class SecurityDataCacheManagerTests: XCTestCase {
         let symbol = "AAPL"
         let snapshot = makeSnapshot(symbol: symbol)
 
-        SecurityDataCacheManager.shared.store(snapshot)
+        _ = SecurityDataCacheManager.shared.update(symbol: symbol) { cached in
+            cached = snapshot
+        }
 
         let cached = SecurityDataCacheManager.shared.snapshot(for: symbol)
 
@@ -30,14 +32,18 @@ final class SecurityDataCacheManagerTests: XCTestCase {
     func testLRUEvictionRemovesOldestEntry() {
         // Fill cache to capacity
         for index in 0..<10 {
-            SecurityDataCacheManager.shared.store(makeSnapshot(symbol: "SYM\(index)"))
+            _ = SecurityDataCacheManager.shared.update(symbol: "SYM\(index)") { cached in
+                cached = makeSnapshot(symbol: "SYM\(index)")
+            }
         }
 
         // Access a middle entry to keep it fresh
         _ = SecurityDataCacheManager.shared.snapshot(for: "SYM5")
 
         // Add a new entry to trigger eviction
-        SecurityDataCacheManager.shared.store(makeSnapshot(symbol: "NEW"))
+        _ = SecurityDataCacheManager.shared.update(symbol: "NEW") { cached in
+            cached = makeSnapshot(symbol: "NEW")
+        }
 
         // Oldest entry should be evicted (SYM0)
         XCTAssertNil(SecurityDataCacheManager.shared.snapshot(for: "SYM0"))
@@ -49,7 +55,9 @@ final class SecurityDataCacheManagerTests: XCTestCase {
 
     func testRemoveClearsSpecificSymbol() {
         let symbol = "TSLA"
-        SecurityDataCacheManager.shared.store(makeSnapshot(symbol: symbol))
+        _ = SecurityDataCacheManager.shared.update(symbol: symbol) { cached in
+            cached = makeSnapshot(symbol: symbol)
+        }
 
         SecurityDataCacheManager.shared.remove(symbol: symbol)
 
