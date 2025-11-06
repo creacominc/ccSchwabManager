@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct SalesCalcPositionsRecord: Identifiable
+struct SalesCalcPositionsRecord: Identifiable, Equatable
 {
     let id = UUID()
     var openDate: String = ""

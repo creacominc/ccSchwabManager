@@ -5,6 +5,7 @@ struct OCOOrdersTab: View
     let symbol: String
     let atrValue: Double
     let taxLotData: [SalesCalcPositionsRecord]
+    let isLoadingTaxLots: Bool
     @Binding var sharesAvailableForTrading: Double
     @Binding var marketValue: Double
     let quoteData: QuoteData?
@@ -41,19 +42,21 @@ struct OCOOrdersTab: View
                 .padding(.vertical, 12)
                 .background(Color.green.opacity(0.1))
 
-                // Scrollable section content
-                ScrollView {
-                    RecommendedOCOOrdersSection(
-                        symbol: symbol,
-                        atrValue: atrValue,
-                        sharesAvailableForTrading: $sharesAvailableForTrading,
-                        quoteData: quoteData,
-                        accountNumber: accountNumber,
-                        position: position
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
+                  // Scrollable section content
+                  ScrollView {
+                      RecommendedOCOOrdersSection(
+                          symbol: symbol,
+                          atrValue: atrValue,
+                          sharesAvailableForTrading: $sharesAvailableForTrading,
+                          quoteData: quoteData,
+                          accountNumber: accountNumber,
+                          position: position,
+                          taxLotData: taxLotData,
+                          isLoadingTaxLots: isLoadingTaxLots
+                      )
+                      .padding(.horizontal, 16)
+                      .padding(.vertical, 12)
+                  }
                 .frame(height: geometry.size.height - 50) // Subtract approximate header height
             }
         }
@@ -65,22 +68,23 @@ struct OCOOrdersTab: View
     @Previewable @State var sharesAvailableForTrading: Double = 500
     @Previewable @State var marketValue: Double = 17550.0
 
-    VStack(spacing: 0)
-    {
-        createMockTabBar()
-        OCOOrdersTab(
-            symbol: "AAPL",
-            atrValue: 2.45,
-            taxLotData: createMockTaxLotData(),
-            sharesAvailableForTrading: $sharesAvailableForTrading,
-            marketValue: $marketValue,
-            quoteData: createMockQuoteData(),
-            accountNumber: "123456789",
-            position: Position(shortQuantity: 50, longQuantity: 100, marketValue: marketValue, longOpenProfitLoss: 2525.0),
-            lastPrice: 175.50
-        )
-        .background(Color.blue.opacity(0.1))
-    }
+      VStack(spacing: 0)
+      {
+          createMockTabBar()
+          OCOOrdersTab(
+              symbol: "AAPL",
+              atrValue: 2.45,
+              taxLotData: createMockTaxLotData(),
+              isLoadingTaxLots: false,
+              sharesAvailableForTrading: $sharesAvailableForTrading,
+              marketValue: $marketValue,
+              quoteData: createMockQuoteData(),
+              accountNumber: "123456789",
+              position: Position(shortQuantity: 50, longQuantity: 100, marketValue: marketValue, longOpenProfitLoss: 2525.0),
+              lastPrice: 175.50
+          )
+          .background(Color.blue.opacity(0.1))
+      }
 }
 
 #Preview("OCOOrdersTab - No Data", traits: .landscapeLeft)
@@ -88,22 +92,23 @@ struct OCOOrdersTab: View
     @Previewable @State var sharesAvailableForTrading: Double = 42.1
     @Previewable @State var marketValue: Double = 0.0
 
-    VStack(spacing: 0) {
-        createMockTabBar()
-        OCOOrdersTab(
-            symbol: "XYZ",
-            atrValue: 0.0,
-            taxLotData: [],
-            sharesAvailableForTrading: $sharesAvailableForTrading,
-            marketValue: $marketValue,
-            quoteData: nil,
-            accountNumber: "987654321",
-            position: Position(shortQuantity: 0, longQuantity: 0,
-                               marketValue: marketValue, longOpenProfitLoss: 0.0),
-            lastPrice: 0.0
-        )
-        .background(Color.blue.opacity(0.1))
-    }
+      VStack(spacing: 0) {
+          createMockTabBar()
+          OCOOrdersTab(
+              symbol: "XYZ",
+              atrValue: 0.0,
+              taxLotData: [],
+              isLoadingTaxLots: true,
+              sharesAvailableForTrading: $sharesAvailableForTrading,
+              marketValue: $marketValue,
+              quoteData: nil,
+              accountNumber: "987654321",
+              position: Position(shortQuantity: 0, longQuantity: 0,
+                                 marketValue: marketValue, longOpenProfitLoss: 0.0),
+              lastPrice: 0.0
+          )
+          .background(Color.blue.opacity(0.1))
+      }
 }
 
 // MARK: - Mock Data for Previews

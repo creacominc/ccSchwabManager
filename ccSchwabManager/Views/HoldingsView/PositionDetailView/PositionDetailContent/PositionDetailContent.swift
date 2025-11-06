@@ -187,6 +187,7 @@ struct PositionDetailContent: View
                                 symbol: symbol,
                                 atrValue: atrValue,
                                 taxLotData: taxLotData,
+                              isLoadingTaxLots: isLoadingTaxLots,
                                 sharesAvailableForTrading: $sharesAvailableForTrading,
                                 marketValue: $marketValue,
                                 quoteData: quoteData,
