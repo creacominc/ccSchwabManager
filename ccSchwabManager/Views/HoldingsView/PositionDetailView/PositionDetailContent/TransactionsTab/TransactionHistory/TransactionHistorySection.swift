@@ -152,13 +152,15 @@ struct TransactionHistorySection: View {
             let calculatedWidths = TransactionRow.columnProportions.map { $0 * availableWidthForColumns }
             
             VStack(alignment: .leading, spacing: 0) {
-                if isLoading || isProcessing {
+                // Only show local loading for processing (sorting), not for API loading
+                // API loading is already handled by the global loading overlay
+                if isProcessing {
                     ProgressView()
                         .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
                         .scaleEffect(2.0, anchor: .center)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                         .padding()
-                } else if transactions.isEmpty {
+                } else if transactions.isEmpty && !isLoading {
                     Text("No transactions available")
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
