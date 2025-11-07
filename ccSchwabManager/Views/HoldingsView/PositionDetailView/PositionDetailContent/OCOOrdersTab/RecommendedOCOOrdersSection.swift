@@ -199,6 +199,22 @@ struct RecommendedOCOOrdersSection: View {
         return false
     }
     
+    private func createAllOrders(sellOrders: [SalesCalcResultsRecord], buyOrders: [BuyOrderRecord]) -> [(String, Any)] {
+        var orders: [(String, Any)] = []
+        
+        // Add sell orders first
+        for order in sellOrders {
+            orders.append(("SELL", order))
+        }
+        
+        // Add buy orders
+        for order in buyOrders {
+            orders.append(("BUY", order))
+        }
+        
+        return orders
+    }
+    
       private func updateOrdersIfReady() {
           print("🔄 updateOrdersIfReady called for symbol: \(symbol)")
           
@@ -218,6 +234,21 @@ struct RecommendedOCOOrdersSection: View {
             return 
         }
         
+        // First, check if we have cached order recommendations in the SecurityDataSnapshot
+        if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
+           snapshot.isLoaded(.orderRecommendations),
+           let cachedSellOrders = snapshot.recommendedSellOrders,
+           let cachedBuyOrders = snapshot.recommendedBuyOrders {
+            print("✅ Using cached order recommendations from SecurityDataSnapshot for \(symbol)")
+            print("  - Cached sell orders: \(cachedSellOrders.count)")
+            print("  - Cached buy orders: \(cachedBuyOrders.count)")
+            
+            viewModel.recommendedSellOrders = cachedSellOrders
+            viewModel.recommendedBuyOrders = cachedBuyOrders
+            viewModel.currentOrders = createAllOrders(sellOrders: cachedSellOrders, buyOrders: cachedBuyOrders)
+            return
+        }
+        
         // Check if we already have orders for this exact combination of parameters
         // This prevents unnecessary recalculations when switching tabs for the same security
         if !viewModel.recommendedSellOrders.isEmpty || !viewModel.recommendedBuyOrders.isEmpty {
@@ -232,7 +263,7 @@ struct RecommendedOCOOrdersSection: View {
             } != nil
             
             if hasOrdersForCurrentSymbol {
-                print("✅ Using existing orders for \(symbol) - no recalculation needed")
+                print("✅ Using existing orders from ViewModel for \(symbol) - no recalculation needed")
                 print("  - Current sell orders: \(viewModel.recommendedSellOrders.count)")
                 print("  - Current buy orders: \(viewModel.recommendedBuyOrders.count)")
                 return

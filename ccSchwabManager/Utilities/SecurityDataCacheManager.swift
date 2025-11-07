@@ -5,6 +5,7 @@ enum SecurityDataGroup: CaseIterable {
     case priceHistory
     case transactions
     case taxLots
+    case orderRecommendations
 }
 
 enum SecurityDataLoadState: Equatable {
@@ -39,6 +40,8 @@ struct SecurityDataSnapshot {
     var atrValue: Double?
     var taxLotData: [SalesCalcPositionsRecord]?
     var sharesAvailableForTrading: Double?
+    var recommendedSellOrders: [SalesCalcResultsRecord]?
+    var recommendedBuyOrders: [BuyOrderRecord]?
     var loadStates: [SecurityDataGroup: SecurityDataLoadState]
 
     init(symbol: String,
@@ -49,6 +52,8 @@ struct SecurityDataSnapshot {
          atrValue: Double? = nil,
          taxLotData: [SalesCalcPositionsRecord]? = nil,
          sharesAvailableForTrading: Double? = nil,
+         recommendedSellOrders: [SalesCalcResultsRecord]? = nil,
+         recommendedBuyOrders: [BuyOrderRecord]? = nil,
          loadStates: [SecurityDataGroup: SecurityDataLoadState] = [:]) {
         self.symbol = symbol
         self.fetchedAt = fetchedAt
@@ -58,6 +63,8 @@ struct SecurityDataSnapshot {
         self.atrValue = atrValue
         self.taxLotData = taxLotData
         self.sharesAvailableForTrading = sharesAvailableForTrading
+        self.recommendedSellOrders = recommendedSellOrders
+        self.recommendedBuyOrders = recommendedBuyOrders
 
         var resolvedStates = loadStates
         for group in SecurityDataGroup.allCases {
@@ -82,6 +89,8 @@ struct SecurityDataSnapshot {
             return transactions != nil
         case .taxLots:
             return taxLotData != nil && sharesAvailableForTrading != nil
+        case .orderRecommendations:
+            return recommendedSellOrders != nil && recommendedBuyOrders != nil
         }
     }
 

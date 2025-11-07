@@ -38,6 +38,21 @@ struct PositionDetailView: View
     }
 
     @MainActor
+    private func clearAllData() {
+        // Clear all data-related state to prevent showing stale values when switching securities
+        priceHistory = nil
+        transactions = []
+        quoteData = nil
+        computedATRValue = 0.0
+        taxLotData = []
+        computedSharesAvailableForTrading = 0.0
+        loadStates = [:]
+        isLoadingPriceHistory = false
+        isLoadingTransactions = false
+        isLoadingTaxLots = false
+    }
+    
+    @MainActor
     private func applySnapshot(_ snapshot: SecurityDataSnapshot)
     {
         if let history = snapshot.priceHistory {
@@ -84,6 +99,9 @@ struct PositionDetailView: View
         AppLogger.shared.debug("PositionDetailView: Fetching data for symbol \(symbol)")
 
         dataLoadTask?.cancel()
+        
+        // Clear all old data immediately to prevent showing stale values
+        clearAllData()
 
         if forceRefresh {
             SecurityDataCacheManager.shared.remove(symbol: symbol)
@@ -109,16 +127,6 @@ struct PositionDetailView: View
         if groupsToLoad.isEmpty {
             loadingState.setLoading(false)
             return
-        }
-
-        if groupsToLoad.contains(.priceHistory) {
-            priceHistory = nil
-        }
-        if groupsToLoad.contains(.transactions) {
-            transactions = []
-        }
-        if groupsToLoad.contains(.taxLots) {
-            taxLotData = []
         }
 
         let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: groupsToLoad)
@@ -222,6 +230,92 @@ struct PositionDetailView: View
             await MainActor.run {
                 applySnapshot(updatedSnapshot)
             }
+        }
+        
+        // Compute and cache order recommendations once we have all the necessary data
+        if Task.isCancelled { return }
+        
+        if groups.contains(.orderRecommendations) || (groups.contains(.taxLots) && groups.contains(.priceHistory)) {
+            await computeAndCacheOrderRecommendations(symbol: symbol, localQuote: localQuote, localHistory: localHistory)
+        }
+    }
+    
+    private func computeAndCacheOrderRecommendations(symbol: String, localQuote: QuoteData?, localHistory: CandleList?) async {
+        // Get the current snapshot to check if we have all required data
+        guard let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
+              let atrValue = snapshot.atrValue,
+              let taxLotData = snapshot.taxLotData,
+              let sharesAvailableForTrading = snapshot.sharesAvailableForTrading,
+              !taxLotData.isEmpty,
+              sharesAvailableForTrading > 0 else {
+            AppLogger.shared.debug("PositionDetailView: Missing required data for order recommendations for \(symbol)")
+            return
+        }
+        
+        // Get the current price
+        guard let currentPrice = resolveCurrentPrice(quote: localQuote, history: localHistory) else {
+            AppLogger.shared.debug("PositionDetailView: No current price available for \(symbol)")
+            return
+        }
+        
+        // Calculate position values from Position object
+        let totalShares = (position.longQuantity ?? 0) + (position.shortQuantity ?? 0)
+        let avgCostPerShare = position.averagePrice ?? 0
+        let totalCost = avgCostPerShare * totalShares
+        let pl = position.longOpenProfitLoss ?? 0
+        let mv = position.marketValue ?? 0
+        let costBasis = mv - pl
+        let currentProfitPercent = costBasis != 0 ? (pl / costBasis) * 100 : 0
+        
+        AppLogger.shared.debug("PositionDetailView: Computing order recommendations for \(symbol)")
+        
+        // Mark as loading
+        let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.orderRecommendations])
+        await MainActor.run {
+            applySnapshot(loadingSnapshot)
+        }
+        
+        if Task.isCancelled { return }
+        
+        // Create a temporary order service to compute recommendations
+        let orderService = OrderRecommendationService()
+        
+        // Calculate sell and buy orders in parallel
+        async let sellOrders = orderService.calculateRecommendedSellOrders(
+            symbol: symbol,
+            atrValue: atrValue,
+            taxLotData: taxLotData,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice
+        )
+        
+        async let buyOrders = orderService.calculateRecommendedBuyOrders(
+            symbol: symbol,
+            atrValue: atrValue,
+            taxLotData: taxLotData,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
+        )
+        
+        if Task.isCancelled { return }
+        
+        // Wait for both to complete
+        let (sellResults, buyResults) = await (sellOrders, buyOrders)
+        
+        AppLogger.shared.debug("PositionDetailView: Order recommendations computed for \(symbol) - \(sellResults.count) sell, \(buyResults.count) buy")
+        
+        // Cache the results
+        let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .orderRecommendations) { snapshot in
+            snapshot.recommendedSellOrders = sellResults
+            snapshot.recommendedBuyOrders = buyResults
+        }
+        
+        await MainActor.run {
+            applySnapshot(updatedSnapshot)
         }
     }
 
