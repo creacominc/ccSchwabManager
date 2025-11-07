@@ -977,6 +977,17 @@ class SchwabClient
         if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
         {
             AppLogger.shared.debug( "  fetchPriceHistory - returning cached." )
+            // Return a copy to prevent mutation issues (CandleList is a class/reference type)
+            if let cached = m_lastFilteredPriceHistory {
+                return CandleList(
+                    candles: cached.candles,
+                    empty: cached.empty,
+                    previousClose: cached.previousClose,
+                    previousCloseDate: cached.previousCloseDate,
+                    previousCloseDateISO8601: cached.previousCloseDateISO8601,
+                    symbol: cached.symbol
+                )
+            }
             return m_lastFilteredPriceHistory
         }
 
@@ -997,6 +1008,17 @@ class SchwabClient
         if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
         {
             AppLogger.shared.debug( "  fetchPriceHistory - returning cached (after lock)." )
+            // Return a copy to prevent mutation issues (CandleList is a class/reference type)
+            if let cached = m_lastFilteredPriceHistory {
+                return CandleList(
+                    candles: cached.candles,
+                    empty: cached.empty,
+                    previousClose: cached.previousClose,
+                    previousCloseDate: cached.previousCloseDate,
+                    previousCloseDateISO8601: cached.previousCloseDateISO8601,
+                    symbol: cached.symbol
+                )
+            }
             return m_lastFilteredPriceHistory
         }
         
@@ -1084,7 +1106,16 @@ class SchwabClient
                 AppLogger.shared.warning("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
             }
             
-            return m_lastFilteredPriceHistory
+            // Return a copy to prevent mutation issues when this is called again for a different symbol
+            // (CandleList is a class/reference type, so we need to avoid shared mutable state)
+            return CandleList(
+                candles: candleList.candles,
+                empty: candleList.empty,
+                previousClose: candleList.previousClose,
+                previousCloseDate: candleList.previousCloseDate,
+                previousCloseDateISO8601: candleList.previousCloseDateISO8601,
+                symbol: candleList.symbol
+            )
         } catch {
             AppLogger.shared.error("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
             AppLogger.shared.error("   detail:  \(error)")

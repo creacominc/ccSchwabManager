@@ -11,6 +11,7 @@ struct PositionDetailView: View
     @Binding var sharesAvailableForTrading: Double // Initial value from parent, will be recomputed
     @Binding var marketValue: Double
     let onNavigate: (Int) -> Void
+    let getAdjacentSymbols: () -> (previous: String?, next: String?) // NEW: Closure to get adjacent position symbols
     @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
     @State private var isLoadingPriceHistory = false
@@ -27,6 +28,7 @@ struct PositionDetailView: View
     @State private var isRefreshing = false
     @State private var loadStates: [SecurityDataGroup: SecurityDataLoadState] = [:]
     @State private var dataLoadTask: Task<Void, Never>? = nil
+    @State private var prefetchTasks: [String: Task<Void, Never>] = [:] // NEW: Track prefetch tasks
 
     private func formatDate(_ timestamp: Int64?) -> String
     {
@@ -55,8 +57,14 @@ struct PositionDetailView: View
     @MainActor
     private func applySnapshot(_ snapshot: SecurityDataSnapshot)
     {
+        let priceHistoryBefore = priceHistory?.candles.count ?? 0
+        
         if let history = snapshot.priceHistory {
             self.priceHistory = history
+            AppLogger.shared.debug("📊 PositionDetailView: Applied price history - \(history.candles.count) candles for \(history.symbol ?? "unknown") (was: \(priceHistoryBefore) candles)")
+        } else {
+            // Snapshot has no price history data
+            AppLogger.shared.debug("📊 PositionDetailView: Snapshot has no price history data")
         }
 
         if let transactions = snapshot.transactions {
@@ -81,9 +89,14 @@ struct PositionDetailView: View
 
         loadStates = snapshot.loadStates
 
+        let wasLoading = isLoadingPriceHistory
         isLoadingPriceHistory = snapshot.isLoading(.priceHistory)
         isLoadingTransactions = snapshot.isLoading(.transactions)
         isLoadingTaxLots = snapshot.isLoading(.taxLots)
+        
+        if wasLoading != isLoadingPriceHistory {
+            AppLogger.shared.debug("📊 PositionDetailView: isLoadingPriceHistory changed from \(wasLoading) to \(isLoadingPriceHistory)")
+        }
 
         let anyGroupLoading = snapshot.loadStates.values.contains { $0.isLoading }
         loadingState.setLoading(anyGroupLoading)
@@ -175,11 +188,13 @@ struct PositionDetailView: View
         if Task.isCancelled { return }
 
         if groups.contains(.priceHistory) {
+            AppLogger.shared.debug("📊 Loading price history for \(symbol)")
             let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
             localHistory = fetchedPriceHistory
 
             if let fetchedPriceHistory {
+                AppLogger.shared.debug("📊 Fetched price history for \(symbol): \(fetchedPriceHistory.candles.count) candles")
                 let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
                 if Task.isCancelled { return }
 
@@ -192,6 +207,7 @@ struct PositionDetailView: View
                     applySnapshot(updatedSnapshot)
                 }
             } else {
+                AppLogger.shared.warning("📊 Failed to fetch price history for \(symbol)")
                 let failedSnapshot = SecurityDataCacheManager.shared.markFailed(symbol: symbol, group: .priceHistory, message: "Price history unavailable")
                 await MainActor.run {
                     applySnapshot(failedSnapshot)
@@ -237,6 +253,18 @@ struct PositionDetailView: View
         
         if groups.contains(.orderRecommendations) || (groups.contains(.taxLots) && groups.contains(.priceHistory)) {
             await computeAndCacheOrderRecommendations(symbol: symbol, localQuote: localQuote, localHistory: localHistory)
+        }
+        
+        // After all data is loaded, trigger prefetching of adjacent securities
+        if Task.isCancelled { return }
+        
+        // Check if current security is fully loaded
+        if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
+           snapshot.isFullyLoaded {
+            AppLogger.shared.debug("✅ \(symbol) fully loaded, triggering prefetch of adjacent securities")
+            await MainActor.run {
+                prefetchAdjacentSecurities()
+            }
         }
     }
     
@@ -317,6 +345,179 @@ struct PositionDetailView: View
         await MainActor.run {
             applySnapshot(updatedSnapshot)
         }
+    }
+    
+    // MARK: - Prefetching Methods
+    
+    /// Checks if a symbol needs to be prefetched (not in cache or not fully loaded)
+    private func shouldPrefetch(symbol: String) -> Bool {
+        guard let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol) else {
+            return true // Not in cache at all
+        }
+        
+        // Check if all critical data groups are loaded
+        let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots]
+        return !criticalGroups.allSatisfy { snapshot.isLoaded($0) }
+    }
+    
+    /// Prefetches data for a single security in the background
+    private func prefetchSecurity(symbol: String, position: Position) {
+        // Cancel any existing prefetch task for this symbol
+        prefetchTasks[symbol]?.cancel()
+        
+        AppLogger.shared.debug("🔮 Prefetching data for adjacent security: \(symbol)")
+        
+        let task = Task.detached(priority: .low) {
+            // Check if this symbol needs prefetching
+            await MainActor.run {
+                guard shouldPrefetch(symbol: symbol) else {
+                    AppLogger.shared.debug("✅ \(symbol) already cached, skipping prefetch")
+                    return
+                }
+            }
+            
+            // Mark as loading in cache
+            let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots, .orderRecommendations]
+            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+            
+            // Fetch quote data
+            var localQuote: QuoteData? = nil
+            if Task.isCancelled { return }
+            let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+            if Task.isCancelled { return }
+            localQuote = fetchedQuote
+            
+            if let fetchedQuote {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                    snapshot.quoteData = fetchedQuote
+                }
+            }
+            
+            // Fetch price history
+            var localHistory: CandleList? = nil
+            if Task.isCancelled { return }
+            let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            if Task.isCancelled { return }
+            localHistory = fetchedPriceHistory
+            
+            if let fetchedPriceHistory {
+                let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+                if Task.isCancelled { return }
+                
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                    snapshot.priceHistory = fetchedPriceHistory
+                    snapshot.atrValue = fetchedATRValue
+                }
+            }
+            
+            // Fetch transactions
+            if Task.isCancelled { return }
+            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            if Task.isCancelled { return }
+            
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                snapshot.transactions = fetchedTransactions
+            }
+            
+            // Fetch tax lots
+            if Task.isCancelled { return }
+            let effectivePrice: Double? = {
+                if let price = localQuote?.quote?.lastPrice { return price }
+                if let price = localQuote?.extended?.lastPrice { return price }
+                if let price = localQuote?.regular?.regularMarketLastPrice { return price }
+                if let price = localHistory?.candles.last?.close { return price }
+                return nil
+            }()
+            let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: effectivePrice)
+            if Task.isCancelled { return }
+            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                snapshot.taxLotData = fetchedTaxLots
+                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+            }
+            
+            //  Skip order recommendations prefetch - these can be computed quickly when user navigates to OCO tab
+            // The main value of prefetching is caching tax lots and price history data
+            AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol) (order recommendations computed on-demand)")
+        }
+        
+        prefetchTasks[symbol] = task
+    }
+    
+    /// Triggers prefetching of adjacent securities once current security is fully loaded
+    private func prefetchAdjacentSecurities() {
+        // Get adjacent symbols from parent
+        let adjacent = getAdjacentSymbols()
+        
+        AppLogger.shared.debug("🔮 Checking adjacent securities for prefetch - previous: \(adjacent.previous ?? "none"), next: \(adjacent.next ?? "none")")
+        
+        // Prefetch previous security if it exists and needs it
+        if let previousSymbol = adjacent.previous, shouldPrefetch(symbol: previousSymbol) {
+            // We need to get the Position object for the previous security
+            // Since we don't have direct access, we'll do a simpler prefetch without order recommendations for now
+            AppLogger.shared.debug("🔮 Scheduling prefetch for previous security: \(previousSymbol)")
+            Task.detached(priority: .low) {
+                await self.prefetchSecurityDataOnly(symbol: previousSymbol)
+            }
+        }
+        
+        // Prefetch next security if it exists and needs it
+        if let nextSymbol = adjacent.next, shouldPrefetch(symbol: nextSymbol) {
+            AppLogger.shared.debug("🔮 Scheduling prefetch for next security: \(nextSymbol)")
+            Task.detached(priority: .low) {
+                await self.prefetchSecurityDataOnly(symbol: nextSymbol)
+            }
+        }
+    }
+    
+    /// Prefetches basic security data (without order recommendations) for a symbol
+    private func prefetchSecurityDataOnly(symbol: String) async {
+        AppLogger.shared.debug("🔮 Prefetching basic data for: \(symbol)")
+        
+        // Mark as loading in cache
+        let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots]
+        _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        
+        // Fetch quote data
+        if Task.isCancelled { return }
+        let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+        if Task.isCancelled { return }
+        
+        if let fetchedQuote {
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                snapshot.quoteData = fetchedQuote
+            }
+        }
+        
+        // Fetch price history
+        if Task.isCancelled { return }
+        let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        if Task.isCancelled { return }
+        
+        if let fetchedPriceHistory {
+            let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+            if Task.isCancelled { return }
+            
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                snapshot.priceHistory = fetchedPriceHistory
+                snapshot.atrValue = fetchedATRValue
+            }
+        }
+        
+        // Fetch tax lots
+        if Task.isCancelled { return }
+        let currentPrice = fetchedQuote?.quote?.lastPrice ?? fetchedQuote?.extended?.lastPrice ?? fetchedPriceHistory?.candles.last?.close
+        let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        if Task.isCancelled { return }
+        let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+        
+        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+            snapshot.taxLotData = fetchedTaxLots
+            snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+        }
+        
+        AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol)")
     }
 
     var body: some View
@@ -419,6 +620,14 @@ struct PositionDetailView: View
         .onDisappear {
             dataLoadTask?.cancel()
             dataLoadTask = nil
+            
+            // Cancel all prefetch tasks
+            for (symbol, task) in prefetchTasks {
+                AppLogger.shared.debug("🔮 Cancelling prefetch task for \(symbol)")
+                task.cancel()
+            }
+            prefetchTasks.removeAll()
+            
             SchwabClient.shared.loadingDelegate = nil
         }
         .withLoadingState(loadingState)

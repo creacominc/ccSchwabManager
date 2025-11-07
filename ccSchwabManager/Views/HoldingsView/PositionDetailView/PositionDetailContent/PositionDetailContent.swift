@@ -22,6 +22,14 @@ struct PositionDetailContent: View
     @Binding var selectedTab: Int
     @State private var orders: [Order] = []
     @State private var isLoadingOrders: Bool = false
+    
+    // Unique ID for price history tab to force re-rendering when data changes
+    private var priceHistoryId: String {
+        if let history = priceHistory {
+            return "priceHistory_\(history.symbol ?? "none")_\(history.candles.count)"
+        }
+        return "priceHistory_none_0"
+    }
 
     private var detailsTabView: some View
     {
@@ -150,6 +158,7 @@ struct PositionDetailContent: View
                                 marketValue: $marketValue,
                                 lastPrice: getCurrentPrice()
                             )
+                            .id(priceHistoryId)
                         case 2:
                             TransactionsTab(
                                 isLoading: isLoadingTransactions,

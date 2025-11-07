@@ -536,6 +536,12 @@ struct HoldingsView: View
                         }
                     }
                 },
+                getAdjacentSymbols: {
+                    // Return the symbols of the previous and next positions
+                    let previousSymbol: String? = currentIndex > 0 ? sortedHoldings[currentIndex - 1].instrument?.symbol : nil
+                    let nextSymbol: String? = currentIndex < sortedHoldings.count - 1 ? sortedHoldings[currentIndex + 1].instrument?.symbol : nil
+                    return (previous: previousSymbol, next: nextSymbol)
+                },
                 selectedTab: $selectedTab,
             )
             .task {

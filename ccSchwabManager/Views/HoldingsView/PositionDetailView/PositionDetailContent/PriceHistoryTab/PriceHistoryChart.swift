@@ -61,71 +61,80 @@ struct PriceHistoryChart: View {
     
     @ViewBuilder
     private var chartContent: some View {
-        Chart {
-            ForEach(candles, id: \.datetime) { candle in
-                LineMark(
-                    x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
-                    y: .value("Price", candle.close ?? 0)
-                )
-                .foregroundStyle(.blue)
-                .interpolationMethod(.catmullRom)
+        if candles.isEmpty {
+            // Show empty state if no candles
+            VStack {
+                Text("No price data available")
+                    .foregroundColor(.secondary)
             }
-        }
-        .chartXScale(domain: xAxisRange)
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .day)) { value in
-                if let date : Date = value.as(Date.self) {
-                    // Only show labels for the first and last actual data points
-                    let firstDataDate = Date(timeIntervalSince1970: TimeInterval(candles.first?.datetime ?? 0) / 1000)
-                    let lastDataDate = Date(timeIntervalSince1970: TimeInterval(candles.last?.datetime ?? 0) / 1000)
-                    
-                    if Calendar.current.isDate(date, inSameDayAs: firstDataDate) {
-                        AxisValueLabel {
-                            Text(formatDate(date, format: "MM-dd"))
-                        }
-                    } else if Calendar.current.isDate(date, inSameDayAs: lastDataDate) {
-                        AxisValueLabel {
-                            Text(formatDate(date, format: "yyyy-MM-dd"))
-                        }
-                    } else if isFirstDayOfQuarter(date) {
-                        AxisValueLabel {
-                            Text(formatDate(date, format: "MM"))
-                        }
-                    }
-                    AxisGridLine()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Chart {
+                ForEach(candles, id: \.datetime) { candle in
+                    LineMark(
+                        x: .value("Date", Date(timeIntervalSince1970: TimeInterval(candle.datetime ?? 0) / 1000)),
+                        y: .value("Price", candle.close ?? 0)
+                    )
+                    .foregroundStyle(.blue)
+                    .interpolationMethod(.catmullRom)
                 }
             }
-        }
-        .chartYAxis {
-            AxisMarks(position: .leading) { value in
-                AxisGridLine()
-                AxisValueLabel(format: .currency(code: "USD").precision(.fractionLength(2)))
+            .chartXScale(domain: xAxisRange)
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .day)) { value in
+                    if let date : Date = value.as(Date.self) {
+                        // Only show labels for the first and last actual data points
+                        let firstDataDate = Date(timeIntervalSince1970: TimeInterval(candles.first?.datetime ?? 0) / 1000)
+                        let lastDataDate = Date(timeIntervalSince1970: TimeInterval(candles.last?.datetime ?? 0) / 1000)
+                        
+                        if Calendar.current.isDate(date, inSameDayAs: firstDataDate) {
+                            AxisValueLabel {
+                                Text(formatDate(date, format: "MM-dd"))
+                            }
+                        } else if Calendar.current.isDate(date, inSameDayAs: lastDataDate) {
+                            AxisValueLabel {
+                                Text(formatDate(date, format: "yyyy-MM-dd"))
+                            }
+                        } else if isFirstDayOfQuarter(date) {
+                            AxisValueLabel {
+                                Text(formatDate(date, format: "MM"))
+                            }
+                        }
+                        AxisGridLine()
+                    }
+                }
             }
-        }
-        .chartYScale(domain: yAxisRange)
-        .chartPlotStyle { plotArea in
-            plotArea
-                .background(Color.gray.opacity(0.1))
-                .border(Color.gray.opacity(0.2))
-        }
-        .chartOverlay { proxy in
-            chartOverlayContent(proxy: proxy)
-        }
-        .overlay {
-            if showCrosshair {
-                CrosshairView(
-                    crosshairPosition: crosshairPosition,
-                    plotFrame: plotFrame
+            .chartYAxis {
+                AxisMarks(position: .leading) { value in
+                    AxisGridLine()
+                    AxisValueLabel(format: .currency(code: "USD").precision(.fractionLength(2)))
+                }
+            }
+            .chartYScale(domain: yAxisRange)
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .background(Color.gray.opacity(0.1))
+                    .border(Color.gray.opacity(0.2))
+            }
+            .chartOverlay { proxy in
+                chartOverlayContent(proxy: proxy)
+            }
+            .overlay {
+                if showCrosshair {
+                    CrosshairView(
+                        crosshairPosition: crosshairPosition,
+                        plotFrame: plotFrame
+                    )
+                }
+            }
+            .overlay {
+                TooltipView(
+                    selectedDate: selectedDate,
+                    selectedPrice: selectedPrice,
+                    tooltipPosition: tooltipPosition,
+                    tooltipBackgroundColor: tooltipBackgroundColor
                 )
             }
-        }
-        .overlay {
-            TooltipView(
-                selectedDate: selectedDate,
-                selectedPrice: selectedPrice,
-                tooltipPosition: tooltipPosition,
-                tooltipBackgroundColor: tooltipBackgroundColor
-            )
         }
     }
     

@@ -5,21 +5,60 @@ struct PriceHistorySection: View {
     let isLoading: Bool
     let formatDate: (Int64?) -> String
     
+    // Generate a unique ID that changes when meaningful data changes
+    private var dataId: String {
+        if let history = priceHistory {
+            let symbol = history.symbol ?? "unknown"
+            let count = history.candles.count
+            let firstDateTime = history.candles.first?.datetime ?? 0
+            return "chart_\(symbol)_\(count)_\(firstDateTime)"
+        }
+        return "chart_empty"
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let _ = logCurrentState()
+        
+        return VStack(alignment: .leading, spacing: 6) {
             if isLoading {
                 ProgressView()
                     .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
                     .scaleEffect(2.0, anchor: .center)
                     .padding()
-            } else if let history = priceHistory {
+                    .id("loading")
+            } else if let history = priceHistory, !history.candles.isEmpty {
                 PriceHistoryChart(candles: history.candles)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                    .id(dataId) // Force complete recreation when data identity changes
+            } else if priceHistory != nil && priceHistory!.candles.isEmpty {
+                Text("No candles in price history data")
+                    .foregroundColor(.secondary)
+                    .padding()
+                    .id("empty_candles")
             } else {
                 Text("No price history available")
                     .foregroundColor(.secondary)
                     .padding()
+                    .id("no_history")
             }
+        }
+        .task(id: dataId) {
+            // React to data ID changes - this ensures view updates when data arrives
+            if let history = priceHistory {
+                AppLogger.shared.debug("📊 PriceHistorySection.task: Data ID changed - \(history.candles.count) candles for \(history.symbol ?? "unknown")")
+            }
+        }
+    }
+    
+    private func logCurrentState() {
+        if isLoading {
+            AppLogger.shared.debug("📊 PriceHistorySection: Showing loading spinner")
+        } else if let history = priceHistory, !history.candles.isEmpty {
+            AppLogger.shared.debug("📊 PriceHistorySection: Rendering chart with \(history.candles.count) candles for \(history.symbol ?? "unknown")")
+        } else if priceHistory != nil && priceHistory!.candles.isEmpty {
+            AppLogger.shared.warning("📊 PriceHistorySection: Price history has empty candles for \(priceHistory?.symbol ?? "unknown") - isLoading: \(isLoading)")
+        } else {
+            AppLogger.shared.debug("📊 PriceHistorySection: No price history available - isLoading: \(isLoading)")
         }
     }
 }
