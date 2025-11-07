@@ -29,6 +29,7 @@ struct PositionDetailView: View
     @State private var loadStates: [SecurityDataGroup: SecurityDataLoadState] = [:]
     @State private var dataLoadTask: Task<Void, Never>? = nil
     @State private var prefetchTasks: [String: Task<Void, Never>] = [:] // NEW: Track prefetch tasks
+    @Environment(\.dismiss) private var dismiss
 
     private func formatDate(_ timestamp: Int64?) -> String
     {
@@ -629,6 +630,19 @@ struct PositionDetailView: View
             prefetchTasks.removeAll()
             
             SchwabClient.shared.loadingDelegate = nil
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
         }
         .withLoadingState(loadingState)
     }
