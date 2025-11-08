@@ -527,10 +527,28 @@ struct PositionDetailView: View
         {
             VStack(spacing: 0)
             {
-                // Refresh button at the top
+                // Close and Refresh buttons at the top
                 HStack
                 {
+                    #if !os(macOS)
+                    // Close button for iOS and visionOS
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        HStack {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                            Text("Close")
+                                .foregroundColor(.primary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .padding(.vertical, 4)
+                    #endif
+                    
                     Spacer()
+                    
                     Button(action: {
                         isRefreshing = true
                         fetchDataForSymbol(forceRefresh: true)

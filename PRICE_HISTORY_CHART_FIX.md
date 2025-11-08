@@ -283,3 +283,4 @@ If chart issues persist:
 The price history chart blank issue was caused by SwiftUI's Chart view not properly detecting data changes during navigation. The solution uses multiple `.id()` modifiers to force complete view recreation, combined with better empty state handling and comprehensive debug logging. This ensures the chart **always** re-renders when price history data changes, whether from navigation, cache hits, or fresh API calls.
 
 
+
