@@ -16,7 +16,7 @@ struct HoldingsTableContent: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 8) {
+            LazyVStack(spacing: 10) {
                 ForEach(Array(sortedHoldings.enumerated()), id: \.element.id) { index, position in
                     let isOption = position.instrument?.assetType == .OPTION
                     let dte: Int? = isOption ? 

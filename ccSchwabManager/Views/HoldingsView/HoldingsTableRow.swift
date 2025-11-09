@@ -64,7 +64,7 @@ struct HoldingsTableRow: View {
             HStack(spacing: 4) {
                 // symbol
                 Text(position.instrument?.symbol ?? "N/A")
-                    .font(.system(size: 14, weight: .medium))
+                    .tableCellFont(weight: .medium)
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(0, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .leading )
@@ -79,13 +79,13 @@ struct HoldingsTableRow: View {
                 .buttonStyle(.plain)
                 // quantity
                 Text("\(Int(position.longQuantity ?? 0))")
-                    .font(.system(size: 14))
+                    .tableCellFont()
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(1, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)
                 // average
                 Text(String(format: "%.2f", position.averagePrice ?? 0.0))
-                    .font(.system(size: 14))
+                    .tableCellFont()
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(2, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)
@@ -93,19 +93,19 @@ struct HoldingsTableRow: View {
                 if isWide
                 {
                     Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                        .font(.system(size: 14))
+                        .tableCellFont()
                         .foregroundColor(.primary)
                         .frame(width: HoldingsTableRow.getColumnWidth(3, viewWidth: geometry.size.width, isWide: isWide),
                                alignment: .trailing)
                     Text(showGainLossDollar())
-                        .font(.system(size: 14))
+                        .tableCellFont()
                         .foregroundColor(plPercent >= 0 ? .green : .red)
                         .frame(width: HoldingsTableRow.getColumnWidth(4, viewWidth: geometry.size.width, isWide: isWide),
                                alignment: .trailing)
                 }
                 // P/L%
                 Text(String(format: "%.2f%%", plPercent))
-                    .font(.system(size: 14))
+                    .tableCellFont()
                     .foregroundColor(plPercent >= 0 ? .green : .red)
                     .frame(width: HoldingsTableRow.getColumnWidth(5, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)
@@ -113,31 +113,31 @@ struct HoldingsTableRow: View {
                 if isWide
                 {
                     Text(position.instrument?.assetType?.shortDisplayName ?? "N/A")
-                        .font(.system(size: 14))
+                        .tableCellFont()
                         .foregroundColor(.primary)
                         .frame(width: HoldingsTableRow.getColumnWidth(6, viewWidth: geometry.size.width, isWide: isWide),
                                alignment: .leading)
                     Text(accountNumber)
-                        .font(.system(size: 14))
+                        .tableCellFont()
                         .foregroundColor(.primary)
                         .frame(width: HoldingsTableRow.getColumnWidth(7, viewWidth: geometry.size.width, isWide: isWide),
                                alignment: .leading)
                 }
                 // last trade
                 Text(tradeDate)
-                    .font(.system(size: 14))
+                    .tableCellFont()
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(8, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .leading)
                 // order
                 Text(orderStatus?.shortDisplayName ?? "N/A")
-                    .font(.system(size: 14))
+                    .tableCellFont()
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(9, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .leading)
                 // dte
                 Text(dte)
-                    .font(.system(size: 14))
+                    .tableCellFont()
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(10, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)

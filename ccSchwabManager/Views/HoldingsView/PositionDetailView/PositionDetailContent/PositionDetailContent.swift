@@ -58,7 +58,7 @@ struct PositionDetailContent: View
                     Button(action: { onNavigate(currentIndex - 1) })
                     {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 14))
+                            .tableCellFont()
                             .foregroundColor(.accentColor)
                     }
                     .disabled(currentIndex <= 0)
@@ -126,7 +126,7 @@ struct PositionDetailContent: View
                     Button(action: { onNavigate(currentIndex + 1) })
                     {
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 14))
+                            .tableCellFont()
                             .foregroundColor(.accentColor)
                     }
                     .disabled(currentIndex >= totalPositions - 1)
@@ -274,9 +274,10 @@ struct TabButton: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 12))
+                    .detailFont()
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(FontStyles.detailSmall)
+                    .fontWeight(.medium)
             }
             .foregroundColor(isSelected ? .accentColor : .primary)
             .padding(.horizontal, 12)
