@@ -548,8 +548,14 @@ class SchwabClient: @unchecked Sendable
         accessTokenRequest.httpBody = bodyString.data(using: .utf8)!
         AppLogger.shared.debug( "Posting access token request:  \(accessTokenRequest)" )
         
+        // Use a class wrapper to avoid captured var mutation warnings
+        class ResultBox: @unchecked Sendable {
+            var value: Result<Void, ErrorCodes> = .failure(.notAuthenticated)
+            let lock = NSLock()
+        }
+        
         let semaphore: DispatchSemaphore = DispatchSemaphore(value: 0)
-        var result: Result<Void, ErrorCodes> = .failure(.notAuthenticated)
+        let resultBox = ResultBox()
         
         URLSession.shared.dataTask(with: accessTokenRequest)
         { [weak self] data, response, error in
@@ -565,7 +571,9 @@ class SchwabClient: @unchecked Sendable
             else
             {
                 AppLogger.shared.error( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
-                result = .failure(ErrorCodes.notAuthenticated)
+                resultBox.lock.withLock {
+                    resultBox.value = .failure(ErrorCodes.notAuthenticated)
+                }
                 return
             }
             
@@ -579,15 +587,21 @@ class SchwabClient: @unchecked Sendable
                     if( !KeychainManager.saveSecrets(secrets: &self!.m_secrets) )
                     {
                         AppLogger.shared.error( "Failed to save secrets with access and refresh tokens." )
-                        result = .failure(ErrorCodes.failedToSaveSecrets)
+                        resultBox.lock.withLock {
+                            resultBox.value = .failure(ErrorCodes.failedToSaveSecrets)
+                        }
                         return
                     }
-                    result = .success( Void() )
+                    resultBox.lock.withLock {
+                        resultBox.value = .success( Void() )
+                    }
                 }
                 else
                 {
                     AppLogger.shared.error( "Failed to parse token response" )
-                    result = .failure(ErrorCodes.notAuthenticated)
+                    resultBox.lock.withLock {
+                        resultBox.value = .failure(ErrorCodes.notAuthenticated)
+                    }
                 }
             }
             else
@@ -596,7 +610,9 @@ class SchwabClient: @unchecked Sendable
                     "error: \(httpResponse.statusCode). " +
                     "\(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
                 AppLogger.shared.error(errorMsg)
-                result = .failure(ErrorCodes.notAuthenticated)
+                resultBox.lock.withLock {
+                    resultBox.value = .failure(ErrorCodes.notAuthenticated)
+                }
             }
         }.resume()
         
@@ -604,11 +620,13 @@ class SchwabClient: @unchecked Sendable
         let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
         if timeoutResult == .timedOut {
             AppLogger.shared.error("getAccessToken timed out")
-            result = .failure(ErrorCodes.notAuthenticated)
+            resultBox.lock.withLock {
+                resultBox.value = .failure(ErrorCodes.notAuthenticated)
+            }
         }
         
         // Call completion with the result
-        completion(result)
+        completion(resultBox.value)
     }
     
     
