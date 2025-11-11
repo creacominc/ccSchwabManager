@@ -18,7 +18,10 @@ func extractStrike(from symbol: String?) -> Double? {
         // Example: "B     250808C00025000" -> extract "00025000"
         let pattern: String = #"[CP](\d{8})"#
         if let regex: NSRegularExpression = try? NSRegularExpression(pattern: pattern),
-           let match: NSTextCheckingResult = regex.firstMatch(in: symbol, range: NSRange(symbol.startIndex..., in: symbol)) {
+           let match: NSTextCheckingResult = regex.firstMatch(
+               in: symbol, 
+               range: NSRange(symbol.startIndex..., in: symbol)
+           ) {
             let strikeString: String = String(symbol[Range(match.range(at: 1), in: symbol)!])
             if var strike: Double = Double(strikeString) {
                 strike = strike / 1000.00
@@ -60,7 +63,9 @@ struct SymbolContractSummary {
         
         for position: Position in contracts {
             // Calculate DTE for this contract
-            if let dte: Int = extractExpirationDate(from: position.instrument?.symbol, description: position.instrument?.description) {
+            if let dte: Int = extractExpirationDate(from: position.instrument?.symbol,
+                                                    description: position.instrument?.description)
+                ?? extractExpirationDate(from: position.instrument?.description, description: nil) {
                 if minDTE == nil || dte < minDTE! {
                     minDTE = dte
                 }
@@ -109,7 +114,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
         - getAuthorizationUrl : Executes the completion with the URL for logging into and authenticating the connection.
         - getAccessToken : given the URL returned by the authentication process, extract the code and get the access token.
  */
-class SchwabClient
+class SchwabClient: @unchecked Sendable
 {
     public let maxQuarterDelta : Int = 20 // 5 years
     private let requestTimeout : TimeInterval = 30
@@ -477,7 +482,9 @@ class SchwabClient
     {
         AppLogger.shared.debug( "=== getAuthorizationUrl ===" )
         // provide the URL for authentication.
-        let AUTHORIZE_URL : String  = "\(authorizationWeb)?client_id=\( self.m_secrets.appId )&redirect_uri=\( self.m_secrets.redirectUrl )"
+        let AUTHORIZE_URL : String  = "\(authorizationWeb)" +
+            "?client_id=\( self.m_secrets.appId )" +
+            "&redirect_uri=\( self.m_secrets.redirectUrl )"
         guard let url = URL( string: AUTHORIZE_URL ) else {
             completion(.failure(.invalidResponse))
             return
@@ -516,7 +523,11 @@ class SchwabClient
         // Access Token Request
         AppLogger.shared.debug( "=== getAccessToken ===" )
         //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        
+        let loadingDelegate = self.loadingDelegate
+        Task { @MainActor in
+            loadingDelegate?.setLoading(true)
+        }
         
         let url: URL = URL( string: "\(accessTokenWeb)" )!
         //AppLogger.shared.debug( "accessTokenUrl: \(url)" )
@@ -531,7 +542,10 @@ class SchwabClient
         accessTokenRequest.setValue( "Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization" )
         accessTokenRequest.setValue( "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type" )
         // body
-        accessTokenRequest.httpBody = String("grant_type=authorization_code&code=\( self.m_secrets.code )&redirect_uri=\( self.m_secrets.redirectUrl )").data(using: .utf8)!
+        let bodyString = "grant_type=authorization_code" +
+            "&code=\( self.m_secrets.code )" +
+            "&redirect_uri=\( self.m_secrets.redirectUrl )"
+        accessTokenRequest.httpBody = bodyString.data(using: .utf8)!
         AppLogger.shared.debug( "Posting access token request:  \(accessTokenRequest)" )
         
         let semaphore: DispatchSemaphore = DispatchSemaphore(value: 0)
@@ -540,9 +554,9 @@ class SchwabClient
         URLSession.shared.dataTask(with: accessTokenRequest)
         { [weak self] data, response, error in
             defer {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to FALSE")
-                    self?.loadingDelegate?.setLoading(false)
+                    loadingDelegate?.setLoading(false)
                 }
                 semaphore.signal()
             }
@@ -578,7 +592,10 @@ class SchwabClient
             }
             else
             {
-                AppLogger.shared.error( "Failed to fetch account numbers.   error: \(httpResponse.statusCode). \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))" )
+                let errorMsg = "Failed to fetch account numbers. " +
+                    "error: \(httpResponse.statusCode). " +
+                    "\(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
+                AppLogger.shared.error(errorMsg)
                 result = .failure(ErrorCodes.notAuthenticated)
             }
         }.resume()
@@ -645,10 +662,14 @@ class SchwabClient
         }
         
         //AppLogger.shared.debug("🔍 refreshAccessToken - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        Task { @MainActor in
+            loadingDelegate?.setLoading(true)
+        }
         defer {
             //AppLogger.shared.debug("🔍 refreshAccessToken - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
 
         // Access Token Refresh Request
@@ -669,17 +690,15 @@ class SchwabClient
         refreshTokenRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         
         // Body
-        refreshTokenRequest.httpBody = "grant_type=refresh_token&refresh_token=\(self.m_secrets.refreshToken)".data(using: .utf8)!
+        let refreshBodyString = "grant_type=refresh_token" +
+            "&refresh_token=\(self.m_secrets.refreshToken)"
+        refreshTokenRequest.httpBody = refreshBodyString.data(using: .utf8)!
         
         let semaphore = DispatchSemaphore(value: 0)
-        var refreshCompleted = false
         
         URLSession.shared.dataTask(with: refreshTokenRequest) { [weak self] data, response, error in
             defer { 
-                if !refreshCompleted {
-                    refreshCompleted = true
-                    semaphore.signal()
-                }
+                semaphore.signal()
             }
             
             guard let self = self else {
@@ -789,10 +808,14 @@ class SchwabClient
     {
         AppLogger.shared.debug(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
         //AppLogger.shared.debug("🔍 fetchAccountNumbers - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
         defer {
             //AppLogger.shared.debug("🔍 fetchAccountNumbers - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
         
         guard let url = URL(string: accountNumbersWeb) else {
@@ -853,10 +876,14 @@ class SchwabClient
     {
         AppLogger.shared.debug("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         //AppLogger.shared.debug("🔍 fetchAccounts - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
         defer {
             //AppLogger.shared.debug("🔍 fetchAccounts - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
         
         var accountUrl = accountWeb
@@ -992,10 +1019,14 @@ class SchwabClient
         }
 
         //AppLogger.shared.debug("🔍 fetchPriceHistory - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        Task { @MainActor in
+            loadingDelegate?.setLoading(true)
+        }
         defer {
             //AppLogger.shared.debug("🔍 fetchPriceHistory - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
         
         // Hold lock for the entire operation to prevent race conditions
@@ -1476,10 +1507,14 @@ class SchwabClient
         }
         AppLogger.shared.debug("=== fetchTransactionHistory -  quarterDelta: \(quarterDeltaForLogging) ===")
         //AppLogger.shared.debug("🔍 fetchTransactionHistory - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
         defer {
             //AppLogger.shared.debug("🔍 fetchTransactionHistory - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
         
         // Check and increment quarter delta atomically
@@ -1519,7 +1554,7 @@ class SchwabClient
             // Add a task for each account
             for accountNumberHash in self.m_secrets.acountNumberHash {
                 for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
-                            group.addTask {
+                            group.addTask { @Sendable in
                                 var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
                                 transactionHistoryUrl += "?startDate=\(startDate)"
                                 transactionHistoryUrl += "&endDate=\(endDate)"
@@ -1847,7 +1882,7 @@ class SchwabClient
                     continue
                 }
                 AppLogger.shared.info("fetchOrderHistory 🔍 Fetching orders for status: \(status.rawValue)")
-                group.addTask {
+                group.addTask { @Sendable in
                     var orderHistoryUrl: String = "\(ordersWeb)"
                     orderHistoryUrl += "?fromEnteredTime=\(dateSixMonthsAgoStr)"
                     orderHistoryUrl += "&toEnteredTime=\(todayStr)"
@@ -2004,9 +2039,13 @@ class SchwabClient
         AppLogger.shared.debug("🎯 Cancelling \(orderIds.count) orders: \(orderIds)")
         AppLogger.shared.debug("📋 Order IDs to cancel: \(orderIds.map { String($0) }.joined(separator: ", "))")
         
-        loadingDelegate?.setLoading(true)
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
         defer {
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
 
         /**
@@ -2448,10 +2487,14 @@ class SchwabClient
 //        let debug : Bool = true
         // display the busy indicator
 //        if debug { AppLogger.shared.debug("🔍 computeTaxLots - Setting loading to TRUE") }
-        loadingDelegate?.setLoading(true)
+        Task { @MainActor in
+            loadingDelegate?.setLoading(true)
+        }
         defer {
 //            if debug { AppLogger.shared.debug("🔍 computeTaxLots - Setting loading to FALSE") }
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
 
         AppLogger.shared.debug("=== computeTaxLots \(symbol) ===")
@@ -2742,9 +2785,13 @@ class SchwabClient
     
     // Add loading state handling to other network methods
     func fetchData<T: Decodable>(from url: URL) async throws -> T {
-        loadingDelegate?.setLoading(true)
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
         defer {
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
         
         let (data, _) = try await URLSession.shared.data(from: url)
@@ -2752,12 +2799,15 @@ class SchwabClient
     }
     
     func fetchDataWithTask<T: Decodable>(from url: URL, completion: @escaping (Result<T, Error>) -> Void) {
-        loadingDelegate?.setLoading(true)
+        let loadingDelegate = self.loadingDelegate
+        Task { @MainActor in
+            loadingDelegate?.setLoading(true)
+        }
         
-        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+        URLSession.shared.dataTask(with: url) { data, response, error in
             defer {
-                DispatchQueue.main.async {
-                    self?.loadingDelegate?.setLoading(false)
+                Task { @MainActor in
+                    loadingDelegate?.setLoading(false)
                 }
             }
             
@@ -2791,10 +2841,14 @@ class SchwabClient
     public func fetchTransactionHistoryReduced(quarters: Int = 4) async {
         AppLogger.shared.debug("=== fetchTransactionHistoryReduced - quarters: \(quarters) ===")
         //AppLogger.shared.debug("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
-        loadingDelegate?.setLoading(true)
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
         defer {
             //AppLogger.shared.debug("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
-            loadingDelegate?.setLoading(false)
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
         
         // Reset quarter delta for reduced fetch
@@ -2820,7 +2874,7 @@ class SchwabClient
                     await withTaskGroup(of: [Transaction]?.self) { accountGroup in
                         for accountNumberHash in self.m_secrets.acountNumberHash {
                             for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
-                                accountGroup.addTask {
+                                accountGroup.addTask { @Sendable in
                                     var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
                                     transactionHistoryUrl += "?startDate=\(startDate)"
                                     transactionHistoryUrl += "&endDate=\(endDate)"
@@ -3006,7 +3060,7 @@ class SchwabClient
         return m_refreshAccessToken_running
     }
     
-    var isLoading: Bool {
+    @MainActor var isLoading: Bool {
         if let loadingState = loadingDelegate as? LoadingState {
             return loadingState.isLoading
         }

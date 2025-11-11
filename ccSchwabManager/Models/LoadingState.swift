@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import os.log
 
+@MainActor
 class LoadingState: ObservableObject, LoadingStateDelegate {
     @Published var isLoading: Bool = false
     // private var loadingCallStack: String = ""
@@ -12,49 +13,44 @@ class LoadingState: ObservableObject, LoadingStateDelegate {
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "LoadingState")
     
     func setLoading(_ isLoading: Bool) {
-        // Ensure this runs on the main thread
-        DispatchQueue.main.async {
-            // let callStack = Thread.callStackSymbols.prefix(5).joined(separator: "\n")            
-            if isLoading {
-                // self.loadingCallStack = callStack
-                self.loadingStartTime = Date()
-                // AppLogger.shared.info("🔄 LoadingState.setLoading(TRUE) - Call stack:\n\(callStack)")
+        // let callStack = Thread.callStackSymbols.prefix(5).joined(separator: "\n")            
+        if isLoading {
+            // self.loadingCallStack = callStack
+            self.loadingStartTime = Date()
+            // AppLogger.shared.info("🔄 LoadingState.setLoading(TRUE) - Call stack:\n\(callStack)")
 
-                // Set a timeout to automatically clear loading state after 30 seconds
-                self.loadingTimer?.invalidate()
-                self.loadingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
-                    AppLogger.shared.warning("⏰ LoadingState timeout - automatically clearing stuck loading state")
-                    DispatchQueue.main.async {
-                        self?.isLoading = false
-                        self?.loadingStartTime = nil
-                    }
+            // Set a timeout to automatically clear loading state after 30 seconds
+            self.loadingTimer?.invalidate()
+            self.loadingTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: false) { [weak self] _ in
+                AppLogger.shared.warning("⏰ LoadingState timeout - automatically clearing stuck loading state")
+                Task { @MainActor in
+                    self?.isLoading = false
+                    self?.loadingStartTime = nil
                 }
-            } else {
-                // let duration = self.loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-                // AppLogger.shared.info("✅ LoadingState.setLoading(FALSE) - Duration: \(String(format: "%.2f", duration))s - Previous call stack:\n\(self.loadingCallStack)")
-                // self.loadingCallStack = ""
-                self.loadingStartTime = nil
-                self.loadingTimer?.invalidate()
-                self.loadingTimer = nil
             }
-            
-            self.isLoading = isLoading
-        }
-    }
-    
-    func forceClearLoading() {
-        DispatchQueue.main.async {
-            AppLogger.shared.warning("🧹 LoadingState.forceClearLoading - Force clearing stuck loading state")
-            self.isLoading = false
+        } else {
+            // let duration = self.loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+            // AppLogger.shared.info("✅ LoadingState.setLoading(FALSE) - Duration: \(String(format: "%.2f", duration))s - Previous call stack:\n\(self.loadingCallStack)")
             // self.loadingCallStack = ""
             self.loadingStartTime = nil
             self.loadingTimer?.invalidate()
             self.loadingTimer = nil
         }
+        
+        self.isLoading = isLoading
     }
     
-    deinit {
-        loadingTimer?.invalidate()
+    func forceClearLoading() {
+        AppLogger.shared.warning("🧹 LoadingState.forceClearLoading - Force clearing stuck loading state")
+        self.isLoading = false
+        // self.loadingCallStack = ""
+        self.loadingStartTime = nil
+        self.loadingTimer?.invalidate()
+        self.loadingTimer = nil
+    }
+    
+    nonisolated deinit {
+        // Timer will be cleaned up automatically on deallocation
         // if isLoading {
         //     print("⚠️ LoadingState deallocated while still loading! Call stack:\n\(loadingCallStack)")
         // }

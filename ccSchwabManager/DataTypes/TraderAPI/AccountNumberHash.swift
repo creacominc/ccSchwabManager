@@ -1,7 +1,7 @@
 
 import Foundation
 
-public class AccountNumberHash: Codable, Identifiable
+public class AccountNumberHash: Codable, Identifiable, @unchecked Sendable
 {
 
     public var accountNumber: String?

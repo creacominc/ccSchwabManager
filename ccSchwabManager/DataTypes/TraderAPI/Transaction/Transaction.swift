@@ -46,7 +46,7 @@ import Foundation
 
 
 // Transaction needs to be hashable.
-class Transaction: Codable, Identifiable, Hashable
+class Transaction: Codable, Identifiable, Hashable, @unchecked Sendable
 {
     static func == (lhs: Transaction, rhs: Transaction) -> Bool {
         return (lhs.activityId == rhs.activityId)

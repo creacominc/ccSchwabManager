@@ -14,7 +14,7 @@ import Foundation
 
  */
 
-public enum OrderStatus: String, Codable, CaseIterable {
+public enum OrderStatus: String, Codable, CaseIterable, Sendable {
     case awaitingParentOrder = "AWAITING_PARENT_ORDER"
     case awaitingCondition = "AWAITING_CONDITION"
     case awaitingStopCondition = "AWAITING_STOP_CONDITION"
