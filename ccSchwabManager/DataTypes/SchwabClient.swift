@@ -1098,32 +1098,37 @@ class SchwabClient: @unchecked Sendable
         // set a 10 second timeout on this request
         request.timeoutInterval = self.requestTimeout
 
+        // Use a class wrapper to avoid captured var mutation warnings
+        class ResponseBox: @unchecked Sendable {
+            var data: Data?
+            var error: Error?
+            var httpResponse: HTTPURLResponse?
+        }
+        
         let semaphore = DispatchSemaphore(value: 0)
-        var responseData: Data?
-        var responseError: Error?
-        var httpResponse: HTTPURLResponse?
+        let responseBox = ResponseBox()
         
         URLSession.shared.dataTask(with: request) { data, response, error in
-            responseData = data
-            responseError = error
-            httpResponse = response as? HTTPURLResponse
+            responseBox.data = data
+            responseBox.error = error
+            responseBox.httpResponse = response as? HTTPURLResponse
             semaphore.signal()
         }.resume()
         
         semaphore.wait()
         
-        if let error = responseError {
+        if let error = responseBox.error {
             AppLogger.shared.error("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
             return nil
         }
         
-        guard let data = responseData else {
+        guard let data = responseBox.data else {
             AppLogger.shared.debug("fetchPriceHistory. No data received for \(symbol)")
             return nil
         }
         
-        if httpResponse?.statusCode != 200 {
-            AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(httpResponse?.statusCode ?? -1)")
+        if responseBox.httpResponse?.statusCode != 200 {
+            AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(responseBox.httpResponse?.statusCode ?? -1)")
             // Try to decode error response for debugging
             if let errorString = String(data: data, encoding: .utf8) {
                 AppLogger.shared.error("fetchPriceHistory - Error response for \(symbol): \(errorString)")
@@ -1191,32 +1196,37 @@ class SchwabClient: @unchecked Sendable
         request.setValue("application/json", forHTTPHeaderField: "accept")
         request.timeoutInterval = self.requestTimeout
 
+        // Use a class wrapper to avoid captured var mutation warnings
+        class ResponseBox: @unchecked Sendable {
+            var data: Data?
+            var error: Error?
+            var httpResponse: HTTPURLResponse?
+        }
+        
         let semaphore = DispatchSemaphore(value: 0)
-        var responseData: Data?
-        var responseError: Error?
-        var httpResponse: HTTPURLResponse?
+        let responseBox = ResponseBox()
         
         URLSession.shared.dataTask(with: request) { data, response, error in
-            responseData = data
-            responseError = error
-            httpResponse = response as? HTTPURLResponse
+            responseBox.data = data
+            responseBox.error = error
+            responseBox.httpResponse = response as? HTTPURLResponse
             semaphore.signal()
         }.resume()
         
         semaphore.wait()
         
-        if let error = responseError {
+        if let error = responseBox.error {
             AppLogger.shared.error("fetchQuote - Error: \(error.localizedDescription)")
             return nil
         }
         
-        guard let data = responseData else {
+        guard let data = responseBox.data else {
             AppLogger.shared.debug("fetchQuote. No data received")
             return nil
         }
         
-        if httpResponse?.statusCode != 200 {
-            AppLogger.shared.error("fetchQuote - Failed to fetch quote. code = \(httpResponse?.statusCode ?? -1)")
+        if responseBox.httpResponse?.statusCode != 200 {
+            AppLogger.shared.error("fetchQuote - Failed to fetch quote. code = \(responseBox.httpResponse?.statusCode ?? -1)")
             return nil
         }
         
