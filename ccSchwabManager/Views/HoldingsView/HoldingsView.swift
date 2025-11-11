@@ -505,6 +505,27 @@ struct HoldingsView: View
             .onChange(of: geometry.size) { oldValue, newValue in
                 viewSize = newValue
             }
+            // Prefetch first security when sort or filter changes
+            .onChange(of: currentSort) { oldValue, newValue in
+                print("🔮 Sort changed, prefetching first security")
+                prefetchFirstSecurityIfNeeded()
+            }
+            .onChange(of: searchText) { oldValue, newValue in
+                print("🔮 Search text changed, prefetching first security")
+                prefetchFirstSecurityIfNeeded()
+            }
+            .onChange(of: selectedAssetTypes) { oldValue, newValue in
+                print("🔮 Asset type filter changed, prefetching first security")
+                prefetchFirstSecurityIfNeeded()
+            }
+            .onChange(of: selectedAccountNumbers) { oldValue, newValue in
+                print("🔮 Account filter changed, prefetching first security")
+                prefetchFirstSecurityIfNeeded()
+            }
+            .onChange(of: selectedOrderStatuses) { oldValue, newValue in
+                print("🔮 Order status filter changed, prefetching first security")
+                prefetchFirstSecurityIfNeeded()
+            }
         }
         .sheet(item: $selectedPosition) { selected in
             let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
@@ -537,10 +558,12 @@ struct HoldingsView: View
                     }
                 },
                 getAdjacentSymbols: {
-                    // Return the symbols of the previous and next positions
-                    let previousSymbol: String? = currentIndex > 0 ? sortedHoldings[currentIndex - 1].instrument?.symbol : nil
-                    let nextSymbol: String? = currentIndex < sortedHoldings.count - 1 ? sortedHoldings[currentIndex + 1].instrument?.symbol : nil
-                    return (previous: previousSymbol, next: nextSymbol)
+                    // Return the symbols of the 2 previous and 2 next positions for extended prefetching
+                    let previous1: String? = currentIndex > 0 ? sortedHoldings[currentIndex - 1].instrument?.symbol : nil
+                    let previous2: String? = currentIndex > 1 ? sortedHoldings[currentIndex - 2].instrument?.symbol : nil
+                    let next1: String? = currentIndex < sortedHoldings.count - 1 ? sortedHoldings[currentIndex + 1].instrument?.symbol : nil
+                    let next2: String? = currentIndex < sortedHoldings.count - 2 ? sortedHoldings[currentIndex + 2].instrument?.symbol : nil
+                    return (previous1: previous1, previous2: previous2, next1: next1, next2: next2)
                 },
                 selectedTab: $selectedTab,
             )
@@ -556,6 +579,94 @@ struct HoldingsView: View
                     height: viewSize.height * 0.98 )
         }
         .withLoadingState(loadingState)
+    }
+    
+    /// Prefetches data for the first security in the sorted holdings list if it's not already cached
+    private func prefetchFirstSecurityIfNeeded() {
+        guard !sortedHoldings.isEmpty else {
+            print("🔮 No holdings to prefetch")
+            return
+        }
+        
+        let firstSecurity = sortedHoldings[0]
+        guard let symbol = firstSecurity.instrument?.symbol else {
+            print("🔮 First security has no symbol")
+            return
+        }
+        
+        // Check if first security needs prefetching
+        let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
+        let needsPrefetch = snapshot == nil || !criticalGroups.allSatisfy { snapshot!.isLoaded($0) }
+        
+        if needsPrefetch {
+            print("🔮 Prefetching first security in list: \(symbol)")
+            Task.detached(priority: .low) {
+                await self.prefetchSecurityData(symbol: symbol)
+            }
+        } else {
+            print("✅ First security \(symbol) already cached, skipping prefetch")
+        }
+    }
+    
+    /// Prefetches complete security data (quotes, price history, transactions, tax lots) for a symbol
+    private func prefetchSecurityData(symbol: String) async {
+        print("🔮 [First Security] Prefetching data for: \(symbol)")
+        
+        // Mark as loading in cache
+        let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
+        _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        
+        // Fetch quote data
+        if Task.isCancelled { return }
+        let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+        if Task.isCancelled { return }
+        
+        if let fetchedQuote {
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                snapshot.quoteData = fetchedQuote
+            }
+        }
+        
+        // Fetch price history
+        if Task.isCancelled { return }
+        let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        if Task.isCancelled { return }
+        
+        if let fetchedPriceHistory {
+            let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+            if Task.isCancelled { return }
+            
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                snapshot.priceHistory = fetchedPriceHistory
+                snapshot.atrValue = fetchedATRValue
+            }
+        }
+        
+        // Fetch transactions
+        if Task.isCancelled { return }
+        print("🔮 [First Security] Fetching transactions for: \(symbol)")
+        let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        if Task.isCancelled { return }
+        
+        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+            snapshot.transactions = fetchedTransactions
+        }
+        print("🔮 [First Security] Transactions complete for \(symbol): \(fetchedTransactions.count) transactions")
+        
+        // Fetch tax lots
+        if Task.isCancelled { return }
+        let currentPrice = fetchedQuote?.quote?.lastPrice ?? fetchedQuote?.extended?.lastPrice ?? fetchedPriceHistory?.candles.last?.close
+        let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        if Task.isCancelled { return }
+        let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+        
+        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+            snapshot.taxLotData = fetchedTaxLots
+            snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+        }
+        
+        print("✅ [First Security] Prefetch complete for \(symbol)")
     }
     
     private func fetchHoldings()  {
@@ -596,6 +707,9 @@ struct HoldingsView: View
                 viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
         
                 print("✅ Holdings displayed: \(holdings.count) positions")
+                
+                // Prefetch first security in the list if not already cached
+                prefetchFirstSecurityIfNeeded()
             }
         }
         

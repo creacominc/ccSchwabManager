@@ -11,7 +11,7 @@ struct PositionDetailView: View
     @Binding var sharesAvailableForTrading: Double // Initial value from parent, will be recomputed
     @Binding var marketValue: Double
     let onNavigate: (Int) -> Void
-    let getAdjacentSymbols: () -> (previous: String?, next: String?) // NEW: Closure to get adjacent position symbols
+    let getAdjacentSymbols: () -> (previous1: String?, previous2: String?, next1: String?, next2: String?) // Closure to get adjacent position symbols (2 in each direction)
     @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
     @State private var isLoadingPriceHistory = false
@@ -447,27 +447,56 @@ struct PositionDetailView: View
     }
     
     /// Triggers prefetching of adjacent securities once current security is fully loaded
+    /// Prefetches 2 securities in each direction with prioritization: immediate adjacents first, then second-level
     private func prefetchAdjacentSecurities() {
-        // Get adjacent symbols from parent
+        // Get adjacent symbols from parent (2 before, 2 after)
         let adjacent = getAdjacentSymbols()
         
-        AppLogger.shared.debug("🔮 Checking adjacent securities for prefetch - previous: \(adjacent.previous ?? "none"), next: \(adjacent.next ?? "none")")
+        AppLogger.shared.debug("🔮 Checking adjacent securities for prefetch - prev2: \(adjacent.previous2 ?? "none"), prev1: \(adjacent.previous1 ?? "none"), next1: \(adjacent.next1 ?? "none"), next2: \(adjacent.next2 ?? "none")")
         
-        // Prefetch previous security if it exists and needs it
-        if let previousSymbol = adjacent.previous, shouldPrefetch(symbol: previousSymbol) {
-            // We need to get the Position object for the previous security
-            // Since we don't have direct access, we'll do a simpler prefetch without order recommendations for now
-            AppLogger.shared.debug("🔮 Scheduling prefetch for previous security: \(previousSymbol)")
-            Task.detached(priority: .low) {
-                await self.prefetchSecurityDataOnly(symbol: previousSymbol)
+        // PRIORITY 1: Prefetch immediate adjacents (N-1 and N+1) first
+        let immediateAdjacents: [(symbol: String, label: String)] = [
+            (adjacent.previous1, "previous (N-1)"),
+            (adjacent.next1, "next (N+1)")
+        ].compactMap { symbol, label in
+            guard let sym = symbol else { return nil }
+            return (sym, label)
+        }
+        
+        for (symbol, label) in immediateAdjacents {
+            if shouldPrefetch(symbol: symbol) {
+                AppLogger.shared.debug("🔮 [Priority 1] Scheduling prefetch for \(label) security: \(symbol)")
+                Task.detached(priority: .low) {
+                    await self.prefetchSecurityDataOnly(symbol: symbol)
+                }
+            } else {
+                AppLogger.shared.debug("✅ \(symbol) (\(label)) already cached, skipping prefetch")
             }
         }
         
-        // Prefetch next security if it exists and needs it
-        if let nextSymbol = adjacent.next, shouldPrefetch(symbol: nextSymbol) {
-            AppLogger.shared.debug("🔮 Scheduling prefetch for next security: \(nextSymbol)")
+        // PRIORITY 2: Prefetch second-level adjacents (N-2 and N+2) after a short delay
+        // This ensures immediate adjacents complete first
+        let secondLevelAdjacents: [(symbol: String, label: String)] = [
+            (adjacent.previous2, "previous (N-2)"),
+            (adjacent.next2, "next (N+2)")
+        ].compactMap { symbol, label in
+            guard let sym = symbol else { return nil }
+            return (sym, label)
+        }
+        
+        if !secondLevelAdjacents.isEmpty {
             Task.detached(priority: .low) {
-                await self.prefetchSecurityDataOnly(symbol: nextSymbol)
+                // Small delay to let immediate adjacents start first
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                
+                for (symbol, label) in secondLevelAdjacents {
+                    if await MainActor.run(body: { self.shouldPrefetch(symbol: symbol) }) {
+                        AppLogger.shared.debug("🔮 [Priority 2] Scheduling prefetch for \(label) security: \(symbol)")
+                        await self.prefetchSecurityDataOnly(symbol: symbol)
+                    } else {
+                        AppLogger.shared.debug("✅ \(symbol) (\(label)) already cached, skipping prefetch")
+                    }
+                }
             }
         }
     }
