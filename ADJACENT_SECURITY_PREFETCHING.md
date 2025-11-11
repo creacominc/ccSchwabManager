@@ -32,13 +32,15 @@ This feature implements intelligent background prefetching of adjacent securitie
 - Handles edge cases (first/last positions return nil for out-of-bounds adjacents)
 
 #### 2. Prefetching Trigger
-After current security is fully loaded:
+After current security is fully loaded (including transaction history):
 ```swift
 if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
    snapshot.isFullyLoaded {
     prefetchAdjacentSecurities()
 }
 ```
+
+**Important**: The prefetch is triggered only after ALL data groups are loaded, including transaction history which often takes the longest. This ensures the user's current view is complete before background work begins.
 
 #### 3. Cache Checking
 Before prefetching, checks if data already exists:
@@ -48,8 +50,8 @@ private func shouldPrefetch(symbol: String) -> Bool {
         return true // Not in cache
     }
     
-    // Check if critical data groups are loaded
-    let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots]
+    // Check if critical data groups are loaded (including transactions)
+    let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
     return !criticalGroups.allSatisfy { snapshot.isLoaded($0) }
 }
 ```
@@ -76,7 +78,12 @@ For each adjacent security, the following data is prefetched:
    - ATR (Average True Range) calculation
    - Chart data
 
-3. **Tax Lots** (`SecurityDataGroup.taxLots`)
+3. **Transaction History** (`SecurityDataGroup.transactions`)
+   - All transactions for the security
+   - Complete transaction history for the past year
+   - **User Priority**: Transaction history often takes time to load, so prefetching ensures instant display
+
+4. **Tax Lots** (`SecurityDataGroup.taxLots`)
    - Tax lot information
    - Shares available for trading
    - Cost basis details
@@ -137,6 +144,8 @@ getAdjacentSymbols: {
 ### Benefits
 
 ✅ **Near-Instant Navigation**: 90%+ of data already cached when clicking Next/Previous  
+✅ **Complete Data Prefetch**: Includes transaction history which often takes the longest to load  
+✅ **Verified Loading**: Only prefetches adjacent securities after current security is fully loaded (including transactions)  
 ✅ **Background Loading**: Prefetch runs at low priority, doesn't block UI  
 ✅ **Smart Caching**: Only prefetches if data not already in cache  
 ✅ **Memory Efficient**: LRU eviction keeps memory bounded  
@@ -192,10 +201,13 @@ getAdjacentSymbols: {
 Prefetching emits debug logs with 🔮 emoji for easy filtering:
 
 ```
-🔮 Checking adjacent securities for prefetch - previous: AAPL, next: TSLA
+✅ AAPL fully loaded, triggering prefetch of adjacent securities
+🔮 Checking adjacent securities for prefetch - previous: MSFT, next: TSLA
 🔮 Scheduling prefetch for next security: TSLA
 🔮 Prefetching basic data for: TSLA
-✅ Basic prefetch complete for TSLA (order recommendations computed on-demand)
+🔮 Fetching transactions for prefetch: TSLA
+🔮 Transactions prefetch complete for TSLA: 45 transactions
+✅ Basic prefetch complete for TSLA (including transactions)
 🔮 Cancelling prefetch task for MSFT
 ```
 
@@ -228,5 +240,11 @@ Possible improvements:
 
 ## Summary
 
-This prefetching implementation provides a significant UX improvement by making navigation feel instant, while maintaining good system citizenship through low-priority background processing, smart caching, and immediate cancellation when not needed. The 90% performance improvement comes from caching the expensive operations (tax lots, price history, quotes), while order recommendations remain fast to compute on-demand from cached data.
+This prefetching implementation provides a significant UX improvement by making navigation feel instant, while maintaining good system citizenship through low-priority background processing, smart caching, and immediate cancellation when not needed. The implementation includes:
+
+- **Complete Data Prefetching**: All critical data groups including transaction history are prefetched
+- **Verified Loading**: Prefetch only starts after the current security is fully loaded (including transactions)
+- **Transaction Priority**: Transaction history, which often takes the longest to load, is now included in prefetch
+- **Performance Boost**: 90%+ performance improvement comes from caching expensive operations (tax lots, price history, quotes, transactions)
+- **On-Demand Computation**: Order recommendations remain fast to compute on-demand from cached data
 

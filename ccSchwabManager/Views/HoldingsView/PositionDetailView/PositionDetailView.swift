@@ -356,8 +356,8 @@ struct PositionDetailView: View
             return true // Not in cache at all
         }
         
-        // Check if all critical data groups are loaded
-        let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots]
+        // Check if all critical data groups are loaded (including transactions per user request)
+        let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
         return !criticalGroups.allSatisfy { snapshot.isLoaded($0) }
     }
     
@@ -377,8 +377,8 @@ struct PositionDetailView: View
                 }
             }
             
-            // Mark as loading in cache
-            let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots, .orderRecommendations]
+            // Mark as loading in cache (including transactions per user request)
+            let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots, .orderRecommendations]
             _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
             
             // Fetch quote data
@@ -476,8 +476,8 @@ struct PositionDetailView: View
     private func prefetchSecurityDataOnly(symbol: String) async {
         AppLogger.shared.debug("🔮 Prefetching basic data for: \(symbol)")
         
-        // Mark as loading in cache
-        let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .taxLots]
+        // Mark as loading in cache (including transactions per user request)
+        let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
         _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
         
         // Fetch quote data
@@ -506,6 +506,17 @@ struct PositionDetailView: View
             }
         }
         
+        // Fetch transactions (added per user request to ensure transaction history is prefetched)
+        if Task.isCancelled { return }
+        AppLogger.shared.debug("🔮 Fetching transactions for prefetch: \(symbol)")
+        let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        if Task.isCancelled { return }
+        
+        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+            snapshot.transactions = fetchedTransactions
+        }
+        AppLogger.shared.debug("🔮 Transactions prefetch complete for \(symbol): \(fetchedTransactions.count) transactions")
+        
         // Fetch tax lots
         if Task.isCancelled { return }
         let currentPrice = fetchedQuote?.quote?.lastPrice ?? fetchedQuote?.extended?.lastPrice ?? fetchedPriceHistory?.candles.last?.close
@@ -518,7 +529,7 @@ struct PositionDetailView: View
             snapshot.sharesAvailableForTrading = fetchedSharesAvailable
         }
         
-        AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol)")
+        AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol) (including transactions)")
     }
 
     var body: some View
