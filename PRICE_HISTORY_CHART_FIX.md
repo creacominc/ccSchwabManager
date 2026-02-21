@@ -290,3 +290,4 @@ The price history chart blank issue was caused by SwiftUI's Chart view not prope
 
 
 
+
