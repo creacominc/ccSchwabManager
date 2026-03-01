@@ -71,12 +71,12 @@ struct HoldingsTableHeader: View {
                             columnHeader(title: "Market", column: .marketValue, alignment: .trailing)
                                 .frame(width: HoldingsTableRow.getColumnWidth(3, viewWidth: geometry.size.width, isWide: isWide),
                                        alignment: .trailing)
-                            
-                            // P/L column (only shown in wide layout)
-                            columnHeader(title: "P/L", column: .pl, alignment: .trailing)
-                                .frame(width: HoldingsTableRow.getColumnWidth(4, viewWidth: geometry.size.width, isWide: isWide),
-                                       alignment: .trailing)
                         }
+                        
+                        // P/L column (shown in both layouts)
+                        columnHeader(title: "P/L", column: .pl, alignment: .trailing)
+                            .frame(width: HoldingsTableRow.getColumnWidth(4, viewWidth: geometry.size.width, isWide: isWide),
+                                   alignment: .trailing)
                         
                         // P/L% column (always shown)
                         columnHeader(title: "P/L%", column: .plPercent, alignment: .trailing)
@@ -105,10 +105,13 @@ struct HoldingsTableHeader: View {
                             .frame(width: HoldingsTableRow.getColumnWidth(9, viewWidth: geometry.size.width, isWide: isWide),
                                    alignment: .leading)
                         
-                        // DTE/# column (always shown)
-                        columnHeader(title: "DTE/#", column: .dte, alignment: .trailing)
-                            .frame(width: HoldingsTableRow.getColumnWidth(10, viewWidth: geometry.size.width, isWide: isWide),
-                                   alignment: .trailing)
+                        // DTE/# column (only shown in wide layout)
+                        if isWide
+                        {
+                            columnHeader(title: "DTE/#", column: .dte, alignment: .trailing)
+                                .frame(width: HoldingsTableRow.getColumnWidth(10, viewWidth: geometry.size.width, isWide: isWide),
+                                       alignment: .trailing)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .background(Color.gray.opacity(0.1))
