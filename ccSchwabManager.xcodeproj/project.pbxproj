@@ -28,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		362543562F5CD11A003F5C3F /* ccSchwabManager.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = ccSchwabManager.xctestplan; sourceTree = "<group>"; };
 		363426782DA3843100DDF847 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
 		366088D82D9DEC6200BAD6DF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		366088D92D9DEC6300BAD6DF /* CHANGELOG.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CHANGELOG.md; sourceTree = "<group>"; };
@@ -87,6 +88,7 @@
 		367617B02D94C96E0030D285 = {
 			isa = PBXGroup;
 			children = (
+				362543562F5CD11A003F5C3F /* ccSchwabManager.xctestplan */,
 				366088D82D9DEC6200BAD6DF /* README.md */,
 				366088D92D9DEC6300BAD6DF /* CHANGELOG.md */,
 				363426782DA3843100DDF847 /* LICENSE */,

@@ -1,0 +1,36 @@
+{
+  "configurations" : [
+    {
+      "id" : "CD4D93BA-2178-4AE3-824A-0275B6E0F8D0",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:ccSchwabManager.xcodeproj",
+      "identifier" : "367617B82D94C96E0030D285",
+      "name" : "ccSchwabManager"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:ccSchwabManager.xcodeproj",
+        "identifier" : "367617CB2D94C9700030D285",
+        "name" : "ccSchwabManagerTests"
+      }
+    },
+    {
+      "target" : {
+        "containerPath" : "container:ccSchwabManager.xcodeproj",
+        "identifier" : "367617D52D94C9700030D285",
+        "name" : "ccSchwabManagerUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
