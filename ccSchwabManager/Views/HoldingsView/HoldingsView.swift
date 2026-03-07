@@ -279,6 +279,12 @@ struct HoldingsView: View
                         }
                         .buttonStyle(.plain)
                     }
+                    
+                    Spacer()
+                    
+                    // Network indicator showing WiFi or Cellular signal strength
+                    NetworkIndicatorView()
+                        .padding(.trailing, 8)
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)

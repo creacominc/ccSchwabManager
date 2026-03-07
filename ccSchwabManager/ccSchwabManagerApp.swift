@@ -51,6 +51,7 @@ extension ProcessInfo {
 struct ccSchwabManagerApp: App
 {
     @StateObject private var secretsManager: SecretsManager
+    @StateObject private var networkMonitor = NetworkMonitor()
     
     init() {
         if ProcessInfo.processInfo.isPreview {
@@ -97,6 +98,7 @@ struct ccSchwabManagerApp: App
         {
             ContentView()
                 .environmentObject(secretsManager)
+                .environmentObject(networkMonitor)
 //                .debugPreview("ContentView")
 //                .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
 //                    print("📱 App became active - clearing any stuck loading states")
