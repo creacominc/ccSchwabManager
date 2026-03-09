@@ -125,16 +125,23 @@ struct PositionDetailView: View
 
         if let cachedSnapshot {
             AppLogger.shared.debug("PositionDetailView: Using cached data for symbol \(symbol)")
+            // Apply cached data immediately for instant display
             applySnapshot(cachedSnapshot)
         }
 
         // Always send the user back to the details tab when switching securities
         selectedTab = 0
 
+        // Determine which groups to load based on cache
+        // Strategy: Load everything upfront so tabs are ready when user clicks them sequentially
+        // This maximizes network/compute utilization and ensures data is ready by the time user reaches each tab
         let groupsToLoad: [SecurityDataGroup]
         if forceRefresh || cachedSnapshot == nil {
+            // Load everything if forcing refresh or no cache
             groupsToLoad = SecurityDataGroup.allCases
         } else {
+            // Load all missing groups - we'll prioritize them in loadSecurityData
+            // This ensures all tabs are ready when user clicks through them sequentially
             groupsToLoad = SecurityDataGroup.allCases.filter { !cachedSnapshot!.isLoaded($0) }
         }
 
@@ -160,12 +167,53 @@ struct PositionDetailView: View
         if let price = history?.candles.last?.close { return price }
         return nil
     }
+    
+    /// Ensures transactions are loaded when Transactions tab is selected
+    /// This provides immediate feedback when user clicks on the Transactions tab
+    @MainActor
+    private func ensureTransactionsLoaded() {
+        guard let symbol = position.instrument?.symbol else { return }
+        
+        let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        
+        // Check if transactions are already loaded or loading
+        if let snapshot = snapshot {
+            if snapshot.isLoaded(.transactions) || snapshot.isLoading(.transactions) {
+                AppLogger.shared.debug("📊 Transactions already loaded or loading for \(symbol)")
+                return
+            }
+        }
+        
+        // Start loading transactions immediately
+        AppLogger.shared.debug("📊 Triggering transaction load for \(symbol) (Transactions tab selected)")
+        let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.transactions])
+        applySnapshot(loadingSnapshot)
+        
+        Task.detached(priority: .userInitiated) {
+            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            if Task.isCancelled { return }
+            
+            let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                snapshot.transactions = fetchedTransactions
+            }
+            
+            await MainActor.run {
+                applySnapshot(updatedSnapshot)
+            }
+        }
+    }
 
     private func loadSecurityData(for symbol: String, groups: [SecurityDataGroup]) async {
         var localQuote: QuoteData? = SecurityDataCacheManager.shared.snapshot(for: symbol)?.quoteData
         var localHistory: CandleList? = SecurityDataCacheManager.shared.snapshot(for: symbol)?.priceHistory
 
+        // STRATEGY: Load everything upfront in optimal order for sequential tab navigation
+        // Tab order: Details(0) -> Price History(1) -> Transactions(2) -> Sales Calc(3) -> Current(4) -> OCO(5) -> Sequence(6)
+        // Goal: Have data ready by the time user clicks each tab
+        
+        // PHASE 1: Load details (quote) first - Tab 0 needs this immediately
         if groups.contains(.details) {
+            AppLogger.shared.debug("📊 [Phase 1] Loading details (quote) for \(symbol)")
             let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
             if Task.isCancelled { return }
             localQuote = fetchedQuote
@@ -188,12 +236,15 @@ struct PositionDetailView: View
 
         if Task.isCancelled { return }
 
-        if groups.contains(.priceHistory) {
+        // PHASE 2: Load Price History and Transactions in parallel - Tabs 1 & 2
+        // These are independent and can load simultaneously to maximize network/compute utilization
+        AppLogger.shared.debug("📊 [Phase 2] Starting parallel load: Price History + Transactions for \(symbol)")
+        
+        let priceHistoryTask: Task<Void, Never>? = groups.contains(.priceHistory) ? Task {
             AppLogger.shared.debug("📊 Loading price history for \(symbol)")
             let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
-            localHistory = fetchedPriceHistory
-
+            
             if let fetchedPriceHistory {
                 AppLogger.shared.debug("📊 Fetched price history for \(symbol): \(fetchedPriceHistory.candles.count) candles")
                 let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
@@ -214,11 +265,10 @@ struct PositionDetailView: View
                     applySnapshot(failedSnapshot)
                 }
             }
-        }
-
-        if Task.isCancelled { return }
-
-        if groups.contains(.transactions) {
+        } : nil
+        
+        let transactionsTask: Task<Void, Never>? = groups.contains(.transactions) ? Task {
+            AppLogger.shared.debug("📊 Loading transactions for \(symbol)")
             let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
 
@@ -229,25 +279,60 @@ struct PositionDetailView: View
             await MainActor.run {
                 applySnapshot(updatedSnapshot)
             }
-        }
-
-        if Task.isCancelled { return }
-
-        if groups.contains(.taxLots) {
-            let effectivePrice = resolveCurrentPrice(quote: localQuote, history: localHistory)
-            let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: effectivePrice)
+        } : nil
+        
+        // PHASE 3: Start Tax Lots loading as soon as we have price (can use cached or wait for quote)
+        // Tab 3 (Sales Calc) needs this, and it can start with cached price or wait for quote
+        let taxLotsTask: Task<Void, Never>? = groups.contains(.taxLots) ? Task {
+            // Wait for quote to be available (either from cache or Phase 1)
+            var effectivePrice: Double?
+            var attempts = 0
+            while effectivePrice == nil && attempts < 10 {
+                await MainActor.run {
+                    let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+                    effectivePrice = resolveCurrentPrice(quote: snapshot?.quoteData ?? localQuote, history: snapshot?.priceHistory ?? localHistory)
+                }
+                if effectivePrice == nil {
+                    // Wait a bit for quote to load
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    attempts += 1
+                }
+            }
+            
             if Task.isCancelled { return }
-            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            
+            if let price = effectivePrice {
+                AppLogger.shared.debug("📊 [Phase 3] Loading tax lots for \(symbol) with price \(price)")
+                let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: price)
+                if Task.isCancelled { return }
+                let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
 
-            let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-                snapshot.taxLotData = fetchedTaxLots
-                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
-            }
+                let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                    snapshot.taxLotData = fetchedTaxLots
+                    snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                }
 
-            await MainActor.run {
-                applySnapshot(updatedSnapshot)
+                await MainActor.run {
+                    applySnapshot(updatedSnapshot)
+                }
+            } else {
+                AppLogger.shared.warning("📊 Could not resolve price for tax lots calculation")
             }
+        } : nil
+        
+        // Wait for Phase 2 parallel tasks to complete
+        await priceHistoryTask?.value
+        await transactionsTask?.value
+        
+        // Update local history from cache after parallel load completes
+        if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol) {
+            localHistory = snapshot.priceHistory
         }
+        
+        // Wait for tax lots to complete (it may have already finished if price was cached)
+        await taxLotsTask?.value
+        
+        if Task.isCancelled { return }
         
         // Compute and cache order recommendations once we have all the necessary data
         if Task.isCancelled { return }
@@ -641,6 +726,12 @@ struct PositionDetailView: View
                     selectedTab: $selectedTab,
                 )
                 .padding(.horizontal)
+            }
+        }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            // When Transactions tab is selected, ensure transactions are loading/loaded
+            if newValue == 2 { // Transactions tab
+                ensureTransactionsLoaded()
             }
         }
         .onAppear {

@@ -102,6 +102,9 @@ struct HoldingsView: View
     // Add state to track ongoing refresh operations
     @State private var isRefreshing = false
     @State private var currentFetchTask: Task<Void, Never>? = nil
+    
+    // Debounced prefetch task to prevent rapid API calls when filtering
+    @State private var debouncedPrefetchTask: Task<Void, Never>? = nil
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -513,24 +516,28 @@ struct HoldingsView: View
             }
             // Prefetch first security when sort or filter changes
             .onChange(of: currentSort) { oldValue, newValue in
-                print("🔮 Sort changed, prefetching first security")
-                prefetchFirstSecurityIfNeeded()
+                print("🔮 Sort changed, scheduling debounced prefetch")
+                debouncedPrefetchFirstSecurity()
             }
             .onChange(of: searchText) { oldValue, newValue in
-                print("🔮 Search text changed, prefetching first security")
-                prefetchFirstSecurityIfNeeded()
+                print("🔮 Search text changed, scheduling debounced prefetch")
+                debouncedPrefetchFirstSecurity()
             }
             .onChange(of: selectedAssetTypes) { oldValue, newValue in
-                print("🔮 Asset type filter changed, prefetching first security")
-                prefetchFirstSecurityIfNeeded()
+                print("🔮 Asset type filter changed, scheduling debounced prefetch")
+                debouncedPrefetchFirstSecurity()
             }
             .onChange(of: selectedAccountNumbers) { oldValue, newValue in
-                print("🔮 Account filter changed, prefetching first security")
-                prefetchFirstSecurityIfNeeded()
+                print("🔮 Account filter changed, scheduling debounced prefetch")
+                debouncedPrefetchFirstSecurity()
             }
             .onChange(of: selectedOrderStatuses) { oldValue, newValue in
-                print("🔮 Order status filter changed, prefetching first security")
-                prefetchFirstSecurityIfNeeded()
+                print("🔮 Order status filter changed, scheduling debounced prefetch")
+                debouncedPrefetchFirstSecurity()
+            }
+            .onChange(of: includeNAStatus) { oldValue, newValue in
+                print("🔮 Include NA status filter changed, scheduling debounced prefetch")
+                debouncedPrefetchFirstSecurity()
             }
         }
         .sheet(item: $selectedPosition) { selected in
@@ -612,6 +619,30 @@ struct HoldingsView: View
             }
         } else {
             print("✅ First security \(symbol) already cached, skipping prefetch")
+        }
+    }
+    
+    /// Debounced version of prefetchFirstSecurityIfNeeded to prevent rapid API calls when filtering
+    /// Waits 400ms after the last filter change before triggering prefetch
+    private func debouncedPrefetchFirstSecurity() {
+        // Cancel any existing debounced task
+        debouncedPrefetchTask?.cancel()
+        
+        // Create new debounced task
+        debouncedPrefetchTask = Task {
+            // Wait 400ms for debounce
+            try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
+            
+            // Check if task was cancelled (filter changed again)
+            guard !Task.isCancelled else {
+                print("🔮 Debounced prefetch cancelled - filter changed again")
+                return
+            }
+            
+            // Now perform the prefetch
+            await MainActor.run {
+                prefetchFirstSecurityIfNeeded()
+            }
         }
     }
     
