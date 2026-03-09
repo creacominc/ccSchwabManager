@@ -29,6 +29,7 @@ struct PositionDetailView: View
     @State private var loadStates: [SecurityDataGroup: SecurityDataLoadState] = [:]
     @State private var dataLoadTask: Task<Void, Never>? = nil
     @State private var prefetchTasks: [String: Task<Void, Never>] = [:] // NEW: Track prefetch tasks
+    @State private var showPerformanceSummary = false
     @Environment(\.dismiss) private var dismiss
 
     private func formatDate(_ timestamp: Int64?) -> String
@@ -127,6 +128,16 @@ struct PositionDetailView: View
             AppLogger.shared.debug("PositionDetailView: Using cached data for symbol \(symbol)")
             // Apply cached data immediately for instant display
             applySnapshot(cachedSnapshot)
+            
+            // Record cache hits for loaded groups
+            for group in SecurityDataGroup.allCases {
+                if cachedSnapshot.isLoaded(group) {
+                    PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_\(group)")
+                }
+            }
+        } else {
+            // Record cache miss
+            PerformanceBenchmark.shared.recordCacheMiss(for: "\(symbol)_all")
         }
 
         // Always send the user back to the details tab when switching securities
@@ -213,6 +224,9 @@ struct PositionDetailView: View
         
         // PHASE 1: Load details (quote) first - Tab 0 needs this immediately
         if groups.contains(.details) {
+            let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.details) ?? false
+            PerformanceBenchmark.shared.startTiming("load_details_\(symbol)", metadata: ["symbol": symbol, "group": "details"])
+            
             AppLogger.shared.debug("📊 [Phase 1] Loading details (quote) for \(symbol)")
             let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
             if Task.isCancelled { return }
@@ -226,11 +240,16 @@ struct PositionDetailView: View
                 await MainActor.run {
                     applySnapshot(updatedSnapshot)
                 }
+                
+                if let duration = PerformanceBenchmark.shared.endTiming("load_details_\(symbol)") {
+                    PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .details, duration: duration, fromCache: wasCached)
+                }
             } else {
                 let failedSnapshot = SecurityDataCacheManager.shared.markFailed(symbol: symbol, group: .details, message: "Quote unavailable")
                 await MainActor.run {
                     applySnapshot(failedSnapshot)
                 }
+                _ = PerformanceBenchmark.shared.endTiming("load_details_\(symbol)")
             }
         }
 
@@ -241,6 +260,9 @@ struct PositionDetailView: View
         AppLogger.shared.debug("📊 [Phase 2] Starting parallel load: Price History + Transactions for \(symbol)")
         
         let priceHistoryTask: Task<Void, Never>? = groups.contains(.priceHistory) ? Task {
+            let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.priceHistory) ?? false
+            PerformanceBenchmark.shared.startTiming("load_priceHistory_\(symbol)", metadata: ["symbol": symbol, "group": "priceHistory"])
+            
             AppLogger.shared.debug("📊 Loading price history for \(symbol)")
             let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
@@ -258,16 +280,24 @@ struct PositionDetailView: View
                 await MainActor.run {
                     applySnapshot(updatedSnapshot)
                 }
+                
+                if let duration = PerformanceBenchmark.shared.endTiming("load_priceHistory_\(symbol)") {
+                    PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .priceHistory, duration: duration, fromCache: wasCached)
+                }
             } else {
                 AppLogger.shared.warning("📊 Failed to fetch price history for \(symbol)")
                 let failedSnapshot = SecurityDataCacheManager.shared.markFailed(symbol: symbol, group: .priceHistory, message: "Price history unavailable")
                 await MainActor.run {
                     applySnapshot(failedSnapshot)
                 }
+                _ = PerformanceBenchmark.shared.endTiming("load_priceHistory_\(symbol)")
             }
         } : nil
         
         let transactionsTask: Task<Void, Never>? = groups.contains(.transactions) ? Task {
+            let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.transactions) ?? false
+            PerformanceBenchmark.shared.startTiming("load_transactions_\(symbol)", metadata: ["symbol": symbol, "group": "transactions"])
+            
             AppLogger.shared.debug("📊 Loading transactions for \(symbol)")
             let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
@@ -278,6 +308,10 @@ struct PositionDetailView: View
 
             await MainActor.run {
                 applySnapshot(updatedSnapshot)
+            }
+            
+            if let duration = PerformanceBenchmark.shared.endTiming("load_transactions_\(symbol)") {
+                PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .transactions, duration: duration, fromCache: wasCached)
             }
         } : nil
         
@@ -302,18 +336,43 @@ struct PositionDetailView: View
             if Task.isCancelled { return }
             
             if let price = effectivePrice {
-                AppLogger.shared.debug("📊 [Phase 3] Loading tax lots for \(symbol) with price \(price)")
-                let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: price)
-                if Task.isCancelled { return }
-                let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+                // Check cache first before starting timer
+                let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+                let wasCached = snapshot?.isLoaded(.taxLots) ?? false
+                
+                // If already cached, skip computation
+                if wasCached, let cachedTaxLots = snapshot?.taxLotData, let cachedShares = snapshot?.sharesAvailableForTrading {
+                    AppLogger.shared.debug("📊 Tax lots already cached for \(symbol)")
+                    PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_taxLots")
+                    // Still update the snapshot to ensure UI is in sync
+                    await MainActor.run {
+                        let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                            snapshot.taxLotData = cachedTaxLots
+                            snapshot.sharesAvailableForTrading = cachedShares
+                        }
+                        applySnapshot(updatedSnapshot)
+                    }
+                } else {
+                    PerformanceBenchmark.shared.startTiming("load_taxLots_\(symbol)", metadata: ["symbol": symbol, "group": "taxLots"])
+                    
+                    AppLogger.shared.debug("📊 [Phase 3] Loading tax lots for \(symbol) with price \(price)")
+                    // Use optimized version with better caching
+                    let fetchedTaxLots = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+                    if Task.isCancelled { return }
+                    let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
 
-                let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-                    snapshot.taxLotData = fetchedTaxLots
-                    snapshot.sharesAvailableForTrading = fetchedSharesAvailable
-                }
+                    let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                        snapshot.taxLotData = fetchedTaxLots
+                        snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                    }
 
-                await MainActor.run {
-                    applySnapshot(updatedSnapshot)
+                    await MainActor.run {
+                        applySnapshot(updatedSnapshot)
+                    }
+                    
+                    if let duration = PerformanceBenchmark.shared.endTiming("load_taxLots_\(symbol)") {
+                        PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: duration, fromCache: false)
+                    }
                 }
             } else {
                 AppLogger.shared.warning("📊 Could not resolve price for tax lots calculation")
@@ -337,8 +396,26 @@ struct PositionDetailView: View
         // Compute and cache order recommendations once we have all the necessary data
         if Task.isCancelled { return }
         
-        if groups.contains(.orderRecommendations) || (groups.contains(.taxLots) && groups.contains(.priceHistory)) {
-            await computeAndCacheOrderRecommendations(symbol: symbol, localQuote: localQuote, localHistory: localHistory)
+        // PHASE 4: Compute order recommendations if needed (after tax lots and price history are ready)
+        // Only compute if explicitly requested - tabs 4, 5, 6 will request this group when needed
+        if groups.contains(.orderRecommendations) {
+            // Check cache first before starting timer
+            let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+            let wasCached = snapshot?.isLoaded(.orderRecommendations) ?? false
+            
+            // If already cached, skip computation
+            if wasCached {
+                AppLogger.shared.debug("📊 Order recommendations already cached for \(symbol)")
+                PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
+            } else {
+                PerformanceBenchmark.shared.startTiming("load_orderRecommendations_\(symbol)", metadata: ["symbol": symbol, "group": "orderRecommendations"])
+                
+                await computeAndCacheOrderRecommendations(symbol: symbol, localQuote: localQuote, localHistory: localHistory)
+                
+                if let duration = PerformanceBenchmark.shared.endTiming("load_orderRecommendations_\(symbol)") {
+                    PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .orderRecommendations, duration: duration, fromCache: false)
+                }
+            }
         }
         
         // After all data is loaded, trigger prefetching of adjacent securities
@@ -363,6 +440,16 @@ struct PositionDetailView: View
               !taxLotData.isEmpty,
               sharesAvailableForTrading > 0 else {
             AppLogger.shared.debug("PositionDetailView: Missing required data for order recommendations for \(symbol)")
+            return
+        }
+        
+        // Check if already cached in SecurityDataCacheManager first
+        if snapshot.isLoaded(.orderRecommendations),
+           let cachedSellOrders = snapshot.recommendedSellOrders,
+           let cachedBuyOrders = snapshot.recommendedBuyOrders,
+           !cachedSellOrders.isEmpty || !cachedBuyOrders.isEmpty {
+            AppLogger.shared.debug("PositionDetailView: Using cached order recommendations for \(symbol)")
+            PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
             return
         }
         
@@ -729,6 +816,9 @@ struct PositionDetailView: View
             }
         }
         .onChange(of: selectedTab) { oldValue, newValue in
+            // Record tab switch for benchmarking
+            PerformanceBenchmark.shared.recordTabSwitch(to: newValue, symbol: position.instrument?.symbol)
+            
             // When Transactions tab is selected, ensure transactions are loading/loaded
             if newValue == 2 { // Transactions tab
                 ensureTransactionsLoaded()
@@ -792,6 +882,20 @@ struct PositionDetailView: View
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showPerformanceSummary = true
+                } label: {
+                    Image(systemName: "chart.bar.doc.horizontal")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Performance Benchmark")
+            }
+        }
+        .sheet(isPresented: $showPerformanceSummary) {
+            PerformanceSummaryView()
         }
         .withLoadingState(loadingState)
     }

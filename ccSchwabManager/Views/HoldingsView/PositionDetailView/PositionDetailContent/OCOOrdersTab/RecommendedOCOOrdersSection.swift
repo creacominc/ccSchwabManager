@@ -118,25 +118,25 @@ struct RecommendedOCOOrdersSection: View {
             handleSymbolChange(newSymbol)
         }
         .onAppear {
+            // Only update if we don't already have cached data
             updateOrdersIfReady()
         }
         .onChange(of: taxLotData) { _, _ in
-            updateOrdersIfReady()
+            // Only update if tax lots changed from empty to non-empty (initial load)
+            // Don't recompute on every tax lot change to avoid unnecessary work
+            if !taxLotData.isEmpty {
+                updateOrdersIfReady()
+            }
         }
         .onChange(of: isLoadingTaxLots) { _, isLoading in
+            // Only update when tax lots finish loading (not on every loading state change)
             if !isLoading {
                 updateOrdersIfReady()
             }
         }
-        .onChange(of: atrValue) { _, _ in
-            updateOrdersIfReady()
-        }
-        .onChange(of: sharesAvailableForTrading) { _, _ in
-            updateOrdersIfReady()
-        }
-        .onChange(of: quoteData?.quote?.lastPrice) { _, _ in
-            updateOrdersIfReady()
-        }
+        // Removed onChange handlers for atrValue, sharesAvailableForTrading, and price
+        // These cause unnecessary recomputations when values update slightly
+        // The data is already cached in SecurityDataCacheManager, so we don't need to recompute
         .sheet(isPresented: $showingConfirmationDialog) {
             OrderConfirmationDialog(
                 isPresented: $showingConfirmationDialog,
@@ -243,13 +243,17 @@ struct RecommendedOCOOrdersSection: View {
             print("  - Cached sell orders: \(cachedSellOrders.count)")
             print("  - Cached buy orders: \(cachedBuyOrders.count)")
             
+            // Update ViewModel with cached data
             viewModel.recommendedSellOrders = cachedSellOrders
             viewModel.recommendedBuyOrders = cachedBuyOrders
             viewModel.currentOrders = createAllOrders(sellOrders: cachedSellOrders, buyOrders: cachedBuyOrders)
+            
+            // Record cache hit for benchmarking
+            PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
             return
         }
         
-        // Check if we already have orders for this exact combination of parameters
+        // If SecurityDataCacheManager doesn't have cached data, check if ViewModel already has orders for this symbol
         // This prevents unnecessary recalculations when switching tabs for the same security
         if !viewModel.recommendedSellOrders.isEmpty || !viewModel.recommendedBuyOrders.isEmpty {
             // Check if the orders are for the current symbol by looking at the first order
@@ -266,6 +270,7 @@ struct RecommendedOCOOrdersSection: View {
                 print("✅ Using existing orders from ViewModel for \(symbol) - no recalculation needed")
                 print("  - Current sell orders: \(viewModel.recommendedSellOrders.count)")
                 print("  - Current buy orders: \(viewModel.recommendedBuyOrders.count)")
+                PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
                 return
             } else {
                 print("⚠️ Orders exist but not for current symbol \(symbol), will recalculate")
@@ -274,7 +279,9 @@ struct RecommendedOCOOrdersSection: View {
             print("📝 No existing orders found, will calculate new ones")
         }
         
-        print("✅ updateOrdersIfReady: calling viewModel.updateRecommendedOrders")
+        // Only compute if SecurityDataCacheManager doesn't have cached data AND ViewModel doesn't have orders
+        // This ensures we don't recompute unnecessarily when data is already available
+        print("🔄 Computing order recommendations for \(symbol) (not in cache)")
         print("  - symbol: \(symbol)")
         print("  - atrValue: \(atrValue)")
         print("  - taxLotData.count: \(taxLotData.count)")
