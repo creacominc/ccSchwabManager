@@ -83,6 +83,7 @@ struct HoldingsView: View
     @StateObject private var viewModel = HoldingsViewModel()
     @State private var isLoadingAccounts = false
     @State private var isFilterExpanded = false
+    @State private var showPerformanceSummary = false
     @State private var atrValue: Double = 0.0
     @State private var sharesAvailableForTrading: Double = 0.0
     @State private var marketValue: Double = 0.0
@@ -103,8 +104,14 @@ struct HoldingsView: View
     @State private var isRefreshing = false
     @State private var currentFetchTask: Task<Void, Never>? = nil
     
+
     // Debounced prefetch task to prevent rapid API calls when filtering
     @State private var debouncedPrefetchTask: Task<Void, Never>? = nil
+    
+    // Async sorting state
+    @State private var sortedHoldings: [Position] = []
+    @State private var isSorting = false
+    @State private var sortTask: Task<Void, Never>? = nil
 
     struct SelectedPosition: Identifiable {
         let id: Position.ID
@@ -147,106 +154,132 @@ struct HoldingsView: View
         let statuses = orderStatusCache.values.compactMap { $0 }
         return Array(Set(statuses)).sorted { $0.priority < $1.priority }
     }
-
-    var sortedHoldings: [Position] {
-        guard let sortConfig = currentSort else { return filteredHoldings }
-        return filteredHoldings.sorted(by: { first, second in
-            let ascending = sortConfig.ascending
-            let firstQuantity: Double = ((first.longQuantity ?? 0) + (first.shortQuantity ?? 0))
-            let secondQuantity: Double = ((second.longQuantity ?? 0) + (second.shortQuantity ?? 0))
-            switch sortConfig.column {
-            case .symbol:
-                return ascending ?
-                    (first.instrument?.symbol ?? "") < (second.instrument?.symbol ?? "") :
-                    (first.instrument?.symbol ?? "") > (second.instrument?.symbol ?? "")
-            case .quantity:
-                return ascending ?
-                    firstQuantity < secondQuantity :
-                    firstQuantity > secondQuantity
-            case .avgPrice:
-                return ascending ?
-                    (first.averagePrice ?? 0) < (second.averagePrice ?? 0) :
-                    (first.averagePrice ?? 0) > (second.averagePrice ?? 0)
-            case .marketValue:
-                return ascending ?
-                    (first.marketValue ?? 0) < (second.marketValue ?? 0) :
-                    (first.marketValue ?? 0) > (second.marketValue ?? 0)
-            case .pl:
-                return ascending ?
-                    (first.longOpenProfitLoss ?? 0) < (second.longOpenProfitLoss ?? 0) :
-                    (first.longOpenProfitLoss ?? 0) > (second.longOpenProfitLoss ?? 0)
-            case .plPercent:
-                let firstPL = first.longOpenProfitLoss ?? 0
-                let secondPL = second.longOpenProfitLoss ?? 0
-                let firstMV = first.marketValue ?? 0
-                let secondMV = second.marketValue ?? 0
-                let firstCostBasis = firstMV - firstPL
-                let secondCostBasis = secondMV - secondPL
-                let firstPLPercent = firstCostBasis != 0 ? firstPL / firstCostBasis : 0
-                let secondPLPercent = secondCostBasis != 0 ? secondPL / secondCostBasis : 0
-                return ascending ? firstPLPercent < secondPLPercent : firstPLPercent > secondPLPercent
-            case .assetType:
-                return ascending ?
-                    (first.instrument?.assetType?.rawValue ?? "") < (second.instrument?.assetType?.rawValue ?? "") :
-                    (first.instrument?.assetType?.rawValue ?? "") > (second.instrument?.assetType?.rawValue ?? "")
-            case .account:
-                let firstAccount = accountPositions.first { $0.0 === first }?.1 ?? ""
-                let secondAccount = accountPositions.first { $0.0 === second }?.1 ?? ""
-                return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
-            case .lastTradeDate:
-                let firstSymbol = first.instrument?.symbol ?? ""
-                let secondSymbol = second.instrument?.symbol ?? ""
-                let firstDate = tradeDateCache[firstSymbol] ?? "0000"
-                let secondDate = tradeDateCache[secondSymbol] ?? "0000"
-                return ascending ? firstDate < secondDate : firstDate > secondDate
-            case .orderStatus:
-                let firstSymbol = first.instrument?.symbol ?? ""
-                let secondSymbol = second.instrument?.symbol ?? ""
-                let firstOrderStatus = orderStatusCache[firstSymbol] ?? nil
-                let secondOrderStatus = orderStatusCache[secondSymbol] ?? nil
-                
-                // Custom sorting logic for order status
-                // Special case: Stop/B orders should appear before Stop/S orders for user action priority
-                if let firstStatus = firstOrderStatus, let secondStatus = secondOrderStatus {
-                    // If one is Stop/B and the other is Stop/S, prioritize Stop/B
-                    if firstStatus == .awaitingBuyStopCondition && secondStatus == .awaitingSellStopCondition {
-                        return ascending ? true : false // Stop/B comes first
-                    } else if firstStatus == .awaitingSellStopCondition && secondStatus == .awaitingBuyStopCondition {
-                        return ascending ? false : true // Stop/B comes first
+    
+    /// Performs async sorting to prevent UI blocking
+    private func performSort() {
+        // Cancel any existing sort task
+        sortTask?.cancel()
+        
+        // Set loading state
+        isSorting = true
+        
+        // Get current values and capture them for the task
+        let holdingsToSort = filteredHoldings
+        let sortConfig = currentSort
+        let accountPositionsCopy = accountPositions
+        let tradeDateCacheCopy = tradeDateCache
+        let orderStatusCacheCopy = orderStatusCache
+        
+        sortTask = Task.detached(priority: .userInitiated) { [holdingsToSort, sortConfig, accountPositionsCopy, tradeDateCacheCopy, orderStatusCacheCopy] in
+            // Yield immediately to allow UI updates
+            await Task.yield()
+            
+            guard !Task.isCancelled else { return }
+            
+            // Perform the sort
+            let sorted: [Position]
+            if let sortConfig = sortConfig {
+                sorted = holdingsToSort.sorted(by: { first, second in
+                    let ascending = sortConfig.ascending
+                    let firstQuantity: Double = ((first.longQuantity ?? 0) + (first.shortQuantity ?? 0))
+                    let secondQuantity: Double = ((second.longQuantity ?? 0) + (second.shortQuantity ?? 0))
+                    switch sortConfig.column {
+                    case .symbol:
+                        return ascending ?
+                            (first.instrument?.symbol ?? "") < (second.instrument?.symbol ?? "") :
+                            (first.instrument?.symbol ?? "") > (second.instrument?.symbol ?? "")
+                    case .quantity:
+                        return ascending ?
+                            firstQuantity < secondQuantity :
+                            firstQuantity > secondQuantity
+                    case .avgPrice:
+                        return ascending ?
+                            (first.averagePrice ?? 0) < (second.averagePrice ?? 0) :
+                            (first.averagePrice ?? 0) > (second.averagePrice ?? 0)
+                    case .marketValue:
+                        return ascending ?
+                            (first.marketValue ?? 0) < (second.marketValue ?? 0) :
+                            (first.marketValue ?? 0) > (second.marketValue ?? 0)
+                    case .pl:
+                        return ascending ?
+                            (first.longOpenProfitLoss ?? 0) < (second.longOpenProfitLoss ?? 0) :
+                            (first.longOpenProfitLoss ?? 0) > (second.longOpenProfitLoss ?? 0)
+                    case .plPercent:
+                        let firstPL = first.longOpenProfitLoss ?? 0
+                        let secondPL = second.longOpenProfitLoss ?? 0
+                        let firstMV = first.marketValue ?? 0
+                        let secondMV = second.marketValue ?? 0
+                        let firstCostBasis = firstMV - firstPL
+                        let secondCostBasis = secondMV - secondPL
+                        let firstPLPercent = firstCostBasis != 0 ? firstPL / firstCostBasis : 0
+                        let secondPLPercent = secondCostBasis != 0 ? secondPL / secondCostBasis : 0
+                        return ascending ? firstPLPercent < secondPLPercent : firstPLPercent > secondPLPercent
+                    case .assetType:
+                        return ascending ?
+                            (first.instrument?.assetType?.rawValue ?? "") < (second.instrument?.assetType?.rawValue ?? "") :
+                            (first.instrument?.assetType?.rawValue ?? "") > (second.instrument?.assetType?.rawValue ?? "")
+                    case .account:
+                        let firstAccount = accountPositionsCopy.first { $0.0 === first }?.1 ?? ""
+                        let secondAccount = accountPositionsCopy.first { $0.0 === second }?.1 ?? ""
+                        return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
+                    case .lastTradeDate:
+                        let firstSymbol = first.instrument?.symbol ?? ""
+                        let secondSymbol = second.instrument?.symbol ?? ""
+                        let firstDate = tradeDateCacheCopy[firstSymbol] ?? "0000"
+                        let secondDate = tradeDateCacheCopy[secondSymbol] ?? "0000"
+                        return ascending ? firstDate < secondDate : firstDate > secondDate
+                    case .orderStatus:
+                        let firstSymbol = first.instrument?.symbol ?? ""
+                        let secondSymbol = second.instrument?.symbol ?? ""
+                        let firstOrderStatus = orderStatusCacheCopy[firstSymbol] ?? nil
+                        let secondOrderStatus = orderStatusCacheCopy[secondSymbol] ?? nil
+                        
+                        // Custom sorting logic for order status
+                        if let firstStatus = firstOrderStatus, let secondStatus = secondOrderStatus {
+                            if firstStatus == .awaitingBuyStopCondition && secondStatus == .awaitingSellStopCondition {
+                                return ascending ? true : false
+                            } else if firstStatus == .awaitingSellStopCondition && secondStatus == .awaitingBuyStopCondition {
+                                return ascending ? false : true
+                            }
+                        }
+                        
+                        let firstPriority : Int = firstOrderStatus?.priority ?? 0
+                        let secondPriority : Int = secondOrderStatus?.priority ?? 0
+                        return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
+                    case .dte:
+                        let firstDTE : Int? = (first.instrument?.assetType == .OPTION) ? 
+                            extractExpirationDate(from: first.instrument?.symbol ?? "", description: first.instrument?.description ?? "") :
+                            SchwabClient.shared.getMinimumDTEForSymbol(first.instrument?.symbol ?? "")
+                        let secondDTE : Int? = (second.instrument?.assetType == .OPTION) ? 
+                            extractExpirationDate(from: second.instrument?.symbol ?? "", description: second.instrument?.description ?? "") :
+                            SchwabClient.shared.getMinimumDTEForSymbol(second.instrument?.symbol ?? "")
+                        let firstContracts : Double = SchwabClient.shared.getContractCountForSymbol(first.instrument?.symbol ?? "")
+                        let secondContracts : Double = SchwabClient.shared.getContractCountForSymbol(second.instrument?.symbol ?? "")
+                        
+                        if firstDTE == nil && secondDTE == nil {
+                            return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
+                        } else if firstDTE == nil {
+                            return false
+                        } else if secondDTE == nil {
+                            return true
+                        } else if firstDTE! == secondDTE! {
+                            return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
+                        } else {
+                            return ascending ? (firstDTE! < secondDTE!) : (firstDTE! > secondDTE!)
+                        }
                     }
-                }
-                
-                // For all other cases, use normal priority sorting
-                // None (nil) gets priority 0 (highest), Stop/S gets priority 2, Stop/B gets priority 3
-                let firstPriority : Int = firstOrderStatus?.priority ?? 0
-                let secondPriority : Int = secondOrderStatus?.priority ?? 0
-
-                return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
-            case .dte:
-                // Use the same logic as display: extractExpirationDate for options, getMinimumDTEForSymbol for others
-                let firstDTE : Int? = (first.instrument?.assetType == .OPTION) ? 
-                    extractExpirationDate(from: first.instrument?.symbol ?? "", description: first.instrument?.description ?? "") :
-                    SchwabClient.shared.getMinimumDTEForSymbol(first.instrument?.symbol ?? "")
-                let secondDTE : Int? = (second.instrument?.assetType == .OPTION) ? 
-                    extractExpirationDate(from: second.instrument?.symbol ?? "", description: second.instrument?.description ?? "") :
-                    SchwabClient.shared.getMinimumDTEForSymbol(second.instrument?.symbol ?? "")
-                let firstContracts : Double = SchwabClient.shared.getContractCountForSymbol(first.instrument?.symbol ?? "")
-                let secondContracts : Double = SchwabClient.shared.getContractCountForSymbol(second.instrument?.symbol ?? "")
-                
-                // Handle nil values - positions without contracts go to the end
-                if firstDTE == nil && secondDTE == nil {
-                    return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
-                } else if firstDTE == nil {
-                    return false // First goes after second
-                } else if secondDTE == nil {
-                    return true // Second goes after first
-                } else if firstDTE! == secondDTE! {
-                    return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
-                } else {
-                    return ascending ? (firstDTE! < secondDTE!) : (firstDTE! > secondDTE!)
-                }
+                })
+            } else {
+                sorted = holdingsToSort
             }
-        })
+            
+            // Update UI on main thread
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                self.sortedHoldings = sorted
+                self.isSorting = false
+            }
+        }
     }
 
     var body: some View {
@@ -366,6 +399,17 @@ struct HoldingsView: View
                                 Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
                                     .foregroundColor(.accentColor)
                                 Text("Filters")
+                                    .foregroundColor(.primary)
+                            }
+                        }
+                        
+                        Button(action: {
+                            showPerformanceSummary = true
+                        }) {
+                            HStack {
+                                Image(systemName: "chart.bar.doc.horizontal")
+                                    .foregroundColor(.accentColor)
+                                Text("Stats")
                                     .foregroundColor(.primary)
                             }
                         }
@@ -510,34 +554,72 @@ struct HoldingsView: View
             }
             .onAppear {
                 viewSize = geometry.size
+                // Initialize sorted holdings
+                if sortedHoldings.isEmpty {
+                    sortedHoldings = filteredHoldings
+                }
             }
             .onChange(of: geometry.size) { oldValue, newValue in
                 viewSize = newValue
             }
-            // Prefetch first security when sort or filter changes
+            // Trigger sorting when sort config changes
             .onChange(of: currentSort) { oldValue, newValue in
-                print("🔮 Sort changed, scheduling debounced prefetch")
-                debouncedPrefetchFirstSecurity()
+                performSort()
+                // print("🔮 Sort changed, scheduling debounced prefetch")
+                // debouncedPrefetchFirstSecurity()
             }
             .onChange(of: searchText) { oldValue, newValue in
-                print("🔮 Search text changed, scheduling debounced prefetch")
-                debouncedPrefetchFirstSecurity()
+                performSort()
+                // print("🔮 Search text changed, scheduling debounced prefetch")
+                // debouncedPrefetchFirstSecurity()
             }
             .onChange(of: selectedAssetTypes) { oldValue, newValue in
-                print("🔮 Asset type filter changed, scheduling debounced prefetch")
-                debouncedPrefetchFirstSecurity()
+                performSort()
+                // print("🔮 Asset type filter changed, scheduling debounced prefetch")
+                // debouncedPrefetchFirstSecurity()
             }
             .onChange(of: selectedAccountNumbers) { oldValue, newValue in
-                print("🔮 Account filter changed, scheduling debounced prefetch")
-                debouncedPrefetchFirstSecurity()
+                performSort()
+                // print("🔮 Account filter changed, scheduling debounced prefetch")
+                // debouncedPrefetchFirstSecurity()
             }
             .onChange(of: selectedOrderStatuses) { oldValue, newValue in
-                print("🔮 Order status filter changed, scheduling debounced prefetch")
-                debouncedPrefetchFirstSecurity()
+                performSort()
+                // print("🔮 Order status filter changed, scheduling debounced prefetch")
+                // debouncedPrefetchFirstSecurity()
             }
             .onChange(of: includeNAStatus) { oldValue, newValue in
-                print("🔮 Include NA status filter changed, scheduling debounced prefetch")
-                debouncedPrefetchFirstSecurity()
+                performSort()
+                // print("🔮 Include NA status filter changed, scheduling debounced prefetch")
+                // debouncedPrefetchFirstSecurity()
+            }
+            .sheet(isPresented: $showPerformanceSummary) {
+                PerformanceSummaryView()
+            }
+            // Show loading indicator overlay when sorting
+            .overlay {
+                if isSorting {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                                .scaleEffect(1.2)
+                            Text("Sorting...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 8)
+                            Spacer()
+                        }
+                        .padding()
+                        .background(Color(.systemBackground).opacity(0.9))
+                        .cornerRadius(8)
+                        .shadow(radius: 4)
+                        .padding()
+                        Spacer()
+                    }
+                }
             }
         }
         .sheet(item: $selectedPosition) { selected in
@@ -595,13 +677,16 @@ struct HoldingsView: View
     }
     
     /// Prefetches data for the first security in the sorted holdings list if it's not already cached
-    private func prefetchFirstSecurityIfNeeded() {
-        guard !sortedHoldings.isEmpty else {
-            print("🔮 No holdings to prefetch")
-            return
+    private func prefetchFirstSecurityIfNeeded() async {
+        // Ensure we're not on main actor to avoid blocking
+        await MainActor.run {
+            guard !sortedHoldings.isEmpty else {
+                print("🔮 No holdings to prefetch")
+                return
+            }
         }
         
-        let firstSecurity = sortedHoldings[0]
+        let firstSecurity = await MainActor.run { sortedHoldings[0] }
         guard let symbol = firstSecurity.instrument?.symbol else {
             print("🔮 First security has no symbol")
             return
@@ -614,9 +699,8 @@ struct HoldingsView: View
         
         if needsPrefetch {
             print("🔮 Prefetching first security in list: \(symbol)")
-            Task.detached(priority: .low) {
-                await self.prefetchSecurityData(symbol: symbol)
-            }
+            // Already in detached task, just call prefetch
+            await prefetchSecurityData(symbol: symbol)
         } else {
             print("✅ First security \(symbol) already cached, skipping prefetch")
         }
@@ -628,8 +712,8 @@ struct HoldingsView: View
         // Cancel any existing debounced task
         debouncedPrefetchTask?.cancel()
         
-        // Create new debounced task
-        debouncedPrefetchTask = Task {
+        // Create new debounced task with low priority to avoid blocking UI
+        debouncedPrefetchTask = Task.detached(priority: .low) {
             // Wait 400ms for debounce
             try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
             
@@ -639,10 +723,15 @@ struct HoldingsView: View
                 return
             }
             
-            // Now perform the prefetch
-            await MainActor.run {
-                prefetchFirstSecurityIfNeeded()
-            }
+            // Additional delay to ensure UI is responsive after sorting
+            // Longer delay for sorting operations to ensure UI is fully responsive
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms additional delay
+            
+            // Yield to allow any pending UI updates
+            await Task.yield()
+            
+            // Now perform the prefetch (runs in background)
+            await self.prefetchFirstSecurityIfNeeded()
         }
     }
     
@@ -652,55 +741,90 @@ struct HoldingsView: View
         
         // Mark as loading in cache
         let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
-        _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        }
         
-        // Fetch quote data
+        // Yield multiple times to ensure UI stays responsive
+        await Task.yield()
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms delay
+        
+        // Fetch quote data in background
         if Task.isCancelled { return }
-        let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+        let fetchedQuote = await Task.detached(priority: .low) {
+            return SchwabClient.shared.fetchQuote(symbol: symbol)
+        }.value
         if Task.isCancelled { return }
+        
+        // Yield after blocking call to allow UI updates
+        await Task.yield()
         
         if let fetchedQuote {
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
-                snapshot.quoteData = fetchedQuote
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                    snapshot.quoteData = fetchedQuote
+                }
             }
         }
         
-        // Fetch price history
+        // Fetch price history in background
         if Task.isCancelled { return }
-        let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        let fetchedPriceHistory = await Task.detached(priority: .low) {
+            return SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        }.value
         if Task.isCancelled { return }
+        
+        // Yield after blocking call to allow UI updates
+        await Task.yield()
         
         if let fetchedPriceHistory {
-            let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+            let fetchedATRValue = await Task.detached(priority: .low) {
+                return SchwabClient.shared.computeATR(symbol: symbol)
+            }.value
             if Task.isCancelled { return }
             
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
-                snapshot.priceHistory = fetchedPriceHistory
-                snapshot.atrValue = fetchedATRValue
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                    snapshot.priceHistory = fetchedPriceHistory
+                    snapshot.atrValue = fetchedATRValue
+                }
             }
         }
         
-        // Fetch transactions
+        // Fetch transactions in background
         if Task.isCancelled { return }
         print("🔮 [First Security] Fetching transactions for: \(symbol)")
-        let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        let fetchedTransactions = await Task.detached(priority: .low) {
+            return SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        }.value
         if Task.isCancelled { return }
         
-        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-            snapshot.transactions = fetchedTransactions
+        // Yield after blocking call to allow UI updates
+        await Task.yield()
+        
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                snapshot.transactions = fetchedTransactions
+            }
         }
         print("🔮 [First Security] Transactions complete for \(symbol): \(fetchedTransactions.count) transactions")
         
-        // Fetch tax lots
+        // Fetch tax lots in background
         if Task.isCancelled { return }
         let currentPrice = fetchedQuote?.quote?.lastPrice ?? fetchedQuote?.extended?.lastPrice ?? fetchedPriceHistory?.candles.last?.close
-        let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        let fetchedTaxLots = await Task.detached(priority: .low) {
+            return SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        }.value
         if Task.isCancelled { return }
-        let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+        let fetchedSharesAvailable = await Task.detached(priority: .low) {
+            return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+        }.value
         
-        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-            snapshot.taxLotData = fetchedTaxLots
-            snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                snapshot.taxLotData = fetchedTaxLots
+                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+            }
         }
         
         print("✅ [First Security] Prefetch complete for \(symbol)")
@@ -730,7 +854,7 @@ struct HoldingsView: View
             // Check for cancellation before updating UI
             guard !Task.isCancelled else { return }
             
-            // Update UI immediately with holdings data
+            // Update UI immediately with holdings data on main actor
             await MainActor.run {
                 // Extract positions from accounts with their account numbers
                 accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
@@ -742,12 +866,17 @@ struct HoldingsView: View
                 }
                 holdings = accountPositions.map { $0.0 }
                 viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
-        
-                print("✅ Holdings displayed: \(holdings.count) positions")
                 
-                // Prefetch first security in the list if not already cached
-                prefetchFirstSecurityIfNeeded()
+                print("✅ Holdings displayed: \(holdings.count) positions")
             }
+            
+            // Trigger initial sort after holdings are loaded (on main actor)
+            await MainActor.run {
+                performSort()
+            }
+            
+            // Prefetch first security in the list if not already cached (runs in background)
+            //await prefetchFirstSecurityIfNeeded()
         }
         
         // PRIORITY 2: Fetch order history in parallel (needed for "Orders" column)

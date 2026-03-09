@@ -702,12 +702,18 @@ struct PositionDetailView: View
             let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots, .orderRecommendations]
             _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
             
+            // Yield to allow UI updates before starting blocking operations
+            await Task.yield()
+            
             // Fetch quote data
             var localQuote: QuoteData? = nil
             if Task.isCancelled { return }
             let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
             if Task.isCancelled { return }
             localQuote = fetchedQuote
+            
+            // Yield after blocking call to allow UI updates
+            await Task.yield()
             
             if let fetchedQuote {
                 _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
@@ -721,6 +727,9 @@ struct PositionDetailView: View
             let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
             localHistory = fetchedPriceHistory
+            
+            // Yield after blocking call to allow UI updates
+            await Task.yield()
             
             if let fetchedPriceHistory {
                 let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
@@ -736,6 +745,9 @@ struct PositionDetailView: View
             if Task.isCancelled { return }
             let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
+            
+            // Yield after blocking call to allow UI updates
+            await Task.yield()
             
             _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
                 snapshot.transactions = fetchedTransactions
@@ -833,10 +845,16 @@ struct PositionDetailView: View
         let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
         _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
         
+        // Yield to allow UI updates before starting blocking operations
+        await Task.yield()
+        
         // Fetch quote data
         if Task.isCancelled { return }
         let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
         if Task.isCancelled { return }
+        
+        // Yield after blocking call to allow UI updates
+        await Task.yield()
         
         if let fetchedQuote {
             _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
@@ -848,6 +866,9 @@ struct PositionDetailView: View
         if Task.isCancelled { return }
         let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
         if Task.isCancelled { return }
+        
+        // Yield after blocking call to allow UI updates
+        await Task.yield()
         
         if let fetchedPriceHistory {
             let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
@@ -864,6 +885,9 @@ struct PositionDetailView: View
         AppLogger.shared.debug("🔮 Fetching transactions for prefetch: \(symbol)")
         let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
         if Task.isCancelled { return }
+        
+        // Yield after blocking call to allow UI updates
+        await Task.yield()
         
         _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
             snapshot.transactions = fetchedTransactions

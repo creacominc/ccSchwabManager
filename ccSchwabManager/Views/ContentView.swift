@@ -67,5 +67,6 @@ struct ContentView: View
                     secretsManager.objectWillChange.send()
                 }
         }
+        .overlay(CSVShareView())
     }
 }

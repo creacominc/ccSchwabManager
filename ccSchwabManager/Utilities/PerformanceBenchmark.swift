@@ -528,4 +528,34 @@ class PerformanceBenchmark {
         currentSession = savedCurrent
         return summary
     }
+    
+    /// Get storage location description for display
+    func getStorageLocation() -> String {
+        guard let url = persistenceURL else {
+            return "Not configured"
+        }
+        
+        // Check if it's iCloud or local
+        if url.path.contains("Mobile Documents") || url.path.contains("iCloud") || url.path.contains("CloudDocs") {
+            #if os(iOS)
+            if url.path.contains("iCloud.com.creacom.ccSchwabManager") {
+                return "iCloud Drive (Files app > ccSchwabManager)"
+            } else {
+                return "iCloud Drive (Files app)"
+            }
+            #else
+            if url.path.contains("iCloud.com.creacom.ccSchwabManager") {
+                return "iCloud Drive (app container): \(url.path)"
+            } else {
+                return "iCloud Drive (generic): \(url.path)"
+            }
+            #endif
+        } else {
+            #if os(iOS)
+            return "Local storage (app sandbox)"
+            #else
+            return "Local: \(url.path)"
+            #endif
+        }
+    }
 }
