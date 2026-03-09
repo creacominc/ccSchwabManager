@@ -432,6 +432,8 @@ struct HoldingsView: View
                                 // Clear caches to force fresh data
                                 tradeDateCache.removeAll()
                                 orderStatusCache.removeAll()
+                                SecurityDataCacheManager.shared.clear()
+                                AppLogger.shared.debug("🔄 Cleared security data cache on refresh")
                                 
                                 // Create new fetch task
                                 currentFetchTask = Task {
@@ -562,36 +564,30 @@ struct HoldingsView: View
             .onChange(of: geometry.size) { oldValue, newValue in
                 viewSize = newValue
             }
-            // Trigger sorting when sort config changes
+            // Trigger sorting when sort config changes and invalidate cache for symbols not in new list
             .onChange(of: currentSort) { oldValue, newValue in
                 performSort()
-                // print("🔮 Sort changed, scheduling debounced prefetch")
-                // debouncedPrefetchFirstSecurity()
+                invalidateCacheForChangedList()
             }
             .onChange(of: searchText) { oldValue, newValue in
                 performSort()
-                // print("🔮 Search text changed, scheduling debounced prefetch")
-                // debouncedPrefetchFirstSecurity()
+                invalidateCacheForChangedList()
             }
             .onChange(of: selectedAssetTypes) { oldValue, newValue in
                 performSort()
-                // print("🔮 Asset type filter changed, scheduling debounced prefetch")
-                // debouncedPrefetchFirstSecurity()
+                invalidateCacheForChangedList()
             }
             .onChange(of: selectedAccountNumbers) { oldValue, newValue in
                 performSort()
-                // print("🔮 Account filter changed, scheduling debounced prefetch")
-                // debouncedPrefetchFirstSecurity()
+                invalidateCacheForChangedList()
             }
             .onChange(of: selectedOrderStatuses) { oldValue, newValue in
                 performSort()
-                // print("🔮 Order status filter changed, scheduling debounced prefetch")
-                // debouncedPrefetchFirstSecurity()
+                invalidateCacheForChangedList()
             }
             .onChange(of: includeNAStatus) { oldValue, newValue in
                 performSort()
-                // print("🔮 Include NA status filter changed, scheduling debounced prefetch")
-                // debouncedPrefetchFirstSecurity()
+                invalidateCacheForChangedList()
             }
             .sheet(isPresented: $showPerformanceSummary) {
                 PerformanceSummaryView()
@@ -659,6 +655,14 @@ struct HoldingsView: View
                     let next1: String? = currentIndex < sortedHoldings.count - 1 ? sortedHoldings[currentIndex + 1].instrument?.symbol : nil
                     let next2: String? = currentIndex < sortedHoldings.count - 2 ? sortedHoldings[currentIndex + 2].instrument?.symbol : nil
                     return (previous1: previous1, previous2: previous2, next1: next1, next2: next2)
+                },
+                getSymbolAtIndex: { index in
+                    guard index >= 0 && index < sortedHoldings.count else { return nil }
+                    return sortedHoldings[index].instrument?.symbol
+                },
+                getCurrentListSymbols: {
+                    // Return all symbols in the current sorted/filtered list for cache invalidation
+                    return Set(sortedHoldings.compactMap { $0.instrument?.symbol })
                 },
                 selectedTab: $selectedTab,
             )
@@ -828,6 +832,14 @@ struct HoldingsView: View
         }
         
         print("✅ [First Security] Prefetch complete for \(symbol)")
+    }
+    
+    /// Invalidates cache entries for symbols not in the current sorted/filtered list
+    /// Called when filters or sort order change
+    private func invalidateCacheForChangedList() {
+        let currentListSymbols = Set(sortedHoldings.compactMap { $0.instrument?.symbol })
+        SecurityDataCacheManager.shared.invalidateSymbolsNotInList(currentListSymbols)
+        AppLogger.shared.debug("🔄 Cache invalidated for symbols not in current list (list size: \(currentListSymbols.count))")
     }
     
     private func fetchHoldings()  {

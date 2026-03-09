@@ -12,6 +12,8 @@ struct PositionDetailView: View
     @Binding var marketValue: Double
     let onNavigate: (Int) -> Void
     let getAdjacentSymbols: () -> (previous1: String?, previous2: String?, next1: String?, next2: String?) // Closure to get adjacent position symbols (2 in each direction)
+    let getSymbolAtIndex: (Int) -> String? // Closure to get symbol at a specific index in sorted list
+    let getCurrentListSymbols: () -> Set<String> // Closure to get all symbols in current sorted/filtered list
     @Binding var selectedTab: Int
     @State private var priceHistory: CandleList?
     @State private var isLoadingPriceHistory = false
@@ -28,7 +30,11 @@ struct PositionDetailView: View
     @State private var isRefreshing = false
     @State private var loadStates: [SecurityDataGroup: SecurityDataLoadState] = [:]
     @State private var dataLoadTask: Task<Void, Never>? = nil
-    @State private var prefetchTasks: [String: Task<Void, Never>] = [:] // NEW: Track prefetch tasks
+    @State private var prefetchTasks: [String: Task<Void, Never>] = [:] // Track prefetch tasks for pause/resume
+    @State private var isPrefetchPaused = false // Pause prefetch while tab data is loading
+    @State private var tabLoadTasks: [SecurityDataGroup: Task<Void, Never>] = [:] // Track tab loading tasks
+    @State private var hasUserInteraction = false // Track user interactions to pause prefetch immediately
+    @State private var lastUserInteractionTime: Date = Date() // Track when user last interacted
     @State private var showPerformanceSummary = false
     @Environment(\.dismiss) private var dismiss
 
@@ -156,6 +162,10 @@ struct PositionDetailView: View
         // Always send the user back to the details tab when switching securities
         selectedTab = 0
 
+        // Invalidate cache entries not in current list (handles filter/sort changes)
+        let currentListSymbols = getCurrentListSymbols()
+        SecurityDataCacheManager.shared.invalidateSymbolsNotInList(currentListSymbols)
+        
         // Determine which groups to load based on cache
         // Strategy: Segmented loading in two chunks for faster perceived performance
         // Chunk 1 (Critical): Details + Price History - loads immediately, displays fast
@@ -169,8 +179,23 @@ struct PositionDetailView: View
             groupsToLoad = SecurityDataGroup.allCases.filter { !cachedSnapshot!.isLoaded($0) }
         }
 
+        // If already fully cached, just show it immediately - GUI is highest priority
         if groupsToLoad.isEmpty {
             loadingState.setLoading(false)
+            // Apply cached snapshot immediately for instant display
+            if let cachedSnapshot = cachedSnapshot {
+                applySnapshot(cachedSnapshot)
+            }
+            // Still trigger prefetch of adjacent items in background (if not paused)
+            Task.detached(priority: .low) {
+                await MainActor.run {
+                    if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
+                       snapshot.isFullyLoaded,
+                       !self.isPrefetchPaused {
+                        self.prefetchAdjacentSecurities()
+                    }
+                }
+            }
             return
         }
 
@@ -179,6 +204,8 @@ struct PositionDetailView: View
 
         SchwabClient.shared.loadingDelegate = loadingState
 
+        // Only fetch current security at high priority - user is actively viewing it
+        // Individual blocking network calls are wrapped in background tasks to avoid blocking UI
         dataLoadTask = Task.detached(priority: .userInitiated) {
             await loadSecurityData(for: symbol, groups: groupsToLoad)
         }
@@ -208,13 +235,21 @@ struct PositionDetailView: View
             }
         }
         
+        // Pause prefetch while loading tab data
+        pausePrefetch()
+        
         // Start loading transactions immediately
         AppLogger.shared.debug("📊 Triggering transaction load for \(symbol) (Transactions tab selected)")
         let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.transactions])
         applySnapshot(loadingSnapshot)
         
-        Task.detached(priority: .userInitiated) {
-            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        let task = Task.detached(priority: .utility) {
+            // Yield to allow UI updates
+            await Task.yield()
+            // Fetch transactions in background to avoid blocking
+            let fetchedTransactions = await Task.detached(priority: .utility) {
+                return SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            }.value
             if Task.isCancelled { return }
             
             let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
@@ -223,8 +258,13 @@ struct PositionDetailView: View
             
             await MainActor.run {
                 applySnapshot(updatedSnapshot)
+                // Resume prefetch after tab data is loaded
+                self.resumePrefetch()
+                self.tabLoadTasks.removeValue(forKey: .transactions)
             }
         }
+        
+        tabLoadTasks[.transactions] = task
     }
     
     /// Ensures tax lots are loaded when Sales Calc tab is selected
@@ -252,10 +292,17 @@ struct PositionDetailView: View
         let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.taxLots])
         applySnapshot(loadingSnapshot)
         
-        Task.detached(priority: .userInitiated) {
-            let fetchedTaxLots = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+        let task = Task.detached(priority: .utility) {
+            // Yield to allow UI updates
+            await Task.yield()
+            // Compute tax lots in background to avoid blocking
+            let fetchedTaxLots = await Task.detached(priority: .utility) {
+                return SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+            }.value
             if Task.isCancelled { return }
-            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            let fetchedSharesAvailable = await Task.detached(priority: .utility) {
+                return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            }.value
             
             let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
                 snapshot.taxLotData = fetchedTaxLots
@@ -264,8 +311,13 @@ struct PositionDetailView: View
             
             await MainActor.run {
                 applySnapshot(updatedSnapshot)
+                // Resume prefetch after tab data is loaded
+                self.resumePrefetch()
+                self.tabLoadTasks.removeValue(forKey: .taxLots)
             }
         }
+        
+        tabLoadTasks[.taxLots] = task
     }
     
     /// Ensures order recommendations are loaded when Orders tabs are selected
@@ -294,17 +346,26 @@ struct PositionDetailView: View
             return
         }
         
+        // Pause prefetch while loading tab data
+        pausePrefetch()
+        
         AppLogger.shared.debug("📊 Triggering order recommendations load for \(symbol) (Orders tab selected)")
         let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.orderRecommendations])
         applySnapshot(loadingSnapshot)
         
         // Use Task instead of Task.detached to avoid data race warnings
         // The computeAndCacheOrderRecommendations function will handle async work safely
-        Task { @MainActor in
+        let task = Task { @MainActor in
             // Re-fetch snapshot in task context to avoid data races
             let currentSnapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
             await self.computeAndCacheOrderRecommendations(symbol: symbol, localQuote: currentSnapshot?.quoteData, localHistory: currentSnapshot?.priceHistory)
+            
+            // Resume prefetch after tab data is loaded
+            self.resumePrefetch()
+            self.tabLoadTasks.removeValue(forKey: .orderRecommendations)
         }
+        
+        tabLoadTasks[.orderRecommendations] = task
     }
 
     private func loadSecurityData(for symbol: String, groups: [SecurityDataGroup]) async {
@@ -335,8 +396,13 @@ struct PositionDetailView: View
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.details) ?? false
             PerformanceBenchmark.shared.startTiming("load_details_\(symbol)", metadata: ["symbol": symbol, "group": "details"])
             
-            AppLogger.shared.debug("📊 [Phase 1] Loading details (quote) for \(symbol)")
-            let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+            AppLogger.shared.debug("--- \(symbol) --- 📊 [Phase 1] Loading details (quote)")
+            // Yield to allow UI updates
+            await Task.yield()
+            // Fetch quote in background task - use userInitiated since this is the current security being viewed
+            let fetchedQuote = await Task.detached(priority: .userInitiated) {
+                return SchwabClient.shared.fetchQuote(symbol: symbol)
+            }.value
             if Task.isCancelled { return }
             localQuote = fetchedQuote
 
@@ -365,14 +431,19 @@ struct PositionDetailView: View
 
         // CHUNK 1 - PHASE 2: Load Price History (critical data)
         // Start Chunk 2 immediately after starting Chunk 1 (don't wait for completion)
-        AppLogger.shared.debug("📊 [Chunk 1] Loading Price History for \(symbol)")
+        AppLogger.shared.debug("--- \(symbol) --- 📊 [Chunk 1] Loading Price History")
         
-        let priceHistoryTask: Task<Void, Never>? = chunk1Groups.contains(.priceHistory) ? Task {
+        let priceHistoryTask: Task<Void, Never>? = chunk1Groups.contains(.priceHistory) ? Task.detached(priority: .userInitiated) {
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.priceHistory) ?? false
             PerformanceBenchmark.shared.startTiming("load_priceHistory_\(symbol)", metadata: ["symbol": symbol, "group": "priceHistory"])
             
-            AppLogger.shared.debug("📊 Loading price history for \(symbol)")
-            let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            AppLogger.shared.debug("--- \(symbol) --- 📊 Loading price history")
+            // Yield to allow UI updates
+            await Task.yield()
+            // Fetch price history in background to avoid blocking
+            let fetchedPriceHistory = await Task.detached(priority: .userInitiated) {
+                return SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            }.value
             if Task.isCancelled { return }
             
             if let fetchedPriceHistory {
@@ -394,7 +465,12 @@ struct PositionDetailView: View
                 AppLogger.shared.debug("📊 Fetched price history for \(symbol): \(fetchedPriceHistory.candles.count) candles")
                 #endif
                 
-                let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+                // Yield to allow UI updates before computing ATR
+                await Task.yield()
+                // Compute ATR in background to avoid blocking
+                let fetchedATRValue = await Task.detached(priority: .userInitiated) {
+                    return SchwabClient.shared.computeATR(symbol: symbol)
+                }.value
                 if Task.isCancelled { return }
 
                 let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
@@ -425,16 +501,21 @@ struct PositionDetailView: View
         // ==========================================
         
         if !chunk2Groups.isEmpty {
-            AppLogger.shared.debug("📊 [Chunk 2] Starting parallel load for \(symbol): \(chunk2Groups.map { "\($0)" }.joined(separator: ", "))")
+            AppLogger.shared.debug("--- \(symbol) --- 📊 [Chunk 2] Starting parallel load: \(chunk2Groups.map { "\($0)" }.joined(separator: ", "))")
         }
         
         // CHUNK 2: Load Transactions (can start immediately, doesn't depend on Chunk 1)
-        let transactionsTask: Task<Void, Never>? = chunk2Groups.contains(.transactions) ? Task {
+        let transactionsTask: Task<Void, Never>? = chunk2Groups.contains(.transactions) ? Task.detached(priority: .userInitiated) {
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.transactions) ?? false
             PerformanceBenchmark.shared.startTiming("load_transactions_\(symbol)", metadata: ["symbol": symbol, "group": "transactions"])
             
-            AppLogger.shared.debug("📊 Loading transactions for \(symbol)")
-            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+                AppLogger.shared.debug("--- \(symbol) --- 📊 Loading transactions")
+            // Yield to allow UI updates
+            await Task.yield()
+            // Fetch transactions in background to avoid blocking
+            let fetchedTransactions = await Task.detached(priority: .userInitiated) {
+                return SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            }.value
             if Task.isCancelled { return }
 
             let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
@@ -452,7 +533,7 @@ struct PositionDetailView: View
         
         // CHUNK 2: Start Tax Lots loading (needs price from Chunk 1)
         // Tab 3 (Sales Calc) needs this, and it can start with price from Chunk 1
-        let taxLotsTask: Task<Void, Never>? = chunk2Groups.contains(.taxLots) ? Task {
+        let taxLotsTask: Task<Void, Never>? = chunk2Groups.contains(.taxLots) ? Task.detached(priority: .userInitiated) {
             // Wait for quote to be available (either from cache or Phase 1)
             var effectivePrice: Double?
             var attempts = 0
@@ -491,10 +572,16 @@ struct PositionDetailView: View
                     PerformanceBenchmark.shared.startTiming("load_taxLots_\(symbol)", metadata: ["symbol": symbol, "group": "taxLots"])
                     
                     AppLogger.shared.debug("📊 [Phase 3] Loading tax lots for \(symbol) with price \(price)")
-                    // Use optimized version with better caching
-                    let fetchedTaxLots = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+                    // Yield to allow UI updates
+                    await Task.yield()
+                    // Use optimized version with better caching - run in background to avoid blocking
+                    let fetchedTaxLots = await Task.detached(priority: .userInitiated) {
+                        return SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+                    }.value
                     if Task.isCancelled { return }
-                    let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+                    let fetchedSharesAvailable = await Task.detached(priority: .userInitiated) {
+                        return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+                    }.value
 
                     let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
                         snapshot.taxLotData = fetchedTaxLots
@@ -571,7 +658,7 @@ struct PositionDetailView: View
         // Check if current security is fully loaded
         if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
            snapshot.isFullyLoaded {
-            AppLogger.shared.debug("✅ \(symbol) fully loaded (Chunk 1 + Chunk 2), triggering prefetch of adjacent securities")
+            AppLogger.shared.debug("--- \(symbol) --- ✅ Fully loaded (Chunk 1 + Chunk 2), triggering prefetch of adjacent securities")
             await MainActor.run {
                 prefetchAdjacentSecurities()
             }
@@ -671,6 +758,57 @@ struct PositionDetailView: View
     
     // MARK: - Prefetching Methods
     
+    /// Marks user interaction to pause prefetch immediately
+    @MainActor
+    private func markUserInteraction() {
+        hasUserInteraction = true
+        lastUserInteractionTime = Date()
+        AppLogger.shared.debug("👆 User interaction detected - pausing prefetch")
+        pausePrefetch()
+    }
+    
+    /// Checks if user has interacted recently (within last 500ms)
+    @MainActor
+    private func hasRecentUserInteraction() -> Bool {
+        if hasUserInteraction {
+            // Clear flag if enough time has passed (500ms)
+            if Date().timeIntervalSince(lastUserInteractionTime) > 0.5 {
+                hasUserInteraction = false
+                return false
+            }
+            return true
+        }
+        return false
+    }
+    
+    /// Pauses prefetch operations while tab data is loading or user is interacting
+    @MainActor
+    private func pausePrefetch() {
+        guard !isPrefetchPaused else { return }
+        isPrefetchPaused = true
+        AppLogger.shared.debug("⏸️ Pausing prefetch operations (tab data loading or user interaction)")
+        
+        // Cancel all active prefetch tasks
+        for (symbol, task) in prefetchTasks {
+            task.cancel()
+            AppLogger.shared.debug("--- \(symbol) --- ⏸️ Cancelled prefetch task")
+        }
+        prefetchTasks.removeAll()
+    }
+    
+    /// Resumes prefetch operations after tab data finishes loading and user stops interacting
+    @MainActor
+    private func resumePrefetch() {
+        // Only resume if no tab loading tasks are active and user hasn't interacted recently
+        guard isPrefetchPaused && tabLoadTasks.isEmpty && !hasRecentUserInteraction() else { return }
+        isPrefetchPaused = false
+        hasUserInteraction = false // Clear interaction flag
+        AppLogger.shared.debug("▶️ Resuming prefetch operations (tab data loaded, user idle)")
+        
+        // Restart prefetch for adjacent securities
+        prefetchAdjacentSecurities()
+    }
+    
     /// Checks if a symbol needs to be prefetched (not in cache or not fully loaded)
     private func shouldPrefetch(symbol: String) -> Bool {
         guard let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol) else {
@@ -687,15 +825,20 @@ struct PositionDetailView: View
         // Cancel any existing prefetch task for this symbol
         prefetchTasks[symbol]?.cancel()
         
-        AppLogger.shared.debug("🔮 Prefetching data for adjacent security: \(symbol)")
+        AppLogger.shared.debug("--- \(symbol) --- 🔮 Prefetching data for adjacent security")
         
         let task = Task.detached(priority: .low) {
             // Check if this symbol needs prefetching
-            await MainActor.run {
-                guard shouldPrefetch(symbol: symbol) else {
-                    AppLogger.shared.debug("✅ \(symbol) already cached, skipping prefetch")
-                    return
-                }
+            let shouldPrefetch = await MainActor.run { self.shouldPrefetch(symbol: symbol) }
+            guard shouldPrefetch else {
+                AppLogger.shared.debug("--- \(symbol) --- ✅ Already cached, skipping prefetch")
+                return
+            }
+            
+            // Check for user interaction before starting
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch cancelled - user interaction detected")
+                return
             }
             
             // Mark as loading in cache (including transactions per user request)
@@ -705,15 +848,30 @@ struct PositionDetailView: View
             // Yield to allow UI updates before starting blocking operations
             await Task.yield()
             
+            // Check for user interaction again after yield
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch cancelled - user interaction detected after yield")
+                return
+            }
+            
             // Fetch quote data
             var localQuote: QuoteData? = nil
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
+            AppLogger.shared.debug("--- \(symbol) --- Fetching quote data")
             let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             localQuote = fetchedQuote
             
-            // Yield after blocking call to allow UI updates
+            // Yield after blocking call to allow UI updates and check for user interaction
             await Task.yield()
+            
+            // Check pause state and user interaction again
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch paused (user interaction detected)")
+                return
+            }
             
             if let fetchedQuote {
                 _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
@@ -723,17 +881,32 @@ struct PositionDetailView: View
             
             // Fetch price history
             var localHistory: CandleList? = nil
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
+            AppLogger.shared.debug("--- \(symbol) --- Fetching price history")
             let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             localHistory = fetchedPriceHistory
             
-            // Yield after blocking call to allow UI updates
+            // Yield after blocking call to allow UI updates and check for user interaction
             await Task.yield()
             
+            // Check pause state and user interaction again
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch paused (user interaction detected)")
+                return
+            }
+            
             if let fetchedPriceHistory {
+                guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                    AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch paused (user interaction detected)")
+                    return
+                }
+                AppLogger.shared.debug("--- \(symbol) --- Computing ATR")
                 let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
-                if Task.isCancelled { return }
+                guard !Task.isCancelled else { return }
+                guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
                 
                 _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
                     snapshot.priceHistory = fetchedPriceHistory
@@ -742,19 +915,29 @@ struct PositionDetailView: View
             }
             
             // Fetch transactions
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
+            AppLogger.shared.debug("--- \(symbol) --- Fetching transactions")
             let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             
-            // Yield after blocking call to allow UI updates
+            // Yield after blocking call to allow UI updates and check for user interaction
             await Task.yield()
+            
+            // Check pause state and user interaction again
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch paused (user interaction detected)")
+                return
+            }
             
             _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
                 snapshot.transactions = fetchedTransactions
             }
             
             // Fetch tax lots
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             let effectivePrice: Double? = {
                 if let price = localQuote?.quote?.lastPrice { return price }
                 if let price = localQuote?.extended?.lastPrice { return price }
@@ -762,8 +945,10 @@ struct PositionDetailView: View
                 if let price = localHistory?.candles.last?.close { return price }
                 return nil
             }()
+            AppLogger.shared.debug("--- \(symbol) --- Computing tax lots")
             let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: effectivePrice)
-            if Task.isCancelled { return }
+            guard !Task.isCancelled else { return }
+            guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
             
             _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
@@ -773,137 +958,213 @@ struct PositionDetailView: View
             
             //  Skip order recommendations prefetch - these can be computed quickly when user navigates to OCO tab
             // The main value of prefetching is caching tax lots and price history data
-            AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol) (order recommendations computed on-demand)")
+            AppLogger.shared.debug("--- \(symbol) --- ✅ Basic prefetch complete (order recommendations computed on-demand)")
         }
         
         prefetchTasks[symbol] = task
     }
     
-    /// Triggers prefetching of adjacent securities once current security is fully loaded
-    /// Prefetches 2 securities in each direction with prioritization: immediate adjacents first, then second-level
+    /// Windowed prefetch strategy: After current security loads, prefetch next, then previous, then continue forward
+    /// Creates a cache window around the current security for fast navigation
+    /// Only prefetches symbols that are in the current sorted/filtered list
+    /// Respects pause state - won't start if prefetch is paused or user is interacting
+    @MainActor
     private func prefetchAdjacentSecurities() {
-        // Get adjacent symbols from parent (2 before, 2 after)
-        let adjacent = getAdjacentSymbols()
-        
-        AppLogger.shared.debug("🔮 Checking adjacent securities for prefetch - prev2: \(adjacent.previous2 ?? "none"), prev1: \(adjacent.previous1 ?? "none"), next1: \(adjacent.next1 ?? "none"), next2: \(adjacent.next2 ?? "none")")
-        
-        // PRIORITY 1: Prefetch immediate adjacents (N-1 and N+1) first
-        let immediateAdjacents: [(symbol: String, label: String)] = [
-            (adjacent.previous1, "previous (N-1)"),
-            (adjacent.next1, "next (N+1)")
-        ].compactMap { symbol, label in
-            guard let sym = symbol else { return nil }
-            return (sym, label)
+        // Don't start prefetch if paused (tab data is loading) or user is interacting
+        guard !isPrefetchPaused && !hasRecentUserInteraction() else {
+            AppLogger.shared.debug("⏸️ Prefetch paused, skipping (tab data loading or user interaction)")
+            return
         }
         
-        for (symbol, label) in immediateAdjacents {
-            if shouldPrefetch(symbol: symbol) {
-                AppLogger.shared.debug("🔮 [Priority 1] Scheduling prefetch for \(label) security: \(symbol)")
-                Task.detached(priority: .low) {
-                    await self.prefetchSecurityDataOnly(symbol: symbol)
-                }
-            } else {
-                AppLogger.shared.debug("✅ \(symbol) (\(label)) already cached, skipping prefetch")
-            }
-        }
+        let cacheSize = 5 // Match SecurityDataCacheManager maxCacheSize
+        let prefetchWindow = max(2, cacheSize / 2) // Prefetch at least half cache size forward (reduced for responsiveness)
         
-        #if !os(iOS)
-        // Mac only: PRIORITY 2: Prefetch second-level adjacents (N-2 and N+2) after a short delay
-        // iPhone skips this to save memory/bandwidth - only prefetches immediate adjacents
-        // This ensures immediate adjacents complete first
-        let secondLevelAdjacents: [(symbol: String, label: String)] = [
-            (adjacent.previous2, "previous (N-2)"),
-            (adjacent.next2, "next (N+2)")
-        ].compactMap { symbol, label in
-            guard let sym = symbol else { return nil }
-            return (sym, label)
-        }
+        // Get current list symbols to validate prefetch targets
+        let currentListSymbols = getCurrentListSymbols()
         
-        if !secondLevelAdjacents.isEmpty {
-            Task.detached(priority: .low) {
-                // Small delay to let immediate adjacents start first
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                
-                for (symbol, label) in secondLevelAdjacents {
-                    if await MainActor.run(body: { self.shouldPrefetch(symbol: symbol) }) {
-                        AppLogger.shared.debug("🔮 [Priority 2] Scheduling prefetch for \(label) security: \(symbol)")
-                        await self.prefetchSecurityDataOnly(symbol: symbol)
-                    } else {
-                        AppLogger.shared.debug("✅ \(symbol) (\(label)) already cached, skipping prefetch")
+        // Get current symbol for logging
+        let currentSymbol = position.instrument?.symbol ?? "unknown"
+        AppLogger.shared.debug("--- \(currentSymbol) --- 🔮 Starting windowed prefetch from index \(currentIndex) (window size: \(prefetchWindow), list size: \(currentListSymbols.count))")
+        
+        // PRIORITY 1: Prefetch next security (most likely to be selected next)
+        if let nextSymbol = getSymbolAtIndex(currentIndex + 1),
+           currentListSymbols.contains(nextSymbol) {
+            if shouldPrefetch(symbol: nextSymbol) {
+                AppLogger.shared.debug("--- \(nextSymbol) --- 🔮 [Priority 1] Prefetching next security")
+                let task = Task.detached(priority: .low) {
+                    // Check pause state and user interaction before starting
+                    guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                        AppLogger.shared.debug("--- \(nextSymbol) --- ⏸️ Prefetch paused (user interaction detected)")
+                        return
                     }
+                    await self.prefetchSecurityDataOnly(symbol: nextSymbol)
                 }
+                prefetchTasks[nextSymbol] = task
+            } else {
+                AppLogger.shared.debug("--- \(nextSymbol) --- ✅ Already cached, skipping")
             }
         }
-        #endif
+        
+        // PRIORITY 2: Prefetch previous security (in case user goes back)
+        if let prevSymbol = getSymbolAtIndex(currentIndex - 1),
+           currentListSymbols.contains(prevSymbol) {
+            let task = Task.detached(priority: .low) {
+                // Small delay to let next prefetch start first
+                try? await Task.sleep(nanoseconds: 200_000_000) // 200ms delay
+                
+                // Check pause state and user interaction before continuing
+                guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                    AppLogger.shared.debug("--- \(prevSymbol) --- ⏸️ Prefetch paused (user interaction detected)")
+                    return
+                }
+                
+                let shouldPrefetch = await MainActor.run { self.shouldPrefetch(symbol: prevSymbol) }
+                if shouldPrefetch {
+                    AppLogger.shared.debug("--- \(prevSymbol) --- 🔮 [Priority 2] Prefetching previous security")
+                    await self.prefetchSecurityDataOnly(symbol: prevSymbol)
+                } else {
+                    AppLogger.shared.debug("--- \(prevSymbol) --- ✅ Already cached, skipping")
+                }
+            }
+            prefetchTasks[prevSymbol] = task
+        }
+        
+        // PRIORITY 3: Continue prefetching forward to build cache window
+        // Only prefetch symbols that are in the current list
+        let forwardTask = Task.detached(priority: .low) {
+            // Delay to let immediate adjacents start first
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+            
+            var prefetchedCount = 0
+            var index = currentIndex + 2 // Start from 2 positions ahead (next+1 already prefetched)
+            
+            while prefetchedCount < prefetchWindow && index < totalPositions {
+                // Check pause state and user interaction before each prefetch
+                guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
+                    let currentSymbol = await MainActor.run { self.position.instrument?.symbol ?? "unknown" }
+                    AppLogger.shared.debug("--- \(currentSymbol) --- ⏸️ Prefetch paused, stopping forward window (user interaction detected)")
+                    break
+                }
+                
+                let symbol = await MainActor.run { self.getSymbolAtIndex(index) }
+                let currentListSymbols = await MainActor.run { self.getCurrentListSymbols() }
+                guard let symbol = symbol,
+                      currentListSymbols.contains(symbol) else {
+                    index += 1
+                    continue
+                }
+                
+                let shouldPrefetch = await MainActor.run { self.shouldPrefetch(symbol: symbol) }
+                if shouldPrefetch {
+                    AppLogger.shared.debug("--- \(symbol) --- 🔮 [Priority 3] Prefetching forward window security [\(index)]")
+                    await self.prefetchSecurityDataOnly(symbol: symbol)
+                    prefetchedCount += 1
+                    
+                    // Small delay between prefetches to avoid overwhelming the system
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms between prefetches
+                } else {
+                    AppLogger.shared.debug("--- \(symbol) --- ✅ Already cached, skipping")
+                }
+                
+                index += 1
+            }
+            
+            let currentSymbol = await MainActor.run { self.position.instrument?.symbol ?? "unknown" }
+            AppLogger.shared.debug("--- \(currentSymbol) --- 🔮 Windowed prefetch complete: prefetched \(prefetchedCount) forward securities")
+        }
+        prefetchTasks["forward_window"] = forwardTask
     }
     
     /// Prefetches basic security data (without order recommendations) for a symbol
+    /// All network calls run in low-priority background tasks to keep UI responsive
     private func prefetchSecurityDataOnly(symbol: String) async {
         AppLogger.shared.debug("🔮 Prefetching basic data for: \(symbol)")
         
         // Mark as loading in cache (including transactions per user request)
         let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
-        _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        }
         
         // Yield to allow UI updates before starting blocking operations
         await Task.yield()
         
-        // Fetch quote data
+        // Fetch quote data in background
         if Task.isCancelled { return }
-        let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+        let fetchedQuote = await Task.detached(priority: .low) {
+            return SchwabClient.shared.fetchQuote(symbol: symbol)
+        }.value
         if Task.isCancelled { return }
         
         // Yield after blocking call to allow UI updates
         await Task.yield()
         
         if let fetchedQuote {
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
-                snapshot.quoteData = fetchedQuote
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                    snapshot.quoteData = fetchedQuote
+                }
             }
         }
         
-        // Fetch price history
+        // Fetch price history in background
         if Task.isCancelled { return }
-        let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        let fetchedPriceHistory = await Task.detached(priority: .low) {
+            return SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+        }.value
         if Task.isCancelled { return }
         
         // Yield after blocking call to allow UI updates
         await Task.yield()
         
         if let fetchedPriceHistory {
-            let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+            let fetchedATRValue = await Task.detached(priority: .low) {
+                return SchwabClient.shared.computeATR(symbol: symbol)
+            }.value
             if Task.isCancelled { return }
             
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
-                snapshot.priceHistory = fetchedPriceHistory
-                snapshot.atrValue = fetchedATRValue
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                    snapshot.priceHistory = fetchedPriceHistory
+                    snapshot.atrValue = fetchedATRValue
+                }
             }
         }
         
-        // Fetch transactions (added per user request to ensure transaction history is prefetched)
+        // Fetch transactions in background
         if Task.isCancelled { return }
         AppLogger.shared.debug("🔮 Fetching transactions for prefetch: \(symbol)")
-        let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        let fetchedTransactions = await Task.detached(priority: .low) {
+            return SchwabClient.shared.getTransactionsFor(symbol: symbol)
+        }.value
         if Task.isCancelled { return }
         
         // Yield after blocking call to allow UI updates
         await Task.yield()
         
-        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-            snapshot.transactions = fetchedTransactions
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                snapshot.transactions = fetchedTransactions
+            }
         }
         AppLogger.shared.debug("🔮 Transactions prefetch complete for \(symbol): \(fetchedTransactions.count) transactions")
         
-        // Fetch tax lots
+        // Fetch tax lots in background
         if Task.isCancelled { return }
         let currentPrice = fetchedQuote?.quote?.lastPrice ?? fetchedQuote?.extended?.lastPrice ?? fetchedPriceHistory?.candles.last?.close
-        let fetchedTaxLots = SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        let fetchedTaxLots = await Task.detached(priority: .low) {
+            return SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+        }.value
         if Task.isCancelled { return }
-        let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+        let fetchedSharesAvailable = await Task.detached(priority: .low) {
+            return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+        }.value
         
-        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-            snapshot.taxLotData = fetchedTaxLots
-            snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                snapshot.taxLotData = fetchedTaxLots
+                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+            }
         }
         
         AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol) (including transactions)")
@@ -975,6 +1236,8 @@ struct PositionDetailView: View
                     marketValue: $marketValue,
                     onNavigate: { newIndex in
                         guard newIndex >= 0 && newIndex < totalPositions else { return }
+                        // Mark user interaction immediately when navigating
+                        markUserInteraction()
                         loadingState.isLoading = true
                         onNavigate(newIndex)
                     },
@@ -992,6 +1255,9 @@ struct PositionDetailView: View
             }
         }
         .onChange(of: selectedTab) { oldValue, newValue in
+            // Mark user interaction immediately when tab changes
+            markUserInteraction()
+            
             // Record tab switch for benchmarking
             PerformanceBenchmark.shared.recordTabSwitch(to: newValue, symbol: position.instrument?.symbol)
             
