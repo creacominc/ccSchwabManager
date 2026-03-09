@@ -119,6 +119,8 @@ struct SecurityDataSnapshot {
 final class SecurityDataCacheManager {
     static let shared = SecurityDataCacheManager()
 
+    // Cache size: 10 securities default, can be increased for devices with more memory
+    // User prefers 10-20 securities cached (100-200MB is acceptable)
     private let maxCacheSize = 10
     private var cache: [String: SecurityDataSnapshot] = [:]
     private var accessOrder: [String] = []

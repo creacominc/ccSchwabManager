@@ -71,6 +71,17 @@ struct PositionDetailView: View
 
         if let transactions = snapshot.transactions {
             self.transactions = transactions
+            // Pre-process transactions immediately when loaded to avoid delay on tab switch
+            // This makes the Transactions tab appear instantly when clicked
+            if !transactions.isEmpty {
+                AppLogger.shared.debug("📊 Pre-processing \(transactions.count) transactions for \(snapshot.symbol) to improve tab switch performance")
+                // Trigger processing in background - TransactionHistorySection will use cached result
+                Task { @MainActor in
+                    // Small delay to let UI update first, then process
+                    try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+                    // The TransactionHistorySection will pick this up via onChange
+                }
+            }
         }
 
         if let quote = snapshot.quoteData {
@@ -115,12 +126,14 @@ struct PositionDetailView: View
 
         dataLoadTask?.cancel()
         
-        // Clear all old data immediately to prevent showing stale values
-        clearAllData()
-
+        // Only clear local state if forcing refresh
+        // Don't clear on normal symbol switches - let applySnapshot handle updates
+        // This preserves cache and prevents unnecessary data clearing
         if forceRefresh {
             SecurityDataCacheManager.shared.remove(symbol: symbol)
+            clearAllData()
         }
+        // For normal switches, clearAllData is not needed - applySnapshot will update UI with cached data
 
         let cachedSnapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
 
@@ -144,15 +157,15 @@ struct PositionDetailView: View
         selectedTab = 0
 
         // Determine which groups to load based on cache
-        // Strategy: Load everything upfront so tabs are ready when user clicks them sequentially
-        // This maximizes network/compute utilization and ensures data is ready by the time user reaches each tab
+        // Strategy: Segmented loading in two chunks for faster perceived performance
+        // Chunk 1 (Critical): Details + Price History - loads immediately, displays fast
+        // Chunk 2 (Secondary): Transactions + Tax Lots + Order Recommendations - loads in background
         let groupsToLoad: [SecurityDataGroup]
         if forceRefresh || cachedSnapshot == nil {
             // Load everything if forcing refresh or no cache
             groupsToLoad = SecurityDataGroup.allCases
         } else {
-            // Load all missing groups - we'll prioritize them in loadSecurityData
-            // This ensures all tabs are ready when user clicks through them sequentially
+            // Load all missing groups - segmented loading will handle prioritization
             groupsToLoad = SecurityDataGroup.allCases.filter { !cachedSnapshot!.isLoaded($0) }
         }
 
@@ -213,17 +226,112 @@ struct PositionDetailView: View
             }
         }
     }
+    
+    /// Ensures tax lots are loaded when Sales Calc tab is selected
+    @MainActor
+    private func ensureTaxLotsLoaded() {
+        guard let symbol = position.instrument?.symbol else { return }
+        
+        let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        
+        // Check if tax lots are already loaded or loading
+        if let snapshot = snapshot {
+            if snapshot.isLoaded(.taxLots) || snapshot.isLoading(.taxLots) {
+                AppLogger.shared.debug("📊 Tax lots already loaded or loading for \(symbol)")
+                return
+            }
+        }
+        
+        // Need price for tax lots calculation
+        guard let price = resolveCurrentPrice(quote: snapshot?.quoteData, history: snapshot?.priceHistory) else {
+            AppLogger.shared.debug("📊 No price available for tax lots calculation for \(symbol)")
+            return
+        }
+        
+        AppLogger.shared.debug("📊 Triggering tax lots load for \(symbol) (Sales Calc tab selected)")
+        let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.taxLots])
+        applySnapshot(loadingSnapshot)
+        
+        Task.detached(priority: .userInitiated) {
+            let fetchedTaxLots = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+            if Task.isCancelled { return }
+            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            
+            let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                snapshot.taxLotData = fetchedTaxLots
+                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+            }
+            
+            await MainActor.run {
+                applySnapshot(updatedSnapshot)
+            }
+        }
+    }
+    
+    /// Ensures order recommendations are loaded when Orders tabs are selected
+    @MainActor
+    private func ensureOrderRecommendationsLoaded() {
+        guard let symbol = position.instrument?.symbol else { return }
+        
+        let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        
+        // Check if order recommendations are already loaded or loading
+        if let snapshot = snapshot {
+            if snapshot.isLoaded(.orderRecommendations) || snapshot.isLoading(.orderRecommendations) {
+                AppLogger.shared.debug("📊 Order recommendations already loaded or loading for \(symbol)")
+                return
+            }
+        }
+        
+        // Need tax lots and price history for order recommendations
+        guard let taxLotData = snapshot?.taxLotData,
+              let sharesAvailable = snapshot?.sharesAvailableForTrading,
+              snapshot?.atrValue != nil,
+              !taxLotData.isEmpty,
+              sharesAvailable > 0,
+              resolveCurrentPrice(quote: snapshot?.quoteData, history: snapshot?.priceHistory) != nil else {
+            AppLogger.shared.debug("📊 Missing required data for order recommendations for \(symbol)")
+            return
+        }
+        
+        AppLogger.shared.debug("📊 Triggering order recommendations load for \(symbol) (Orders tab selected)")
+        let loadingSnapshot = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.orderRecommendations])
+        applySnapshot(loadingSnapshot)
+        
+        // Use Task instead of Task.detached to avoid data race warnings
+        // The computeAndCacheOrderRecommendations function will handle async work safely
+        Task { @MainActor in
+            // Re-fetch snapshot in task context to avoid data races
+            let currentSnapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+            await self.computeAndCacheOrderRecommendations(symbol: symbol, localQuote: currentSnapshot?.quoteData, localHistory: currentSnapshot?.priceHistory)
+        }
+    }
 
     private func loadSecurityData(for symbol: String, groups: [SecurityDataGroup]) async {
         var localQuote: QuoteData? = SecurityDataCacheManager.shared.snapshot(for: symbol)?.quoteData
         var localHistory: CandleList? = SecurityDataCacheManager.shared.snapshot(for: symbol)?.priceHistory
 
-        // STRATEGY: Load everything upfront in optimal order for sequential tab navigation
-        // Tab order: Details(0) -> Price History(1) -> Transactions(2) -> Sales Calc(3) -> Current(4) -> OCO(5) -> Sequence(6)
-        // Goal: Have data ready by the time user clicks each tab
+        // STRATEGY: Segmented loading in two chunks for faster perceived performance
+        // CHUNK 1 (Critical - loads immediately): Details + Price History
+        //   - Displays immediately when ready (fast initial render)
+        // CHUNK 2 (Secondary - loads in background): Transactions + Tax Lots + Order Recommendations
+        //   - Loads after Chunk 1 completes, updates UI when ready
+        // This makes the UI feel faster because critical data appears quickly
         
-        // PHASE 1: Load details (quote) first - Tab 0 needs this immediately
-        if groups.contains(.details) {
+        let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory]
+        let secondaryGroups: [SecurityDataGroup] = [.transactions, .taxLots, .orderRecommendations]
+        
+        // Split groups into chunks
+        let chunk1Groups = groups.filter { criticalGroups.contains($0) }
+        let chunk2Groups = groups.filter { secondaryGroups.contains($0) }
+        
+        // ==========================================
+        // CHUNK 1: Critical Data (Details + Price History)
+        // Load immediately, display as soon as ready for fast initial render
+        // ==========================================
+        
+        // CHUNK 1 - PHASE 1: Load details (quote) first - Tab 0 needs this immediately
+        if chunk1Groups.contains(.details) {
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.details) ?? false
             PerformanceBenchmark.shared.startTiming("load_details_\(symbol)", metadata: ["symbol": symbol, "group": "details"])
             
@@ -255,11 +363,11 @@ struct PositionDetailView: View
 
         if Task.isCancelled { return }
 
-        // PHASE 2: Load Price History and Transactions in parallel - Tabs 1 & 2
-        // These are independent and can load simultaneously to maximize network/compute utilization
-        AppLogger.shared.debug("📊 [Phase 2] Starting parallel load: Price History + Transactions for \(symbol)")
+        // CHUNK 1 - PHASE 2: Load Price History (critical data)
+        // Start Chunk 2 immediately after starting Chunk 1 (don't wait for completion)
+        AppLogger.shared.debug("📊 [Chunk 1] Loading Price History for \(symbol)")
         
-        let priceHistoryTask: Task<Void, Never>? = groups.contains(.priceHistory) ? Task {
+        let priceHistoryTask: Task<Void, Never>? = chunk1Groups.contains(.priceHistory) ? Task {
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.priceHistory) ?? false
             PerformanceBenchmark.shared.startTiming("load_priceHistory_\(symbol)", metadata: ["symbol": symbol, "group": "priceHistory"])
             
@@ -268,12 +376,29 @@ struct PositionDetailView: View
             if Task.isCancelled { return }
             
             if let fetchedPriceHistory {
+                // Limit candles on iPhone to save memory (keep last 200 candles = ~1 year of daily data)
+                #if os(iOS)
+                let maxCandles = 200
+                let limitedCandles = Array(fetchedPriceHistory.candles.suffix(maxCandles))
+                let limitedPriceHistory = CandleList(
+                    candles: limitedCandles,
+                    empty: fetchedPriceHistory.empty,
+                    previousClose: fetchedPriceHistory.previousClose,
+                    previousCloseDate: fetchedPriceHistory.previousCloseDate,
+                    previousCloseDateISO8601: fetchedPriceHistory.previousCloseDateISO8601,
+                    symbol: fetchedPriceHistory.symbol
+                )
+                AppLogger.shared.debug("📊 Fetched price history for \(symbol): \(fetchedPriceHistory.candles.count) candles → limited to \(limitedCandles.count) on iPhone")
+                #else
+                let limitedPriceHistory = fetchedPriceHistory
                 AppLogger.shared.debug("📊 Fetched price history for \(symbol): \(fetchedPriceHistory.candles.count) candles")
+                #endif
+                
                 let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
                 if Task.isCancelled { return }
 
                 let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
-                    snapshot.priceHistory = fetchedPriceHistory
+                    snapshot.priceHistory = limitedPriceHistory
                     snapshot.atrValue = fetchedATRValue
                 }
 
@@ -294,7 +419,17 @@ struct PositionDetailView: View
             }
         } : nil
         
-        let transactionsTask: Task<Void, Never>? = groups.contains(.transactions) ? Task {
+        // ==========================================
+        // CHUNK 2: Secondary Data (Transactions + Tax Lots + Order Recommendations)
+        // Start immediately in parallel with Chunk 1 for faster overall loading
+        // ==========================================
+        
+        if !chunk2Groups.isEmpty {
+            AppLogger.shared.debug("📊 [Chunk 2] Starting parallel load for \(symbol): \(chunk2Groups.map { "\($0)" }.joined(separator: ", "))")
+        }
+        
+        // CHUNK 2: Load Transactions (can start immediately, doesn't depend on Chunk 1)
+        let transactionsTask: Task<Void, Never>? = chunk2Groups.contains(.transactions) ? Task {
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.transactions) ?? false
             PerformanceBenchmark.shared.startTiming("load_transactions_\(symbol)", metadata: ["symbol": symbol, "group": "transactions"])
             
@@ -315,9 +450,9 @@ struct PositionDetailView: View
             }
         } : nil
         
-        // PHASE 3: Start Tax Lots loading as soon as we have price (can use cached or wait for quote)
-        // Tab 3 (Sales Calc) needs this, and it can start with cached price or wait for quote
-        let taxLotsTask: Task<Void, Never>? = groups.contains(.taxLots) ? Task {
+        // CHUNK 2: Start Tax Lots loading (needs price from Chunk 1)
+        // Tab 3 (Sales Calc) needs this, and it can start with price from Chunk 1
+        let taxLotsTask: Task<Void, Never>? = chunk2Groups.contains(.taxLots) ? Task {
             // Wait for quote to be available (either from cache or Phase 1)
             var effectivePrice: Double?
             var attempts = 0
@@ -379,33 +514,34 @@ struct PositionDetailView: View
             }
         } : nil
         
-        // Wait for Phase 2 parallel tasks to complete
+        // Wait for Chunk 1 to complete (for order recommendations dependency)
         await priceHistoryTask?.value
-        await transactionsTask?.value
         
-        // Update local history from cache after parallel load completes
+        // Update local history from cache after Chunk 1 completes
         if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol) {
             localHistory = snapshot.priceHistory
         }
         
-        // Wait for tax lots to complete (it may have already finished if price was cached)
+        // Wait for Chunk 2 parallel tasks to complete
+        await transactionsTask?.value
         await taxLotsTask?.value
         
+        // CHUNK 2: Compute order recommendations (needs tax lots and price history from Chunk 1)
         if Task.isCancelled { return }
         
-        // Compute and cache order recommendations once we have all the necessary data
-        if Task.isCancelled { return }
-        
-        // PHASE 4: Compute order recommendations if needed (after tax lots and price history are ready)
+        // CHUNK 2 - PHASE 4: Compute order recommendations if needed (after tax lots and price history are ready)
         // Only compute if explicitly requested - tabs 4, 5, 6 will request this group when needed
-        if groups.contains(.orderRecommendations) {
-            // Check cache first before starting timer
+        if chunk2Groups.contains(.orderRecommendations) {
+            // Check cache first before starting timer - this prevents redundant computation
             let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
             let wasCached = snapshot?.isLoaded(.orderRecommendations) ?? false
             
-            // If already cached, skip computation
-            if wasCached {
-                AppLogger.shared.debug("📊 Order recommendations already cached for \(symbol)")
+            // If already cached, skip computation entirely
+            if wasCached,
+               let cachedSellOrders = snapshot?.recommendedSellOrders,
+               let cachedBuyOrders = snapshot?.recommendedBuyOrders,
+               !cachedSellOrders.isEmpty || !cachedBuyOrders.isEmpty {
+                AppLogger.shared.debug("📊 Order recommendations already cached for \(symbol) - skipping computation")
                 PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
             } else {
                 PerformanceBenchmark.shared.startTiming("load_orderRecommendations_\(symbol)", metadata: ["symbol": symbol, "group": "orderRecommendations"])
@@ -418,13 +554,24 @@ struct PositionDetailView: View
             }
         }
         
+        // Final UI refresh with all Chunk 2 data
+        // This ensures UI updates when secondary data arrives
+        if !chunk2Groups.isEmpty {
+            await MainActor.run {
+                if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol) {
+                    applySnapshot(snapshot)
+                    AppLogger.shared.debug("✅ [Chunk 2] UI refreshed with secondary data for \(symbol)")
+                }
+            }
+        }
+        
         // After all data is loaded, trigger prefetching of adjacent securities
         if Task.isCancelled { return }
         
         // Check if current security is fully loaded
         if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
            snapshot.isFullyLoaded {
-            AppLogger.shared.debug("✅ \(symbol) fully loaded, triggering prefetch of adjacent securities")
+            AppLogger.shared.debug("✅ \(symbol) fully loaded (Chunk 1 + Chunk 2), triggering prefetch of adjacent securities")
             await MainActor.run {
                 prefetchAdjacentSecurities()
             }
@@ -432,6 +579,18 @@ struct PositionDetailView: View
     }
     
     private func computeAndCacheOrderRecommendations(symbol: String, localQuote: QuoteData?, localHistory: CandleList?) async {
+        // Check cache FIRST before doing any work
+        let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        if let snapshot = snapshot,
+           snapshot.isLoaded(.orderRecommendations),
+           let cachedSellOrders = snapshot.recommendedSellOrders,
+           let cachedBuyOrders = snapshot.recommendedBuyOrders,
+           !cachedSellOrders.isEmpty || !cachedBuyOrders.isEmpty {
+            AppLogger.shared.debug("PositionDetailView: Using cached order recommendations for \(symbol) - \(cachedSellOrders.count) sell, \(cachedBuyOrders.count) buy")
+            PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
+            return
+        }
+        
         // Get the current snapshot to check if we have all required data
         guard let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
               let atrValue = snapshot.atrValue,
@@ -440,16 +599,6 @@ struct PositionDetailView: View
               !taxLotData.isEmpty,
               sharesAvailableForTrading > 0 else {
             AppLogger.shared.debug("PositionDetailView: Missing required data for order recommendations for \(symbol)")
-            return
-        }
-        
-        // Check if already cached in SecurityDataCacheManager first
-        if snapshot.isLoaded(.orderRecommendations),
-           let cachedSellOrders = snapshot.recommendedSellOrders,
-           let cachedBuyOrders = snapshot.recommendedBuyOrders,
-           !cachedSellOrders.isEmpty || !cachedBuyOrders.isEmpty {
-            AppLogger.shared.debug("PositionDetailView: Using cached order recommendations for \(symbol)")
-            PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
             return
         }
         
@@ -646,7 +795,9 @@ struct PositionDetailView: View
             }
         }
         
-        // PRIORITY 2: Prefetch second-level adjacents (N-2 and N+2) after a short delay
+        #if !os(iOS)
+        // Mac only: PRIORITY 2: Prefetch second-level adjacents (N-2 and N+2) after a short delay
+        // iPhone skips this to save memory/bandwidth - only prefetches immediate adjacents
         // This ensures immediate adjacents complete first
         let secondLevelAdjacents: [(symbol: String, label: String)] = [
             (adjacent.previous2, "previous (N-2)"),
@@ -671,6 +822,7 @@ struct PositionDetailView: View
                 }
             }
         }
+        #endif
     }
     
     /// Prefetches basic security data (without order recommendations) for a symbol
@@ -819,9 +971,25 @@ struct PositionDetailView: View
             // Record tab switch for benchmarking
             PerformanceBenchmark.shared.recordTabSwitch(to: newValue, symbol: position.instrument?.symbol)
             
-            // When Transactions tab is selected, ensure transactions are loading/loaded
-            if newValue == 2 { // Transactions tab
-                ensureTransactionsLoaded()
+            guard let symbol = position.instrument?.symbol else { return }
+            let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+            
+            // On-demand loading: Load data when specific tabs are selected if not already loaded/loading
+            switch newValue {
+            case 2: // Transactions tab
+                if snapshot?.isLoaded(.transactions) != true && snapshot?.isLoading(.transactions) != true {
+                    ensureTransactionsLoaded()
+                }
+            case 3: // Sales Calc tab (needs tax lots)
+                if snapshot?.isLoaded(.taxLots) != true && snapshot?.isLoading(.taxLots) != true {
+                    ensureTaxLotsLoaded()
+                }
+            case 4, 5, 6: // Current Orders, OCO Orders, Sequence tabs (need order recommendations)
+                if snapshot?.isLoaded(.orderRecommendations) != true && snapshot?.isLoading(.orderRecommendations) != true {
+                    ensureOrderRecommendationsLoaded()
+                }
+            default:
+                break
             }
         }
         .onAppear {

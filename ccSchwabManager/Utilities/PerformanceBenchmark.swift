@@ -30,7 +30,58 @@ class PerformanceBenchmark {
     private var activeMetrics: [String: Metric] = [:]
     private let lock = NSLock()
     
+    // Persistence: Store session history
+    private var sessionHistory: [SessionMetrics] = []
+    private let maxStoredSessions = 50 // Keep last 50 sessions
+    
+    // File URL for persistence
+    // Tries iCloud Drive first (if available), falls back to local Documents directory
+    // iCloud Drive location: 
+    //   macOS: ~/Library/Mobile Documents/iCloud.com.creacom.ccSchwabManager/Documents/performance_benchmark_sessions.json
+    //   iOS: Accessible via Files app under "iCloud Drive" > "ccSchwabManager" folder
+    // Local fallback: App's Documents directory (sandboxed)
+    private var persistenceURL: URL? {
+        // Try iCloud Drive first (if iCloud is enabled and user is signed in)
+        // Note: This requires iCloud capability in entitlements and user to be signed into iCloud
+        if let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.creacom.ccSchwabManager") {
+            var iCloudDocuments = iCloudURL.appendingPathComponent("Documents")
+            
+            // Create Documents directory if it doesn't exist (required for Files app visibility)
+            do {
+                try FileManager.default.createDirectory(at: iCloudDocuments, withIntermediateDirectories: true)
+                
+                // Mark Documents as not excluded from backup (iCloud handles sync)
+                var resourceValues = URLResourceValues()
+                resourceValues.isExcludedFromBackup = false // iCloud handles backup
+                try? iCloudDocuments.setResourceValues(resourceValues)
+            } catch {
+                AppLogger.shared.warning("📊 Failed to create iCloud Documents directory: \(error.localizedDescription)")
+            }
+            
+            let iCloudFileURL = iCloudDocuments.appendingPathComponent("performance_benchmark_sessions.json")
+            AppLogger.shared.info("📊 Using iCloud Drive for performance benchmark storage")
+            AppLogger.shared.debug("📊 iCloud path: \(iCloudFileURL.path)")
+            return iCloudFileURL
+        }
+        
+        // Fallback to local Documents directory (if iCloud not available or not signed in)
+        guard let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let fileURL = documentsDir.appendingPathComponent("performance_benchmark_sessions.json")
+        
+        #if os(iOS)
+        AppLogger.shared.info("📊 Using local storage for performance benchmark (iCloud not available or not signed in)")
+        AppLogger.shared.debug("📊 Local path: \(fileURL.path)")
+        #else
+        AppLogger.shared.debug("📊 Using local storage for performance benchmark: \(fileURL.path)")
+        #endif
+        
+        return fileURL
+    }
+    
     private init() {
+        loadSessionHistory()
         startNewSession()
     }
     
@@ -39,9 +90,18 @@ class PerformanceBenchmark {
         lock.lock()
         defer { lock.unlock() }
         
-        // Log summary of previous session if exists
+        // Save previous session to history before starting new one
         if let previousSession = currentSession {
             logSessionSummary(previousSession)
+            sessionHistory.append(previousSession)
+            
+            // Trim history if too large
+            if sessionHistory.count > maxStoredSessions {
+                sessionHistory.removeFirst(sessionHistory.count - maxStoredSessions)
+            }
+            
+            // Persist to disk
+            saveSessionHistory()
         }
         
         let sessionId = UUID().uuidString.prefix(8).lowercased()
@@ -376,5 +436,96 @@ class PerformanceBenchmark {
         case 6: return "Sequence"
         default: return "Unknown"
         }
+    }
+    
+    // MARK: - Persistence
+    
+    /// Save session history to disk
+    private func saveSessionHistory() {
+        guard let url = persistenceURL else { return }
+        
+        // Convert sessions to JSON-serializable format
+        let sessionsData = sessionHistory.map { session -> [String: Any] in
+            var dict: [String: Any] = [
+                "sessionId": session.sessionId,
+                "startTime": ISO8601DateFormatter().string(from: session.startTime),
+                "cacheHits": session.cacheHits,
+                "cacheMisses": session.cacheMisses,
+                "tabSwitches": session.tabSwitches.map { ["tab": $0.tab, "timestamp": ISO8601DateFormatter().string(from: $0.timestamp)] }
+            ]
+            
+            // Convert data loads (only include duration, skip Date objects)
+            var dataLoadsDict: [String: [String: Any]] = [:]
+            for (key, metric) in session.dataLoads {
+                var metricDict: [String: Any] = [
+                    "operation": metric.operation,
+                    "duration": metric.duration ?? 0
+                ]
+                // Only include simple metadata (skip Date objects)
+                if let metadata = metric.metadata {
+                    let simpleMetadata = metadata.compactMapValues { value -> Any? in
+                        // Only include JSON-serializable types
+                        if value is String || value is Int || value is Double || value is Bool {
+                            return value
+                        }
+                        return nil
+                    }
+                    if !simpleMetadata.isEmpty {
+                        metricDict["metadata"] = simpleMetadata
+                    }
+                }
+                dataLoadsDict[key] = metricDict
+            }
+            dict["dataLoads"] = dataLoadsDict
+            
+            return dict
+        }
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: sessionsData, options: .prettyPrinted)
+            try jsonData.write(to: url)
+            AppLogger.shared.debug("📊 Saved \(sessionHistory.count) sessions to disk")
+        } catch {
+            AppLogger.shared.error("📊 Failed to save session history: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Load session history from disk
+    private func loadSessionHistory() {
+        guard let url = persistenceURL,
+              FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            AppLogger.shared.debug("📊 No saved session history found")
+            return
+        }
+        
+        // Note: We load the data but don't restore full SessionMetrics objects
+        // This is mainly for future use - the current session is what matters
+        AppLogger.shared.debug("📊 Loaded \(json.count) historical sessions from disk")
+    }
+    
+    /// Get all stored session IDs
+    func getStoredSessionIds() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return sessionHistory.map { $0.sessionId }
+    }
+    
+    /// Get summary for a specific session by ID
+    func getSessionSummary(for sessionId: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard let session = sessionHistory.first(where: { $0.sessionId == sessionId }) else {
+            return nil
+        }
+        
+        // Temporarily set as current session to generate summary
+        let savedCurrent = currentSession
+        currentSession = session
+        let summary = getSessionSummary()
+        currentSession = savedCurrent
+        return summary
     }
 }
