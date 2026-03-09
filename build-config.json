@@ -8,56 +8,56 @@
     "debug": {
       "configuration": "Debug",
       "destination": "platform=macOS",
-      "sdk": "macosx15.5",
+      "sdk": "",
       "build_for_testing": true,
       "enable_testing": true
     },
     "release": {
       "configuration": "Release",
       "destination": "platform=macOS",
-      "sdk": "macosx15.5",
+      "sdk": "",
       "build_for_testing": false,
       "enable_testing": false
     },
     "debug-ios-simulator": {
       "configuration": "Debug",
       "destination": "platform=iOS Simulator,name=iPhone 16 Pro",
-      "sdk": "iphonesimulator18.5",
+      "sdk": "",
       "build_for_testing": true,
       "enable_testing": true
     },
     "release-ios-simulator": {
       "configuration": "Release",
       "destination": "platform=iOS Simulator,name=iPhone 16 Pro",
-      "sdk": "iphonesimulator18.5",
+      "sdk": "",
       "build_for_testing": false,
       "enable_testing": false
     },
     "debug-ios-device": {
       "configuration": "Debug",
       "destination": "generic/platform=iOS",
-      "sdk": "iOS SDKs:",
+      "sdk": "",
       "build_for_testing": false,
       "enable_testing": false
     },
     "release-ios-device": {
       "configuration": "Release",
       "destination": "generic/platform=iOS",
-      "sdk": "iOS SDKs:",
+      "sdk": "",
       "build_for_testing": false,
       "enable_testing": false
     },
     "debug-macos": {
       "configuration": "Debug",
       "destination": "platform=macOS",
-      "sdk": "macosx15.5",
+      "sdk": "",
       "build_for_testing": true,
       "enable_testing": true
     },
     "release-macos": {
       "configuration": "Release",
       "destination": "platform=macOS",
-      "sdk": "macosx15.5",
+      "sdk": "",
       "build_for_testing": false,
       "enable_testing": false
     }

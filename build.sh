@@ -11,6 +11,32 @@ SCHEME_NAME="ccSchwabManager"
 BUILD_CONFIG="Debug"
 DESTINATION="platform=macOS"
 
+# Function to detect the latest available macOS SDK
+detect_latest_macos_sdk() {
+    local sdk_output
+    local detected_sdk=""
+    
+    # Get SDK list from xcodebuild
+    sdk_output=$(xcodebuild -showsdks 2>/dev/null)
+    
+    # Look for macOS SDK - get the last one (should be latest)
+    detected_sdk=$(echo "$sdk_output" | grep "macOS" | grep -v "SDKs:" | tail -1 | sed -n 's/.*-sdk \([^[:space:]]*\).*/\1/p')
+    
+    # Verify SDK exists
+    if [ -n "$detected_sdk" ]; then
+        # Check if SDK path exists
+        local sdk_path=$(xcrun --sdk "$detected_sdk" --show-sdk-path 2>/dev/null)
+        if [ -n "$sdk_path" ] && [ -d "$sdk_path" ]; then
+            echo "$detected_sdk"
+            return 0
+        fi
+    fi
+    
+    # Return empty if not found
+    echo ""
+    return 1
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -38,11 +64,26 @@ print_error() {
 # Function to build the app
 build_app() {
     print_status "Building $PROJECT_NAME app..."
-    xcodebuild -project "$PROJECT_NAME.xcodeproj" \
-               -scheme "$SCHEME_NAME" \
-               -configuration "$BUILD_CONFIG" \
-               -destination "$DESTINATION" \
-               build
+    
+    # Auto-detect latest macOS SDK
+    local sdk=$(detect_latest_macos_sdk)
+    
+    local build_args=(
+        -project "$PROJECT_NAME.xcodeproj"
+        -scheme "$SCHEME_NAME"
+        -configuration "$BUILD_CONFIG"
+        -destination "$DESTINATION"
+    )
+    
+    # Add SDK if detected
+    if [ -n "$sdk" ] && [ "$sdk" != "" ]; then
+        build_args+=(-sdk "$sdk")
+        print_status "Using SDK: $sdk"
+    fi
+    
+    build_args+=(build)
+    
+    xcodebuild "${build_args[@]}"
     
     if [ $? -eq 0 ]; then
         print_success "App build completed successfully"

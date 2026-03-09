@@ -20,7 +20,8 @@ help:
 	@echo "  make update-build-config - Update build configuration"
 	@echo "  make all       - Build app and run all tests"
 	@echo "  make clean     - Clean build artifacts"
-	@echo "  make launch    - Launch the built app"
+	@echo "  make launch    - Launch the built macOS app"
+	@echo "  make launch-ios - Launch the built iOS app in simulator"
 	@echo "  make info      - Show build configuration"
 	@echo "  make configure-testing - Configure testing setup"
 	@echo "  make help      - Show this help message"
@@ -83,16 +84,23 @@ all:
 clean:
 	@./build-enhanced.sh clean
 
-# Launch the app
+# Launch the app (macOS)
 launch:
-	@./build-enhanced.sh launch
+	@./build-enhanced.sh launch macos
+
+# Launch iOS app in simulator
+launch-ios:
+	@./build-enhanced.sh launch ios-simulator
 
 # Show build information
 info:
 	@./build-enhanced.sh info
 
-# Quick build and launch
+# Quick build and launch (macOS)
 quick: build launch
+
+# Quick build and launch iOS
+quick-ios: build-ios launch-ios
 
 # Build for release
 release:
