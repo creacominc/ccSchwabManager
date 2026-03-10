@@ -6,6 +6,19 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
+
+private func controlBackgroundColor() -> Color {
+    #if os(macOS)
+    return Color(NSColor.controlBackgroundColor).opacity(0.9)
+    #else
+    return Color(UIColor.systemBackground).opacity(0.9)
+    #endif
+}
 
 extension View {
     func applyMainViewModifiers(
@@ -166,7 +179,7 @@ extension View {
                         Spacer()
                     }
                     .padding()
-                    .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
+                    .background(controlBackgroundColor())
                     .cornerRadius(8)
                     .shadow(radius: 4)
                     .padding()
