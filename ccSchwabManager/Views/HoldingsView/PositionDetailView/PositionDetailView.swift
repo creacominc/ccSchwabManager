@@ -35,6 +35,8 @@ struct PositionDetailView: View
     @State private var tabLoadTasks: [SecurityDataGroup: Task<Void, Never>] = [:] // Track tab loading tasks
     @State private var hasUserInteraction = false // Track user interactions to pause prefetch immediately
     @State private var lastUserInteractionTime: Date = Date() // Track when user last interacted
+    @State private var prefetchQueue: [String] = [] // Queue of symbols to prefetch (processed sequentially)
+    @State private var prefetchProcessorTask: Task<Void, Never>? = nil // Single task that processes prefetch queue
     @State private var showPerformanceSummary = false
     @Environment(\.dismiss) private var dismiss
 
@@ -192,7 +194,8 @@ struct PositionDetailView: View
                     if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
                        snapshot.isFullyLoaded,
                        !self.isPrefetchPaused {
-                        self.prefetchAdjacentSecurities()
+                        // Queue prefetch symbols - they will be processed sequentially in a single background thread
+                        self.queuePrefetchSymbols()
                     }
                 }
             }
@@ -538,10 +541,11 @@ struct PositionDetailView: View
             var effectivePrice: Double?
             var attempts = 0
             while effectivePrice == nil && attempts < 10 {
-                await MainActor.run {
+                let computedPrice = await MainActor.run {
                     let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
-                    effectivePrice = resolveCurrentPrice(quote: snapshot?.quoteData ?? localQuote, history: snapshot?.priceHistory ?? localHistory)
+                    return resolveCurrentPrice(quote: snapshot?.quoteData ?? localQuote, history: snapshot?.priceHistory ?? localHistory)
                 }
+                effectivePrice = computedPrice
                 if effectivePrice == nil {
                     // Wait a bit for quote to load
                     try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
@@ -653,14 +657,16 @@ struct PositionDetailView: View
         }
         
         // After all data is loaded, trigger prefetching of adjacent securities
+        // IMPORTANT: Only start prefetch AFTER current security is fully loaded
         if Task.isCancelled { return }
         
         // Check if current security is fully loaded
         if let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
            snapshot.isFullyLoaded {
-            AppLogger.shared.debug("--- \(symbol) --- ✅ Fully loaded (Chunk 1 + Chunk 2), triggering prefetch of adjacent securities")
+            AppLogger.shared.debug("--- \(symbol) --- ✅ Fully loaded (Chunk 1 + Chunk 2), queueing prefetch of adjacent securities")
             await MainActor.run {
-                prefetchAdjacentSecurities()
+                // Queue prefetch symbols - they will be processed sequentially in a single background thread
+                queuePrefetchSymbols()
             }
         }
     }
@@ -788,7 +794,11 @@ struct PositionDetailView: View
         isPrefetchPaused = true
         AppLogger.shared.debug("⏸️ Pausing prefetch operations (tab data loading or user interaction)")
         
-        // Cancel all active prefetch tasks
+        // Cancel prefetch processor task (it will re-queue items when resumed)
+        prefetchProcessorTask?.cancel()
+        prefetchProcessorTask = nil
+        
+        // Cancel any individual prefetch tasks (legacy cleanup)
         for (symbol, task) in prefetchTasks {
             task.cancel()
             AppLogger.shared.debug("--- \(symbol) --- ⏸️ Cancelled prefetch task")
@@ -805,8 +815,133 @@ struct PositionDetailView: View
         hasUserInteraction = false // Clear interaction flag
         AppLogger.shared.debug("▶️ Resuming prefetch operations (tab data loaded, user idle)")
         
-        // Restart prefetch for adjacent securities
-        prefetchAdjacentSecurities()
+        // Restart prefetch processor if queue has items
+        startPrefetchProcessorIfNeeded()
+    }
+    
+    /// Queues symbols for prefetching (doesn't start processing immediately)
+    @MainActor
+    private func queuePrefetchSymbols() {
+        // Don't queue if paused or user is interacting
+        guard !isPrefetchPaused && !hasRecentUserInteraction() else {
+            AppLogger.shared.debug("⏸️ Prefetch paused, skipping queue (tab data loading or user interaction)")
+            return
+        }
+        
+        let cacheSize = 5 // Match SecurityDataCacheManager maxCacheSize
+        let prefetchWindow = max(2, cacheSize / 2) // Prefetch at least half cache size forward
+        
+        // Get current list symbols to validate prefetch targets
+        let currentListSymbols = getCurrentListSymbols()
+        
+        // Get current symbol for logging
+        let currentSymbol = position.instrument?.symbol ?? "unknown"
+        AppLogger.shared.debug("--- \(currentSymbol) --- 🔮 Queueing prefetch symbols from index \(currentIndex) (window size: \(prefetchWindow), list size: \(currentListSymbols.count))")
+        
+        var symbolsToQueue: [String] = []
+        
+        // PRIORITY 1: Next security (most likely to be selected next)
+        if let nextSymbol = getSymbolAtIndex(currentIndex + 1),
+           currentListSymbols.contains(nextSymbol),
+           shouldPrefetch(symbol: nextSymbol) {
+            symbolsToQueue.append(nextSymbol)
+            AppLogger.shared.debug("--- \(nextSymbol) --- 🔮 [Priority 1] Queued next security")
+        }
+        
+        // PRIORITY 2: Previous security (in case user goes back)
+        if let prevSymbol = getSymbolAtIndex(currentIndex - 1),
+           currentListSymbols.contains(prevSymbol),
+           shouldPrefetch(symbol: prevSymbol) {
+            symbolsToQueue.append(prevSymbol)
+            AppLogger.shared.debug("--- \(prevSymbol) --- 🔮 [Priority 2] Queued previous security")
+        }
+        
+        // PRIORITY 3: Forward window securities
+        var prefetchedCount = 0
+        var index = currentIndex + 2 // Start from 2 positions ahead
+        while prefetchedCount < prefetchWindow && index < totalPositions {
+            guard let symbol = getSymbolAtIndex(index),
+                  currentListSymbols.contains(symbol),
+                  shouldPrefetch(symbol: symbol) else {
+                index += 1
+                continue
+            }
+            symbolsToQueue.append(symbol)
+            AppLogger.shared.debug("--- \(symbol) --- 🔮 [Priority 3] Queued forward window security [\(index)]")
+            prefetchedCount += 1
+            index += 1
+        }
+        
+        // Add symbols to queue (avoid duplicates)
+        for symbol in symbolsToQueue {
+            if !prefetchQueue.contains(symbol) {
+                prefetchQueue.append(symbol)
+            }
+        }
+        
+        // Start processor if not already running
+        startPrefetchProcessorIfNeeded()
+    }
+    
+    /// Starts the prefetch processor task if it's not already running and queue has items
+    @MainActor
+    private func startPrefetchProcessorIfNeeded() {
+        // Don't start if paused, user interacting, or processor already running
+        guard !isPrefetchPaused && !hasRecentUserInteraction() && prefetchProcessorTask == nil && !prefetchQueue.isEmpty else {
+            return
+        }
+        
+        AppLogger.shared.debug("▶️ Starting prefetch processor (queue size: \(prefetchQueue.count))")
+        
+        // Create single background task to process all prefetch operations sequentially
+        prefetchProcessorTask = Task.detached(priority: .low) {
+            await self.processPrefetchQueue()
+        }
+    }
+    
+    /// Processes the prefetch queue sequentially in a single background thread
+    private func processPrefetchQueue() async {
+        AppLogger.shared.debug("🔄 Prefetch processor started")
+        
+        while true {
+            // Get next symbol from queue
+            let symbol: String? = await MainActor.run { () -> String? in
+                guard !self.prefetchQueue.isEmpty else {
+                    // Queue empty, stop processor
+                    self.prefetchProcessorTask = nil
+                    return nil
+                }
+                return self.prefetchQueue.removeFirst()
+            }
+            
+            guard let symbol = symbol else {
+                AppLogger.shared.debug("🔄 Prefetch processor stopped (queue empty)")
+                break
+            }
+            
+            // Check if we should pause
+            let shouldPause = await MainActor.run {
+                self.isPrefetchPaused || self.hasRecentUserInteraction()
+            }
+            
+            guard !shouldPause else {
+                AppLogger.shared.debug("--- \(symbol) --- ⏸️ Prefetch paused, re-queuing")
+                // Re-queue symbol at front for later processing
+                await MainActor.run {
+                    self.prefetchQueue.insert(symbol, at: 0)
+                }
+                // Wait a bit before checking again
+                try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                continue
+            }
+            
+            // Process this symbol
+            AppLogger.shared.debug("--- \(symbol) --- 🔄 Processing prefetch")
+            await prefetchSecurityDataOnly(symbol: symbol)
+            
+            // Small delay between prefetches to avoid overwhelming the system
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms between prefetches
+        }
     }
     
     /// Checks if a symbol needs to be prefetched (not in cache or not fully loaded)
@@ -964,116 +1099,8 @@ struct PositionDetailView: View
         prefetchTasks[symbol] = task
     }
     
-    /// Windowed prefetch strategy: After current security loads, prefetch next, then previous, then continue forward
-    /// Creates a cache window around the current security for fast navigation
-    /// Only prefetches symbols that are in the current sorted/filtered list
-    /// Respects pause state - won't start if prefetch is paused or user is interacting
-    @MainActor
-    private func prefetchAdjacentSecurities() {
-        // Don't start prefetch if paused (tab data is loading) or user is interacting
-        guard !isPrefetchPaused && !hasRecentUserInteraction() else {
-            AppLogger.shared.debug("⏸️ Prefetch paused, skipping (tab data loading or user interaction)")
-            return
-        }
-        
-        let cacheSize = 5 // Match SecurityDataCacheManager maxCacheSize
-        let prefetchWindow = max(2, cacheSize / 2) // Prefetch at least half cache size forward (reduced for responsiveness)
-        
-        // Get current list symbols to validate prefetch targets
-        let currentListSymbols = getCurrentListSymbols()
-        
-        // Get current symbol for logging
-        let currentSymbol = position.instrument?.symbol ?? "unknown"
-        AppLogger.shared.debug("--- \(currentSymbol) --- 🔮 Starting windowed prefetch from index \(currentIndex) (window size: \(prefetchWindow), list size: \(currentListSymbols.count))")
-        
-        // PRIORITY 1: Prefetch next security (most likely to be selected next)
-        if let nextSymbol = getSymbolAtIndex(currentIndex + 1),
-           currentListSymbols.contains(nextSymbol) {
-            if shouldPrefetch(symbol: nextSymbol) {
-                AppLogger.shared.debug("--- \(nextSymbol) --- 🔮 [Priority 1] Prefetching next security")
-                let task = Task.detached(priority: .low) {
-                    // Check pause state and user interaction before starting
-                    guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
-                        AppLogger.shared.debug("--- \(nextSymbol) --- ⏸️ Prefetch paused (user interaction detected)")
-                        return
-                    }
-                    await self.prefetchSecurityDataOnly(symbol: nextSymbol)
-                }
-                prefetchTasks[nextSymbol] = task
-            } else {
-                AppLogger.shared.debug("--- \(nextSymbol) --- ✅ Already cached, skipping")
-            }
-        }
-        
-        // PRIORITY 2: Prefetch previous security (in case user goes back)
-        if let prevSymbol = getSymbolAtIndex(currentIndex - 1),
-           currentListSymbols.contains(prevSymbol) {
-            let task = Task.detached(priority: .low) {
-                // Small delay to let next prefetch start first
-                try? await Task.sleep(nanoseconds: 200_000_000) // 200ms delay
-                
-                // Check pause state and user interaction before continuing
-                guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
-                    AppLogger.shared.debug("--- \(prevSymbol) --- ⏸️ Prefetch paused (user interaction detected)")
-                    return
-                }
-                
-                let shouldPrefetch = await MainActor.run { self.shouldPrefetch(symbol: prevSymbol) }
-                if shouldPrefetch {
-                    AppLogger.shared.debug("--- \(prevSymbol) --- 🔮 [Priority 2] Prefetching previous security")
-                    await self.prefetchSecurityDataOnly(symbol: prevSymbol)
-                } else {
-                    AppLogger.shared.debug("--- \(prevSymbol) --- ✅ Already cached, skipping")
-                }
-            }
-            prefetchTasks[prevSymbol] = task
-        }
-        
-        // PRIORITY 3: Continue prefetching forward to build cache window
-        // Only prefetch symbols that are in the current list
-        let forwardTask = Task.detached(priority: .low) {
-            // Delay to let immediate adjacents start first
-            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
-            
-            var prefetchedCount = 0
-            var index = currentIndex + 2 // Start from 2 positions ahead (next+1 already prefetched)
-            
-            while prefetchedCount < prefetchWindow && index < totalPositions {
-                // Check pause state and user interaction before each prefetch
-                guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else {
-                    let currentSymbol = await MainActor.run { self.position.instrument?.symbol ?? "unknown" }
-                    AppLogger.shared.debug("--- \(currentSymbol) --- ⏸️ Prefetch paused, stopping forward window (user interaction detected)")
-                    break
-                }
-                
-                let symbol = await MainActor.run { self.getSymbolAtIndex(index) }
-                let currentListSymbols = await MainActor.run { self.getCurrentListSymbols() }
-                guard let symbol = symbol,
-                      currentListSymbols.contains(symbol) else {
-                    index += 1
-                    continue
-                }
-                
-                let shouldPrefetch = await MainActor.run { self.shouldPrefetch(symbol: symbol) }
-                if shouldPrefetch {
-                    AppLogger.shared.debug("--- \(symbol) --- 🔮 [Priority 3] Prefetching forward window security [\(index)]")
-                    await self.prefetchSecurityDataOnly(symbol: symbol)
-                    prefetchedCount += 1
-                    
-                    // Small delay between prefetches to avoid overwhelming the system
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms between prefetches
-                } else {
-                    AppLogger.shared.debug("--- \(symbol) --- ✅ Already cached, skipping")
-                }
-                
-                index += 1
-            }
-            
-            let currentSymbol = await MainActor.run { self.position.instrument?.symbol ?? "unknown" }
-            AppLogger.shared.debug("--- \(currentSymbol) --- 🔮 Windowed prefetch complete: prefetched \(prefetchedCount) forward securities")
-        }
-        prefetchTasks["forward_window"] = forwardTask
-    }
+    // NOTE: prefetchAdjacentSecurities() has been replaced with queuePrefetchSymbols() and processPrefetchQueue()
+    // All prefetch operations now run sequentially in a single background thread
     
     /// Prefetches basic security data (without order recommendations) for a symbol
     /// All network calls run in low-priority background tasks to keep UI responsive

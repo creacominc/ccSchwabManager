@@ -113,11 +113,6 @@ struct HoldingsView: View
     @State private var isSorting = false
     @State private var sortTask: Task<Void, Never>? = nil
 
-    struct SelectedPosition: Identifiable {
-        let id: Position.ID
-        let position: Position
-        let accountNumber: String
-    }
 
     var filteredHoldings: [Position] {
         holdings.filter { position in
@@ -284,400 +279,129 @@ struct HoldingsView: View
 
     var body: some View {
         GeometryReader { geometry in
-            VStack {
-                // Platform-specific search implementation
-#if os(iOS)
-                // Top controls for showing/hiding search and keyboard on iPhone
-                HStack {
-                    Button(action: {
-                        withAnimation {
-                            isSearchVisible.toggle()
-                        }
-                        if isSearchVisible {
-                            // Focus when opening search
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isSearchFieldFocused = true
-                            }
-                        } else {
-                            // Dismiss keyboard when hiding search
-                            isSearchFieldFocused = false
-                        }
-                    }) {
-                        Label(isSearchVisible ? "Hide Search" : "Show Search", systemImage: "magnifyingglass")
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Spacer()
-                    
-                    if isSearchFieldFocused {
-                        Button(action: { isSearchFieldFocused = false }) {
-                            Label("Hide Keyboard", systemImage: "keyboard")
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    Spacer()
-                    
-                    // Network indicator showing WiFi or Cellular signal strength
-                    NetworkIndicatorView()
-                        .padding(.trailing, 8)
+            mainContentView(geometry: geometry)
+                .onAppear {
+                    viewSize = geometry.size
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
-
-                if isSearchVisible {
-                    HStack {
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(.secondary)
-                            TextField("Search by symbol or description", text: $searchText)
-                                .focused($isSearchFieldFocused)
-                                .textFieldStyle(.plain)
-                                .textInputAutocapitalization(.never)
-                                .disableAutocorrection(true)
-                                .keyboardType(.asciiCapable)
-                                .submitLabel(.done)
-                                .onSubmit {
-                                    // Optional: Handle search submission
-                                }
-                                .onKeyPress(.delete) {
-                                    searchText = ""
-                                    return .handled
-                                }
-                                .onKeyPress(KeyEquivalent("\u{08}")) { // Backspace character
-                                    searchText = ""
-                                    return .handled
-                                }
-                                .onKeyPress { keyPress in
-                                    // Handle alphanumeric input for search
-                                    let character = keyPress.characters.first
-                                    if let char = character, char.isLetter || char.isNumber || char.isWhitespace || char.isPunctuation {
-                                        searchText += String(char)
-                                        return .handled
-                                    }
-                                    return .ignored
-                                }
-                            
-                            if !searchText.isEmpty {
-                                Button(action: {
-                                    searchText = ""
-                                }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-                        
-                        Button(action: {
-                            withAnimation { isSearchVisible = false }
-                            isSearchFieldFocused = false
-                        }) {
-                            Image(systemName: "chevron.up.circle")
-                                .foregroundColor(.secondary)
-                                .padding(.leading, 6)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                .onChange(of: geometry.size) { _, newValue in
+                    viewSize = newValue
                 }
-                #endif
-                
-                // Filter section with disclosure button
-                VStack(spacing: 0) {
-                    HStack {
-                        Button(action: {
-                            withAnimation {
-                                isFilterExpanded.toggle()
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: isFilterExpanded ? "chevron.down" : "chevron.right")
-                                    .foregroundColor(.accentColor)
-                                Text("Filters")
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        
-                        Button(action: {
-                            showPerformanceSummary = true
-                        }) {
-                            HStack {
-                                Image(systemName: "chart.bar.doc.horizontal")
-                                    .foregroundColor(.accentColor)
-                                Text("Stats")
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            // Trigger refresh of securities data
-                            Task {
-                                // Prevent concurrent refresh operations
-                                guard !isRefreshing else { return }
-                                
-                                isRefreshing = true
-                                isLoadingAccounts = true
-                                
-                                // Cancel any existing fetch task
-                                currentFetchTask?.cancel()
-                                
-                                // Clear caches to force fresh data
-                                tradeDateCache.removeAll()
-                                orderStatusCache.removeAll()
-                                SecurityDataCacheManager.shared.clear()
-                                AppLogger.shared.debug("🔄 Cleared security data cache on refresh")
-                                
-                                // Create new fetch task
-                                currentFetchTask = Task {
-                                    await fetchHoldingsAsync()
-                                }
-                                
-                                // Wait for completion
-                                await currentFetchTask?.value
-                                
-                                // Reset states
-                                await MainActor.run {
-                                    isRefreshing = false
-                                    isLoadingAccounts = false
-                                }
-                            }
-                        }) {
-                            HStack {
-                                if isRefreshing {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .foregroundColor(.accentColor)
-                                }
-                                Text(isRefreshing ? "Refreshing..." : "Refresh")
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isRefreshing || isLoadingAccounts)
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.gray.opacity(0.1))
-                    
-                    if isFilterExpanded {
-                        FilterControls(
-                            selectedAssetTypes: $selectedAssetTypes,
-                            selectedAccountNumbers: $selectedAccountNumbers,
-                            selectedOrderStatuses: $selectedOrderStatuses,
-                            includeNAStatus: $includeNAStatus,
-                            uniqueAssetTypes: viewModel.uniqueAssetTypes,
-                            uniqueAccountNumbers: viewModel.uniqueAccountNumbers,
-                            uniqueOrderStatuses: uniqueOrderStatuses
-                        )
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                }
-
-                if isLoadingAccounts {
-                    ProgressView()
-                        .progressViewStyle( CircularProgressViewStyle( tint: .accentColor ) )
-                        .scaleEffect(2.0, anchor: .center)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    Spacer()
-                    HoldingsTable(
-                        sortedHoldings: sortedHoldings,
-                        selectedPositionId: Binding(
-                            get: { selectedPosition?.id },
-                            set: { newId in
-                                if let newId: Position.ID = newId,
-                                   let position: Position = sortedHoldings.first(where: { $0.id == newId }),
-                                   let accountNumber: String = accountPositions.first(where: { $0.0.id == newId })?.1 {
-                                    // Show loading indicator immediately when position is selected
-                                    loadingState.setLoading(true)
-                                    selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
-                                    // Clear loading after a short delay to allow sheet to show its own indicator
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        loadingState.setLoading(false)
-                                    }
-                                }
-                            }
-                        ),
-                        accountPositions: accountPositions,
-                        currentSort: $currentSort,
-                        viewSize: viewSize,
-                        tradeDateCache: tradeDateCache,
-                        orderStatusCache: orderStatusCache,
-                    )
-                    .padding( 5 )
-                }
-            } // VStack
-            .padding( 5 )
-            // Platform-specific searchable modifier (for macOS)
-            #if os(macOS)
-            .searchable(text: $searchText, prompt: "Search by symbol or description")
-            #endif
-            .onAppear {
-                // Do not auto-focus search on iOS to avoid keyboard covering content
-            }
-            // IOS or VisionOS
-#if os(iOS)
-            // Add a keyboard toolbar with a Done button to dismiss
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { isSearchFieldFocused = false }
-                }
-            }
-#endif // os(iOS)
-            //.navigationTitle("Holdings")
-            .task {
-                defer { isLoadingAccounts = false }
-                isLoadingAccounts = true
-                // Connect loading state to SchwabClient
-                //print("🔗 HoldingsView - Setting SchwabClient.loadingDelegate")
-                SchwabClient.shared.loadingDelegate = loadingState
-                await fetchHoldingsAsync()
-                selectedAssetTypes = Set( viewModel.uniqueAssetTypes.filter { $0 == .EQUITY } )
-            }
-            .onDisappear {
-                //print("🔗 HoldingsView - Clearing SchwabClient.loadingDelegate")
-                SchwabClient.shared.loadingDelegate = nil
-                // Cancel any ongoing fetch task
-                currentFetchTask?.cancel()
-                currentFetchTask = nil
-            }
-            .onAppear {
-                viewSize = geometry.size
-                // Initialize sorted holdings
-                if sortedHoldings.isEmpty {
-                    sortedHoldings = filteredHoldings
-                }
-            }
-            .onChange(of: geometry.size) { oldValue, newValue in
-                viewSize = newValue
-            }
-            // Trigger sorting when sort config changes and invalidate cache for symbols not in new list
-            .onChange(of: currentSort) { oldValue, newValue in
-                performSort()
-                invalidateCacheForChangedList()
-            }
-            .onChange(of: searchText) { oldValue, newValue in
-                performSort()
-                invalidateCacheForChangedList()
-            }
-            .onChange(of: selectedAssetTypes) { oldValue, newValue in
-                performSort()
-                invalidateCacheForChangedList()
-            }
-            .onChange(of: selectedAccountNumbers) { oldValue, newValue in
-                performSort()
-                invalidateCacheForChangedList()
-            }
-            .onChange(of: selectedOrderStatuses) { oldValue, newValue in
-                performSort()
-                invalidateCacheForChangedList()
-            }
-            .onChange(of: includeNAStatus) { oldValue, newValue in
-                performSort()
-                invalidateCacheForChangedList()
-            }
-            .sheet(isPresented: $showPerformanceSummary) {
-                PerformanceSummaryView()
-            }
-            // Show loading indicator overlay when sorting
-            .overlay {
-                if isSorting {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
-                                .scaleEffect(1.2)
-                            Text("Sorting...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.leading, 8)
-                            Spacer()
-                        }
-                        .padding()
-                        .background(Color(.systemBackground).opacity(0.9))
-                        .cornerRadius(8)
-                        .shadow(radius: 4)
-                        .padding()
-                        Spacer()
-                    }
-                }
-            }
         }
         .sheet(item: $selectedPosition) { selected in
-            let currentIndex = sortedHoldings.firstIndex(where: { $0.id == selected.id }) ?? 0
-            PositionDetailView(
-                position: selected.position,
-                accountNumber: selected.accountNumber,
-                currentIndex: currentIndex,
-                totalPositions: sortedHoldings.count,
-                symbol: selected.position.instrument?.symbol ?? "",
-                atrValue: atrValue,
+            PositionDetailSheet(
+                selected: selected,
+                isNavigating: $isNavigating,
+                selectedTab: $selectedTab,
+                atrValue: $atrValue,
                 sharesAvailableForTrading: $sharesAvailableForTrading,
                 marketValue: $marketValue,
-                onNavigate: { newIndex in
-                    guard newIndex >= 0 && newIndex < sortedHoldings.count else { return }
-                    guard !isNavigating else { return } // Prevent rapid navigation
-                    
-                    print("HoldingsView: Navigating to position \(newIndex)")
-                    isNavigating = true
-                    
-                    // Add a small delay to prevent rapid navigation
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        let newPosition = sortedHoldings[newIndex]
-                        let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
-                        selectedPosition = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
-                        
-                        // Reset navigation flag after a delay
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            isNavigating = false
-                        }
-                    }
-                },
-                getAdjacentSymbols: {
-                    // Return the symbols of the 2 previous and 2 next positions for extended prefetching
-                    let previous1: String? = currentIndex > 0 ? sortedHoldings[currentIndex - 1].instrument?.symbol : nil
-                    let previous2: String? = currentIndex > 1 ? sortedHoldings[currentIndex - 2].instrument?.symbol : nil
-                    let next1: String? = currentIndex < sortedHoldings.count - 1 ? sortedHoldings[currentIndex + 1].instrument?.symbol : nil
-                    let next2: String? = currentIndex < sortedHoldings.count - 2 ? sortedHoldings[currentIndex + 2].instrument?.symbol : nil
-                    return (previous1: previous1, previous2: previous2, next1: next1, next2: next2)
-                },
-                getSymbolAtIndex: { index in
-                    guard index >= 0 && index < sortedHoldings.count else { return nil }
-                    return sortedHoldings[index].instrument?.symbol
-                },
-                getCurrentListSymbols: {
-                    // Return all symbols in the current sorted/filtered list for cache invalidation
-                    return Set(sortedHoldings.compactMap { $0.instrument?.symbol })
-                },
-                selectedTab: $selectedTab,
+                viewSize: $viewSize,
+                selectedPosition: $selectedPosition,
+                sortedHoldings: sortedHoldings,
+                accountPositions: accountPositions
             )
-            .task {
-                // Note: Data fetching moved to PositionDetailView to ensure loading indicator is visible
-                // The detail view will handle ATR and tax lot computation when it appears
-            }
-            .onChange(of: selected.position.instrument?.symbol) { oldValue, newValue in
-                // Note: Data fetching moved to PositionDetailView to ensure loading indicator is visible
-                // The detail view will handle ATR and tax lot computation on symbol changes
-            }
-            .frame( width: viewSize.width * 0.97,
-                    height: viewSize.height * 0.98 )
+        }
+        .sheet(isPresented: $showPerformanceSummary) {
+            PerformanceSummaryView()
         }
         .withLoadingState(loadingState)
+    }
+    
+    @ViewBuilder
+    private func mainContentView(geometry: GeometryProxy) -> some View {
+        VStack {
+            // Platform-specific search implementation
+            HoldingsSearchBar(
+                searchText: $searchText,
+                isSearchVisible: $isSearchVisible,
+                isSearchFieldFocused: $isSearchFieldFocused
+            )
+            
+            // Filter section
+            HoldingsFilterSection(
+                isFilterExpanded: $isFilterExpanded,
+                selectedAssetTypes: $selectedAssetTypes,
+                selectedAccountNumbers: $selectedAccountNumbers,
+                selectedOrderStatuses: $selectedOrderStatuses,
+                includeNAStatus: $includeNAStatus,
+                showPerformanceSummary: $showPerformanceSummary,
+                isRefreshing: $isRefreshing,
+                isLoadingAccounts: $isLoadingAccounts,
+                uniqueAssetTypes: viewModel.uniqueAssetTypes,
+                uniqueAccountNumbers: viewModel.uniqueAccountNumbers,
+                uniqueOrderStatuses: uniqueOrderStatuses,
+                onRefresh: handleRefresh
+            )
+
+            // Main content area
+            HoldingsContent(
+                isLoadingAccounts: isLoadingAccounts,
+                sortedHoldings: sortedHoldings,
+                onPositionSelected: handlePositionSelected,
+                accountPositions: accountPositions,
+                currentSort: $currentSort,
+                viewSize: viewSize,
+                tradeDateCache: tradeDateCache,
+                orderStatusCache: orderStatusCache
+            )
+        }
+        .padding(5)
+        .applyMainViewModifiers(
+            searchText: $searchText,
+            isSearchFieldFocused: $isSearchFieldFocused,
+            isLoadingAccounts: $isLoadingAccounts,
+            sortedHoldings: $sortedHoldings,
+            currentSort: $currentSort,
+            selectedAssetTypes: $selectedAssetTypes,
+            selectedAccountNumbers: $selectedAccountNumbers,
+            selectedOrderStatuses: $selectedOrderStatuses,
+            includeNAStatus: $includeNAStatus,
+            isSorting: $isSorting,
+            filteredHoldings: filteredHoldings,
+            loadingState: loadingState,
+            currentFetchTask: $currentFetchTask,
+            onSortChange: performSort,
+            onCacheInvalidation: invalidateCacheForChangedList,
+            onFetchHoldings: fetchHoldingsAsync,
+            onSetDefaultAssetTypes: {
+                selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == .EQUITY })
+            }
+        )
+    }
+    
+    private func handleRefresh() {
+        Task {
+            guard !isRefreshing else { return }
+            
+            isRefreshing = true
+            isLoadingAccounts = true
+            
+            currentFetchTask?.cancel()
+            
+            tradeDateCache.removeAll()
+            orderStatusCache.removeAll()
+            SecurityDataCacheManager.shared.clear()
+            AppLogger.shared.debug("🔄 Cleared security data cache on refresh")
+            
+            currentFetchTask = Task {
+                await fetchHoldingsAsync()
+            }
+            
+            await currentFetchTask?.value
+            
+            await MainActor.run {
+                isRefreshing = false
+                isLoadingAccounts = false
+            }
+        }
+    }
+    
+    private func handlePositionSelected(newId: Position.ID, position: Position, accountNumber: String) {
+        loadingState.setLoading(true)
+        selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            loadingState.setLoading(false)
+        }
     }
     
     /// Prefetches data for the first security in the sorted holdings list if it's not already cached

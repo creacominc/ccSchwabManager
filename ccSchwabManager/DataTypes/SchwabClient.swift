@@ -1848,10 +1848,10 @@ class SchwabClient: @unchecked Sendable
             
             if daysSinceTaxLot > 30 {
                 sharesOver30Days += taxLot.quantity
-                AppLogger.shared.debug("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
+                AppLogger.shared.debug("  --- \(symbol) ---  Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
             } else {
                 sharesUnder30Days += taxLot.quantity
-                AppLogger.shared.debug("    Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
+                AppLogger.shared.debug("  --- \(symbol) ---  Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
             }
         }
         
@@ -2391,24 +2391,24 @@ class SchwabClient: @unchecked Sendable
             
             // Get current share count from position
             let currentShareCount = getShareCount(symbol: symbol)
-            AppLogger.shared.debug("  --- Current share count: \(currentShareCount)")
+            AppLogger.shared.debug("  --- \(symbol) --- Current share count: \(currentShareCount)")
             
             // Check if the earliest transaction matches the current share count
             if abs(earliestLot.quantity - currentShareCount) < 0.01 {
-                AppLogger.shared.debug("  --- Earliest transaction matches current share count - computing cost-per-share")
+                AppLogger.shared.debug("  --- \(symbol) --- Earliest transaction matches current share count - computing cost-per-share")
                 
                 // Calculate sum of later tax lots costs
                 let laterTaxLots = sortedLots.dropFirst()
                 let sumOfLaterTaxLotsCosts = laterTaxLots.reduce(0.0) { $0 + $1.costBasis }
-                AppLogger.shared.debug("  --- Sum of later tax lots costs: $\(sumOfLaterTaxLotsCosts)")
+                AppLogger.shared.debug("  --- \(symbol) --- Sum of later tax lots costs: $\(sumOfLaterTaxLotsCosts)")
                 
                 // Get average price from position
                 let averagePrice = getAveragePrice(symbol: symbol)
-                AppLogger.shared.debug("  --- Average price from position: $\(averagePrice)")
+                AppLogger.shared.debug("  --- \(symbol) --- Average price from position: $\(averagePrice)")
                 
                 // Compute the cost-per-share using the formula from README
                 let receivedCostPerShare = ((averagePrice * earliestLot.quantity) - sumOfLaterTaxLotsCosts) / currentShareCount
-                AppLogger.shared.debug("  --- Computed cost-per-share: $\(receivedCostPerShare)")
+                AppLogger.shared.debug("  --- \(symbol) --- Computed cost-per-share: $\(receivedCostPerShare)")
                 
                 // Update the earliest lot with the computed cost
                 var updatedLots = taxLots
@@ -2440,7 +2440,7 @@ class SchwabClient: @unchecked Sendable
      * and show as a transaction (buy) with a zero price. This function adjusts the prior holdings
      * by the split ratio and removes the zero-cost split transaction.
      */
-    private func adjustForStockSplits(_ taxLots: [SalesCalcPositionsRecord]) -> [SalesCalcPositionsRecord] {
+    private func adjustForStockSplits(_ taxLots: [SalesCalcPositionsRecord], symbol: String) -> [SalesCalcPositionsRecord] {
         AppLogger.shared.debug("=== adjustForStockSplits - processing \(taxLots.count) tax lots ===")
         
         // Sort by date (oldest first)
@@ -2484,9 +2484,9 @@ class SchwabClient: @unchecked Sendable
                         AppLogger.shared.debug("    Adjusted lot \(j): \(adjustedLots[j].openDate), shares: \(adjustedLots[j].quantity), cost: \(adjustedLots[j].costPerShare), basis: \(adjustedLots[j].costBasis), multiple: \(adjustedLots[j].splitMultiple)")
                     }
                     
-                    AppLogger.shared.debug("  --- Removed split transaction and adjusted \(adjustedLots.count) prior lots")
+                    AppLogger.shared.debug("  --- \(symbol) --- Removed split transaction and adjusted \(adjustedLots.count) prior lots")
                 } else {
-                    AppLogger.shared.debug("  --- No prior shares to adjust, skipping split transaction")
+                    AppLogger.shared.debug("  --- \(symbol) --- No prior shares to adjust, skipping split transaction")
                 }
                 
                 // Skip this zero-cost transaction (don't add it to adjustedLots)
@@ -2585,12 +2585,12 @@ class SchwabClient: @unchecked Sendable
                           numberOfShares != 0.0,
                           transferItem.instrument?.symbol == symbol
                     else {
-                        AppLogger.shared.debug("  --- Skipping transferItem: shares=\(transferItem.amount ?? 0), cost=\(transferItem.price ?? 0), symbol=\(transferItem.instrument?.symbol ?? "nil")")
+                        AppLogger.shared.debug("   -- \(symbol) --- Skipping transferItem: shares=\(transferItem.amount ?? 0), cost=\(transferItem.price ?? 0), symbol=\(transferItem.instrument?.symbol ?? "nil")")
                         continue
                     }
                     
                     totalSharesFound += numberOfShares
-                    AppLogger.shared.debug("  --- Found transferItem: \(numberOfShares) shares at $\(transferItem.price ?? 0) on \(transaction.tradeDate ?? "unknown")")
+                    AppLogger.shared.debug("   -- \(symbol) --- Found transferItem: \(numberOfShares) shares at $\(transferItem.price ?? 0) on \(transaction.tradeDate ?? "unknown")")
                     
                     // Don't calculate gain/loss here - it will be calculated after adjustments
                     let gainLossDollar = 0.0  // Will be recalculated after adjustments
@@ -2599,7 +2599,7 @@ class SchwabClient: @unchecked Sendable
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                                   strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
-                        AppLogger.shared.error( " -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
+                        AppLogger.shared.error( "  -- \(symbol) -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
                         continue
                     }
                     
@@ -2615,7 +2615,7 @@ class SchwabClient: @unchecked Sendable
                     }
                     
                     // Log the balance after each transaction
-                    AppLogger.shared.debug("  --- Balance after transaction: \(numberOfShares) shares -> currentShareCount: \(currentShareCount)")
+                    AppLogger.shared.debug("  -- \(symbol) --- Balance after transaction: \(numberOfShares) shares -> currentShareCount: \(currentShareCount)")
                     
                     // Add position record for this transaction
                     m_lastFilteredPositionRecords.append(
@@ -2637,8 +2637,8 @@ class SchwabClient: @unchecked Sendable
                 // break if we find zero
                 if isNearZero( currentShareCount ) {
                     showIncompleteDataWarning = false
-                    AppLogger.shared.debug( "  -- computeTaxLots:  -- Found zero -- " )
-                    AppLogger.shared.debug( "  -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
+                    AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- Found zero -- " )
+                    AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
                     break
                 }
                 // Don't break on negative share count - continue processing to find all buy transactions
@@ -2649,8 +2649,8 @@ class SchwabClient: @unchecked Sendable
             
             // Break if we've found zero shares or reached max quarters
             if ( isNearZero(currentShareCount) ) {
-                AppLogger.shared.debug( "  -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
-                AppLogger.shared.debug( "  -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
+                AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
+                AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
                 showIncompleteDataWarning = false
                 break
             }
@@ -2659,8 +2659,8 @@ class SchwabClient: @unchecked Sendable
             // but we need to continue to find all the buy transactions that account for our current position
             else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
 //                showIncompleteDataWarning = true
-                AppLogger.shared.debug( " -- Reached max quarter delta --" )
-                AppLogger.shared.debug( " -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
+                AppLogger.shared.debug( " -- \(symbol) -- Reached max quarter delta --" )
+                AppLogger.shared.debug( " -- \(symbol) -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else if fetchAttempts >= maxFetchAttempts {
@@ -2671,7 +2671,7 @@ class SchwabClient: @unchecked Sendable
             }
             else
             {
-                AppLogger.shared.debug( " -- Fetching more records (attempt \(fetchAttempts)) --" )
+                AppLogger.shared.debug( " -- \(symbol) -- Fetching more records (attempt \(fetchAttempts)) --" )
                 // Use DispatchGroup to wait for the async operation with timeout
                 let group = DispatchGroup()
                 group.enter()
@@ -2786,7 +2786,7 @@ class SchwabClient: @unchecked Sendable
         m_lastFilteredPositionRecords = remainingRecords
         
         // Apply stock split adjustments
-        m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords)
+        m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords, symbol: symbol)
         
         // Calculate gain/loss for each tax lot based on current price and remaining shares
         let finalPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
@@ -3752,7 +3752,7 @@ class SchwabClient: @unchecked Sendable
         m_lastFilteredPositionRecords = remainingRecords
         
         // Apply stock split adjustments
-        m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords)
+        m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords, symbol: symbol)
         
         // Calculate gain/loss for each tax lot based on current price and remaining shares
         let finalPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
