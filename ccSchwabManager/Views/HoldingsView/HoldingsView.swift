@@ -560,8 +560,10 @@ struct HoldingsView: View
     
     /// Invalidates cache entries for symbols not in the current sorted/filtered list
     /// Called when filters or sort order change
+    /// Uses filteredHoldings instead of sortedHoldings because performSort updates sortedHoldings asynchronously,
+    /// and this function runs synchronously. filteredHoldings reflects the current filters immediately.
     private func invalidateCacheForChangedList() {
-        let currentListSymbols = Set(sortedHoldings.compactMap { $0.instrument?.symbol })
+        let currentListSymbols = Set(filteredHoldings.compactMap { $0.instrument?.symbol })
         SecurityDataCacheManager.shared.invalidateSymbolsNotInList(currentListSymbols)
         AppLogger.shared.debug("🔄 Cache invalidated for symbols not in current list (list size: \(currentListSymbols.count))")
     }
