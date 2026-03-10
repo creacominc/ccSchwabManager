@@ -27,8 +27,11 @@ make ui-test
 # Build and run all tests
 make all
 
-# Launch the app
+# Launch the macOS app
 make launch
+
+# Launch the iOS app in simulator
+make launch-ios
 
 # Clean build artifacts
 make clean
@@ -36,8 +39,11 @@ make clean
 # Show build information
 make info
 
-# Quick build and launch
+# Quick build and launch (macOS)
 make quick
+
+# Quick build and launch iOS
+make quick-ios
 ```
 
 ### Using Enhanced Build Script
@@ -55,8 +61,11 @@ make quick
 # Build and run all tests
 ./build-enhanced.sh all
 
-# Launch the app
-./build-enhanced.sh launch
+# Launch the macOS app
+./build-enhanced.sh launch macos
+
+# Launch the iOS app in simulator
+./build-enhanced.sh launch ios-simulator
 
 # Clean build artifacts
 ./build-enhanced.sh clean
@@ -104,12 +113,14 @@ The enhanced build script reads configuration from `build-config.json`:
     "debug": {
       "configuration": "Debug",
       "destination": "platform=macOS",
+      "sdk": "",
       "build_for_testing": true,
       "enable_testing": true
     },
     "release": {
       "configuration": "Release",
       "destination": "platform=macOS",
+      "sdk": "",
       "build_for_testing": false,
       "enable_testing": false
     }
@@ -135,6 +146,19 @@ The enhanced build script reads configuration from `build-config.json`:
   }
 }
 ```
+
+#### SDK Auto-Detection
+
+**Important**: The build scripts now automatically detect and use the latest available SDKs from your Xcode installation. You no longer need to manually update SDK versions in the configuration file.
+
+- **SDK Field**: The `sdk` field in build configurations is optional. If left empty (`""`) or if the specified SDK is not found, the script will automatically detect the latest available SDK for the target platform.
+- **Auto-Detection**: The scripts use `xcodebuild -showsdks` to detect the latest SDKs for:
+  - macOS (`macosx`)
+  - iOS Simulator (`iphonesimulator`)
+  - iOS Device (`iphoneos`)
+- **Fallback Behavior**: If a configured SDK is specified but not found, the script will automatically fall back to the latest detected SDK and display a warning.
+
+This ensures your builds always use compatible SDKs without requiring manual updates when Xcode or macOS is updated.
 
 ### Environment Variables
 
@@ -185,11 +209,17 @@ make test-coverage
 ### App Management
 
 ```bash
-# Launch the built app
+# Launch the built macOS app
 make launch
 
-# Quick build and launch
+# Launch the built iOS app in simulator
+make launch-ios
+
+# Quick build and launch (macOS)
 make quick
+
+# Quick build and launch iOS
+make quick-ios
 
 # Clean build artifacts
 make clean
@@ -273,17 +303,23 @@ Enable/disable build features:
    - Ensure the scheme is properly configured in Xcode
    - Check that the scheme name in `build-config.json` matches Xcode
 
-2. **Tests fail to run**
+2. **Build fails with SDK not found**
+   - The build scripts now auto-detect SDKs, so this should rarely occur
+   - If you see SDK errors, run `xcodebuild -showsdks` to verify available SDKs
+   - Check that Xcode command line tools are properly installed: `xcode-select --print-path`
+   - The scripts will automatically use the latest available SDK
+
+3. **Tests fail to run**
    - The scheme may not be configured for testing
    - Try building test targets individually
    - Check that test targets exist in the project
 
-3. **App not found when launching**
+4. **App not found when launching**
    - Build the app first: `make build`
    - Check that the build completed successfully
    - Verify the app path in the build output
 
-4. **Permission denied errors**
+5. **Permission denied errors**
    - Make scripts executable: `chmod +x build*.sh`
    - Check file permissions on the project directory
 

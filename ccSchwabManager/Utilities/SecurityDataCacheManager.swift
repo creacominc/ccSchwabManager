@@ -1,5 +1,7 @@
 import Foundation
 
+// AppLogger is available globally, no import needed
+
 enum SecurityDataGroup: CaseIterable {
     case details
     case priceHistory
@@ -119,7 +121,9 @@ struct SecurityDataSnapshot {
 final class SecurityDataCacheManager {
     static let shared = SecurityDataCacheManager()
 
-    private let maxCacheSize = 10
+    // Cache size: 5 securities to improve responsiveness and reduce memory usage
+    // Reduced from 10 to prioritize GUI responsiveness over cache size
+    private let maxCacheSize = 5
     private var cache: [String: SecurityDataSnapshot] = [:]
     private var accessOrder: [String] = []
     private let lock = NSLock()
@@ -194,6 +198,30 @@ final class SecurityDataCacheManager {
 
         cache.removeAll(keepingCapacity: false)
         accessOrder.removeAll(keepingCapacity: false)
+    }
+    
+    /// Remove cache entries for symbols not in the provided list
+    /// Used when filtering/sorting changes the visible list
+    func invalidateSymbolsNotInList(_ validSymbols: Set<String>) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let symbolsToRemove = cache.keys.filter { !validSymbols.contains($0) }
+        for symbol in symbolsToRemove {
+            cache.removeValue(forKey: symbol)
+            accessOrder.removeAll { $0 == symbol }
+        }
+        
+        if !symbolsToRemove.isEmpty {
+            AppLogger.shared.debug("🗑️ Invalidated \(symbolsToRemove.count) cache entries not in current list")
+        }
+    }
+    
+    /// Get all currently cached symbols
+    func getAllCachedSymbols() -> Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return Set(cache.keys)
     }
 
     private func touch(symbol: String) {

@@ -34,6 +34,83 @@ print_debug() {
     echo -e "${PURPLE}[DEBUG]${NC} $1"
 }
 
+# Function to detect the latest available SDK for a platform
+detect_latest_sdk() {
+    local platform=$1
+    local sdk_output
+    local detected_sdk=""
+    
+    # Get SDK list from xcodebuild
+    sdk_output=$(xcodebuild -showsdks 2>/dev/null)
+    
+    case $platform in
+        "macos"|"macosx")
+            # Look for macOS SDK - get the last one (should be latest)
+            detected_sdk=$(echo "$sdk_output" | grep "macOS" | grep -v "SDKs:" | tail -1 | sed -n 's/.*-sdk \([^[:space:]]*\).*/\1/p')
+            ;;
+        "ios-simulator"|"iphonesimulator")
+            # Look for iOS Simulator SDK
+            detected_sdk=$(echo "$sdk_output" | grep "Simulator - iOS" | tail -1 | sed -n 's/.*-sdk \([^[:space:]]*\).*/\1/p')
+            ;;
+        "ios-device"|"iphoneos")
+            # Look for iOS Device SDK
+            detected_sdk=$(echo "$sdk_output" | grep "^[[:space:]]*iOS[[:space:]]" | grep -v "Simulator" | grep -v "SDKs:" | tail -1 | sed -n 's/.*-sdk \([^[:space:]]*\).*/\1/p')
+            ;;
+    esac
+    
+    # Verify SDK exists
+    if [ -n "$detected_sdk" ]; then
+        # Check if SDK path exists
+        local sdk_path=$(xcrun --sdk "$detected_sdk" --show-sdk-path 2>/dev/null)
+        if [ -n "$sdk_path" ] && [ -d "$sdk_path" ]; then
+            echo "$detected_sdk"
+            return 0
+        fi
+    fi
+    
+    # Return empty if not found
+    echo ""
+    return 1
+}
+
+# Function to get SDK for a build type, auto-detecting if needed
+get_sdk_for_build() {
+    local build_type=$1
+    
+    # First try to get SDK from config
+    local config_sdk=$(read_config ".builds.\"$build_type\".sdk" 'sdk')
+    
+    # If SDK is specified in config, verify it exists
+    if [ -n "$config_sdk" ] && [ "$config_sdk" != "null" ] && [ "$config_sdk" != "" ]; then
+        # Check if the SDK exists
+        local sdk_path=$(xcrun --sdk "$config_sdk" --show-sdk-path 2>/dev/null)
+        if [ -n "$sdk_path" ] && [ -d "$sdk_path" ]; then
+            echo "$config_sdk"
+            return 0
+        else
+            # Print warning to stderr so it doesn't get captured
+            print_warning "Configured SDK '$config_sdk' not found, auto-detecting latest..." >&2
+        fi
+    fi
+    
+    # Auto-detect based on build type
+    case $build_type in
+        "debug"|"release"|"debug-macos"|"release-macos")
+            detect_latest_sdk "macos"
+            ;;
+        "debug-ios-simulator"|"release-ios-simulator")
+            detect_latest_sdk "ios-simulator"
+            ;;
+        "debug-ios-device"|"release-ios-device")
+            detect_latest_sdk "ios-device"
+            ;;
+        *)
+            # Default to macOS
+            detect_latest_sdk "macos"
+            ;;
+    esac
+}
+
 # Function to read JSON configuration
 read_config() {
     if [ -f "build-config.json" ]; then
@@ -69,8 +146,8 @@ build_app() {
     local build_type=${2:-"debug"}
     print_status "Building $PROJECT_NAME app with configuration: $config (build type: $build_type)"
     
-    # Get SDK from configuration
-    local sdk=$(read_config ".builds.\"$build_type\".sdk" 'sdk')
+    # Get SDK using auto-detection (will use config if valid, otherwise auto-detect)
+    local sdk=$(get_sdk_for_build "$build_type")
     local destination=$(read_config ".builds.\"$build_type\".destination" 'destination')
     
     local build_args=(
@@ -80,10 +157,12 @@ build_app() {
         -destination "$destination"
     )
     
-    # Add SDK if specified
-    if [ -n "$sdk" ]; then
+    # Add SDK if detected/specified
+    if [ -n "$sdk" ] && [ "$sdk" != "" ]; then
         build_args+=(-sdk "$sdk")
         print_status "Using SDK: $sdk"
+    else
+        print_warning "Could not detect SDK, xcodebuild will use default"
     fi
     
     # Add parallel build if enabled
@@ -282,11 +361,30 @@ find_project_derived_data() {
 
 # Function to launch the app
 launch_app() {
+    local platform=${1:-"macos"}
+    
+    case $platform in
+        "macos"|"mac")
+            launch_macos_app
+            ;;
+        "ios-simulator"|"ios-sim"|"ios")
+            launch_ios_simulator_app
+            ;;
+        *)
+            print_error "Unknown platform: $platform"
+            print_status "Available platforms: macos, ios-simulator"
+            return 1
+            ;;
+    esac
+}
+
+# Function to launch macOS app
+launch_macos_app() {
     local log_file="$HOME/Library/Containers/com.creacom.ccSchwabManager/Data/Documents/ccSchwabManager.log"
     print_status "Truncating log file... $log_file"
     truncate -s 0  $log_file
 
-    print_status "Launching app..."
+    print_status "Launching macOS app..."
     
     local project_derived_data=$(find_project_derived_data)
     local build_products=$(read_config '.paths.build_products' 'build_products')
@@ -295,10 +393,85 @@ launch_app() {
         local app_path="$project_derived_data/$build_products/$BUILD_CONFIG/$PROJECT_NAME.app"
         if [ -d "$app_path" ]; then
             open "$app_path"
-            print_success "App launched successfully"
+            print_success "macOS app launched successfully"
         else
             print_error "App not found at expected location: $app_path"
-            print_status "Please build the app first using: ./build-enhanced.sh build"
+            print_status "Please build the app first using: ./build-enhanced.sh build macos"
+        fi
+    else
+        print_error "Could not find derived data for project"
+    fi
+}
+
+# Function to launch iOS app in simulator
+launch_ios_simulator_app() {
+    print_status "Launching iOS app in simulator..."
+    
+    local project_derived_data=$(find_project_derived_data)
+    local build_products=$(read_config '.paths.build_products' 'build_products')
+    local destination=$(read_config '.builds."debug-ios-simulator".destination' 'destination')
+    
+    # Extract simulator name from destination (e.g., "platform=iOS Simulator,name=iPhone 16 Pro")
+    local simulator_name=$(echo "$destination" | sed -n 's/.*name=\([^,]*\).*/\1/p')
+    
+    if [ -z "$simulator_name" ]; then
+        simulator_name="iPhone 16 Pro"
+        print_warning "Could not determine simulator name from config, using default: $simulator_name"
+    fi
+    
+    if [ -n "$project_derived_data" ]; then
+        # iOS apps are built in Debug-iphonesimulator directory
+        local app_path="$project_derived_data/$build_products/Debug-iphonesimulator/$PROJECT_NAME.app"
+        
+        if [ -d "$app_path" ]; then
+            # Boot the simulator if not already running
+            print_status "Checking simulator status..."
+            local device_id=$(xcrun simctl list devices available | grep "$simulator_name" | grep -v "unavailable" | head -1 | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+            
+            if [ -z "$device_id" ]; then
+                print_error "Could not find simulator: $simulator_name"
+                print_status "Available simulators:"
+                xcrun simctl list devices available | grep "iPhone" | head -5
+                return 1
+            fi
+            
+            # Boot the simulator if needed
+            local boot_status=$(xcrun simctl list devices | grep "$device_id" | grep -o "Booted\|Shutdown")
+            if [ "$boot_status" != "Booted" ]; then
+                print_status "Booting simulator: $simulator_name ($device_id)..."
+                xcrun simctl boot "$device_id" 2>/dev/null || true
+                # Wait a moment for simulator to boot
+                sleep 2
+            fi
+            
+            # Open Simulator app if not already open
+            if ! pgrep -q Simulator; then
+                print_status "Opening Simulator app..."
+                open -a Simulator
+                sleep 2
+            fi
+            
+            # Install and launch the app
+            print_status "Installing app on simulator..."
+            xcrun simctl install "$device_id" "$app_path" 2>/dev/null || {
+                print_warning "Install failed or app already installed, continuing..."
+            }
+            
+            print_status "Launching app on simulator..."
+            # iOS apps have Info.plist directly in the .app bundle, not in Contents/
+            local bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Info.plist" 2>/dev/null)
+            
+            if [ -n "$bundle_id" ]; then
+                xcrun simctl launch "$device_id" "$bundle_id"
+                print_success "iOS app launched successfully on simulator: $simulator_name"
+            else
+                print_error "Could not determine app bundle identifier"
+                print_status "You can manually launch the app from the simulator"
+            fi
+        else
+            print_error "iOS app not found at expected location: $app_path"
+            print_status "Please build the iOS app first using: ./build-enhanced.sh build ios-simulator"
+            print_status "Or use: make build-ios"
         fi
     else
         print_error "Could not find derived data for project"
@@ -317,13 +490,18 @@ show_info() {
     echo "  macOS: $(read_config '.deployment_targets.macos' 'macos')"
     echo "  iOS: $(read_config '.deployment_targets.ios' 'ios')"
     echo ""
-    echo "Available Build Configurations:"
-    echo "  macOS Debug: $(read_config '.builds."debug-macos".sdk' 'sdk')"
-    echo "  macOS Release: $(read_config '.builds."release-macos".sdk' 'sdk')"
-    echo "  iOS Simulator Debug: $(read_config '.builds."debug-ios-simulator".sdk' 'sdk')"
-    echo "  iOS Simulator Release: $(read_config '.builds."release-ios-simulator".sdk' 'sdk')"
-    echo "  iOS Device Debug: $(read_config '.builds."debug-ios-device".sdk' 'sdk')"
-    echo "  iOS Device Release: $(read_config '.builds."release-ios-device".sdk' 'sdk')"
+    echo "Detected SDKs (auto-detected from system):"
+    echo "  macOS: $(detect_latest_sdk 'macos')"
+    echo "  iOS Simulator: $(detect_latest_sdk 'ios-simulator')"
+    echo "  iOS Device: $(detect_latest_sdk 'ios-device')"
+    echo ""
+    echo "Build Configurations (will use auto-detected SDKs if config SDK not available):"
+    echo "  macOS Debug: $(get_sdk_for_build 'debug-macos')"
+    echo "  macOS Release: $(get_sdk_for_build 'release-macos')"
+    echo "  iOS Simulator Debug: $(get_sdk_for_build 'debug-ios-simulator')"
+    echo "  iOS Simulator Release: $(get_sdk_for_build 'release-ios-simulator')"
+    echo "  iOS Device Debug: $(get_sdk_for_build 'debug-ios-device')"
+    echo "  iOS Device Release: $(get_sdk_for_build 'release-ios-device')"
     echo ""
     echo "Test Configuration:"
     echo "  Unit Tests: $(read_config '.tests.unit_tests.enabled' 'enabled')"
@@ -346,7 +524,7 @@ show_usage() {
     echo "  ui-test    - Run UI tests"
     echo "  all        - Build app and run all tests"
     echo "  clean      - Clean build artifacts"
-    echo "  launch     - Launch the built app"
+    echo "  launch     - Launch the built app (default: macOS)"
     echo "  info       - Show build configuration"
     echo "  help       - Show this help message"
     echo ""
@@ -366,6 +544,8 @@ show_usage() {
     echo "  $0 build macos"
     echo "  $0 build ios-simulator"
     echo "  $0 build ios-device-release"
+    echo "  $0 launch macos"
+    echo "  $0 launch ios-simulator"
     echo "  $0 test"
     echo "  $0 all"
     echo "  $0 clean"
@@ -390,7 +570,8 @@ case "${1:-help}" in
         clean_build
         ;;
     "launch")
-        launch_app
+        platform=${2:-"macos"}
+        launch_app "$platform"
         ;;
     "info")
         show_info

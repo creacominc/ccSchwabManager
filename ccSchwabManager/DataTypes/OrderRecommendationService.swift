@@ -309,6 +309,31 @@ class OrderRecommendationService: ObservableObject {
             }
         }
         
+        // Add $1000 buy order option (similar to $500 option)
+        if let thousandDollarOrder = createThousandDollarBuyOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            atrValue: atrValue,
+            targetGainPercent: targetGainPercent
+        ) {
+            recommended.append(thousandDollarOrder)
+        }
+        
+        // Add profit-based buy order when position is more than 20% profitable
+        if currentProfitPercent > 20.0 {
+            if let profitBasedOrder = createProfitBasedBuyOrder(
+                symbol: symbol,
+                currentPrice: currentPrice,
+                atrValue: atrValue,
+                targetGainPercent: targetGainPercent,
+                totalShares: totalShares,
+                currentProfitPercent: currentProfitPercent,
+                avgCostPerShare: avgCostPerShare
+            ) {
+                recommended.append(profitBasedOrder)
+            }
+        }
+        
         // Add special 1-share buy with trailing stop = 5% + ATR%
         if let oneShareOrder = createOneShareBuyOrderWithFivePlusATRTrail(
             symbol: symbol,
@@ -1931,6 +1956,184 @@ class OrderRecommendationService: ObservableObject {
         )
         
         return additionalBuyOrder
+    }
+    
+    /// Creates a $1000 buy order option (similar to $500 option)
+    /// - Parameters:
+    ///   - symbol: The trading symbol
+    ///   - currentPrice: Current market price
+    ///   - atrValue: Average True Range value
+    ///   - targetGainPercent: Target gain percentage
+    /// - Returns: Buy order record or nil if not applicable
+    private func createThousandDollarBuyOrder(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        targetGainPercent: Double
+    ) -> BuyOrderRecord? {
+        
+        // Calculate number of shares that can be bought for $1000, rounded up
+        let sharesFor1000 = ceil(1000.0 / currentPrice)
+        
+        // Ensure we have at least 1 share
+        guard sharesFor1000 >= 1.0 else { return nil }
+        
+        // Calculate target price (maintains the same target gain percentage)
+        let targetBuyPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
+        
+        // Calculate trailing stop (2x ATR as per user preference, clamped between 1% and 15%)
+        let trailingStopPercent = max(1.0, min(15.0, atrValue * 2.0))
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        
+        // Ensure target price is above stop price for logical buy order
+        let minTargetPrice = stopPrice * 1.02  // Target must be at least 2% above stop price
+        let finalTargetPrice = max(targetBuyPrice, minTargetPrice)
+        
+        // Calculate entry price (1 ATR below target)
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
+        
+        AppLogger.shared.debug("  $1000 buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
+        
+        // Calculate actual order cost
+        let orderCost = sharesFor1000 * finalTargetPrice
+        
+        // Create description
+        let formattedDescription = String(
+            format: "BUY %.0f %@ ($1000) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
+            sharesFor1000,
+            symbol,
+            finalTargetPrice,
+            trailingStopPercent,
+            targetGainPercent,
+            orderCost
+        )
+        
+        AppLogger.shared.debug("  Creating $1000 buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor1000), target=\(finalTargetPrice)")
+        
+        // Final validation of trailing stop value
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in $1000 buy order: \(trailingStopPercent)%")
+            return nil
+        }
+        
+        let thousandDollarOrder = BuyOrderRecord(
+            shares: sharesFor1000,
+            targetBuyPrice: finalTargetPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: 0.0, // No existing position gain for this additional order
+            sharesToBuy: sharesFor1000,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
+        
+        return thousandDollarOrder
+    }
+    
+    /// Creates a profit-based buy order when position is more than 20% profitable
+    /// Buy amount is P/10 percent of holdings, where P is the percent gain
+    /// - Parameters:
+    ///   - symbol: The trading symbol
+    ///   - currentPrice: Current market price
+    ///   - atrValue: Average True Range value
+    ///   - targetGainPercent: Target gain percentage
+    ///   - totalShares: Total shares currently held
+    ///   - currentProfitPercent: Current profit percentage (must be > 20%)
+    ///   - avgCostPerShare: Average cost per share
+    /// - Returns: Buy order record or nil if not applicable
+    private func createProfitBasedBuyOrder(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        targetGainPercent: Double,
+        totalShares: Double,
+        currentProfitPercent: Double,
+        avgCostPerShare: Double
+    ) -> BuyOrderRecord? {
+        
+        // Only create this order if position is more than 20% profitable
+        guard currentProfitPercent > 20.0 else { return nil }
+        
+        // Calculate shares to buy: P/10 percent of holdings
+        // Example: 28% profit, 100 shares -> 0.28/10 * 100 = 2.8 -> 2 shares (floor)
+        // Example: 140% profit, 300 shares -> 1.4/10 * 300 = 42 shares
+        let profitRatio = currentProfitPercent / 100.0  // Convert percentage to ratio (e.g., 28% -> 0.28)
+        let sharesToBuy = floor((profitRatio / 10.0) * totalShares)
+        
+        // Ensure we have at least 1 share
+        guard sharesToBuy >= 1.0 else { return nil }
+        
+        // Calculate target price that maintains current gain level
+        guard let targetBuyPrice = calculateTargetPriceForGain(
+            currentPrice: currentPrice,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent,
+            targetGainPercent: targetGainPercent,
+            totalShares: totalShares,
+            sharesToBuy: sharesToBuy
+        ) else {
+            return nil
+        }
+        
+        // Calculate trailing stop (2x ATR as per user preference)
+        let trailingStopPercent = max(1.0, min(15.0, atrValue * 2.0))
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        
+        // Ensure target price is above stop price for logical buy order
+        let minTargetPrice = stopPrice * 1.02  // Target must be at least 2% above stop price
+        let finalTargetPrice = max(targetBuyPrice, minTargetPrice)
+        
+        // Calculate entry price (1 ATR below target)
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
+        
+        AppLogger.shared.debug("  Profit-based buy order: P/L=\(currentProfitPercent)%, sharesToBuy=\(sharesToBuy), ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
+        
+        // Calculate order cost using final target price
+        let orderCost = sharesToBuy * finalTargetPrice
+        
+        // Skip orders that cost more than $2000
+        guard orderCost < 2000.0 else { return nil }
+        
+        // Create description
+        let formattedDescription = String(
+            format: "BUY %.0f %@ (P/10, P/L=%.1f%%) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
+            sharesToBuy,
+            symbol,
+            currentProfitPercent,
+            finalTargetPrice,
+            trailingStopPercent,
+            targetGainPercent,
+            orderCost
+        )
+        
+        AppLogger.shared.debug("  Creating profit-based buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesToBuy), target=\(finalTargetPrice)")
+        
+        // Final validation of trailing stop value
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in profit-based buy order: \(trailingStopPercent)%")
+            return nil
+        }
+        
+        let profitBasedOrder = BuyOrderRecord(
+            shares: sharesToBuy,
+            targetBuyPrice: finalTargetPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: currentProfitPercent,
+            sharesToBuy: sharesToBuy,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
+        
+        return profitBasedOrder
     }
 
     private func createOneShareBuyOrderWithFivePlusATRTrail(

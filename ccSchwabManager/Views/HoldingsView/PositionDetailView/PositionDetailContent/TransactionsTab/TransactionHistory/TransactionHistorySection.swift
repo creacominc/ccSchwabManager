@@ -20,20 +20,39 @@ struct TransactionHistorySection: View {
         let sortChanged = currentSort?.column != lastProcessedSort?.column || 
                          currentSort?.ascending != lastProcessedSort?.ascending
         
-        guard transactionsChanged || sortChanged else { return }
+        guard transactionsChanged || sortChanged else { 
+            AppLogger.shared.debug("📊 Skipping transaction processing - no changes detected")
+            return 
+        }
         
-        // Show loading indicator for processing
-        isProcessing = true
+        // Show loading indicator for processing only if we have transactions to process
+        guard !transactions.isEmpty else {
+            sortedTransactions = []
+            return
+        }
+        
+        // OPTIMIZATION: Show transactions immediately (even unsorted) for instant display
+        // Then refine with proper sorting in background
+        // This makes the tab feel instant - user sees data right away
+        if sortedTransactions.isEmpty {
+            // Quick initial display - use transactions as-is (will be sorted in background)
+            let quickProcessed = transactions.map { TransactionWithComputedPrice(transaction: $0, symbol: symbol) }
+            sortedTransactions = quickProcessed
+        }
+        isProcessing = true // Indicate we're refining the sort
         
         // Capture values before detached task
         let transactionsToProcess = transactions
         let sortConfig = currentSort
         let symbolToProcess = symbol
         
-        Task.detached(priority: .userInitiated) {
-            print("=== Processing transactions for \(symbolToProcess) ===")
+        // Process with proper sorting in background (refines the display)
+        Task.detached(priority: .utility) {
+            AppLogger.shared.debug("=== Processing \(transactionsToProcess.count) transactions for \(symbolToProcess) ===")
             
             // Compute prices for all transactions
+            // Most transactions have prices already, so this is usually fast
+            // For zero-price transactions, this may call computeTaxLots (cached)
             let withPrices = transactionsToProcess.map { TransactionWithComputedPrice(transaction: $0, symbol: symbolToProcess) }
             
             // Sort transactions
@@ -216,12 +235,28 @@ struct TransactionHistorySection: View {
             }
         }
         .onAppear {
-            // Process transactions when view first appears
-            processTransactions()
+            // Process transactions when view first appears, but only if not already processed
+            // This prevents redundant processing when tab is clicked multiple times
+            if sortedTransactions.isEmpty && !transactions.isEmpty {
+                processTransactions()
+            } else if !sortedTransactions.isEmpty {
+                // Already processed - show immediately
+                AppLogger.shared.debug("📊 Transactions already processed for \(symbol) - showing \(sortedTransactions.count) transactions immediately")
+            }
         }
         .onChange(of: transactions.count) { oldValue, newValue in
-            // Reprocess when transactions change
-            processTransactions()
+            // Only reprocess if transactions actually changed
+            if newValue != oldValue {
+                processTransactions()
+            }
+        }
+        .onChange(of: transactions) { oldTransactions, newTransactions in
+            // Reprocess when transactions array changes (not just count)
+            // This handles cases where transactions are replaced with new data
+            if oldTransactions.first?.activityId != newTransactions.first?.activityId ||
+               oldTransactions.count != newTransactions.count {
+                processTransactions()
+            }
         }
     }
 

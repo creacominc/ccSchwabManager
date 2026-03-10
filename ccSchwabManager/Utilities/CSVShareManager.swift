@@ -23,6 +23,12 @@ class CSVShareManager: ObservableObject {
         csvFileName = fileName
         isShowingShareSheet = true
     }
+    
+    func shareJSON(jsonString: String, fileName: String) {
+        csvContent = jsonString
+        csvFileName = fileName
+        isShowingShareSheet = true
+    }
 }
 
 #if os(iOS)
