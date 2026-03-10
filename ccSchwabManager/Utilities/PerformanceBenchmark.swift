@@ -233,15 +233,8 @@ class PerformanceBenchmark {
         }
     }
     
-    /// Get current session summary
-    func getSessionSummary() -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        
-        guard let session = currentSession else {
-            return "No active session"
-        }
-        
+    /// Generate summary for a given session (does not acquire lock - must be called with lock held)
+    private func generateSummary(for session: SessionMetrics) -> String {
         let sessionDuration = Date().timeIntervalSince(session.startTime)
         var summary = "\n"
         summary += "═══════════════════════════════════════════════════════════\n"
@@ -371,9 +364,21 @@ class PerformanceBenchmark {
         return summary
     }
     
-    /// Log session summary
+    /// Get current session summary
+    func getSessionSummary() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard let session = currentSession else {
+            return "No active session"
+        }
+        
+        return generateSummary(for: session)
+    }
+    
+    /// Log session summary (must be called with lock held)
     private func logSessionSummary(_ session: SessionMetrics) {
-        let summary = getSessionSummary()
+        let summary = generateSummary(for: session)
         AppLogger.shared.info(summary)
     }
     
@@ -521,12 +526,9 @@ class PerformanceBenchmark {
             return nil
         }
         
-        // Temporarily set as current session to generate summary
-        let savedCurrent = currentSession
-        currentSession = session
-        let summary = getSessionSummary()
-        currentSession = savedCurrent
-        return summary
+        // Generate summary directly without modifying currentSession or calling getSessionSummary()
+        // to avoid deadlock (we already hold the lock)
+        return generateSummary(for: session)
     }
     
     /// Get storage location description for display
