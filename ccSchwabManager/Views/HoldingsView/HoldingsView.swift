@@ -105,9 +105,6 @@ struct HoldingsView: View
     @State private var currentFetchTask: Task<Void, Never>? = nil
     
 
-    // Debounced prefetch task to prevent rapid API calls when filtering
-    @State private var debouncedPrefetchTask: Task<Void, Never>? = nil
-    
     // Async sorting state
     @State private var sortedHoldings: [Position] = []
     @State private var isSorting = false
@@ -431,35 +428,6 @@ struct HoldingsView: View
             await prefetchSecurityData(symbol: symbol)
         } else {
             print("✅ First security \(symbol) already cached, skipping prefetch")
-        }
-    }
-    
-    /// Debounced version of prefetchFirstSecurityIfNeeded to prevent rapid API calls when filtering
-    /// Waits 400ms after the last filter change before triggering prefetch
-    private func debouncedPrefetchFirstSecurity() {
-        // Cancel any existing debounced task
-        debouncedPrefetchTask?.cancel()
-        
-        // Create new debounced task with low priority to avoid blocking UI
-        debouncedPrefetchTask = Task.detached(priority: .low) {
-            // Wait 400ms for debounce
-            try? await Task.sleep(nanoseconds: 400_000_000) // 400ms
-            
-            // Check if task was cancelled (filter changed again)
-            guard !Task.isCancelled else {
-                print("🔮 Debounced prefetch cancelled - filter changed again")
-                return
-            }
-            
-            // Additional delay to ensure UI is responsive after sorting
-            // Longer delay for sorting operations to ensure UI is fully responsive
-            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms additional delay
-            
-            // Yield to allow any pending UI updates
-            await Task.yield()
-            
-            // Now perform the prefetch (runs in background)
-            await self.prefetchFirstSecurityIfNeeded()
         }
     }
     

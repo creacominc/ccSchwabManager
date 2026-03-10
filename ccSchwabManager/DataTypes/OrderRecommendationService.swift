@@ -1981,8 +1981,8 @@ class OrderRecommendationService: ObservableObject {
         // Calculate target price (maintains the same target gain percentage)
         let targetBuyPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
         
-        // Calculate trailing stop (2x ATR as per user preference)
-        let trailingStopPercent = atrValue * 2.0
+        // Calculate trailing stop (2x ATR as per user preference, clamped between 1% and 15%)
+        let trailingStopPercent = max(1.0, min(15.0, atrValue * 2.0))
         let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
         
         // Ensure target price is above stop price for logical buy order
