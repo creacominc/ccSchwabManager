@@ -610,6 +610,9 @@ struct HoldingsView: View
                     }
                 }
                 print("✅ Order history loaded and cache populated with \(orderStatusCache.count) entries")
+                
+                // Reapply filters now that order status cache is populated
+                performSort()
             }
         }
         
