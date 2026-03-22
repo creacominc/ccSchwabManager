@@ -764,6 +764,32 @@ struct PositionDetailView: View
     
     // MARK: - Prefetching Methods
     
+    /// Stops background prefetch while the main holdings list is sorting/filtering (avoids caching the wrong symbols).
+    @MainActor
+    private func interruptPrefetchForHoldingsListChange() {
+        AppLogger.shared.debug("⏸️ Interrupting prefetch (holdings list is sorting/filtering)")
+        prefetchProcessorTask?.cancel()
+        prefetchProcessorTask = nil
+        prefetchQueue.removeAll()
+        for (symbol, task) in prefetchTasks {
+            task.cancel()
+            AppLogger.shared.debug("--- \(symbol) --- ⏸️ Cancelled prefetch task (holdings list churn)")
+        }
+        prefetchTasks.removeAll()
+    }
+    
+    /// Resumes adjacent prefetch after the holdings list has finished applying sort/filter.
+    @MainActor
+    private func resumePrefetchAfterHoldingsListSettled() {
+        guard let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol),
+              snapshot.isFullyLoaded,
+              !isPrefetchPaused,
+              tabLoadTasks.isEmpty else {
+            return
+        }
+        queuePrefetchSymbols()
+    }
+    
     /// Marks user interaction to pause prefetch immediately
     @MainActor
     private func markUserInteraction() {
@@ -1279,6 +1305,14 @@ struct PositionDetailView: View
                     selectedTab: $selectedTab,
                 )
                 .padding(.horizontal)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ccHoldingsListSortingActive)) { notification in
+            guard let active = notification.object as? Bool else { return }
+            if active {
+                interruptPrefetchForHoldingsListChange()
+            } else {
+                resumePrefetchAfterHoldingsListSettled()
             }
         }
         .onChange(of: selectedTab) { oldValue, newValue in

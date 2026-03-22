@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+extension Notification.Name {
+    /// Posted when the holdings table begins or ends an async sort/filter pass (object is `Bool`: true = began, false = settled).
+    static let ccHoldingsListSortingActive = Notification.Name("ccHoldingsListSortingActive")
+}
+
 // Define SortConfig and SortableColumn at the top level
 struct SortConfig: Equatable {
     var column: SortableColumn
@@ -98,6 +103,8 @@ struct HoldingsView: View
     
     // Cache for trade dates and order status to prevent loops
     @State private var tradeDateCache: [String: String] = [:]
+    /// Sort keys for last-trade column (`yyyy-MM-dd HH:mm:ss`, UTC); includes time so same-day trades order correctly.
+    @State private var tradeDateSortCache: [String: String] = [:]
     @State private var orderStatusCache: [String: ActiveOrderStatus?] = [:]
 
     // Add state to track ongoing refresh operations
@@ -147,6 +154,18 @@ struct HoldingsView: View
         return Array(Set(statuses)).sorted { $0.priority < $1.priority }
     }
     
+    /// Updates `sortedHoldings` to match `filteredHoldings` while keeping the previous relative order for rows that remain visible.
+    private func syncSortedHoldingsToCurrentFilter() {
+        let filtered = filteredHoldings
+        let filteredIds = Set(filtered.map(\.id))
+        var interim: [Position] = sortedHoldings.filter { filteredIds.contains($0.id) }
+        let existing = Set(interim.map(\.id))
+        for p in filtered where !existing.contains(p.id) {
+            interim.append(p)
+        }
+        sortedHoldings = interim
+    }
+    
     /// Performs async sorting to prevent UI blocking
     private func performSort() {
         // Cancel any existing sort task
@@ -154,15 +173,20 @@ struct HoldingsView: View
         
         // Set loading state
         isSorting = true
+        NotificationCenter.default.post(name: .ccHoldingsListSortingActive, object: true)
+        
+        // Keep visible rows aligned with the current filter immediately, preserving prior order where possible
+        // so sort-only changes do not flash an unsorted list.
+        syncSortedHoldingsToCurrentFilter()
         
         // Get current values and capture them for the task
         let holdingsToSort = filteredHoldings
         let sortConfig = currentSort
         let accountPositionsCopy = accountPositions
-        let tradeDateCacheCopy = tradeDateCache
+        let tradeDateSortCacheCopy = tradeDateSortCache
         let orderStatusCacheCopy = orderStatusCache
         
-        sortTask = Task.detached(priority: .userInitiated) { [holdingsToSort, sortConfig, accountPositionsCopy, tradeDateCacheCopy, orderStatusCacheCopy] in
+        sortTask = Task.detached(priority: .userInitiated) { [holdingsToSort, sortConfig, accountPositionsCopy, tradeDateSortCacheCopy, orderStatusCacheCopy] in
             // Yield immediately to allow UI updates
             await Task.yield()
             
@@ -217,8 +241,8 @@ struct HoldingsView: View
                     case .lastTradeDate:
                         let firstSymbol = first.instrument?.symbol ?? ""
                         let secondSymbol = second.instrument?.symbol ?? ""
-                        let firstDate = tradeDateCacheCopy[firstSymbol] ?? "0000"
-                        let secondDate = tradeDateCacheCopy[secondSymbol] ?? "0000"
+                        let firstDate = tradeDateSortCacheCopy[firstSymbol] ?? "0000"
+                        let secondDate = tradeDateSortCacheCopy[secondSymbol] ?? "0000"
                         return ascending ? firstDate < secondDate : firstDate > secondDate
                     case .orderStatus:
                         let firstSymbol = first.instrument?.symbol ?? ""
@@ -270,6 +294,8 @@ struct HoldingsView: View
                 guard !Task.isCancelled else { return }
                 self.sortedHoldings = sorted
                 self.isSorting = false
+                self.invalidateCacheForPositions(sorted)
+                NotificationCenter.default.post(name: .ccHoldingsListSortingActive, object: false)
             }
         }
     }
@@ -358,7 +384,6 @@ struct HoldingsView: View
             loadingState: loadingState,
             currentFetchTask: $currentFetchTask,
             onSortChange: performSort,
-            onCacheInvalidation: invalidateCacheForChangedList,
             onFetchHoldings: fetchHoldingsAsync,
             onSetDefaultAssetTypes: {
                 selectedAssetTypes = Set(viewModel.uniqueAssetTypes.filter { $0 == .EQUITY })
@@ -376,6 +401,7 @@ struct HoldingsView: View
             currentFetchTask?.cancel()
             
             tradeDateCache.removeAll()
+            tradeDateSortCache.removeAll()
             orderStatusCache.removeAll()
             SecurityDataCacheManager.shared.clear()
             AppLogger.shared.debug("🔄 Cleared security data cache on refresh")
@@ -526,12 +552,25 @@ struct HoldingsView: View
         print("✅ [First Security] Prefetch complete for \(symbol)")
     }
     
-    /// Invalidates cache entries for symbols not in the current sorted/filtered list
-    /// Called when filters or sort order change
-    /// Uses filteredHoldings instead of sortedHoldings because performSort updates sortedHoldings asynchronously,
-    /// and this function runs synchronously. filteredHoldings reflects the current filters immediately.
-    private func invalidateCacheForChangedList() {
-        let currentListSymbols = Set(filteredHoldings.compactMap { $0.instrument?.symbol })
+    /// Refreshes last-trade display and sort caches from `SchwabClient` (call after transaction history is loaded).
+    private func applyTradeDateCachesFromSchwab() {
+        for position in holdings {
+            guard let symbol = position.instrument?.symbol else { continue }
+            tradeDateCache[symbol] = SchwabClient.shared.getLatestTradeDate(for: symbol)
+            tradeDateSortCache[symbol] = SchwabClient.shared.getLatestTradeDateForSort(for: symbol)
+        }
+        accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
+            let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
+            let lastThreeDigits = String(accountNumber.suffix(3))
+            return accountContent.securitiesAccount?.positions.map {
+                ($0, lastThreeDigits, tradeDateCache[$0.instrument?.symbol ?? ""] ?? "")
+            } ?? []
+        }
+    }
+    
+    /// Invalidates `SecurityDataCacheManager` entries for symbols not in the given positions (typically the list just applied to the table).
+    private func invalidateCacheForPositions(_ positions: [Position]) {
+        let currentListSymbols = Set(positions.compactMap { $0.instrument?.symbol })
         SecurityDataCacheManager.shared.invalidateSymbolsNotInList(currentListSymbols)
         AppLogger.shared.debug("🔄 Cache invalidated for symbols not in current list (list size: \(currentListSymbols.count))")
     }
@@ -628,22 +667,10 @@ struct HoldingsView: View
             
             // Update trade dates in UI and populate cache
             await MainActor.run {
-                // Populate trade date cache
-                for position in holdings {
-                    if let symbol = position.instrument?.symbol {
-                        tradeDateCache[symbol] = SchwabClient.shared.getLatestTradeDate(for: symbol)
-                    }
-                }
-                
-                // Update accountPositions with trade dates
-                accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
-                    let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
-                    let lastThreeDigits = String(accountNumber.suffix(3))
-                    return accountContent.securitiesAccount?.positions.map {
-                        ($0, lastThreeDigits, tradeDateCache[$0.instrument?.symbol ?? ""] ?? "")
-                    } ?? []
-                }
+                applyTradeDateCachesFromSchwab()
                 print("✅ Trade dates updated and cache populated")
+                // Initial sort ran before transactions existed; re-sort by last trade (newest first by default).
+                performSort()
             }
             
             // Fetch remaining quarters in background for complete history (up to maxQuarterDelta)
@@ -683,6 +710,11 @@ struct HoldingsView: View
                 }
                 
                 print("✅ All transaction history loaded")
+                
+                await MainActor.run {
+                    applyTradeDateCachesFromSchwab()
+                    performSort()
+                }
             }
         }
     }

@@ -1807,6 +1807,18 @@ class SchwabClient: @unchecked Sendable
         
         return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
     }
+    
+    /**
+     * Comparable string for sorting by last trade time (includes time-of-day, UTC `yyyy-MM-dd HH:mm:ss`).
+     * Use this for ordering; use `getLatestTradeDate` for display.
+     */
+    public func getLatestTradeDateForSort(for symbol: String) -> String
+    {
+        m_latestDateForSymbolLock.lock()
+        defer { m_latestDateForSymbolLock.unlock() }
+        
+        return m_latestDateForSymbol[symbol]?.dateString() ?? "0000"
+    }
 
     /**
      * get number of shares available for trade.  call this after getTransactionsFor

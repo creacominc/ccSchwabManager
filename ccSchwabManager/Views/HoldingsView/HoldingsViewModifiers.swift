@@ -36,7 +36,6 @@ extension View {
         loadingState: LoadingState,
         currentFetchTask: Binding<Task<Void, Never>?>,
         onSortChange: @escaping () -> Void,
-        onCacheInvalidation: @escaping () -> Void,
         onFetchHoldings: @escaping () async -> Void,
         onSetDefaultAssetTypes: @escaping () -> Void
     ) -> some View {
@@ -62,8 +61,7 @@ extension View {
                 selectedAccountNumbers: selectedAccountNumbers,
                 selectedOrderStatuses: selectedOrderStatuses,
                 includeNAStatus: includeNAStatus,
-                onSortChange: onSortChange,
-                onCacheInvalidation: onCacheInvalidation
+                onSortChange: onSortChange
             )
             .applyOverlayModifier(isSorting: isSorting.wrappedValue)
     }
@@ -132,33 +130,26 @@ extension View {
         selectedAccountNumbers: Binding<Set<String>>,
         selectedOrderStatuses: Binding<Set<ActiveOrderStatus>>,
         includeNAStatus: Binding<Bool>,
-        onSortChange: @escaping () -> Void,
-        onCacheInvalidation: @escaping () -> Void
+        onSortChange: @escaping () -> Void
     ) -> some View {
         self
             .onChange(of: currentSort.wrappedValue) { _, _ in
                 onSortChange()
-                onCacheInvalidation()
             }
             .onChange(of: searchText.wrappedValue) { _, _ in
                 onSortChange()
-                onCacheInvalidation()
             }
             .onChange(of: selectedAssetTypes.wrappedValue) { _, _ in
                 onSortChange()
-                onCacheInvalidation()
             }
             .onChange(of: selectedAccountNumbers.wrappedValue) { _, _ in
                 onSortChange()
-                onCacheInvalidation()
             }
             .onChange(of: selectedOrderStatuses.wrappedValue) { _, _ in
                 onSortChange()
-                onCacheInvalidation()
             }
             .onChange(of: includeNAStatus.wrappedValue) { _, _ in
                 onSortChange()
-                onCacheInvalidation()
             }
     }
     
