@@ -871,7 +871,11 @@ struct PositionDetailView: View
             AppLogger.shared.debug("⏸️ Prefetch paused, skipping queue (tab data loading or user interaction)")
             return
         }
-        
+        if SecurityDataCacheManager.shared.isPrefetchCacheSuppressed {
+            AppLogger.shared.debug("⏸️ Prefetch queue skipped — holdings list sorting")
+            return
+        }
+
         let cacheSize = 5 // Match SecurityDataCacheManager maxCacheSize
         let prefetchWindow = max(2, cacheSize / 2) // Prefetch at least half cache size forward
         
@@ -1147,9 +1151,24 @@ struct PositionDetailView: View
     // NOTE: prefetchAdjacentSecurities() has been replaced with queuePrefetchSymbols() and processPrefetchQueue()
     // All prefetch operations now run sequentially in a single background thread
     
+    /// Stops prefetch cache writes while the holdings list is sorting; reverts optimistic `.loading` if we already marked groups.
+    private func endPrefetchIfHoldingsSorting(symbol: String, groups: [SecurityDataGroup]) async -> Bool {
+        guard SecurityDataCacheManager.shared.isPrefetchCacheSuppressed else { return false }
+        await MainActor.run {
+            SecurityDataCacheManager.shared.revertPrefetchLoadingStates(symbol: symbol, groups: groups)
+        }
+        AppLogger.shared.debug("🔮 Prefetch aborted for \(symbol) — holdings list sorting")
+        return true
+    }
+
     /// Prefetches basic security data (without order recommendations) for a symbol
     /// All network calls run in low-priority background tasks to keep UI responsive
     private func prefetchSecurityDataOnly(symbol: String) async {
+        if SecurityDataCacheManager.shared.isPrefetchCacheSuppressed {
+            AppLogger.shared.debug("🔮 Prefetch skipped for \(symbol) — holdings list sorting")
+            return
+        }
+
         let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
         let toFetch = await MainActor.run {
             SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(symbol: symbol, among: criticalGroups)
@@ -1173,6 +1192,7 @@ struct PositionDetailView: View
                 SchwabClient.shared.fetchQuote(symbol: symbol)
             }.value
             if Task.isCancelled { return }
+            if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
             if let q {
                 fetchedQuote = q
@@ -1196,12 +1216,14 @@ struct PositionDetailView: View
                 SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             }.value
             if Task.isCancelled { return }
+            if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
             if let h {
                 let atr = await Task.detached(priority: .low) {
                     SchwabClient.shared.computeATR(symbol: symbol)
                 }.value
                 if Task.isCancelled { return }
+                if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
                 fetchedPriceHistory = h
                 await MainActor.run {
                     _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
@@ -1224,6 +1246,7 @@ struct PositionDetailView: View
                 SchwabClient.shared.getTransactionsFor(symbol: symbol)
             }.value
             if Task.isCancelled { return }
+            if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
             await MainActor.run {
                 _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
@@ -1242,9 +1265,12 @@ struct PositionDetailView: View
                 SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
             }.value
             if Task.isCancelled { return }
+            if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             let fetchedSharesAvailable = await Task.detached(priority: .low) {
                 SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
             }.value
+            if Task.isCancelled { return }
+            if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await MainActor.run {
                 _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
                     snapshot.taxLotData = fetchedTaxLots

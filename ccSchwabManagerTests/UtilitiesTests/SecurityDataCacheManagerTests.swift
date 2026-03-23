@@ -92,6 +92,33 @@ final class SecurityDataCacheManagerTests: XCTestCase {
         XCTAssertEqual(needed, [.priceHistory])
     }
 
+    func testHoldingsSortInProgress_suppressesPrefetchFlag() {
+        XCTAssertFalse(SecurityDataCacheManager.shared.isPrefetchCacheSuppressed)
+        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(true)
+        XCTAssertTrue(SecurityDataCacheManager.shared.isPrefetchCacheSuppressed)
+        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
+        XCTAssertFalse(SecurityDataCacheManager.shared.isPrefetchCacheSuppressed)
+    }
+
+    func testClear_resetsPrefetchSuppression() {
+        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(true)
+        XCTAssertTrue(SecurityDataCacheManager.shared.isPrefetchCacheSuppressed)
+        SecurityDataCacheManager.shared.clear()
+        XCTAssertFalse(SecurityDataCacheManager.shared.isPrefetchCacheSuppressed)
+    }
+
+    func testRevertPrefetchLoadingStates_clearsLoadingWithoutData() {
+        let symbol = "NVDA"
+        _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.details, .transactions])
+        SecurityDataCacheManager.shared.revertPrefetchLoadingStates(symbol: symbol, groups: [.details, .transactions])
+
+        let needed = SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(
+            symbol: symbol,
+            among: [.details, .transactions]
+        )
+        XCTAssertEqual(Set(needed), Set([SecurityDataGroup.details, SecurityDataGroup.transactions]))
+    }
+
     // MARK: - Helpers
 
     private func makeSnapshot(symbol: String) -> SecurityDataSnapshot {

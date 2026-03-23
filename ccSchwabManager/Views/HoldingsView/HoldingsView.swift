@@ -108,6 +108,7 @@ struct HoldingsView: View
     // Async sorting state
     @State private var sortedHoldings: [Position] = []
     @State private var isSorting = false
+    @State private var sortGeneration = 0
     @State private var sortTask: Task<Void, Never>? = nil
 
 
@@ -151,10 +152,13 @@ struct HoldingsView: View
     private func performSort() {
         // Cancel any existing sort task
         sortTask?.cancel()
-        
+        sortGeneration += 1
+        let generation = sortGeneration
+
         // Set loading state
         isSorting = true
-        
+        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(true)
+
         // Get current values and capture them for the task
         let holdingsToSort = filteredHoldings
         let sortConfig = currentSort
@@ -166,7 +170,15 @@ struct HoldingsView: View
             // Yield immediately to allow UI updates
             await Task.yield()
             
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                await MainActor.run {
+                    if generation == self.sortGeneration {
+                        self.isSorting = false
+                        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
+                    }
+                }
+                return
+            }
             
             // Perform the sort
             let sorted: [Position]
@@ -271,9 +283,17 @@ struct HoldingsView: View
             
             // Update UI on main thread
             await MainActor.run {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    if generation == self.sortGeneration {
+                        self.isSorting = false
+                        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
+                    }
+                    return
+                }
+                guard generation == self.sortGeneration else { return }
                 self.sortedHoldings = sorted
                 self.isSorting = false
+                SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
             }
         }
     }

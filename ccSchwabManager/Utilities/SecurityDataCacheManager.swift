@@ -128,7 +128,36 @@ final class SecurityDataCacheManager {
     private var accessOrder: [String] = []
     private let lock = NSLock()
 
+    /// When true, background prefetch must not mutate this cache — holdings list order/symbol membership may be inconsistent until async sort finishes.
+    private var suppressPrefetchCacheWrites = false
+
     private init() {}
+
+    /// Called from `HoldingsView` around async `performSort` so prefetch does not compete with sorting.
+    func setHoldingsListSortInProgress(_ inProgress: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        suppressPrefetchCacheWrites = inProgress
+    }
+
+    /// Prefetch consults this before `markLoading` / `markLoaded` / eviction side effects.
+    var isPrefetchCacheSuppressed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return suppressPrefetchCacheWrites
+    }
+
+    /// When prefetch is aborted mid-flight (e.g. holdings list started sorting), drop `.loading` for groups that never received data so UI can retry.
+    func revertPrefetchLoadingStates(symbol: String, groups: [SecurityDataGroup]) {
+        update(symbol: symbol) { snapshot in
+            for group in groups {
+                guard case .loading = snapshot.loadStates[group] ?? .idle else { continue }
+                if !snapshot.hasData(for: group) {
+                    snapshot.loadStates[group] = .idle
+                }
+            }
+        }
+    }
 
     func snapshot(for symbol: String) -> SecurityDataSnapshot? {
         lock.lock()
@@ -198,6 +227,7 @@ final class SecurityDataCacheManager {
 
         cache.removeAll(keepingCapacity: false)
         accessOrder.removeAll(keepingCapacity: false)
+        suppressPrefetchCacheWrites = false
     }
     
     /// Remove cache entries for symbols not in the provided list
