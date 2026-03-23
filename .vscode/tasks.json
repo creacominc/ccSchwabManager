@@ -194,6 +194,37 @@
             "problemMatcher": []
         },
         {
+            "label": "launch-macos-foreground",
+            "type": "shell",
+            "command": "./build-enhanced.sh",
+            "args": ["launch", "macos-foreground"],
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "stream-ccSchwabManager-logs",
+            "type": "shell",
+            "command": "log stream --style compact --predicate 'subsystem == \"com.creacom.ccSchwabManager\"' --level debug",
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
             "label": "launch-ios-simulator",
             "type": "shell",
             "command": "./build-enhanced.sh",
@@ -211,7 +242,7 @@
         },
         {
             "label": "build-and-launch-macos",
-            "dependsOn": ["build-macos-debug", "launch-macos"],
+            "dependsOn": ["build-macos-debug", "launch-macos-foreground"],
             "dependsOrder": "sequence",
             "group": {
                 "kind": "build",
