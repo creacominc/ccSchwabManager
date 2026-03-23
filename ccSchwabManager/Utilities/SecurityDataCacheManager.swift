@@ -10,15 +10,29 @@ enum SecurityDataGroup: CaseIterable {
     case orderRecommendations
 }
 
+/// Tab / toolbar icon tint for a security data group (foreground load vs prefetch vs done).
+enum SecurityGroupLoadIndicator: Equatable {
+    case foregroundInFlight
+    case prefetchInFlight
+    case ready
+}
+
 enum SecurityDataLoadState: Equatable {
     case idle
+    /// User-visible / foreground fetch (e.g. current symbol or tab-on-demand).
     case loading(Date)
+    /// Background prefetch for cache; shown as a distinct tab icon state.
+    case loadingPrefetch(Date)
     case loaded(Date)
     case failed(Date, message: String)
 
     var isLoading: Bool {
-        if case .loading = self { return true }
-        return false
+        switch self {
+        case .loading, .loadingPrefetch:
+            return true
+        default:
+            return false
+        }
     }
 
     var isLoaded: Bool {
@@ -103,13 +117,36 @@ struct SecurityDataSnapshot {
 
     func isLoading(_ group: SecurityDataGroup) -> Bool {
         switch loadState(for: group) {
-        case .loading:
+        case .loading, .loadingPrefetch:
             return true
         case .idle:
             return !hasData(for: group)
         case .failed, .loaded:
             return false
         }
+    }
+
+    /// Priority: foreground work (red) > prefetch (amber) > ready (green), for tab icons.
+    func groupLoadIndicator(for group: SecurityDataGroup) -> SecurityGroupLoadIndicator {
+        switch loadState(for: group) {
+        case .loading:
+            return .foregroundInFlight
+        case .loadingPrefetch:
+            return .prefetchInFlight
+        case .loaded:
+            return .ready
+        case .failed:
+            return .foregroundInFlight
+        case .idle:
+            return hasData(for: group) ? .ready : .foregroundInFlight
+        }
+    }
+
+    func combinedGroupLoadIndicator(groups: [SecurityDataGroup]) -> SecurityGroupLoadIndicator {
+        let parts = groups.map { groupLoadIndicator(for: $0) }
+        if parts.contains(.foregroundInFlight) { return .foregroundInFlight }
+        if parts.contains(.prefetchInFlight) { return .prefetchInFlight }
+        return .ready
     }
 
     var isFullyLoaded: Bool {
@@ -151,9 +188,13 @@ final class SecurityDataCacheManager {
     func revertPrefetchLoadingStates(symbol: String, groups: [SecurityDataGroup]) {
         update(symbol: symbol) { snapshot in
             for group in groups {
-                guard case .loading = snapshot.loadStates[group] ?? .idle else { continue }
-                if !snapshot.hasData(for: group) {
-                    snapshot.loadStates[group] = .idle
+                switch snapshot.loadStates[group] ?? .idle {
+                case .loading, .loadingPrefetch:
+                    if !snapshot.hasData(for: group) {
+                        snapshot.loadStates[group] = .idle
+                    }
+                default:
+                    break
                 }
             }
         }
@@ -193,6 +234,17 @@ final class SecurityDataCacheManager {
             let now = Date()
             for group in groups {
                 snapshot.loadStates[group] = .loading(now)
+            }
+        }
+    }
+
+    /// Marks groups as loading for background prefetch (amber tab icons vs red foreground loads).
+    @discardableResult
+    func markLoadingPrefetch(symbol: String, groups: [SecurityDataGroup]) -> SecurityDataSnapshot {
+        update(symbol: symbol) { snapshot in
+            let now = Date()
+            for group in groups {
+                snapshot.loadStates[group] = .loadingPrefetch(now)
             }
         }
     }
@@ -269,8 +321,11 @@ final class SecurityDataCacheManager {
             if snap.isLoaded(group) {
                 return false
             }
-            if case .loading = snap.loadState(for: group) {
+            switch snap.loadState(for: group) {
+            case .loading, .loadingPrefetch:
                 return false
+            default:
+                break
             }
             return true
         }

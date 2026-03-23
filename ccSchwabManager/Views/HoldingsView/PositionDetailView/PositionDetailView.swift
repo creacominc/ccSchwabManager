@@ -1181,7 +1181,7 @@ struct PositionDetailView: View
         AppLogger.shared.debug("🔮 Prefetching basic data for: \(symbol) groups: \(toFetch.map { "\($0)" }.joined(separator: ", "))")
 
         await MainActor.run {
-            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: toFetch)
+            _ = SecurityDataCacheManager.shared.markLoadingPrefetch(symbol: symbol, groups: toFetch)
         }
         await Task.yield()
 
@@ -1282,92 +1282,93 @@ struct PositionDetailView: View
         AppLogger.shared.debug("✅ Basic prefetch complete for \(symbol)")
     }
 
+    @ViewBuilder
+    private var positionDetailMainColumn: some View {
+        VStack(spacing: 0) {
+            HStack {
+                #if !os(macOS)
+                Button(action: {
+                    dismiss()
+                }) {
+                    HStack {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                        Text("Close")
+                            .foregroundColor(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+                #endif
+
+                Spacer()
+
+                NetworkIndicatorView()
+                    .padding(.trailing, 8)
+
+                Button(action: {
+                    isRefreshing = true
+                    fetchDataForSymbol(forceRefresh: true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isRefreshing = false
+                    }
+                }) {
+                    HStack {
+                        if isRefreshing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                                .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundColor(.accentColor)
+                        }
+                        Text(isRefreshing ? "Refreshing..." : "Refresh")
+                            .foregroundColor(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isRefreshing)
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+            }
+            .background(Color.gray.opacity(0.1))
+
+            PositionDetailContent(
+                position: position,
+                accountNumber: accountNumber,
+                currentIndex: currentIndex,
+                totalPositions: totalPositions,
+                symbol: symbol,
+                atrValue: computedATRValue > 0 ? computedATRValue : atrValue,
+                sharesAvailableForTrading: $computedSharesAvailableForTrading,
+                marketValue: $marketValue,
+                onNavigate: { newIndex in
+                    guard newIndex >= 0 && newIndex < totalPositions else { return }
+                    markUserInteraction()
+                    loadingState.isLoading = true
+                    onNavigate(newIndex)
+                },
+                priceHistory: priceHistory,
+                isLoadingPriceHistory: isLoadingPriceHistory,
+                isLoadingTransactions: isLoadingTransactions,
+                formatDate: formatDate,
+                quoteData: quoteData,
+                taxLotData: taxLotData,
+                isLoadingTaxLots: isLoadingTaxLots,
+                transactions: transactions,
+                loadStates: loadStates,
+                selectedTab: $selectedTab
+            )
+            .padding(.horizontal)
+        }
+    }
+
     var body: some View
     {
         ZStack
         {
-            VStack(spacing: 0)
-            {
-                // Close and Refresh buttons at the top
-                HStack
-                {
-                    #if !os(macOS)
-                    // Close button for iOS and visionOS
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        HStack {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.secondary)
-                            Text("Close")
-                                .foregroundColor(.primary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-                    #endif
-                    
-                    Spacer()
-                    
-                    NetworkIndicatorView()
-                        .padding(.trailing, 8)
-                    
-                    Button(action: {
-                        isRefreshing = true
-                        fetchDataForSymbol(forceRefresh: true)
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            isRefreshing = false
-                        }
-                    }) {
-                        HStack {
-                            if isRefreshing {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .accentColor))
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .foregroundColor(.accentColor)
-                            }
-                            Text(isRefreshing ? "Refreshing..." : "Refresh")
-                                .foregroundColor(.primary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isRefreshing)
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
-                }
-                .background(Color.gray.opacity(0.1))
-
-                PositionDetailContent(
-                    position: position,
-                    accountNumber: accountNumber,
-                    currentIndex: currentIndex,
-                    totalPositions: totalPositions,
-                    symbol: symbol,
-                    atrValue: computedATRValue > 0 ? computedATRValue : atrValue,
-                    sharesAvailableForTrading: $computedSharesAvailableForTrading,
-                    marketValue: $marketValue,
-                    onNavigate: { newIndex in
-                        guard newIndex >= 0 && newIndex < totalPositions else { return }
-                        // Mark user interaction immediately when navigating
-                        markUserInteraction()
-                        loadingState.isLoading = true
-                        onNavigate(newIndex)
-                    },
-                    priceHistory: priceHistory,
-                    isLoadingPriceHistory: isLoadingPriceHistory,
-                    isLoadingTransactions: isLoadingTransactions,
-                    formatDate: formatDate,
-                    quoteData: quoteData,
-                    taxLotData: taxLotData,
-                    isLoadingTaxLots: isLoadingTaxLots,
-                    transactions: transactions,
-                    selectedTab: $selectedTab,
-                )
-                .padding(.horizontal)
-            }
+            positionDetailMainColumn
         }
         .onChange(of: selectedTab) { oldValue, newValue in
             // Mark user interaction immediately when tab changes

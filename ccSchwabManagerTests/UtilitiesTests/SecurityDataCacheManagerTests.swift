@@ -92,6 +92,17 @@ final class SecurityDataCacheManagerTests: XCTestCase {
         XCTAssertEqual(needed, [.priceHistory])
     }
 
+    func testGroupsNeedingBackgroundWork_PrefetchLoadingGroupExcluded() {
+        let symbol = "AMD"
+        _ = SecurityDataCacheManager.shared.markLoadingPrefetch(symbol: symbol, groups: [.priceHistory])
+
+        let needed = SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(
+            symbol: symbol,
+            among: [.priceHistory, .transactions]
+        )
+        XCTAssertEqual(needed, [.transactions])
+    }
+
     func testHoldingsSortInProgress_suppressesPrefetchFlag() {
         XCTAssertFalse(SecurityDataCacheManager.shared.isPrefetchCacheSuppressed)
         SecurityDataCacheManager.shared.setHoldingsListSortInProgress(true)
@@ -117,6 +128,23 @@ final class SecurityDataCacheManagerTests: XCTestCase {
             among: [.details, .transactions]
         )
         XCTAssertEqual(Set(needed), Set([SecurityDataGroup.details, SecurityDataGroup.transactions]))
+    }
+
+    func testRevertPrefetchLoadingStates_clearsPrefetchLoadingWithoutData() {
+        let symbol = "INTC"
+        _ = SecurityDataCacheManager.shared.markLoadingPrefetch(symbol: symbol, groups: [.details])
+        SecurityDataCacheManager.shared.revertPrefetchLoadingStates(symbol: symbol, groups: [.details])
+
+        let needed = SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(symbol: symbol, among: [.details])
+        XCTAssertEqual(needed, [.details])
+    }
+
+    func testGroupLoadIndicator_prefetchVsForeground() {
+        let sym = "TEST"
+        var snap = SecurityDataSnapshot(symbol: sym, loadStates: [.details: .loadingPrefetch(Date())])
+        XCTAssertEqual(snap.groupLoadIndicator(for: .details), .prefetchInFlight)
+        snap.loadStates[.details] = .loading(Date())
+        XCTAssertEqual(snap.groupLoadIndicator(for: .details), .foregroundInFlight)
     }
 
     // MARK: - Helpers

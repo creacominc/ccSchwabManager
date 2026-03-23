@@ -19,9 +19,10 @@ struct PositionDetailContent: View
     let taxLotData: [SalesCalcPositionsRecord]
     let isLoadingTaxLots: Bool
     let transactions: [Transaction]
+    let loadStates: [SecurityDataGroup: SecurityDataLoadState]
     @Binding var selectedTab: Int
     @State private var orders: [Order] = []
-    @State private var isLoadingOrders: Bool = false
+    @State private var isLoadingOrders: Bool = true
     
     // Unique ID for price history tab to force re-rendering when data changes
     private var priceHistoryId: String {
@@ -29,6 +30,28 @@ struct PositionDetailContent: View
             return "priceHistory_\(history.symbol ?? "none")_\(history.candles.count)"
         }
         return "priceHistory_none_0"
+    }
+
+    /// Merges live view fields with cache (order recommendations) so tab icons match `SecurityDataSnapshot` rules.
+    private var indicatorSnapshot: SecurityDataSnapshot {
+        let cached = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        return SecurityDataSnapshot(
+            symbol: symbol,
+            fetchedAt: cached?.fetchedAt ?? Date(),
+            priceHistory: priceHistory,
+            transactions: transactions,
+            quoteData: quoteData,
+            atrValue: atrValue,
+            taxLotData: taxLotData,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            recommendedSellOrders: cached?.recommendedSellOrders,
+            recommendedBuyOrders: cached?.recommendedBuyOrders,
+            loadStates: loadStates
+        )
+    }
+
+    private var currentOrdersTabIndicator: SecurityGroupLoadIndicator {
+        isLoadingOrders ? .foregroundInFlight : .ready
     }
 
     private var detailsTabView: some View
@@ -75,6 +98,7 @@ struct PositionDetailContent: View
                             title: position.instrument?.symbol ?? "Summary",
                             icon: "list.bullet",
                             isSelected: selectedTab == 0,
+                            iconLoadIndicator: indicatorSnapshot.groupLoadIndicator(for: .details),
                             action: { selectedTab = 0 }
                         )
 
@@ -82,6 +106,7 @@ struct PositionDetailContent: View
                             title: "Price History",
                             icon: "chart.line.uptrend.xyaxis",
                             isSelected: selectedTab == 1,
+                            iconLoadIndicator: indicatorSnapshot.groupLoadIndicator(for: .priceHistory),
                             action: { selectedTab = 1 }
                         )
 
@@ -89,6 +114,7 @@ struct PositionDetailContent: View
                             title: "Transactions",
                             icon: "list.bullet.rectangle",
                             isSelected: selectedTab == 2,
+                            iconLoadIndicator: indicatorSnapshot.groupLoadIndicator(for: .transactions),
                             action: { selectedTab = 2 }
                         )
 
@@ -96,6 +122,7 @@ struct PositionDetailContent: View
                             title: "Sales Calc",
                             icon: "number.circle.fill",
                             isSelected: selectedTab == 3,
+                            iconLoadIndicator: indicatorSnapshot.groupLoadIndicator(for: .taxLots),
                             action: { selectedTab = 3 }
                         )
 
@@ -103,6 +130,7 @@ struct PositionDetailContent: View
                             title: "Current",
                             icon: "clock.arrow.circlepath",
                             isSelected: selectedTab == 4,
+                            iconLoadIndicator: currentOrdersTabIndicator,
                             action: { selectedTab = 4 }
                         )
                         
@@ -110,6 +138,7 @@ struct PositionDetailContent: View
                             title: "OCO",
                             icon: "chart.line.uptrend.xyaxis",
                             isSelected: selectedTab == 5,
+                            iconLoadIndicator: indicatorSnapshot.combinedGroupLoadIndicator(groups: [.taxLots, .orderRecommendations]),
                             action: { selectedTab = 5 }
                         )
 
@@ -117,6 +146,7 @@ struct PositionDetailContent: View
                             title: "Sequence",
                             icon: "arrow.up.circle",
                             isSelected: selectedTab == 6,
+                            iconLoadIndicator: indicatorSnapshot.combinedGroupLoadIndicator(groups: [.taxLots, .orderRecommendations]),
                             action: { selectedTab = 6 }
                         )
                     }
@@ -268,18 +298,35 @@ struct TabButton: View {
     let title: String
     let icon: String
     let isSelected: Bool
+    /// When set, only the SF Symbol is tinted (red = foreground load, orange = prefetch, green = ready).
+    var iconLoadIndicator: SecurityGroupLoadIndicator? = nil
     let action: () -> Void
+
+    private var iconForegroundColor: Color {
+        guard let iconLoadIndicator else {
+            return isSelected ? Color.accentColor : Color.primary
+        }
+        switch iconLoadIndicator {
+        case .foregroundInFlight:
+            return .red
+        case .prefetchInFlight:
+            return .orange
+        case .ready:
+            return .green
+        }
+    }
     
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
                     .detailFont()
+                    .foregroundStyle(iconForegroundColor)
                 Text(title)
                     .font(FontStyles.detailSmall)
                     .fontWeight(.medium)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
             }
-            .foregroundColor(isSelected ? .accentColor : .primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
