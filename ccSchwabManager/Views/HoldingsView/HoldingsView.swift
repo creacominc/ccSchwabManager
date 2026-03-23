@@ -219,7 +219,11 @@ struct HoldingsView: View
                         let secondSymbol = second.instrument?.symbol ?? ""
                         let firstDate = tradeDateCacheCopy[firstSymbol] ?? "0000"
                         let secondDate = tradeDateCacheCopy[secondSymbol] ?? "0000"
-                        return ascending ? firstDate < secondDate : firstDate > secondDate
+                        if firstDate != secondDate {
+                            return ascending ? firstDate < secondDate : firstDate > secondDate
+                        }
+                        // Stable order when dates missing or equal (e.g. before cache fills).
+                        return firstSymbol < secondSymbol
                     case .orderStatus:
                         let firstSymbol = first.instrument?.symbol ?? ""
                         let secondSymbol = second.instrument?.symbol ?? ""
@@ -535,6 +539,24 @@ struct HoldingsView: View
         SecurityDataCacheManager.shared.invalidateSymbolsNotInList(currentListSymbols)
         AppLogger.shared.debug("🔄 Cache invalidated for symbols not in current list (list size: \(currentListSymbols.count))")
     }
+
+    /// Re-read latest trade dates from SchwabClient, sync `accountPositions` display strings, and re-apply the current sort.
+    @MainActor
+    private func refreshTradeDatesAfterTransactionFetch() {
+        for position in holdings {
+            if let symbol = position.instrument?.symbol {
+                tradeDateCache[symbol] = SchwabClient.shared.getLatestTradeDate(for: symbol)
+            }
+        }
+        accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
+            let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
+            let lastThreeDigits = String(accountNumber.suffix(3))
+            return accountContent.securitiesAccount?.positions.map {
+                ($0, lastThreeDigits, tradeDateCache[$0.instrument?.symbol ?? ""] ?? "")
+            } ?? []
+        }
+        performSort()
+    }
     
     private func fetchHoldings()  {
         Task {
@@ -610,6 +632,8 @@ struct HoldingsView: View
                     }
                 }
                 print("✅ Order history loaded and cache populated with \(orderStatusCache.count) entries")
+                // Re-sort: initial sort ran before order status existed (all nil / same key).
+                performSort()
             }
         }
         
@@ -625,21 +649,7 @@ struct HoldingsView: View
             
             // Update trade dates in UI and populate cache
             await MainActor.run {
-                // Populate trade date cache
-                for position in holdings {
-                    if let symbol = position.instrument?.symbol {
-                        tradeDateCache[symbol] = SchwabClient.shared.getLatestTradeDate(for: symbol)
-                    }
-                }
-                
-                // Update accountPositions with trade dates
-                accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
-                    let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
-                    let lastThreeDigits = String(accountNumber.suffix(3))
-                    return accountContent.securitiesAccount?.positions.map {
-                        ($0, lastThreeDigits, tradeDateCache[$0.instrument?.symbol ?? ""] ?? "")
-                    } ?? []
-                }
+                refreshTradeDatesAfterTransactionFetch()
                 print("✅ Trade dates updated and cache populated")
             }
             
@@ -680,6 +690,9 @@ struct HoldingsView: View
                 }
                 
                 print("✅ All transaction history loaded")
+                await MainActor.run {
+                    refreshTradeDatesAfterTransactionFetch()
+                }
             }
         }
     }
