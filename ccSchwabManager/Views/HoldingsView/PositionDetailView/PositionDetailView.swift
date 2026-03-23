@@ -1284,6 +1284,9 @@ struct PositionDetailView: View
                     
                     Spacer()
                     
+                    NetworkIndicatorView()
+                        .padding(.trailing, 8)
+                    
                     Button(action: {
                         isRefreshing = true
                         fetchDataForSymbol(forceRefresh: true)
