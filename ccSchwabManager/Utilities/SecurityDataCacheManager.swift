@@ -224,6 +224,28 @@ final class SecurityDataCacheManager {
         return Set(cache.keys)
     }
 
+    /// Subset of `groups` that still need background work (including retry after `.failed`).
+    /// Excludes groups that are `.loaded` and groups already `.loading` (another task is fetching).
+    /// Read-only: does not change LRU order or cache contents.
+    func groupsNeedingBackgroundWork(symbol: String, among groups: [SecurityDataGroup]) -> [SecurityDataGroup] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var snap = cache[symbol] else {
+            return groups
+        }
+        snap.loadStates = normalizedStates(from: snap.loadStates)
+        return groups.filter { group in
+            if snap.isLoaded(group) {
+                return false
+            }
+            if case .loading = snap.loadState(for: group) {
+                return false
+            }
+            return true
+        }
+    }
+
     private func touch(symbol: String) {
         accessOrder.removeAll { $0 == symbol }
         accessOrder.append(symbol)

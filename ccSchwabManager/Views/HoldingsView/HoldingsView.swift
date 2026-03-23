@@ -421,112 +421,126 @@ struct HoldingsView: View
             return
         }
         
-        // Check if first security needs prefetching
-        let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
         let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
-        let needsPrefetch = snapshot == nil || !criticalGroups.allSatisfy { snapshot!.isLoaded($0) }
-        
-        if needsPrefetch {
-            print("🔮 Prefetching first security in list: \(symbol)")
-            // Already in detached task, just call prefetch
-            await prefetchSecurityData(symbol: symbol)
-        } else {
-            print("✅ First security \(symbol) already cached, skipping prefetch")
+        let needed = await MainActor.run {
+            SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(symbol: symbol, among: criticalGroups)
         }
+        guard !needed.isEmpty else {
+            print("✅ First security \(symbol) already cached or in flight, skipping prefetch")
+            return
+        }
+
+        print("🔮 Prefetching first security in list: \(symbol) groups: \(needed.map { "\($0)" }.joined(separator: ", "))")
+        await prefetchSecurityData(symbol: symbol)
     }
     
     /// Prefetches complete security data (quotes, price history, transactions, tax lots) for a symbol
     private func prefetchSecurityData(symbol: String) async {
-        print("🔮 [First Security] Prefetching data for: \(symbol)")
-        
-        // Mark as loading in cache
-        let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
-        await MainActor.run {
-            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+        let criticalGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots]
+        let toFetch = await MainActor.run {
+            SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(symbol: symbol, among: criticalGroups)
         }
-        
-        // Yield multiple times to ensure UI stays responsive
+        guard !toFetch.isEmpty else {
+            print("🔮 [First Security] Skip \(symbol) — already complete or in progress")
+            return
+        }
+
+        print("🔮 [First Security] Prefetching data for: \(symbol) groups: \(toFetch.map { "\($0)" }.joined(separator: ", "))")
+
+        await MainActor.run {
+            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: toFetch)
+        }
+
         await Task.yield()
         try? await Task.sleep(nanoseconds: 50_000_000) // 50ms delay
-        
-        // Fetch quote data in background
-        if Task.isCancelled { return }
-        let fetchedQuote = await Task.detached(priority: .low) {
-            return SchwabClient.shared.fetchQuote(symbol: symbol)
-        }.value
-        if Task.isCancelled { return }
-        
-        // Yield after blocking call to allow UI updates
-        await Task.yield()
-        
-        if let fetchedQuote {
-            await MainActor.run {
-                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
-                    snapshot.quoteData = fetchedQuote
-                }
-            }
-        }
-        
-        // Fetch price history in background
-        if Task.isCancelled { return }
-        let fetchedPriceHistory = await Task.detached(priority: .low) {
-            return SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-        }.value
-        if Task.isCancelled { return }
-        
-        // Yield after blocking call to allow UI updates
-        await Task.yield()
-        
-        if let fetchedPriceHistory {
-            let fetchedATRValue = await Task.detached(priority: .low) {
-                return SchwabClient.shared.computeATR(symbol: symbol)
+
+        var fetchedQuote: QuoteData?
+        if toFetch.contains(.details) {
+            if Task.isCancelled { return }
+            let q = await Task.detached(priority: .low) {
+                SchwabClient.shared.fetchQuote(symbol: symbol)
             }.value
             if Task.isCancelled { return }
-            
-            await MainActor.run {
-                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
-                    snapshot.priceHistory = fetchedPriceHistory
-                    snapshot.atrValue = fetchedATRValue
+            await Task.yield()
+            if let q {
+                fetchedQuote = q
+                await MainActor.run {
+                    _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                        snapshot.quoteData = q
+                    }
                 }
             }
         }
-        
-        // Fetch transactions in background
-        if Task.isCancelled { return }
-        print("🔮 [First Security] Fetching transactions for: \(symbol)")
-        let fetchedTransactions = await Task.detached(priority: .low) {
-            return SchwabClient.shared.getTransactionsFor(symbol: symbol)
-        }.value
-        if Task.isCancelled { return }
-        
-        // Yield after blocking call to allow UI updates
-        await Task.yield()
-        
-        await MainActor.run {
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-                snapshot.transactions = fetchedTransactions
+        if fetchedQuote == nil {
+            fetchedQuote = await MainActor.run {
+                SecurityDataCacheManager.shared.snapshot(for: symbol)?.quoteData
             }
         }
-        print("🔮 [First Security] Transactions complete for \(symbol): \(fetchedTransactions.count) transactions")
-        
-        // Fetch tax lots in background
-        if Task.isCancelled { return }
-        let currentPrice = fetchedQuote?.quote?.lastPrice ?? fetchedQuote?.extended?.lastPrice ?? fetchedPriceHistory?.candles.last?.close
-        let fetchedTaxLots = await Task.detached(priority: .low) {
-            return SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
-        }.value
-        if Task.isCancelled { return }
-        let fetchedSharesAvailable = await Task.detached(priority: .low) {
-            return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
-        }.value
-        
-        await MainActor.run {
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-                snapshot.taxLotData = fetchedTaxLots
-                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+
+        var fetchedPriceHistory: CandleList?
+        if toFetch.contains(.priceHistory) {
+            if Task.isCancelled { return }
+            let h = await Task.detached(priority: .low) {
+                SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            }.value
+            if Task.isCancelled { return }
+            await Task.yield()
+            if let h {
+                let fetchedATRValue = await Task.detached(priority: .low) {
+                    SchwabClient.shared.computeATR(symbol: symbol)
+                }.value
+                if Task.isCancelled { return }
+                fetchedPriceHistory = h
+                await MainActor.run {
+                    _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                        snapshot.priceHistory = h
+                        snapshot.atrValue = fetchedATRValue
+                    }
+                }
             }
         }
-        
+        if fetchedPriceHistory == nil {
+            fetchedPriceHistory = await MainActor.run {
+                SecurityDataCacheManager.shared.snapshot(for: symbol)?.priceHistory
+            }
+        }
+
+        if toFetch.contains(.transactions) {
+            if Task.isCancelled { return }
+            print("🔮 [First Security] Fetching transactions for: \(symbol)")
+            let fetchedTransactions = await Task.detached(priority: .low) {
+                SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            }.value
+            if Task.isCancelled { return }
+            await Task.yield()
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                    snapshot.transactions = fetchedTransactions
+                }
+            }
+            print("🔮 [First Security] Transactions complete for \(symbol): \(fetchedTransactions.count) transactions")
+        }
+
+        if toFetch.contains(.taxLots) {
+            if Task.isCancelled { return }
+            let currentPrice = fetchedQuote?.quote?.lastPrice
+                ?? fetchedQuote?.extended?.lastPrice
+                ?? fetchedPriceHistory?.candles.last?.close
+            let fetchedTaxLots = await Task.detached(priority: .low) {
+                SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+            }.value
+            if Task.isCancelled { return }
+            let fetchedSharesAvailable = await Task.detached(priority: .low) {
+                SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
+            }.value
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                    snapshot.taxLotData = fetchedTaxLots
+                    snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                }
+            }
+        }
+
         print("✅ [First Security] Prefetch complete for \(symbol)")
     }
     

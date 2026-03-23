@@ -64,6 +64,34 @@ final class SecurityDataCacheManagerTests: XCTestCase {
         XCTAssertNil(SecurityDataCacheManager.shared.snapshot(for: symbol))
     }
 
+    func testGroupsNeedingBackgroundWork_MissingSymbol_ReturnsAllGroups() {
+        let groups: [SecurityDataGroup] = [.details, .priceHistory]
+        let needed = SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(symbol: "XYZ", among: groups)
+        XCTAssertEqual(Set(needed), Set(groups))
+    }
+
+    func testGroupsNeedingBackgroundWork_LoadedGroupExcluded() {
+        let symbol = "AAPL"
+        _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { $0.quoteData = nil }
+
+        let needed = SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(
+            symbol: symbol,
+            among: [.details, .transactions]
+        )
+        XCTAssertEqual(needed, [.transactions])
+    }
+
+    func testGroupsNeedingBackgroundWork_LoadingGroupExcluded() {
+        let symbol = "MSFT"
+        _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: [.details])
+
+        let needed = SecurityDataCacheManager.shared.groupsNeedingBackgroundWork(
+            symbol: symbol,
+            among: [.details, .priceHistory]
+        )
+        XCTAssertEqual(needed, [.priceHistory])
+    }
+
     // MARK: - Helpers
 
     private func makeSnapshot(symbol: String) -> SecurityDataSnapshot {
