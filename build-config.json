@@ -74,6 +74,12 @@
       "timeout": 600
     }
   },
+  "devices": {
+    "paraphone17": {
+      "udid": "00008150-001C10E43AD2401C",
+      "note": "Physical iPhone (xcodebuild -showdestinations). Override with env CC_SCHWAB_DEVICE=Paraphone17 or another UDID/name devicectl accepts."
+    }
+  },
   "paths": {
     "derived_data": "~/Library/Developer/Xcode/DerivedData",
     "build_products": "Build/Products",

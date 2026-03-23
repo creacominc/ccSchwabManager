@@ -367,12 +367,18 @@ launch_app() {
         "macos"|"mac")
             launch_macos_app
             ;;
+        "macos-foreground"|"macos-fg"|"macos-terminal")
+            launch_macos_foreground
+            ;;
         "ios-simulator"|"ios-sim"|"ios")
             launch_ios_simulator_app
             ;;
+        "ios-device"|"iphone"|"device")
+            launch_ios_device_app
+            ;;
         *)
             print_error "Unknown platform: $platform"
-            print_status "Available platforms: macos, ios-simulator"
+            print_status "Available platforms: macos, macos-foreground, ios-simulator, ios-device"
             return 1
             ;;
     esac
@@ -401,6 +407,40 @@ launch_macos_app() {
     else
         print_error "Could not find derived data for project"
     fi
+}
+
+# Run the macOS .app binary attached to this terminal so print()/stderr appear here (unlike `open`).
+launch_macos_foreground() {
+    print_status "Launching macOS app in foreground — logs print below; quit the app to return to the shell."
+    local project_derived_data=$(find_project_derived_data)
+    local build_products=$(read_config '.paths.build_products' 'build_products')
+
+    if [ -z "$project_derived_data" ]; then
+        print_error "Could not find derived data for project"
+        return 1
+    fi
+
+    local app_path="$project_derived_data/$build_products/$BUILD_CONFIG/$PROJECT_NAME.app"
+    if [ ! -d "$app_path" ]; then
+        print_error "App not found at $app_path — build first: ./build-enhanced.sh build macos"
+        return 1
+    fi
+
+    local plist="$app_path/Contents/Info.plist"
+    local exe_name
+    exe_name=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" 2>/dev/null)
+    if [ -z "$exe_name" ]; then
+        exe_name="$PROJECT_NAME"
+        print_warning "Could not read CFBundleExecutable; using $exe_name"
+    fi
+
+    local exe_path="$app_path/Contents/MacOS/$exe_name"
+    if [ ! -f "$exe_path" ]; then
+        print_error "Executable not found: $exe_path"
+        return 1
+    fi
+
+    exec "$exe_path"
 }
 
 # Function to launch iOS app in simulator
@@ -478,6 +518,50 @@ launch_ios_simulator_app() {
     fi
 }
 
+# Function to install and launch on a physical iPhone (see build-config.json devices.paraphone17)
+launch_ios_device_app() {
+    print_status "Launching iOS app on physical device..."
+
+    local device_ref="${CC_SCHWAB_DEVICE:-}"
+    if [ -z "$device_ref" ] || [ "$device_ref" = "null" ]; then
+        device_ref=$(read_config '.devices.paraphone17.udid' 'udid')
+    fi
+    if [ -z "$device_ref" ] || [ "$device_ref" = "null" ]; then
+        print_error "No device set: add devices.paraphone17.udid in build-config.json or export CC_SCHWAB_DEVICE (UDID or name, e.g. Paraphone17)"
+        return 1
+    fi
+
+    local project_derived_data=$(find_project_derived_data)
+    local build_products=$(read_config '.paths.build_products' 'build_products')
+    local app_path="$project_derived_data/$build_products/Debug-iphoneos/$PROJECT_NAME.app"
+
+    if [ ! -d "$app_path" ]; then
+        print_error "Device .app not found: $app_path"
+        print_status "Build first: ./build-enhanced.sh build ios-device"
+        return 1
+    fi
+
+    local bundle_id
+    bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Info.plist" 2>/dev/null)
+    if [ -z "$bundle_id" ]; then
+        print_error "Could not read CFBundleIdentifier from $app_path"
+        return 1
+    fi
+
+    print_status "Installing on device (--device $device_ref)..."
+    if ! xcrun devicectl device install app --device "$device_ref" "$app_path"; then
+        print_error "Install failed (signing, cable, trust, Developer Mode, or wrong UDID)."
+        return 1
+    fi
+
+    print_status "Launching $bundle_id ..."
+    if ! xcrun devicectl device process launch --device "$device_ref" "$bundle_id"; then
+        print_warning "Launch reported an error; open the app manually on the device if needed."
+        return 1
+    fi
+    print_success "Installed and launched on device: $device_ref"
+}
+
 # Function to show build information
 show_info() {
     echo "Project Information:"
@@ -544,8 +628,10 @@ show_usage() {
     echo "  $0 build macos"
     echo "  $0 build ios-simulator"
     echo "  $0 build ios-device-release"
-    echo "  $0 launch macos"
+    echo "  $0 launch macos              # open app (no terminal logs)"
+    echo "  $0 launch macos-foreground   # run in this terminal (see print/AppLogger)"
     echo "  $0 launch ios-simulator"
+    echo "  $0 launch ios-device    # physical iPhone (UDID/name in build-config or CC_SCHWAB_DEVICE)"
     echo "  $0 test"
     echo "  $0 all"
     echo "  $0 clean"

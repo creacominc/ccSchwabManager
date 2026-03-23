@@ -49,10 +49,10 @@ struct TransactionHistorySection: View {
         // Process with proper sorting in background (refines the display)
         Task.detached(priority: .utility) {
             AppLogger.shared.debug("=== Processing \(transactionsToProcess.count) transactions for \(symbolToProcess) ===")
-            
-            // Compute prices for all transactions
-            // Most transactions have prices already, so this is usually fast
-            // For zero-price transactions, this may call computeTaxLots (cached)
+
+            // Warm tax-lot cache once so many zero-price rows do not each repeat full lot computation.
+            SchwabClient.shared.computeTaxLotsOptimized(symbol: symbolToProcess)
+
             let withPrices = transactionsToProcess.map { TransactionWithComputedPrice(transaction: $0, symbol: symbolToProcess) }
             
             // Sort transactions

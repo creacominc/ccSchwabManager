@@ -176,6 +176,133 @@
                 "clear": false
             },
             "problemMatcher": []
+        },
+        {
+            "label": "launch-macos",
+            "type": "shell",
+            "command": "./build-enhanced.sh",
+            "args": ["launch", "macos"],
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "launch-macos-foreground",
+            "type": "shell",
+            "command": "./build-enhanced.sh",
+            "args": ["launch", "macos-foreground"],
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "stream-ccSchwabManager-logs",
+            "type": "shell",
+            "command": "log stream --style compact --predicate 'subsystem == \"com.creacom.ccSchwabManager\"' --level debug",
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "dedicated",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "launch-ios-simulator",
+            "type": "shell",
+            "command": "./build-enhanced.sh",
+            "args": ["launch", "ios-simulator"],
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build-and-launch-macos",
+            "dependsOn": ["build-macos-debug", "launch-macos-foreground"],
+            "dependsOrder": "sequence",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build-and-launch-ios-simulator",
+            "dependsOn": ["build-ios-simulator-debug", "launch-ios-simulator"],
+            "dependsOrder": "sequence",
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "launch-paraphone17",
+            "type": "shell",
+            "command": "./build-enhanced.sh",
+            "args": ["launch", "ios-device"],
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build-and-launch-paraphone17",
+            "dependsOn": ["build-ios-device-debug", "launch-paraphone17"],
+            "dependsOrder": "sequence",
+            "group": "none",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": true,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": []
         }
     ]
 } 

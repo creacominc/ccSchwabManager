@@ -399,57 +399,30 @@ class SchwabClient: @unchecked Sendable
      * otherwise returns the original price from the transaction.
      */
     public func getComputedPriceForTransaction(_ transaction: Transaction, symbol: String) -> Double {
-        AppLogger.shared.debug("=== getComputedPriceForTransaction ===")
-        
-        // Get the original price from the transaction
         guard let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) else {
-            AppLogger.shared.debug("  --- No transfer item found for symbol \(symbol)")
             return 0.0
         }
-        
+
         let originalPrice = transferItem.price ?? 0.0
-        //AppLogger.shared.debug("  --- Original price: $\(originalPrice)")
-        
-        // If the original price is not zero, return it
         if originalPrice > 0.0 {
-            //AppLogger.shared.debug("  --- Returning original price: $\(originalPrice)")
             return originalPrice
         }
-        
-        // For zero-price transactions, check if we have computed tax lots
-        let taxLots = computeTaxLots(symbol: symbol)
+
+        // Use optimized path + per-symbol cache (computeTaxLots reloads global state and toggles loading UI per call).
+        let taxLots = computeTaxLotsOptimized(symbol: symbol)
         guard !taxLots.isEmpty else {
-            AppLogger.shared.debug("  --- No tax lots available")
             return originalPrice
         }
-        
-        // Parse the transaction date to match with tax lots
+
         guard let tradeDate = transaction.tradeDate,
-              let date = ISO8601DateFormatter().date(from: tradeDate) else {
-            AppLogger.shared.error("  --- Could not parse transaction date")
+              let resolved = TaxLotPriceLookup.costPerShare(
+                taxLots: taxLots,
+                tradeDateISO8601: tradeDate,
+                transferItemAmount: transferItem.amount ?? 0.0
+              ) else {
             return originalPrice
         }
-        
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        let transactionDateString = formatter.string(from: date)
-        
-        AppLogger.shared.debug("  --- Transaction date: \(transactionDateString)")
-        
-        // Find the matching tax lot by date and quantity
-        let transferItemAmount = transferItem.amount ?? 0.0
-        for taxLot in taxLots {
-            AppLogger.shared.debug("  --- Checking tax lot: \(taxLot.openDate), quantity: \(taxLot.quantity)")
-            
-            // Check if this tax lot matches the transaction
-            if taxLot.openDate == transactionDateString && abs(taxLot.quantity - transferItemAmount) < 0.01 {
-                AppLogger.shared.debug("  --- Found matching tax lot with computed cost: $\(taxLot.costPerShare)")
-                return taxLot.costPerShare
-            }
-        }
-        
-        AppLogger.shared.debug("  --- No matching tax lot found, returning original price: $\(originalPrice)")
-        return originalPrice
+        return resolved
     }
 
     public func getSecrets() -> Secrets
