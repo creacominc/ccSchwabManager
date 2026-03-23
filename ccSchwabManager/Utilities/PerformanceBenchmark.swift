@@ -20,7 +20,8 @@ class PerformanceBenchmark {
         let sessionId: String
         let startTime: Date
         var tabSwitches: [(tab: Int, timestamp: Date)] = []
-        var dataLoads: [String: Metric] = [:] // Key: "symbol_group"
+        /// Chronological data-load timings; repeated loads for the same symbol/group are all kept (no overwrites).
+        var dataLoadEvents: [Metric] = []
         var cacheHits: Int = 0
         var cacheMisses: Int = 0
         var networkRequests: [Metric] = []
@@ -144,20 +145,12 @@ class PerformanceBenchmark {
         
         // Record in current session
         if var session = currentSession {
-            // Determine if this is a data load operation
             if operation.contains("_") {
                 let parts = operation.split(separator: "_")
                 if parts.count >= 2 {
-                    let key = operation
-                    session.dataLoads[key] = metric
+                    session.dataLoadEvents.append(metric)
                 }
             }
-            
-            // Check if it's a network request
-            if operation.contains("fetch") || operation.contains("get") || operation.contains("compute") {
-                session.networkRequests.append(metric)
-            }
-            
             currentSession = session
         }
         
@@ -209,6 +202,44 @@ class PerformanceBenchmark {
         AppLogger.shared.debug("📊 Cache MISS: \(operation)")
     }
     
+    private static func jsonSafeMetadata(_ metadata: [String: Any]) -> [String: Any] {
+        metadata.compactMapValues { value -> Any? in
+            if value is String || value is Int || value is Double || value is Bool {
+                return value
+            }
+            return nil
+        }
+    }
+
+    private static func metricExportDictionary(_ metric: Metric) -> [String: Any] {
+        var dict: [String: Any] = [
+            "operation": metric.operation,
+            "duration": metric.duration ?? 0
+        ]
+        if let metadata = metric.metadata {
+            let safe = jsonSafeMetadata(metadata)
+            if !safe.isEmpty {
+                dict["metadata"] = safe
+            }
+        }
+        return dict
+    }
+
+    /// Groups export `dataLoads` by operation name; each key maps to an array of load events (supports duplicates).
+    private static func groupedDataLoadExport(from events: [Metric]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for metric in events {
+            let entry = metricExportDictionary(metric)
+            if var arr = result[metric.operation] as? [[String: Any]] {
+                arr.append(entry)
+                result[metric.operation] = arr
+            } else {
+                result[metric.operation] = [entry]
+            }
+        }
+        return result
+    }
+
     /// Record data load timing for a specific symbol and group
     func recordDataLoad(symbol: String, group: SecurityDataGroup, duration: TimeInterval, fromCache: Bool) {
         lock.lock()
@@ -223,7 +254,7 @@ class PerformanceBenchmark {
         )
         
         if var session = currentSession {
-            session.dataLoads[key] = metric
+            session.dataLoadEvents.append(metric)
             if fromCache {
                 session.cacheHits += 1
             } else {
@@ -231,6 +262,30 @@ class PerformanceBenchmark {
             }
             currentSession = session
         }
+    }
+
+    /// Record a completed network request (duration in seconds). Prefer this over inferring from `endTiming` labels.
+    func recordNetworkRequest(operation: String, duration: TimeInterval, metadata: [String: Any]? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        let metric = Metric(
+            operation: operation,
+            startTime: Date().addingTimeInterval(-duration),
+            endTime: Date(),
+            metadata: metadata
+        )
+        guard var session = currentSession else { return }
+        session.networkRequests.append(metric)
+        currentSession = session
+    }
+
+    /// Unit tests: start a fresh in-memory session without persisting the previous one.
+    internal func resetForUnitTests() {
+        lock.lock()
+        defer { lock.unlock() }
+        activeMetrics.removeAll()
+        let sessionId = UUID().uuidString.prefix(8).lowercased()
+        currentSession = SessionMetrics(sessionId: String(sessionId), startTime: Date())
     }
     
     /// Generate summary for a given session (does not acquire lock - must be called with lock held)
@@ -266,7 +321,7 @@ class PerformanceBenchmark {
         
         // Data load times by group
         var groupTimes: [SecurityDataGroup: [TimeInterval]] = [:]
-        for (_, metric) in session.dataLoads {
+        for metric in session.dataLoadEvents {
             if let duration = metric.duration,
                let groupStr = metric.metadata?["group"] as? String,
                let group = SecurityDataGroup.allCases.first(where: { "\($0)" == groupStr }) {
@@ -319,7 +374,7 @@ class PerformanceBenchmark {
             }
             
             // Check for slow operations
-            let allDurations = session.dataLoads.values.compactMap { $0.duration }
+            let allDurations = session.dataLoadEvents.compactMap { $0.duration }
             if let maxDuration = allDurations.max(), maxDuration > 0.5 {
                 recommendations.append("• Some operations take >0.5s - consider optimizing slowest operations")
             }
@@ -346,10 +401,10 @@ class PerformanceBenchmark {
         }
         
         // Slowest operations
-        let allDurations = session.dataLoads.values.compactMap { $0.duration } + 
+        let allDurations = session.dataLoadEvents.compactMap { $0.duration } +
                           session.networkRequests.compactMap { $0.duration }
         if !allDurations.isEmpty {
-            let sortedOps = session.dataLoads.values.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
+            let sortedOps = session.dataLoadEvents.sorted { ($0.duration ?? 0) > ($1.duration ?? 0) }
             summary += "Slowest Operations:\n"
             for (index, op) in sortedOps.prefix(5).enumerated() {
                 if let duration = op.duration {
@@ -400,31 +455,11 @@ class PerformanceBenchmark {
                 Double(session.cacheHits) / Double(session.cacheHits + session.cacheMisses) : 0
         ]
         
-        // Convert data loads to dictionary
-        var dataLoadsDict: [String: [String: Any]] = [:]
-        for (key, metric) in session.dataLoads {
-            var metricDict: [String: Any] = [
-                "operation": metric.operation,
-                "duration": metric.duration ?? 0
-            ]
-            if let metadata = metric.metadata {
-                metricDict["metadata"] = metadata
-            }
-            dataLoadsDict[key] = metricDict
-        }
-        data["dataLoads"] = dataLoadsDict
+        let eventsArray: [[String: Any]] = session.dataLoadEvents.map { Self.metricExportDictionary($0) }
+        data["dataLoadEvents"] = eventsArray
+        data["dataLoads"] = Self.groupedDataLoadExport(from: session.dataLoadEvents)
         
-        // Convert network requests
-        data["networkRequests"] = session.networkRequests.map { metric in
-            var dict: [String: Any] = [
-                "operation": metric.operation,
-                "duration": metric.duration ?? 0
-            ]
-            if let metadata = metric.metadata {
-                dict["metadata"] = metadata
-            }
-            return dict
-        }
+        data["networkRequests"] = session.networkRequests.map { Self.metricExportDictionary($0) }
         
         return data
     }
@@ -459,29 +494,8 @@ class PerformanceBenchmark {
                 "tabSwitches": session.tabSwitches.map { ["tab": $0.tab, "timestamp": ISO8601DateFormatter().string(from: $0.timestamp)] }
             ]
             
-            // Convert data loads (only include duration, skip Date objects)
-            var dataLoadsDict: [String: [String: Any]] = [:]
-            for (key, metric) in session.dataLoads {
-                var metricDict: [String: Any] = [
-                    "operation": metric.operation,
-                    "duration": metric.duration ?? 0
-                ]
-                // Only include simple metadata (skip Date objects)
-                if let metadata = metric.metadata {
-                    let simpleMetadata = metadata.compactMapValues { value -> Any? in
-                        // Only include JSON-serializable types
-                        if value is String || value is Int || value is Double || value is Bool {
-                            return value
-                        }
-                        return nil
-                    }
-                    if !simpleMetadata.isEmpty {
-                        metricDict["metadata"] = simpleMetadata
-                    }
-                }
-                dataLoadsDict[key] = metricDict
-            }
-            dict["dataLoads"] = dataLoadsDict
+            dict["dataLoadEvents"] = session.dataLoadEvents.map { Self.metricExportDictionary($0) }
+            dict["dataLoads"] = Self.groupedDataLoadExport(from: session.dataLoadEvents)
             
             return dict
         }

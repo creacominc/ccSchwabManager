@@ -39,6 +39,25 @@ struct PositionDetailView: View
     @State private var prefetchProcessorTask: Task<Void, Never>? = nil // Single task that processes prefetch queue
     @State private var showPerformanceSummary = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Stops detached prefetch/tab work (e.g. when leaving the screen or app backgrounds).
+    @MainActor
+    private func cancelBackgroundTasks() {
+        dataLoadTask?.cancel()
+        dataLoadTask = nil
+        for (_, task) in tabLoadTasks {
+            task.cancel()
+        }
+        tabLoadTasks.removeAll()
+        prefetchProcessorTask?.cancel()
+        prefetchProcessorTask = nil
+        for (sym, task) in prefetchTasks {
+            AppLogger.shared.debug("🔮 Cancelling prefetch task for \(sym)")
+            task.cancel()
+        }
+        prefetchTasks.removeAll()
+    }
 
     private func formatDate(_ timestamp: Int64?) -> String
     {
@@ -1342,17 +1361,13 @@ struct PositionDetailView: View
                 }
             }
         }
-        .onDisappear {
-            dataLoadTask?.cancel()
-            dataLoadTask = nil
-            
-            // Cancel all prefetch tasks
-            for (symbol, task) in prefetchTasks {
-                AppLogger.shared.debug("🔮 Cancelling prefetch task for \(symbol)")
-                task.cancel()
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                cancelBackgroundTasks()
             }
-            prefetchTasks.removeAll()
-            
+        }
+        .onDisappear {
+            cancelBackgroundTasks()
             SchwabClient.shared.loadingDelegate = nil
         }
         .toolbar {
