@@ -1736,39 +1736,33 @@ class OrderRecommendationService: ObservableObject {
         sortedTaxLots: [SalesCalcPositionsRecord]
     ) -> (sharesToSell: Double, totalGain: Double, actualCostPerShare: Double)? {
         
-        // For ATR orders, prioritize selling the most expensive shares first (highest-cost first)
-        // Start with the highest cost shares and work down until we achieve target gain
-        // Only use whole shares - truncate fractional shares
+        // For ATR orders, prioritize selling the most expensive shares first (highest-cost first).
+        // Walk shares one-by-one so we can use partial lots instead of requiring whole-lot sales.
         var cumulativeShares: Double = 0
         var cumulativeCost: Double = 0
         
         for lot in sortedTaxLots {
-            // Only add whole shares from this lot (truncate fractional shares)
             let wholeSharesFromLot = floor(lot.quantity)
             
-            // Skip if no whole shares available in this lot
             if wholeSharesFromLot < 1.0 {
                 continue
             }
             
-            let costFromLot = wholeSharesFromLot * lot.costPerShare
-            
-            cumulativeShares += wholeSharesFromLot
-            cumulativeCost += costFromLot
-            let avgCost = cumulativeCost / cumulativeShares
-            
-            // Check if this combination achieves the target gain at target price
-            let gainPercent = ((targetPrice - avgCost) / avgCost) * 100.0
-            
-            if gainPercent >= targetGainPercent {
-                let sharesToSell = cumulativeShares
-                let totalGain = cumulativeShares * (targetPrice - avgCost)
-                let actualCostPerShare = avgCost
+            for sharesToAdd in stride(from: 1.0, through: wholeSharesFromLot, by: 1.0) {
+                let testShares = cumulativeShares + sharesToAdd
+                let testCost = cumulativeCost + (sharesToAdd * lot.costPerShare)
+                let testAvgCost = testCost / testShares
+                let testGainPercent = ((targetPrice - testAvgCost) / testAvgCost) * 100.0
                 
-                AppLogger.shared.debug("  ATR order calculation: sharesToSell=\(sharesToSell), actualCostPerShare=\(actualCostPerShare), gainPercent=\(gainPercent)%")
-                
-                return (sharesToSell, totalGain, actualCostPerShare)
+                if testGainPercent >= targetGainPercent {
+                    let totalGain = testShares * (targetPrice - testAvgCost)
+                    AppLogger.shared.debug("  ATR order calculation: sharesToSell=\(testShares), actualCostPerShare=\(testAvgCost), gainPercent=\(testGainPercent)%")
+                    return (testShares, totalGain, testAvgCost)
+                }
             }
+
+            cumulativeShares += wholeSharesFromLot
+            cumulativeCost += wholeSharesFromLot * lot.costPerShare
         }
         
         return nil

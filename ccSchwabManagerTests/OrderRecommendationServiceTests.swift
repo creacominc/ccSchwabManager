@@ -684,6 +684,59 @@ final class OrderRecommendationServiceTests: XCTestCase {
         }
     }
     
+    func testSellOrderLogic_ATROrderUsesPartialLotShares() async {
+        // Given: Two lots where hitting 5% at 3*ATR requires only part of the second lot.
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2024-01-01",
+                gainLossPct: -15.0,
+                gainLossDollar: -300.0,
+                quantity: 100.0,
+                price: 17.0,
+                costPerShare: 20.0,
+                marketValue: 1700.0,
+                costBasis: 2000.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2024-02-01",
+                gainLossPct: 70.0,
+                gainLossDollar: 756.0,
+                quantity: 108.0,
+                price: 17.0,
+                costPerShare: 10.0,
+                marketValue: 1836.0,
+                costBasis: 1080.0
+            )
+        ]
+        
+        // ATR and price selected so 3*ATR target requires 180 shares (partial second lot),
+        // while whole-lot behavior would have used all 208 shares.
+        let currentPrice = 17.0
+        let atrValue = 1.0
+        let sharesAvailableForTrading = 208.0
+        
+        // When
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            currentPrice: currentPrice
+        )
+        
+        // Then
+        let threeATROrder = result.first { order in
+            order.description.contains("(3*ATR)")
+        }
+        
+        XCTAssertNotNil(threeATROrder, "Should include 3*ATR sell order")
+        
+        if let order = threeATROrder {
+            XCTAssertEqual(order.sharesToSell, 180.0, accuracy: 0.01, "3*ATR order should use the minimum partial-lot shares")
+            XCTAssertLessThan(order.sharesToSell, 208.0, "3*ATR order should not require the entire combined lots")
+        }
+    }
+    
     func testBuyOrder_IncludesOneShareFivePlusATRTrail() async {
         // Given: Any existing position
         let taxLots = [
