@@ -217,6 +217,36 @@ final class OrderRecommendationServiceTests: XCTestCase {
         XCTAssertNotNil(result, "Should return a result")
     }
     
+    func testCalculateRecommendedBuyOrders_DoubleMaxBuyTrail_AddsOneShareAtTwiceLargestBuyTS() async {
+        let taxLots = createMockTaxLots()
+        let currentPrice = 160.0
+        let atrValue = 2.5
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+        
+        let result = service.calculateRecommendedBuyOrders(
+            symbol: "AAPL",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 150,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
+        )
+        
+        let doubleTrailBuy = result.first { $0.description.contains("2x max buy TS") }
+        XCTAssertNotNil(doubleTrailBuy, "Should include 1-share buy at 2× max buy trailing stop among other buy options")
+        guard let doubled = doubleTrailBuy else { return }
+        XCTAssertEqual(doubled.shares, 1.0, accuracy: 0.001)
+        
+        let others = result.filter { !$0.description.contains("2x max buy TS") }
+        let maxOtherTS = others.map(\.trailingStop).max() ?? 0
+        XCTAssertGreaterThan(maxOtherTS, 0, "Need at least one other buy with a positive trail")
+        let expectedTS = min(50.0, max(0.1, 2.0 * maxOtherTS))
+        XCTAssertEqual(doubled.trailingStop, expectedTS, accuracy: 0.03)
+    }
+    
     func testCalculateRecommendedBuyOrders_LowPriceSecurity_IncludesAdditionalOrder() async {
         // Given: A security trading under $350
         let taxLots = createMockTaxLots()

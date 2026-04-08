@@ -88,7 +88,6 @@ class OrderRecommendationViewModel: ObservableObject {
         
         print("🔄 No cache hit for \(symbol), calculating new orders...")
         
-        // Calculate orders in parallel
         async let sellOrders = orderService.calculateRecommendedSellOrders(
             symbol: symbol,
             atrValue: atrValue,
@@ -109,7 +108,6 @@ class OrderRecommendationViewModel: ObservableObject {
             currentProfitPercent: currentProfitPercent
         )
         
-        // Wait for both to complete
         let (sellResults, buyResults) = await (sellOrders, buyOrders)
         
         AppLogger.shared.debug("=== updateRecommendedOrders: Results received ===")

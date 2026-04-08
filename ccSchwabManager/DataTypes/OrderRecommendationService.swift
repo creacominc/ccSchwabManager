@@ -407,6 +407,18 @@ class OrderRecommendationService: ObservableObject {
             }
         }
 
+        // 1-share buy: trailing stop = 2× the largest trailing stop among the other buy options already generated (e.g. max buy TS 9.49% → 18.98%)
+        if let doubleMaxBuyTrailBuy = createOneShareBuyOrderDoublingMaxBuyTrail(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            atrValue: atrValue,
+            targetGainPercent: targetGainPercent,
+            currentProfitPercent: currentProfitPercent,
+            existingBuyOrders: recommended
+        ) {
+            recommended.append(doubleMaxBuyTrailBuy)
+        }
+
         // Sort buy orders by shares ascending, then by trailing stop descending
         recommended.sort { first, second in
             if first.shares != second.shares {
@@ -2177,6 +2189,62 @@ class OrderRecommendationService: ObservableObject {
             trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,
             currentGainPercent: 0.0,
+            sharesToBuy: sharesToBuy,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
+    }
+
+    /// One share, buy-side trailing stop set to twice the maximum trailing stop among the other generated buy recommendations (e.g. max buy TS 9.49% → 18.98%).
+    private func createOneShareBuyOrderDoublingMaxBuyTrail(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        targetGainPercent: Double,
+        currentProfitPercent: Double,
+        existingBuyOrders: [BuyOrderRecord]
+    ) -> BuyOrderRecord? {
+        guard let maxBuyTrail = existingBuyOrders.map(\.trailingStop).max(), maxBuyTrail > 0 else {
+            return nil
+        }
+
+        let trailingStopPercent = max(0.1, min(50.0, 2.0 * maxBuyTrail))
+        let sharesToBuy: Double = 1.0
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+
+        let baseTargetPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
+        let minTargetPrice = stopPrice * 1.02
+        let finalTargetPrice = max(baseTargetPrice, minTargetPrice)
+
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
+        let orderCost = sharesToBuy * finalTargetPrice
+        guard orderCost < 2000.0 else { return nil }
+
+        let formattedDescription = String(
+            format: "BUY %.0f %@ (1 sh, 2x max buy TS %.2f%%) Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
+            sharesToBuy,
+            symbol,
+            maxBuyTrail,
+            finalTargetPrice,
+            trailingStopPercent,
+            targetGainPercent,
+            orderCost
+        )
+
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else { return nil }
+
+        AppLogger.shared.debug("  One-share 2x max buy trail buy: maxBuyTrail=\(maxBuyTrail)%, TS=\(trailingStopPercent)%, target=\(finalTargetPrice)")
+
+        return BuyOrderRecord(
+            shares: sharesToBuy,
+            targetBuyPrice: finalTargetPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: targetGainPercent,
+            currentGainPercent: currentProfitPercent,
             sharesToBuy: sharesToBuy,
             orderCost: orderCost,
             description: formattedDescription,

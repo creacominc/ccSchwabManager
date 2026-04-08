@@ -752,7 +752,6 @@ struct PositionDetailView: View
         // Create a temporary order service to compute recommendations
         let orderService = OrderRecommendationService()
         
-        // Calculate sell and buy orders in parallel
         async let sellOrders = orderService.calculateRecommendedSellOrders(
             symbol: symbol,
             atrValue: atrValue,
@@ -775,7 +774,6 @@ struct PositionDetailView: View
         
         if Task.isCancelled { return }
         
-        // Wait for both to complete
         let (sellResults, buyResults) = await (sellOrders, buyOrders)
         
         AppLogger.shared.debug("PositionDetailView: Order recommendations computed for \(symbol) - \(sellResults.count) sell, \(buyResults.count) buy")
