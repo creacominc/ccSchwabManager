@@ -26,14 +26,14 @@ struct HoldingsTableRow: View {
         // For narrow layouts, some columns are hidden, so we need to redistribute the width
         if !isWide
         {
-            // Columns 3, 6, 7, 10 are hidden in narrow layout
-            let hiddenColumns = [3, 6, 7, 10]
+            // Columns 6, 7, 10 are hidden in narrow layout (market value column 3 is shown on phone)
+            let hiddenColumns = [6, 7, 10]
             if hiddenColumns.contains(index) {
                 return 0 // Hidden columns get 0 width
             }
 
             // Calculate total width of visible columns in narrow layout
-            let visibleColumns = [0, 1, 2, 4, 5, 8, 9]
+            let visibleColumns = [0, 1, 2, 3, 4, 5, 8, 9]
             let totalVisibleWidth = visibleColumns.reduce(0) { $0 + HoldingsTableRow.columnWidths[$1] }
 
             // Redistribute the hidden columns' width proportionally
@@ -89,15 +89,12 @@ struct HoldingsTableRow: View {
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(2, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)
-                // market (only shown in wide layout)
-                if isWide
-                {
-                    Text(String(format: "%.2f", position.marketValue ?? 0.0))
-                        .tableCellFont()
-                        .foregroundColor(.primary)
-                        .frame(width: HoldingsTableRow.getColumnWidth(3, viewWidth: geometry.size.width, isWide: isWide),
-                               alignment: .trailing)
-                }
+                // market
+                Text(String(format: "%.2f", position.marketValue ?? 0.0))
+                    .tableCellFont()
+                    .foregroundColor(.primary)
+                    .frame(width: HoldingsTableRow.getColumnWidth(3, viewWidth: geometry.size.width, isWide: isWide),
+                           alignment: .trailing)
                 // P/L (shown in both layouts)
                 Text(showGainLossDollar())
                     .tableCellFont()

@@ -65,13 +65,9 @@ struct HoldingsTableHeader: View {
                             .frame(width: HoldingsTableRow.getColumnWidth(2, viewWidth: geometry.size.width, isWide: isWide),
                                    alignment: .trailing)
                         
-                        if isWide
-                        {
-                            // Market column (only shown in wide layout)
-                            columnHeader(title: "Market", column: .marketValue, alignment: .trailing)
-                                .frame(width: HoldingsTableRow.getColumnWidth(3, viewWidth: geometry.size.width, isWide: isWide),
-                                       alignment: .trailing)
-                        }
+                        columnHeader(title: "Market", column: .marketValue, alignment: .trailing)
+                            .frame(width: HoldingsTableRow.getColumnWidth(3, viewWidth: geometry.size.width, isWide: isWide),
+                                   alignment: .trailing)
                         
                         // P/L column (shown in both layouts)
                         columnHeader(title: "P/L", column: .pl, alignment: .trailing)
