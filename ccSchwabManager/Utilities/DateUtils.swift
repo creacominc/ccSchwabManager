@@ -45,6 +45,40 @@ func getDateNQuartersAgoStrForEndDate( quarterDelta : Int ) -> String
     )
 }
 
+/// Start of the month-sized slice counting back from today (`monthDelta` 1 = most recent month).
+func getDateNMonthsAgoStr(monthDelta: Int) -> String
+{
+    var components = DateComponents()
+    components.month = -monthDelta
+    components.day = +1
+    return Calendar.current.date(byAdding: components, to: Date())!.formatted(.iso8601
+        .year()
+        .month()
+        .day()
+        .timeZone(separator: .omitted)
+        .time(includingFractionalSeconds: true)
+        .timeSeparator(.colon)
+    )
+}
+
+/// Inclusive end of the slice that starts at `getDateNMonthsAgoStr(monthDelta: monthDelta)`.
+func getDateNMonthsAgoStrForEndDate(monthDelta: Int) -> String
+{
+    var components = DateComponents()
+    components.month = -monthDelta
+    components.day = +1
+    let baseDate = Calendar.current.date(byAdding: components, to: Date())!
+    let endDate = Calendar.current.date(byAdding: .second, value: -1, to: baseDate)!
+    return endDate.formatted(.iso8601
+        .year()
+        .month()
+        .day()
+        .timeZone(separator: .omitted)
+        .time(includingFractionalSeconds: true)
+        .timeSeparator(.colon)
+    )
+}
+
 func getDateNYearsAgoStr( yearDelta : Int ) -> String
 {
     // get date one year ago

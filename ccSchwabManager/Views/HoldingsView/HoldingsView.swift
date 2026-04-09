@@ -675,58 +675,53 @@ struct HoldingsView: View
         Task {
             print("🚀 PRIORITY 3: Fetching transaction history in background")
             
-            // Fetch first 4 quarters immediately for trade dates (faster than full 12 quarters)
-            await SchwabClient.shared.fetchTransactionHistoryReduced(quarters: 4)
+            // Fetch first 12 months in waves of 3 parallel months; refresh UI on main after each wave
+            await SchwabClient.shared.fetchTransactionHistoryReduced(months: 12, onBatchOnMainActor: {
+                refreshTradeDatesAfterTransactionFetch()
+            })
             
-            // Check for cancellation before updating UI
+            // Check for cancellation before continuing background work
             guard !Task.isCancelled else { return }
             
-            // Update trade dates in UI and populate cache
             await MainActor.run {
-                refreshTradeDatesAfterTransactionFetch()
-                print("✅ Trade dates updated and cache populated")
+                print("✅ Initial transaction months loaded and trade dates refreshed")
             }
             
-            // Fetch remaining quarters in background for complete history (up to maxQuarterDelta)
-            let remainingQuarters = max(SchwabClient.shared.maxQuarterDelta - 4, 0)
-            if remainingQuarters > 0 {
-                print("🚀 Fetching remaining \(remainingQuarters) quarters in background")
+            // Remaining months up to maxMonthDelta (initial reduced load already covered first 12)
+            let remainingMonths = max(SchwabClient.shared.maxMonthDelta - 12, 0)
+            if remainingMonths > 0 {
+                print("🚀 Fetching remaining \(remainingMonths) months in background")
                 
-                // Process in batches of 3 to avoid overwhelming the API
-                let batchSize = 3
-                for batchStart in stride(from: 0, to: remainingQuarters, by: batchSize) {
-                    // Check for cancellation before each batch
+                let parallelMonths = 3
+                for batchStart in stride(from: 0, to: remainingMonths, by: parallelMonths) {
                     guard !Task.isCancelled else {
                         print("=== fetchHoldingsAsync - Cancelled during background processing ===")
                         return
                     }
                     
-                    let batchEnd = min(batchStart + batchSize, remainingQuarters)
-                    let batchSize = batchEnd - batchStart
+                    let batchEnd = min(batchStart + parallelMonths, remainingMonths)
+                    let count = batchEnd - batchStart
+                    print("📦 Processing background batch: \(count) parallel month fetch(es)")
                     
-                    print("📦 Processing background batch \(batchStart/batchSize + 1): quarters \(batchStart+5)-\(batchEnd+4)")
-                    
-                    // Fetch batch in parallel
                     await withTaskGroup(of: Void.self) { group in
-                        for _ in 0..<batchSize {
+                        for _ in 0..<count {
                             group.addTask {
                                 await SchwabClient.shared.fetchTransactionHistory()
                             }
                         }
-                        // Wait for all tasks in this batch to complete
                         await group.waitForAll()
                     }
                     
-                    // Small delay between batches to be respectful to the API
-                    if batchEnd < remainingQuarters {
+                    await MainActor.run {
+                        refreshTradeDatesAfterTransactionFetch()
+                    }
+                    
+                    if batchEnd < remainingMonths {
                         try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
                     }
                 }
                 
                 print("✅ All transaction history loaded")
-                await MainActor.run {
-                    refreshTradeDatesAfterTransactionFetch()
-                }
             }
         }
     }

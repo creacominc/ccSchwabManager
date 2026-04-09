@@ -116,12 +116,13 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient: @unchecked Sendable
 {
-    public let maxQuarterDelta : Int = 20 // 5 years
+    /// Rolling one-month slices from present; 60 months ≈ same horizon as the prior 20×3-month chunks.
+    public let maxMonthDelta: Int = 60
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     @Published var showIncompleteDataWarning = false
     private var m_secrets : Secrets
-    private var m_quarterDelta : Int = 0
+    private var m_monthDelta: Int = 0
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
@@ -144,7 +145,7 @@ class SchwabClient: @unchecked Sendable
     private let m_lastFilteredPriceHistoryLock: NSLock = NSLock()
     private var m_lastFilteredPriceHistory: CandleList?
     private var m_lastFilteredPriceHistorySymbol: String = ""
-    private let m_quarterDeltaLock: NSLock = NSLock()  // Add mutex for m_quarterDelta
+    private let m_monthDeltaLock: NSLock = NSLock()
     private var m_lastFilteredATRSymbol : String = ""
     private var m_lastFilteredATR : Double = 0.0
     private var m_lastFilteredATRLock: NSLock = NSLock()  // mutex for ATR
@@ -288,17 +289,16 @@ class SchwabClient: @unchecked Sendable
     }
     
     // MARK: - Smart Tax Lot Calculation
-    private func calculateOptimalTimeRange(for symbol: String, currentShares: Double) -> Int {
-        // Start with a reasonable range based on current shares
-        // If we have a lot of shares, we likely need more history
+    /// Minimum month slices to pull for tax-lot work (same calendar depth as former quarter counts × 3).
+    private func calculateOptimalHistoryMonths(for symbol: String, currentShares: Double) -> Int {
         if currentShares > 1000 {
-            return 8 // 2 years
+            return 24
         } else if currentShares > 100 {
-            return 6 // 1.5 years
+            return 18
         } else if currentShares > 10 {
-            return 4 // 1 year
+            return 12
         } else {
-            return 3 // 9 months
+            return 9
         }
     }
     
@@ -1437,32 +1437,8 @@ class SchwabClient: @unchecked Sendable
      */
     public func fetchTransactionHistorySync() {
         AppLogger.shared.debug("=== fetchTransactionHistorySync  ===")
-        
-        // Check if we're already at the limit
-        let currentQuarterDelta = m_quarterDeltaLock.withLock {
-            let current = m_quarterDelta
-            if maxQuarterDelta <= current {
-                return current
-            }
-            
-            // if this is year0, remove any and all entries
-            if current == 0 {
-                m_transactionListLock.withLock {
-                    m_transactionList.removeAll(keepingCapacity: true)
-                }
-            }
-            
-            // Increment quarter delta
-            m_quarterDelta += 1
-            return m_quarterDelta
-        }
-        
-        if maxQuarterDelta <= currentQuarterDelta {
-            AppLogger.shared.debug(" --- fetchTransactionHistorySync -  maxQuarterDelta reached")
-            return
-        }
 
-        // Create a task to run the async operation
+        // Create a task to run the async operation (single increment + fetch inside fetchTransactionHistory)
         let task = Task {
             await self.fetchTransactionHistory()
         }
@@ -1501,86 +1477,39 @@ class SchwabClient: @unchecked Sendable
      * symbol     string     It filters all the transaction activities based on the symbol specified. NOTE: If there is any special character in the symbol, please send th encoded value.
      * types *     string     Specifies that only transactions of this status should be returned.
      */
-    public func fetchTransactionHistory() async {
-        // Get quarter delta safely for logging
-        let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
-            return m_quarterDelta
-        }
-        AppLogger.shared.debug("=== fetchTransactionHistory -  quarterDelta: \(quarterDeltaForLogging) ===")
-        //AppLogger.shared.debug("🔍 fetchTransactionHistory - Setting loading to TRUE")
-        await MainActor.run {
-            loadingDelegate?.setLoading(true)
-        }
-        defer {
-            //AppLogger.shared.debug("🔍 fetchTransactionHistory - Setting loading to FALSE")
-            Task { @MainActor in
-                loadingDelegate?.setLoading(false)
-            }
-        }
-        
-        // Check and increment quarter delta atomically
-        let currentQuarterDelta = m_quarterDeltaLock.withLock {
-            let current = m_quarterDelta
-            if maxQuarterDelta <= current {
-                return current
-            }
-            
-            // if this is year0, remove any and all entries
-            if current == 0 {
-                m_transactionListLock.withLock {
-                    m_transactionList.removeAll(keepingCapacity: true)
-                }
-            }
-            
-            // Increment quarter delta
-            m_quarterDelta += 1
-            return m_quarterDelta
-        }
-        
-        if maxQuarterDelta <= currentQuarterDelta {
-            AppLogger.shared.debug(" --- fetchTransactionHistory -  maxQuarterDelta reached")
-            return
-        }
-        
-        let newQuarterDelta = currentQuarterDelta
+    private func fetchTransactionSliceForMonthDelta(_ monthDelta: Int) async {
+        let endDate = getDateNMonthsAgoStrForEndDate(monthDelta: monthDelta - 1)
+        let startDate = getDateNMonthsAgoStr(monthDelta: monthDelta)
+        AppLogger.shared.debug("  -- transaction slice month delta: \(monthDelta)")
 
-        let initialSize: Int = m_transactionList.count
-        let endDate = getDateNQuartersAgoStrForEndDate(quarterDelta: newQuarterDelta - 1)
-        let startDate = getDateNQuartersAgoStr(quarterDelta: newQuarterDelta)
-
-        AppLogger.shared.debug("  -- processing quarter delta: \(newQuarterDelta)")
-
-        // Create a task group to handle multiple account requests concurrently
         await withTaskGroup(of: [Transaction]?.self) { group in
-            // Add a task for each account
             for accountNumberHash in self.m_secrets.acountNumberHash {
                 for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
-                            group.addTask { @Sendable in
-                                var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-                                transactionHistoryUrl += "?startDate=\(startDate)"
-                                transactionHistoryUrl += "&endDate=\(endDate)"
-                                transactionHistoryUrl += "&types=\(transactionType.rawValue)"
-                        
+                    group.addTask { @Sendable in
+                        var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
+                        transactionHistoryUrl += "?startDate=\(startDate)"
+                        transactionHistoryUrl += "&endDate=\(endDate)"
+                        transactionHistoryUrl += "&types=\(transactionType.rawValue)"
+
                         guard let url = URL(string: transactionHistoryUrl) else {
                             AppLogger.shared.debug("fetchTransactionHistory. Invalid URL")
                             return nil
                         }
-                        
+
                         var request = URLRequest(url: url)
                         request.httpMethod = "GET"
                         request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
                         request.setValue("application/json", forHTTPHeaderField: "accept")
-                        // set a 10 second timeout on this request
                         request.timeoutInterval = self.requestTimeout
-                        
+
                         do {
                             let (data, response) = try await URLSession.shared.data(for: request)
-                            
+
                             guard let httpResponse = response as? HTTPURLResponse else {
                                 AppLogger.shared.debug("Invalid response type")
                                 return nil
                             }
-                            
+
                             if httpResponse.statusCode != 200 {
                                 AppLogger.shared.debug("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
                                 if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
@@ -1591,18 +1520,16 @@ class SchwabClient: @unchecked Sendable
 
                             let decoder = JSONDecoder()
                             let transactions = try decoder.decode([Transaction].self, from: data)
-
                             return transactions
                         } catch {
                             AppLogger.shared.error("fetchTransactionHistory Error: \(error.localizedDescription)")
                             AppLogger.shared.error("   detail:  \(error)")
                             return nil
                         }
-                    } // group.addTask
+                    }
                 }
-            } // for accountNumberHash
+            }
 
-            // Collect results from all tasks
             var newTransactions: [Transaction] = []
             for await transactions in group {
                 if let transactions = transactions {
@@ -1612,18 +1539,52 @@ class SchwabClient: @unchecked Sendable
             m_transactionListLock.withLock {
                 addTransactionsWithoutSorting(newTransactions)
             }
-        } // await withTaskGroup
+        }
+    }
+
+    public func fetchTransactionHistory() async {
+        let monthDeltaForLogging = m_monthDeltaLock.withLock { return m_monthDelta }
+        AppLogger.shared.debug("=== fetchTransactionHistory -  monthDelta: \(monthDeltaForLogging) ===")
+        await MainActor.run {
+            loadingDelegate?.setLoading(true)
+        }
+        defer {
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
+        }
+
+        let currentMonthDelta = m_monthDeltaLock.withLock {
+            let current = m_monthDelta
+            if maxMonthDelta <= current {
+                return current
+            }
+            if current == 0 {
+                m_transactionListLock.withLock {
+                    m_transactionList.removeAll(keepingCapacity: true)
+                }
+            }
+            m_monthDelta += 1
+            return m_monthDelta
+        }
+
+        if maxMonthDelta <= currentMonthDelta {
+            AppLogger.shared.debug(" --- fetchTransactionHistory -  maxMonthDelta reached")
+            return
+        }
+
+        let newMonthDelta = currentMonthDelta
+        let initialSize: Int = m_transactionList.count
+
+        await fetchTransactionSliceForMonthDelta(newMonthDelta)
 
         AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions")
-        
-        // Sort all transactions once at the end for better efficiency
-        // This is much more efficient than sorting after each batch:
-        // - Single O(n log n) sort instead of multiple sorts
-        // - Better performance for large datasets
+
         m_transactionListLock.withLock {
             sortTransactions()
         }
         self.setLatestTradeDates()
+        await MainActor.run { }
     }
 
 
@@ -1632,11 +1593,10 @@ class SchwabClient: @unchecked Sendable
      */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
-        // Get quarter delta safely for logging
-        let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
-            return m_quarterDelta
+        let monthDeltaForLogging = m_monthDeltaLock.withLock {
+            return m_monthDelta
         }
-//        AppLogger.shared.debug( "    ==== getTransactionsFor \(symbol ?? "nil")  quarters: \(quarterDeltaForLogging) ====" )
+//        AppLogger.shared.debug( "    ==== getTransactionsFor \(symbol ?? "nil")  months: \(monthDeltaForLogging) ====" )
 //        AppLogger.shared.debug("    ==== getTransactionsFor Current transaction list size: \(m_transactionList.count)")
         
         if( nil == symbol ) {
@@ -1668,13 +1628,13 @@ class SchwabClient: @unchecked Sendable
                 let matches = transaction.transferItems.contains { $0.instrument?.symbol == symbol }
                 return matches // return from closure, not from the method
             }
-            // AppLogger.shared.debug("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  Quarter: \(quarterDeltaForLogging) of \(self.maxQuarterDelta)")
+            // AppLogger.shared.debug("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  Month: \(monthDeltaForLogging) of \(self.maxMonthDelta)")
 
             // Fetch more records if needed, but with proper termination conditions
             var fetchAttempts = 0
             let maxFetchAttempts = 3  // Limit the number of fetch attempts
             
-            while( (self.maxQuarterDelta > quarterDeltaForLogging) && 
+            while( (self.maxMonthDelta > monthDeltaForLogging) && 
                    (self.m_lastFilteredTransactions.count == 0) && 
                    (fetchAttempts < maxFetchAttempts) ) {
                 AppLogger.shared.debug( "     -- getTransactionsFor \(symbol ?? "nil")  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
@@ -2514,7 +2474,7 @@ class SchwabClient: @unchecked Sendable
         var totalTransactionsFound = 0
         var totalSharesFound = 0.0
         
-        // Process transactions until we find zero shares or reach max quarters
+        // Process transactions until we find zero shares or reach max months of history
         while fetchAttempts < maxFetchAttempts {
             fetchAttempts += 1
             AppLogger.shared.debug("  --- computeTaxLots iteration \(fetchAttempts)/\(maxFetchAttempts) ---")
@@ -2524,11 +2484,10 @@ class SchwabClient: @unchecked Sendable
 
             // Get current share count
             var currentShareCount : Double = getShareCount(symbol: symbol)
-            // Get quarter delta safely for logging
-            let quarterDeltaForLogging = m_quarterDeltaLock.withLock {
-                return m_quarterDelta
+            let monthDeltaForLogging = m_monthDeltaLock.withLock {
+                return m_monthDelta
             }
-            AppLogger.shared.debug("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) quarterDelta: \(quarterDeltaForLogging) --")
+            AppLogger.shared.debug("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) monthDelta: \(monthDeltaForLogging) --")
 
             // get last price for this security - use real-time quote data if available, fallback to price history
             let lastPrice: Double
@@ -2620,7 +2579,7 @@ class SchwabClient: @unchecked Sendable
 
             } // for transaction
             
-            // Break if we've found zero shares or reached max quarters
+            // Break if we've found zero shares or reached max months of history
             if ( isNearZero(currentShareCount) ) {
                 AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
                 AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
@@ -2630,10 +2589,10 @@ class SchwabClient: @unchecked Sendable
             // Don't break on negative share count - continue processing to find all buy transactions
             // The negative share count indicates we've encountered more sell transactions than buy transactions
             // but we need to continue to find all the buy transactions that account for our current position
-            else if  ( self.maxQuarterDelta <= quarterDeltaForLogging )  {
+            else if  ( self.maxMonthDelta <= monthDeltaForLogging )  {
 //                showIncompleteDataWarning = true
-                AppLogger.shared.debug( " -- \(symbol) -- Reached max quarter delta --" )
-                AppLogger.shared.debug( " -- \(symbol) -- WARNING: Incomplete data - reached max quarter delta. Setting showIncompleteDataWarning = true --" )
+                AppLogger.shared.debug( " -- \(symbol) -- Reached max month delta --" )
+                AppLogger.shared.debug( " -- \(symbol) -- WARNING: Incomplete data - reached max month delta. Setting showIncompleteDataWarning = true --" )
                 break
             }
             else if fetchAttempts >= maxFetchAttempts {
@@ -2836,125 +2795,56 @@ class SchwabClient: @unchecked Sendable
     }
 
     /**
-     * fetchTransactionHistoryReduced - get transactions for a smaller time range for faster loading
-     * This is used for initial display when we don't need the full 3 years of history
+     * fetchTransactionHistoryReduced - initial month slices for faster display (default 12 ≈ former 4×3-month chunks).
+     * Loads up to three months in parallel per wave, then sorts, updates trade dates, and runs `onBatchOnMainActor` on the main actor (if provided) so the GUI can refresh.
      */
-    public func fetchTransactionHistoryReduced(quarters: Int = 4) async {
-        AppLogger.shared.debug("=== fetchTransactionHistoryReduced - quarters: \(quarters) ===")
-        //AppLogger.shared.debug("🔍 fetchTransactionHistoryReduced - Setting loading to TRUE")
+    public func fetchTransactionHistoryReduced(months: Int = 12, onBatchOnMainActor: (@MainActor () -> Void)? = nil) async {
+        AppLogger.shared.debug("=== fetchTransactionHistoryReduced - months: \(months) ===")
         await MainActor.run {
             loadingDelegate?.setLoading(true)
         }
         defer {
-            //AppLogger.shared.debug("🔍 fetchTransactionHistoryReduced - Setting loading to FALSE")
             Task { @MainActor in
                 loadingDelegate?.setLoading(false)
             }
         }
-        
-        // Reset quarter delta for reduced fetch
-        m_quarterDeltaLock.withLock {
-            m_quarterDelta = 0
+
+        m_monthDeltaLock.withLock {
+            m_monthDelta = 0
             m_transactionListLock.withLock {
                 m_transactionList.removeAll(keepingCapacity: true)
             }
         }
-        
+
         let initialSize: Int = m_transactionList.count
-        
-        // Fetch only the specified number of quarters
-        await withTaskGroup(of: Void.self) { group in
-            for quarter in 1...quarters {
-                group.addTask {
-                                    let endDate = getDateNQuartersAgoStrForEndDate(quarterDelta: quarter - 1)
-                let startDate = getDateNQuartersAgoStr(quarterDelta: quarter)
-                    
-                    AppLogger.shared.debug("  -- processing quarter: \(quarter)")
-                    
-                    // Fetch for all accounts in parallel
-                    await withTaskGroup(of: [Transaction]?.self) { accountGroup in
-                        for accountNumberHash in self.m_secrets.acountNumberHash {
-                            for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
-                                accountGroup.addTask { @Sendable in
-                                    var transactionHistoryUrl = "\(accountWeb)/\(accountNumberHash.hashValue ?? "N/A")/transactions"
-                                    transactionHistoryUrl += "?startDate=\(startDate)"
-                                    transactionHistoryUrl += "&endDate=\(endDate)"
-                                    transactionHistoryUrl += "&types=\(transactionType.rawValue)"
-                                    
-                                    guard let url = URL(string: transactionHistoryUrl) else {
-                                        AppLogger.shared.error("fetchTransactionHistoryReduced. Invalid URL")
-                                        return nil
-                                    }
-                                    
-                                    var request = URLRequest(url: url)
-                                    request.httpMethod = "GET"
-                                    request.setValue("Bearer \(self.m_secrets.accessToken)", forHTTPHeaderField: "Authorization")
-                                    request.setValue("application/json", forHTTPHeaderField: "accept")
-                                    request.timeoutInterval = self.requestTimeout
-                                    
-                                    do {
-                                        let (data, response) = try await URLSession.shared.data(for: request)
-                                        
-                                        guard let httpResponse = response as? HTTPURLResponse else {
-                                            AppLogger.shared.error("Invalid response type")
-                                            return nil
-                                        }
-                                        
-                                        if httpResponse.statusCode != 200 {
-                                            AppLogger.shared.error("response code: \(httpResponse.statusCode)")
-                                            // print data as a string
-                                            AppLogger.shared.error( "response data: \(String(data: data, encoding: .utf8) ?? "N/A")" )
-                                            if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                                serviceError.printErrors(prefix: "  fetchTransactionHistoryReduced ")
-                                            }
-                                            return nil
-                                        }
-                                        
-                                        let decoder = JSONDecoder()
-                                        let transactions = try decoder.decode([Transaction].self, from: data)
-                                        return transactions
-                                    } catch {
-                                        AppLogger.shared.error("fetchTransactionHistoryReduced Error: \(error.localizedDescription)")
-                                        return nil
-                                    }
-                                }
-                            }
-                        }
-                        // Collect results from all accounts
-                        var newTransactions: [Transaction] = []
-                        for await transactions in accountGroup {
-                            if let transactions = transactions {
-                                newTransactions.append(contentsOf: transactions)
-                            }
-                        }
-                        
-                        // Add to main transaction list
-                        self.m_transactionListLock.withLock {
-                            self.addTransactionsWithoutSorting(newTransactions)
-                        }
+        let parallelMonths = 3
+
+        var batchStart = 0
+        while batchStart < months {
+            let batchEnd = min(batchStart + parallelMonths, months)
+            await withTaskGroup(of: Void.self) { group in
+                for monthIndex in (batchStart + 1)...batchEnd {
+                    group.addTask {
+                        await self.fetchTransactionSliceForMonthDelta(monthIndex)
                     }
                 }
             }
-            
-            // Wait for all quarters to complete
-            await group.waitForAll()
+            m_transactionListLock.withLock {
+                sortTransactions()
+            }
+            self.setLatestTradeDates()
+            await MainActor.run {
+                onBatchOnMainActor?()
+            }
+
+            batchStart = batchEnd
         }
-        
-        // Update quarter delta to reflect what we've fetched
-        m_quarterDeltaLock.withLock {
-            m_quarterDelta = quarters
+
+        m_monthDeltaLock.withLock {
+            m_monthDelta = months
         }
-        
-        AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions in \(quarters) quarters")
-        
-        // Sort all transactions once at the end for better efficiency
-        // This is much more efficient than sorting after each batch:
-        // - Single O(n log n) sort instead of multiple sorts
-        // - Better performance for large datasets
-        m_transactionListLock.withLock {
-            sortTransactions()
-        }
-        self.setLatestTradeDates()
+
+        AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions in \(months) months")
     }
 
     /**
@@ -3527,14 +3417,14 @@ class SchwabClient: @unchecked Sendable
         
         // Get current share count and determine optimal time range
         let currentShareCount = getShareCount(symbol: symbol)
-        let optimalQuarters = calculateOptimalTimeRange(for: symbol, currentShares: currentShareCount)
+        let optimalMonths = calculateOptimalHistoryMonths(for: symbol, currentShares: currentShareCount)
         
-        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - using optimal range: \(optimalQuarters) quarters ===")
+        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - using optimal range: \(optimalMonths) months ===")
         
         // Ensure we have enough transaction history for this calculation
-        let currentQuarterDelta = m_quarterDeltaLock.withLock { return m_quarterDelta }
-        if currentQuarterDelta < optimalQuarters {
-            AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - expanding transaction history to \(optimalQuarters) quarters ===")
+        let currentMonthDelta = m_monthDeltaLock.withLock { return m_monthDelta }
+        if currentMonthDelta < optimalMonths {
+            AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - expanding transaction history to \(optimalMonths) months ===")
             
             // Use DispatchGroup to wait for the async operation with timeout
             let group = DispatchGroup()
@@ -3542,8 +3432,7 @@ class SchwabClient: @unchecked Sendable
             
             // Start the fetch operation
             Task {
-                // Fetch all needed quarters at once instead of incrementally
-                for _ in currentQuarterDelta..<optimalQuarters {
+                for _ in currentMonthDelta..<optimalMonths {
                     await self.fetchTransactionHistory()
                 }
                 group.leave()
