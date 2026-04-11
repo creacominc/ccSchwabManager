@@ -1011,6 +1011,18 @@ class OrderRecommendationService: ObservableObject {
         var additionalOrders: [SalesCalcResultsRecord] = []
         var currentTaxLotIndex = 0
 
+        // Trim highest-cost lots so the remaining position is at least 15% profitable at current price (or 7% if 15% is not reachable without selling the max tradeable shares)
+        if let trimRemainingProfitOrder = createTrimForRemainingProfitSellOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            currentTaxLotIndex: &currentTaxLotIndex,
+            sharesAvailableForTrading: sharesAvailableForTrading,
+            atrValue: atrValue
+        ) {
+            additionalOrders.append(trimRemainingProfitOrder)
+        }
+
         // Create 1% higher trailing stop order
         if let higherTSOrder = createOnePercentHigherTrailingStopOrder(
             symbol: symbol,
@@ -1102,6 +1114,133 @@ class OrderRecommendationService: ObservableObject {
         }
 
         return additionalOrders
+    }
+
+    /// Sells the minimum whole shares, **highest cost-per-share first** (underwater lots included in that order), so the **remaining** position is at least `targetProfitPercent` profitable at `currentPrice`.
+    /// Also requires the **limit to be above blended cost** of the sold bundle: blended cost must be **strictly below** the 1×ATR-below-last price so the midpoint (or 1×ATR fallback) is a profitable fill. If the remainder-only minimum `k` is too small, share count is increased (still high-cost first) until the bundle average clears that bar or `maxWholeSellable` is reached.
+    /// Trailing stop is the percent from last down to that limit.
+    private func createTrimForRemainingProfitSellOrder(
+        symbol: String,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        currentTaxLotIndex: inout Int,
+        sharesAvailableForTrading: Double,
+        atrValue: Double
+    ) -> SalesCalcResultsRecord? {
+        _ = currentTaxLotIndex
+
+        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
+        let totalCost = sortedTaxLots.reduce(0.0) { $0 + $1.costBasis }
+        guard totalShares > 0, totalCost > 0 else { return nil }
+
+        let avgCostFullPosition = totalCost / totalShares
+        let currentProfitPercent = ((currentPrice - avgCostFullPosition) / avgCostFullPosition) * 100.0
+
+        // Only when the overall position is modestly profitable (trim up toward 15% on what you keep)
+        guard currentProfitPercent >= 2.0 && currentProfitPercent < 15.0 else { return nil }
+
+        let rawCap = min(floor(sharesAvailableForTrading), totalWholeSharesSellableInOrder(sortedTaxLots: sortedTaxLots))
+        guard rawCap >= 1 else { return nil }
+
+        // Leave at least one share in the position so "remaining P/L" is defined.
+        var maxWholeSellable = Int(rawCap)
+        while maxWholeSellable >= 1 {
+            let (remQty, _, ok) = remainingPositionAfterSellingWholeSharesFromHighestCost(
+                wholeSharesToSell: Double(maxWholeSellable),
+                sortedTaxLots: sortedTaxLots
+            )
+            if ok, remQty >= 1.0 { break }
+            maxWholeSellable -= 1
+        }
+        guard maxWholeSellable >= 1 else { return nil }
+
+        guard let profitIfSellMax = profitPercentRemainingAfterSellingK(
+            k: maxWholeSellable,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots
+        ) else { return nil }
+
+        let chosenTargetPercent: Double
+        if profitIfSellMax >= 15.0 - 1.0e-6 {
+            chosenTargetPercent = 15.0
+        } else if profitIfSellMax >= 7.0 - 1.0e-6 {
+            chosenTargetPercent = 7.0
+        } else {
+            return nil
+        }
+
+        guard let kRemainderMin = minimumWholeSharesToReachRemainingProfitAtLeast(
+            targetProfitPercent: chosenTargetPercent,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots,
+            maxWholeSharesToSell: maxWholeSellable
+        ) else { return nil }
+
+        let stopPriceOneATRBelow = currentPrice * (1.0 - atrValue / 100.0)
+
+        guard let sharesToSellWhole = minimumWholeSharesForTrimWithProfitableLimit(
+            kRemainderMin: kRemainderMin,
+            maxWholeSharesToSell: maxWholeSellable,
+            stopPriceOneATRBelow: stopPriceOneATRBelow,
+            sortedTaxLots: sortedTaxLots
+        ) else { return nil }
+
+        let sharesToSell = Double(sharesToSellWhole)
+        guard sharesToSell >= 1.0 && sharesToSell <= sharesAvailableForTrading else { return nil }
+
+        guard let costBasisResult = calculateCostBasisForShares(
+            sharesNeeded: sharesToSell,
+            startingTaxLotIndex: 0,
+            sortedTaxLots: sortedTaxLots,
+            cumulativeSharesUsed: 0.0
+        ) else { return nil }
+
+        let actualCostPerShare = costBasisResult.actualCostPerShare
+        let midPrice = (actualCostPerShare + stopPriceOneATRBelow) / 2.0
+        // If blended cost is far above last, the midpoint can sit at or above the market; use 1×ATR limit instead.
+        let finalTarget = midPrice < currentPrice ? midPrice : stopPriceOneATRBelow
+
+        guard finalTarget > 0, finalTarget < currentPrice else { return nil }
+        guard finalTarget > actualCostPerShare + 1.0e-6 else { return nil }
+
+        // Trail % from last down to the limit (wider than 1×ATR when using the cost/1ATR midpoint).
+        let targetTrailingStop = ((currentPrice - finalTarget) / currentPrice) * 100.0
+
+        guard targetTrailingStop >= 0.1 && targetTrailingStop <= 50.0 else { return nil }
+
+        let exit = max(finalTarget * (1.0 - 2.0 * atrValue / 100.0), 0.01)
+        let finalTotalGain = sharesToSell * (finalTarget - actualCostPerShare)
+        let gain = actualCostPerShare > 0 ? ((finalTarget - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
+
+        let label = chosenTargetPercent >= 14.5 ? "15" : "7"
+        let description = String(
+            format: "(Trim rem %@%%) SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f",
+            label,
+            Int(sharesToSell),
+            symbol,
+            finalTarget,
+            targetTrailingStop,
+            actualCostPerShare
+        )
+
+        let targetMode = midPrice < currentPrice ? "mid(cost,1ATR↓)" : "1ATR↓ fallback"
+        AppLogger.shared.debug(
+            "  Trim remaining profit order: targetRem=\(chosenTargetPercent)%, kRem≥\(kRemainderMin), shares=\(sharesToSell), \(targetMode) target=\(finalTarget), TS=\(targetTrailingStop)%, stop1ATR=\(stopPriceOneATRBelow), soldAvg=\(actualCostPerShare)"
+        )
+
+        return SalesCalcResultsRecord(
+            shares: sharesToSell,
+            rollingGainLoss: finalTotalGain,
+            breakEven: actualCostPerShare,
+            gain: gain,
+            sharesToSell: sharesToSell,
+            trailingStop: targetTrailingStop,
+            entry: stopPriceOneATRBelow,
+            target: finalTarget,
+            cancel: exit,
+            description: description,
+            openDate: "TrimRemP"
+        )
     }
     
     private func createOnePercentHigherTrailingStopOrder(
@@ -1847,6 +1986,131 @@ class OrderRecommendationService: ObservableObject {
         let actualCostPerShare = totalCostOfSharesSold / sharesToSell
         
         return (sharesToSell, totalGain, actualCostPerShare)
+    }
+
+    /// Sum of `floor(quantity)` per lot — whole shares that other sell helpers can move.
+    private func totalWholeSharesSellableInOrder(sortedTaxLots: [SalesCalcPositionsRecord]) -> Double {
+        sortedTaxLots.reduce(0.0) { $0 + floor($1.quantity) }
+    }
+
+    /// Removes `wholeSharesToSell` whole shares from the highest cost-per-share lots first (including underwater lots). Fractional tail in each lot stays in the remaining position.
+    private func remainingPositionAfterSellingWholeSharesFromHighestCost(
+        wholeSharesToSell: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> (remainingQuantity: Double, remainingCost: Double, consumedAllRequested: Bool) {
+        var sellLeft = floor(wholeSharesToSell)
+        var remQty = 0.0
+        var remCost = 0.0
+        for lot in sortedTaxLots {
+            let take = min(floor(lot.quantity), sellLeft)
+            let remainingInLot = lot.quantity - take
+            remQty += remainingInLot
+            remCost += remainingInLot * lot.costPerShare
+            sellLeft -= take
+        }
+        let consumedAll = sellLeft < 0.5
+        return (remQty, remCost, consumedAll)
+    }
+
+    private func remainingProfitPercentAtCurrentPrice(
+        remainingQuantity: Double,
+        remainingCost: Double,
+        currentPrice: Double
+    ) -> Double? {
+        guard remainingQuantity >= 1.0, remainingCost > 0 else { return nil }
+        let avg = remainingCost / remainingQuantity
+        guard avg > 0 else { return nil }
+        return ((currentPrice - avg) / avg) * 100.0
+    }
+
+    private func profitPercentRemainingAfterSellingK(
+        k: Int,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> Double? {
+        let (remQty, remCost, ok) = remainingPositionAfterSellingWholeSharesFromHighestCost(
+            wholeSharesToSell: Double(k),
+            sortedTaxLots: sortedTaxLots
+        )
+        guard ok else { return nil }
+        return remainingProfitPercentAtCurrentPrice(
+            remainingQuantity: remQty,
+            remainingCost: remCost,
+            currentPrice: currentPrice
+        )
+    }
+
+    /// Smallest integer `k` in `1...maxWholeSharesToSell` such that remaining position profit at `currentPrice` is at least `targetProfitPercent`. Selling is from highest cost lots first (includes underwater lots when needed).
+    private func minimumWholeSharesToReachRemainingProfitAtLeast(
+        targetProfitPercent: Double,
+        currentPrice: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord],
+        maxWholeSharesToSell: Int
+    ) -> Int? {
+        guard maxWholeSharesToSell >= 1 else { return nil }
+        guard let profitAtMax = profitPercentRemainingAfterSellingK(
+            k: maxWholeSharesToSell,
+            currentPrice: currentPrice,
+            sortedTaxLots: sortedTaxLots
+        ),
+            profitAtMax >= targetProfitPercent - 1.0e-6
+        else { return nil }
+
+        var lo = 1
+        var hi = maxWholeSharesToSell
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if let p = profitPercentRemainingAfterSellingK(k: mid, currentPrice: currentPrice, sortedTaxLots: sortedTaxLots),
+               p >= targetProfitPercent - 1.0e-6
+            {
+                hi = mid
+            } else {
+                lo = mid + 1
+            }
+        }
+        if let p = profitPercentRemainingAfterSellingK(k: lo, currentPrice: currentPrice, sortedTaxLots: sortedTaxLots),
+           p >= targetProfitPercent - 1.0e-6
+        {
+            return lo
+        }
+        return nil
+    }
+
+    private func blendedCostOfFirstKWholeSharesSortedHighCostFirst(
+        k: Int,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> Double? {
+        guard k >= 1 else { return nil }
+        guard let result = calculateCostBasisForShares(
+            sharesNeeded: Double(k),
+            startingTaxLotIndex: 0,
+            sortedTaxLots: sortedTaxLots,
+            cumulativeSharesUsed: 0.0
+        ) else { return nil }
+        guard abs(result.sharesUsed - Double(k)) < 0.5 else { return nil }
+        return result.actualCostPerShare
+    }
+
+    /// After `kRemainderMin` achieves remaining-position P/L, increase `k` (still high-cost-first) until blended cost of the sold bundle is **below** 1×ATR below last, so the trim limit is a profitable fill.
+    private func minimumWholeSharesForTrimWithProfitableLimit(
+        kRemainderMin: Int,
+        maxWholeSharesToSell: Int,
+        stopPriceOneATRBelow: Double,
+        sortedTaxLots: [SalesCalcPositionsRecord]
+    ) -> Int? {
+        let eps = 1.0e-6
+        guard kRemainderMin >= 1, kRemainderMin <= maxWholeSharesToSell else { return nil }
+        var k = kRemainderMin
+        while k <= maxWholeSharesToSell {
+            guard let avgCost = blendedCostOfFirstKWholeSharesSortedHighCostFirst(k: k, sortedTaxLots: sortedTaxLots) else {
+                return nil
+            }
+            if avgCost < stopPriceOneATRBelow - eps {
+                return k
+            }
+            k += 1
+        }
+        return nil
     }
     
     private func calculateCostBasisForShares(

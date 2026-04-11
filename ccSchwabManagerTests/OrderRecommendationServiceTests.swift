@@ -108,6 +108,232 @@ final class OrderRecommendationServiceTests: XCTestCase {
         // We're testing that the method completes without error
         XCTAssertNotNil(result, "Should return a result")
     }
+
+    /// Highest-cost lot is underwater at last; 11 shares hit ≥15% on the remainder but blended cost stays above 1×ATR-below-last until more cheaper shares are included (83 total).
+    func testTrimRemainingProfitOrder_IncludedWhenOverallProfitBetweenTwoAndFifteenPercent() async {
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 30.0,
+                price: 70.0,
+                costPerShare: 100.0,
+                marketValue: 2100.0,
+                costBasis: 3000.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2023-02-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 70.0,
+                price: 70.0,
+                costPerShare: 50.0,
+                marketValue: 4900.0,
+                costBasis: 3500.0
+            )
+        ]
+        let currentPrice = 70.0
+
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TRIM",
+            atrValue: 2.5,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 100,
+            currentPrice: currentPrice
+        )
+
+        guard let trimOrder = result.first(where: { $0.openDate == "TrimRemP" }) else {
+            XCTFail("Should emit trim-to-remaining-profit sell when overall P/L is between 2% and 15%")
+            return
+        }
+        XCTAssertEqual(trimOrder.shares, 83.0, accuracy: 0.001)
+        XCTAssertLessThan(trimOrder.breakEven, 68.26, "Blended sold cost should sit below ~1×ATR below last for a profitable limit")
+        XCTAssertTrue(trimOrder.description.contains("Trim rem 15"), "Description should indicate 15% remaining-profit target when achievable")
+    }
+
+    func testTrimRemainingProfitOrder_ExcludedWhenOverallProfitBelowTwoPercent() async {
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 30.0,
+                price: 66.0,
+                costPerShare: 100.0,
+                marketValue: 1980.0,
+                costBasis: 3000.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2023-02-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 70.0,
+                price: 66.0,
+                costPerShare: 50.0,
+                marketValue: 4620.0,
+                costBasis: 3500.0
+            )
+        ]
+
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TRIM",
+            atrValue: 2.5,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 100,
+            currentPrice: 66.0
+        )
+
+        XCTAssertNil(result.first { $0.openDate == "TrimRemP" }, "Should not offer trim order when overall profit is under 2%")
+    }
+
+    /// Even if the cheapest trim for remainder P/L is one share, that share must not sell at a loss at the limit.
+    /// Here: 10 @ 46 (sold first) + 90 @ 42; last 48; ATR 2.5% → stop ~46.8, so one share @ 46 is profitable at the midpoint limit.
+    /// Cap tradeable at 85 so selling *all* tradeable still leaves remainder P/L under 15% (fallback label 7%) but ≥7%.
+    func testTrimRemainingProfitOrder_FallsBackToSevenPercentTarget() async {
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 10.0,
+                price: 48.0,
+                costPerShare: 46.0,
+                marketValue: 480.0,
+                costBasis: 460.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2023-02-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 90.0,
+                price: 48.0,
+                costPerShare: 42.0,
+                marketValue: 4320.0,
+                costBasis: 3780.0
+            )
+        ]
+
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TRIM7",
+            atrValue: 2.5,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 85,
+            currentPrice: 48.0
+        )
+
+        guard let trimOrder = result.first(where: { $0.openDate == "TrimRemP" }) else {
+            XCTFail("Expected trim order with 7% remaining-profit fallback")
+            return
+        }
+        XCTAssertEqual(trimOrder.shares, 1.0, accuracy: 0.001)
+        XCTAssertTrue(trimOrder.description.contains("Trim rem 7"))
+        let stopOneAtrBelow = 48.0 * (1.0 - 2.5 / 100.0)
+        XCTAssertLessThan(trimOrder.breakEven, stopOneAtrBelow, "Sold bundle avg cost must be below 1×ATR below last for a profitable limit")
+        XCTAssertGreaterThan(trimOrder.target, trimOrder.breakEven, "Limit must clear blended cost")
+    }
+
+    /// Trim is only offered when overall position P/L is in [2%, 15%).
+    func testTrimRemainingProfitOrder_ExcludedWhenOverallProfitAtOrAboveFifteenPercent() async {
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 100.0,
+                price: 12.0,
+                costPerShare: 10.0,
+                marketValue: 1200.0,
+                costBasis: 1000.0
+            )
+        ]
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TRIM15",
+            atrValue: 2.5,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 100,
+            currentPrice: 12.0
+        )
+        XCTAssertNil(result.first { $0.openDate == "TrimRemP" })
+    }
+
+    /// If selling every tradeable whole share (high-cost first) still leaves remainder P/L under 7%, no trim target applies.
+    func testTrimRemainingProfitOrder_ExcludedWhenMaxSellLeavesRemainderBelowSevenPercent() async {
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 5.0,
+                price: 57.0,
+                costPerShare: 60.0,
+                marketValue: 285.0,
+                costBasis: 300.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2023-02-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 95.0,
+                price: 57.0,
+                costPerShare: 55.0,
+                marketValue: 5415.0,
+                costBasis: 5225.0
+            )
+        ]
+        // Weighted avg cost 55.25 → ~3.2% profit vs 57; selling 99 shares leaves one @ 55 → ~3.6% on remainder (< 7%).
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TRIMLOWREM",
+            atrValue: 2.5,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 99,
+            currentPrice: 57.0
+        )
+        XCTAssertNil(result.first { $0.openDate == "TrimRemP" })
+    }
+
+    /// Midpoint path: limit should be average of (blended sold cost, 1×ATR below last) when that midpoint is below last.
+    func testTrimRemainingProfitOrder_TargetUsesMidpointWhenBelowLast() async {
+        let currentPrice = 48.0
+        let atr = 2.5
+        let stopBelow = currentPrice * (1.0 - atr / 100.0) // 46.8
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 10.0,
+                price: currentPrice,
+                costPerShare: 46.0,
+                marketValue: 480.0,
+                costBasis: 460.0
+            ),
+            SalesCalcPositionsRecord(
+                openDate: "2023-02-01",
+                gainLossPct: 0,
+                gainLossDollar: 0,
+                quantity: 90.0,
+                price: currentPrice,
+                costPerShare: 42.0,
+                marketValue: 4320.0,
+                costBasis: 3780.0
+            )
+        ]
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "TRIMMID",
+            atrValue: atr,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 85,
+            currentPrice: currentPrice
+        )
+        guard let trim = result.first(where: { $0.openDate == "TrimRemP" }) else {
+            XCTFail("Expected trim for midpoint assertion")
+            return
+        }
+        let expectedMid = (trim.breakEven + stopBelow) / 2.0
+        XCTAssertEqual(trim.target, expectedMid, accuracy: 0.02, "Target should be midpoint of sold avg and 1×ATR-below-last")
+        XCTAssertLessThan(trim.target, currentPrice)
+    }
     
     func testMinATROrder_UsesCorrectTrailingStop() async {
         // Given: A position with high profitability that should trigger Min ATR order
