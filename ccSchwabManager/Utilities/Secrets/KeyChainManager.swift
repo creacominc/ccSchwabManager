@@ -31,7 +31,9 @@ struct KeychainManager
         }
         else
         {
+            #if DEBUG
             print( "Secrets data length: \(secretsData!.count)" )
+            #endif
         }
         let keychainItem = [
             kSecClass as String: kSecClassGenericPassword,

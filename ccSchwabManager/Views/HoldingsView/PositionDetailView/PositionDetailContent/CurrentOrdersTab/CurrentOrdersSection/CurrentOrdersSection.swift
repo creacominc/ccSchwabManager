@@ -17,15 +17,6 @@ struct CurrentOrdersSection: View {
     private var currentOrders: [Order] {
         var filteredOrders: [Order] = []
         
-        print("[CurrentOrdersSection] Checking open orders for symbol: \(symbol)")
-        print("[CurrentOrdersSection] Total orders passed in: \(orders.count)")
-        
-        // Debug: Log all orders being processed
-        print("[CurrentOrdersSection] All orders being processed:")
-        for (index, order) in orders.enumerated() {
-            print("[CurrentOrdersSection]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
-        }
-        
         for order in orders {
             // Check if order matches the symbol
             var orderMatchesSymbol = false
@@ -68,31 +59,21 @@ struct CurrentOrdersSection: View {
             }
             
             if orderMatchesSymbol {
-                print("[CurrentOrdersSection] Found order for symbol \(self.symbol): ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
-                
                 // For OCO orders, only add if there are open child orders
                 if order.orderStrategyType == .OCO {
                     if hasOpenChildOrder {
-                        print("[CurrentOrdersSection] OCO order has open child orders")
                         filteredOrders.append(order)
-                    } else {
-                        print("[CurrentOrdersSection] OCO order has no open child orders")
                     }
                 } else {
                     // For non-OCO orders, check if order status is open
                     if let status = order.status,
                        let activeStatus = ActiveOrderStatus(from: status, order: order),
                        openStatuses.contains(activeStatus) {
-                        print("[CurrentOrdersSection] Order is open: \(activeStatus.shortDisplayName)")
                         filteredOrders.append(order)
-                    } else {
-                        print("[CurrentOrdersSection] Order is not open: \(order.status?.rawValue ?? "nil")")
                     }
                 }
             }
         }
-        
-        print("[CurrentOrdersSection] Found \(filteredOrders.count) open orders for symbol \(symbol)")
         
         // Deduplicate orders by orderId to prevent UI duplication
         var seenOrderIds: Set<Int64> = []
@@ -105,14 +86,6 @@ struct CurrentOrdersSection: View {
                     uniqueOrders.append(order)
                 }
             }
-        }
-        
-        print("[CurrentOrdersSection] After deduplication: \(uniqueOrders.count) unique orders")
-        
-        // Debug: Print all order IDs being returned
-        print("[CurrentOrdersSection] Order IDs being returned:")
-        for (index, order) in uniqueOrders.enumerated() {
-            print("[CurrentOrdersSection]   \(index + 1). ID=\(order.orderId?.description ?? "nil"), Status=\(order.status?.rawValue ?? "nil"), StrategyType=\(order.orderStrategyType?.rawValue ?? "nil")")
         }
         
         return uniqueOrders
@@ -166,9 +139,6 @@ struct CurrentOrdersSection: View {
                 Text("No open orders for \(symbol)")
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
-                    .onAppear {
-                        print("[CurrentOrdersSection] No open orders for symbol: \(symbol)")
-                    }
             } else {
                 HStack(alignment: .top, spacing: 16) {
                     // Orders list
