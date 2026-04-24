@@ -115,6 +115,42 @@ final class OrderRecommendationViewModelTests: XCTestCase {
         XCTAssertNotNil(viewModel.currentOrders, "Current orders should be set")
     }
     
+    func testUpdateRecommendedOrders_ZeroSharesAvailable_StillUpdatesBuyOrders() async {
+        // Given
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2026-04-10",
+                gainLossPct: 8.05,
+                gainLossDollar: 93.26,
+                quantity: 2.0,
+                price: 625.88,
+                costPerShare: 579.25,
+                marketValue: 1251.76,
+                costBasis: 1158.50
+            )
+        ]
+        let currentPrice = 625.88
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+        
+        // When
+        await viewModel.updateRecommendedOrders(
+            symbol: "PWR",
+            atrValue: 3.089276873669397,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 0,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
+        )
+        
+        // Then
+        XCTAssertTrue(viewModel.recommendedSellOrders.isEmpty, "Sell orders should remain unavailable when no shares are tradeable")
+        XCTAssertFalse(viewModel.recommendedBuyOrders.isEmpty, "Buy orders should not depend on shares available for selling")
+        XCTAssertEqual(viewModel.currentOrders.count, viewModel.recommendedBuyOrders.count, "Current orders should include the available buy recommendations")
+    }
+    
     // MARK: - Cache Management Tests
     
     func testClearCache_ResetsAllState() {

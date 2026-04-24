@@ -63,8 +63,8 @@ class OrderRecommendationViewModel: ObservableObject {
         currentProfitPercent: Double
     ) async {
         
-        // Early validation
-        guard !taxLotData.isEmpty, sharesAvailableForTrading > 0 else {
+        // Buy recommendations can still be useful when no shares are currently sellable.
+        guard !taxLotData.isEmpty else {
             recommendedSellOrders = []
             recommendedBuyOrders = []
             currentOrders = []

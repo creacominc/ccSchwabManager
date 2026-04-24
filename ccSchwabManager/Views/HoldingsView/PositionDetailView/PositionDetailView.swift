@@ -718,8 +718,7 @@ struct PositionDetailView: View
               let atrValue = snapshot.atrValue,
               let taxLotData = snapshot.taxLotData,
               let sharesAvailableForTrading = snapshot.sharesAvailableForTrading,
-              !taxLotData.isEmpty,
-              sharesAvailableForTrading > 0 else {
+              !taxLotData.isEmpty else {
             AppLogger.shared.debug("PositionDetailView: Missing required data for order recommendations for \(symbol)")
             return
         }
