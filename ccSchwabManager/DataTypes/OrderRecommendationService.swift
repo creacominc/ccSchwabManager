@@ -16,13 +16,15 @@ class OrderRecommendationService: ObservableObject {
     ///   - taxLotData: Tax lot information for the position
     ///   - sharesAvailableForTrading: Number of shares available for trading
     ///   - currentPrice: Current market price
+    ///   - currentProfitPercent: Current profit percentage from the account-level position P/L
     /// - Returns: Array of recommended sell orders
     func calculateRecommendedSellOrders(
         symbol: String,
         atrValue: Double,
         taxLotData: [SalesCalcPositionsRecord],
         sharesAvailableForTrading: Double,
-        currentPrice: Double
+        currentPrice: Double,
+        currentProfitPercent: Double? = nil
     ) async -> [SalesCalcResultsRecord] {
         
         AppLogger.shared.debug("=== calculateRecommendedSellOrders ===")
@@ -32,6 +34,14 @@ class OrderRecommendationService: ObservableObject {
         guard atrValue >= 0.1 && atrValue <= 50.0 else {
             AppLogger.shared.error("⚠️ Invalid ATR value: \(atrValue)%. Expected range: 0.1% to 50%")
             return []
+        }
+        
+        if let currentProfitPercent {
+            let minimumProfitPercent = atrValue * 2.0
+            guard currentProfitPercent >= minimumProfitPercent else {
+                AppLogger.shared.debug("No sell orders for \(symbol): overall P/L \(currentProfitPercent)% is below 2*ATR threshold \(minimumProfitPercent)%")
+                return []
+            }
         }
         
         // Early validation

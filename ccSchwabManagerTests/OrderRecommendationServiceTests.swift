@@ -108,6 +108,25 @@ final class OrderRecommendationServiceTests: XCTestCase {
         // We're testing that the method completes without error
         XCTAssertNotNil(result, "Should return a result")
     }
+    
+    func testCalculateRecommendedSellOrders_OverallProfitBelowTwoATR_ReturnsEmptyArray() async {
+        // Given
+        let taxLots = createMockTaxLots()
+        let currentPrice = 160.0
+        
+        // When
+        let result = await service.calculateRecommendedSellOrders(
+            symbol: "CSV",
+            atrValue: 2.584958116368578,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 63.9977,
+            currentPrice: currentPrice,
+            currentProfitPercent: -1.2856769493484261
+        )
+        
+        // Then
+        XCTAssertTrue(result.isEmpty, "Should not recommend sell orders when overall position P/L is below 2*ATR")
+    }
 
     /// Highest-cost lot is underwater at last; 11 shares hit ≥15% on the remainder but blended cost stays above 1×ATR-below-last until more cheaper shares are included (83 total).
     func testTrimRemainingProfitOrder_IncludedWhenOverallProfitBetweenTwoAndFifteenPercent() async {

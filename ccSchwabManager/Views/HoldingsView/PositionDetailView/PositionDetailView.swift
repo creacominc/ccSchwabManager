@@ -756,7 +756,8 @@ struct PositionDetailView: View
             atrValue: atrValue,
             taxLotData: taxLotData,
             sharesAvailableForTrading: sharesAvailableForTrading,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            currentProfitPercent: currentProfitPercent
         )
         
         async let buyOrders = orderService.calculateRecommendedBuyOrders(

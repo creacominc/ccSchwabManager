@@ -35,6 +35,7 @@ class OrderRecommendationViewModel: ObservableObject {
         let taxLotDataHash: Int
         let sharesAvailableForTrading: Double
         let currentPrice: Double
+        let currentProfitPercent: Double
         let timestamp: Date
     }
     
@@ -77,7 +78,8 @@ class OrderRecommendationViewModel: ObservableObject {
             atrValue: atrValue,
             taxLotData: taxLotData,
             sharesAvailableForTrading: sharesAvailableForTrading,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            currentProfitPercent: currentProfitPercent
         ) {
             print("✅ Using cached orders for \(symbol)")
             recommendedSellOrders = cachedData.sellOrders
@@ -93,7 +95,8 @@ class OrderRecommendationViewModel: ObservableObject {
             atrValue: atrValue,
             taxLotData: taxLotData,
             sharesAvailableForTrading: sharesAvailableForTrading,
-            currentPrice: currentPrice
+            currentPrice: currentPrice,
+            currentProfitPercent: currentProfitPercent
         )
         
         async let buyOrders = orderService.calculateRecommendedBuyOrders(
@@ -143,6 +146,7 @@ class OrderRecommendationViewModel: ObservableObject {
             taxLotData: taxLotData,
             sharesAvailableForTrading: sharesAvailableForTrading,
             currentPrice: currentPrice,
+            currentProfitPercent: currentProfitPercent,
             sellOrders: sellResults,
             buyOrders: buyResults,
             allOrders: currentOrders
@@ -248,7 +252,8 @@ class OrderRecommendationViewModel: ObservableObject {
         atrValue: Double,
         taxLotData: [SalesCalcPositionsRecord],
         sharesAvailableForTrading: Double,
-        currentPrice: Double
+        currentPrice: Double,
+        currentProfitPercent: Double
     ) -> CachedOrderData? {
         
         guard let cachedData = cachedOrders[symbol] else { 
@@ -269,6 +274,7 @@ class OrderRecommendationViewModel: ObservableObject {
               cachedData.atrValue == atrValue,
               cachedData.sharesAvailableForTrading == sharesAvailableForTrading,
               cachedData.currentPrice == currentPrice,
+              cachedData.currentProfitPercent == currentProfitPercent,
               cachedData.taxLotDataHash == calculateTaxLotDataHash(taxLotData) else {
             
             print("❌ Cache parameters don't match for \(symbol):")
@@ -276,6 +282,7 @@ class OrderRecommendationViewModel: ObservableObject {
             print("  - atrValue: \(cachedData.atrValue) vs \(atrValue)")
             print("  - sharesAvailableForTrading: \(cachedData.sharesAvailableForTrading) vs \(sharesAvailableForTrading)")
             print("  - currentPrice: \(cachedData.currentPrice) vs \(currentPrice)")
+            print("  - currentProfitPercent: \(cachedData.currentProfitPercent) vs \(currentProfitPercent)")
             print("  - taxLotDataHash: \(cachedData.taxLotDataHash) vs \(calculateTaxLotDataHash(taxLotData))")
             return nil
         }
@@ -291,6 +298,7 @@ class OrderRecommendationViewModel: ObservableObject {
         taxLotData: [SalesCalcPositionsRecord],
         sharesAvailableForTrading: Double,
         currentPrice: Double,
+        currentProfitPercent: Double,
         sellOrders: [SalesCalcResultsRecord],
         buyOrders: [BuyOrderRecord],
         allOrders: [(String, Any)]
@@ -304,6 +312,7 @@ class OrderRecommendationViewModel: ObservableObject {
             taxLotDataHash: calculateTaxLotDataHash(taxLotData),
             sharesAvailableForTrading: sharesAvailableForTrading,
             currentPrice: currentPrice,
+            currentProfitPercent: currentProfitPercent,
             timestamp: Date()
         )
         

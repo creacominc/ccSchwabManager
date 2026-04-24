@@ -115,6 +115,31 @@ final class OrderRecommendationViewModelTests: XCTestCase {
         XCTAssertNotNil(viewModel.currentOrders, "Current orders should be set")
     }
     
+    func testUpdateRecommendedOrders_OverallProfitBelowTwoATR_OnlyUpdatesBuyOrders() async {
+        // Given
+        let taxLots = createMockTaxLots()
+        let currentPrice = 160.0
+        let (totalShares, totalCost, avgCostPerShare, _) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+        
+        // When
+        await viewModel.updateRecommendedOrders(
+            symbol: "CSV",
+            atrValue: 2.584958116368578,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 63.9977,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: -1.2856769493484261
+        )
+        
+        // Then
+        XCTAssertTrue(viewModel.recommendedSellOrders.isEmpty, "Sell orders should be suppressed when overall position P/L is below 2*ATR")
+        XCTAssertFalse(viewModel.recommendedBuyOrders.isEmpty, "Buy orders should still be available")
+        XCTAssertEqual(viewModel.currentOrders.count, viewModel.recommendedBuyOrders.count, "Current orders should only include buy recommendations")
+    }
+    
     func testUpdateRecommendedOrders_ZeroSharesAvailable_StillUpdatesBuyOrders() async {
         // Given
         let taxLots = [
