@@ -1054,6 +1054,168 @@ final class OrderRecommendationServiceTests: XCTestCase {
             XCTAssertLessThan(order.orderCost, 2000.0, "Order cost should be under $2000")
         }
     }
+
+    func testBuyOrder_IncludesWhenOverFiveATROrFifteenPercentOrder_WithPositiveProfitExample() async {
+        // Given: current profit 5%, ATR 2% -> trigger = min(15, 10) = 10%, TS = 10 - 5 = 5%
+        let avgCostPerShare = 100.0
+        let currentPrice = 105.0
+        let atrValue = 2.0
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 5.0,
+                gainLossDollar: 50.0,
+                quantity: 10.0,
+                price: currentPrice,
+                costPerShare: avgCostPerShare,
+                marketValue: 1050.0,
+                costBasis: 1000.0
+            )
+        ]
+        let (totalShares, totalCost, avgCost, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+
+        // When
+        let result = service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 10.0,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCost,
+            currentProfitPercent: currentProfitPercent
+        )
+
+        // Then
+        let order = result.first { $0.description.contains("When over 5*ATR or 15%") }
+        XCTAssertNotNil(order, "Should include when-over-5*ATR-or-15% recommendation when current profit is below trigger")
+        if let order {
+            XCTAssertEqual(order.shares, 1.0, accuracy: 0.001)
+            XCTAssertEqual(order.trailingStop, 5.0, accuracy: 0.01, "TS should be trigger-profit minus current profit (10 - 5)")
+        }
+    }
+
+    func testBuyOrder_IncludesWhenOverFiveATROrFifteenPercentOrder_WithNegativeProfitAndFifteenCap() async {
+        // Given: current profit -2%, ATR 6% -> trigger = min(15, 30) = 15%, TS = 15 - (-2) = 17%
+        let avgCostPerShare = 100.0
+        let currentPrice = 98.0
+        let atrValue = 6.0
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: -2.0,
+                gainLossDollar: -20.0,
+                quantity: 10.0,
+                price: currentPrice,
+                costPerShare: avgCostPerShare,
+                marketValue: 980.0,
+                costBasis: 1000.0
+            )
+        ]
+        let (totalShares, totalCost, avgCost, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+
+        // When
+        let result = service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 10.0,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCost,
+            currentProfitPercent: currentProfitPercent
+        )
+
+        // Then
+        let order = result.first { $0.description.contains("When over 5*ATR or 15%") }
+        XCTAssertNotNil(order, "Should include when-over recommendation for negative-profit position")
+        if let order {
+            XCTAssertEqual(order.shares, 1.0, accuracy: 0.001)
+            XCTAssertEqual(order.trailingStop, 17.0, accuracy: 0.01, "TS should be 15 - (-2) when 15% cap applies")
+        }
+    }
+
+    func testBuyOrder_IncludesWhenOverFiveATROrFifteenPercentOrder_WithNegativeProfitAndATRTrigger() async {
+        // Given: current profit -2%, ATR 2% -> trigger = min(15, 10) = 10%, TS = 10 - (-2) = 12%
+        let avgCostPerShare = 100.0
+        let currentPrice = 98.0
+        let atrValue = 2.0
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: -2.0,
+                gainLossDollar: -20.0,
+                quantity: 10.0,
+                price: currentPrice,
+                costPerShare: avgCostPerShare,
+                marketValue: 980.0,
+                costBasis: 1000.0
+            )
+        ]
+        let (totalShares, totalCost, avgCost, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+
+        // When
+        let result = service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 10.0,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCost,
+            currentProfitPercent: currentProfitPercent
+        )
+
+        // Then
+        let order = result.first { $0.description.contains("When over 5*ATR or 15%") }
+        XCTAssertNotNil(order, "Should include when-over recommendation for negative-profit position below ATR trigger")
+        if let order {
+            XCTAssertEqual(order.shares, 1.0, accuracy: 0.001)
+            XCTAssertEqual(order.trailingStop, 12.0, accuracy: 0.01, "TS should be 10 - (-2) when ATR trigger applies")
+        }
+    }
+
+    func testBuyOrder_WhenOverFiveATROrFifteenPercentOrder_NotIncludedAtOrAboveTrigger() async {
+        // Given: current profit 12%, ATR 2% -> trigger = 10%, so order should not be emitted
+        let avgCostPerShare = 100.0
+        let currentPrice = 112.0
+        let atrValue = 2.0
+        let taxLots = [
+            SalesCalcPositionsRecord(
+                openDate: "2023-01-01",
+                gainLossPct: 12.0,
+                gainLossDollar: 120.0,
+                quantity: 10.0,
+                price: currentPrice,
+                costPerShare: avgCostPerShare,
+                marketValue: 1120.0,
+                costBasis: 1000.0
+            )
+        ]
+        let (totalShares, totalCost, avgCost, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+
+        // When
+        let result = service.calculateRecommendedBuyOrders(
+            symbol: "TEST",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 10.0,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCost,
+            currentProfitPercent: currentProfitPercent
+        )
+
+        // Then
+        XCTAssertNil(
+            result.first { $0.description.contains("When over 5*ATR or 15%") },
+            "Should not include when-over recommendation when current profit is already at or above trigger"
+        )
+    }
     
     // MARK: - Performance Tests
     func testPerformance_CalculateRecommendedSellOrders()
