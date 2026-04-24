@@ -407,6 +407,17 @@ class OrderRecommendationService: ObservableObject {
             }
         }
 
+        // Add 1-share buy that submits once position profit reaches min(5*ATR, 15%).
+        // This fills the gap for newly bought or only slightly profitable positions.
+        if let whenOverFiveATROrFifteenOrder = createWhenOverFiveATROrFifteenPercentBuyOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            atrValue: atrValue,
+            currentProfitPercent: currentProfitPercent
+        ) {
+            recommended.append(whenOverFiveATROrFifteenOrder)
+        }
+
         // 1-share buy: trailing stop = 2× the largest trailing stop among the other buy options already generated (e.g. max buy TS 9.49% → 18.98%)
         if let doubleMaxBuyTrailBuy = createOneShareBuyOrderDoublingMaxBuyTrail(
             symbol: symbol,
@@ -2508,6 +2519,55 @@ class OrderRecommendationService: ObservableObject {
             entryPrice: entryPrice,
             trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,
+            currentGainPercent: currentProfitPercent,
+            sharesToBuy: sharesToBuy,
+            orderCost: orderCost,
+            description: formattedDescription,
+            orderType: "BUY",
+            submitDate: "",
+            isImmediate: false
+        )
+    }
+
+    /// Creates a one-share buy recommendation that triggers when current holdings
+    /// become at least min(5*ATR%, 15%) profitable.
+    private func createWhenOverFiveATROrFifteenPercentBuyOrder(
+        symbol: String,
+        currentPrice: Double,
+        atrValue: Double,
+        currentProfitPercent: Double
+    ) -> BuyOrderRecord? {
+        let triggerProfitPercent = min(15.0, 5.0 * atrValue)
+        guard currentProfitPercent < triggerProfitPercent else { return nil }
+
+        let sharesToBuy: Double = 1.0
+        let trailingStopPercent = max(0.1, min(50.0, triggerProfitPercent - currentProfitPercent))
+        let stopPrice = currentPrice * (1.0 + trailingStopPercent / 100.0)
+        let finalTargetPrice = stopPrice * 1.02
+        let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
+        let orderCost = sharesToBuy * finalTargetPrice
+        guard orderCost < 2000.0 else { return nil }
+
+        let formattedDescription = String(
+            format: "BUY %.0f %@ (When over 5*ATR or 15%%) Trigger=%.2f%% CurrP/L=%.2f%% Target=%.2f TS=%.2f%% Cost=%.2f",
+            sharesToBuy,
+            symbol,
+            triggerProfitPercent,
+            currentProfitPercent,
+            finalTargetPrice,
+            trailingStopPercent,
+            orderCost
+        )
+
+        guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else { return nil }
+        AppLogger.shared.debug("  One-share when-over-5*ATR-or-15% buy: trigger=\(triggerProfitPercent)%, currentP/L=\(currentProfitPercent)%, TS=\(trailingStopPercent)%")
+
+        return BuyOrderRecord(
+            shares: sharesToBuy,
+            targetBuyPrice: finalTargetPrice,
+            entryPrice: entryPrice,
+            trailingStop: trailingStopPercent,
+            targetGainPercent: triggerProfitPercent,
             currentGainPercent: currentProfitPercent,
             sharesToBuy: sharesToBuy,
             orderCost: orderCost,
