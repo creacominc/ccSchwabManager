@@ -9,6 +9,10 @@ struct CurrentOrdersTab: View
     @Binding var marketValue: Double
     let atrValue: Double // Initial value from parent, will be recomputed
     let lastPrice: Double
+    var quoteData: QuoteData? = nil
+    var recommendedSellOrders: [SalesCalcResultsRecord] = []
+    var recommendedBuyOrders: [BuyOrderRecord] = []
+    var recommendationsAvailable: Bool = false
 
     var body: some View
     {
@@ -43,9 +47,17 @@ struct CurrentOrdersTab: View
                     .background(Color.blue.opacity(0.1))
                     
                     // Section Content
-                    CurrentOrdersSection(symbol: symbol, orders: orders)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                    CurrentOrdersSection(
+                        symbol: symbol,
+                        orders: orders,
+                        quote: quoteData?.quote,
+                        lastPriceFallback: lastPrice,
+                        recommendedSellOrders: recommendedSellOrders,
+                        recommendedBuyOrders: recommendedBuyOrders,
+                        recommendationsAvailable: recommendationsAvailable
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(8)

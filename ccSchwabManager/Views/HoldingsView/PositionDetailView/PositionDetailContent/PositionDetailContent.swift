@@ -67,6 +67,32 @@ struct PositionDetailContent: View
         )
     }
 
+    /// Cached recommendations are reused without forcing a recompute. Falls back to empty
+    /// arrays with `recommendationsAvailable = false` until the OCO tab populates the cache.
+    private var currentOrdersTabView: some View
+    {
+        let cached = SecurityDataCacheManager.shared.snapshot(for: symbol)
+        let sellRecs = cached?.recommendedSellOrders ?? []
+        let buyRecs = cached?.recommendedBuyOrders ?? []
+        let isReady = cached?.isLoaded(.orderRecommendations) == true
+            || cached?.recommendedSellOrders != nil
+            || cached?.recommendedBuyOrders != nil
+
+        return CurrentOrdersTab(
+            symbol: symbol,
+            orders: orders,
+            position: position,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
+            atrValue: atrValue,
+            lastPrice: getCurrentPrice(),
+            quoteData: quoteData,
+            recommendedSellOrders: sellRecs,
+            recommendedBuyOrders: buyRecs,
+            recommendationsAvailable: isReady
+        )
+    }
+
     var body: some View
     {
         VStack(spacing: 0)
@@ -213,14 +239,7 @@ struct PositionDetailContent: View
                                 lastPrice: getCurrentPrice()
                             )
                         case 4:
-                            CurrentOrdersTab(
-                                symbol: symbol, orders: orders,
-                                position: position,
-                                sharesAvailableForTrading: $sharesAvailableForTrading,
-                                marketValue: $marketValue,
-                                atrValue: atrValue,
-                                lastPrice: getCurrentPrice()
-                            )
+                            currentOrdersTabView
                         case 5:
                             OCOOrdersTab(
                                 symbol: symbol,

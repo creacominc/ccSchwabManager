@@ -3,7 +3,12 @@ import SwiftUI
 struct OrderGroupView: View {
     let order: Order
     @Binding var selectedOrderGroups: Set<Int64>
-    
+    var quote: Quote? = nil
+    var lastPriceFallback: Double? = nil
+    var recommendedSellOrders: [SalesCalcResultsRecord] = []
+    var recommendedBuyOrders: [BuyOrderRecord] = []
+    var recommendationsAvailable: Bool = false
+
     private var openStatuses: [OrderStatus] {
         return [.awaitingParentOrder, .awaitingCondition, .awaitingStopCondition, .awaitingManualReview, 
                 .accepted, .pendingActivation, .queued, .working, .new, .awaitingReleaseTime, 
@@ -99,8 +104,16 @@ struct OrderGroupView: View {
                     // Order details
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(displayableOrders, id: \.orderId) { displayOrder in
-                            OrderDetailRow(order: displayOrder, groupOrderId: groupOrderId)
-                                .padding(.vertical, 2)
+                            OrderDetailRow(
+                                order: displayOrder,
+                                groupOrderId: groupOrderId,
+                                quote: quote,
+                                lastPriceFallback: lastPriceFallback,
+                                recommendedSellOrders: recommendedSellOrders,
+                                recommendedBuyOrders: recommendedBuyOrders,
+                                recommendationsAvailable: recommendationsAvailable
+                            )
+                            .padding(.vertical, 2)
                         }
                     }
                     .background(GeometryReader { geo in
@@ -133,8 +146,16 @@ struct OrderGroupView: View {
                     .buttonStyle(PlainButtonStyle())
 
                     // Order details
-                    OrderDetailRow(order: singleOrder, groupOrderId: groupOrderId)
-                        .padding(.vertical, 2)
+                    OrderDetailRow(
+                        order: singleOrder,
+                        groupOrderId: groupOrderId,
+                        quote: quote,
+                        lastPriceFallback: lastPriceFallback,
+                        recommendedSellOrders: recommendedSellOrders,
+                        recommendedBuyOrders: recommendedBuyOrders,
+                        recommendationsAvailable: recommendationsAvailable
+                    )
+                    .padding(.vertical, 2)
 
                     Spacer()
                 }

@@ -3,6 +3,11 @@ import SwiftUI
 struct CurrentOrdersSection: View {
     let symbol: String
     let orders: [Order]
+    var quote: Quote? = nil
+    var lastPriceFallback: Double? = nil
+    var recommendedSellOrders: [SalesCalcResultsRecord] = []
+    var recommendedBuyOrders: [BuyOrderRecord] = []
+    var recommendationsAvailable: Bool = false
     @State private var selectedOrderGroups: Set<Int64> = []
     @State private var showingErrorAlert = false
     @State private var errorMessage = ""
@@ -116,7 +121,13 @@ struct CurrentOrdersSection: View {
             HStack {
                 Text("Current Orders")
                     .font(.headline)
-                
+
+                if !recommendationsAvailable {
+                    Text("(recommendations not loaded — open the OCO tab to compute)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+
                 Spacer()
                 
                 Button(selectedOrderGroups.count == currentOrders.count ? "Deselect All" : "Select All") {
@@ -147,7 +158,12 @@ struct CurrentOrdersSection: View {
                             ForEach(currentOrders) { order in
                                 OrderGroupView(
                                     order: order,
-                                    selectedOrderGroups: $selectedOrderGroups
+                                    selectedOrderGroups: $selectedOrderGroups,
+                                    quote: quote,
+                                    lastPriceFallback: lastPriceFallback,
+                                    recommendedSellOrders: recommendedSellOrders,
+                                    recommendedBuyOrders: recommendedBuyOrders,
+                                    recommendationsAvailable: recommendationsAvailable
                                 )
                             }
                         }
