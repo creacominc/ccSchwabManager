@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct OrderDetailRow: View {
+    private struct DeltaLabel: Identifiable {
+        let id = UUID()
+        let text: String
+        let sentiment: OrderComparisonInfo.DeltaSentiment
+    }
+
     let order: Order
     let groupOrderId: Int64?
     /// Latest quote for the symbol; used to estimate the live trailing stop price.
@@ -248,13 +254,13 @@ struct OrderDetailRow: View {
 
                 if let comparison = comparison, hasAnyDelta(comparison) {
                     HStack(spacing: 6) {
-                        ForEach(deltaLabels(comparison), id: \.self) { label in
-                            Text(label)
+                        ForEach(deltaLabels(comparison)) { label in
+                            Text(label.text)
                                 .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(deltaTextColor(label.sentiment))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(Color.secondary.opacity(0.08))
+                                .background(deltaBackgroundColor(label.sentiment))
                                 .cornerRadius(3)
                         }
                         Spacer(minLength: 0)
@@ -289,21 +295,57 @@ struct OrderDetailRow: View {
             || comparison.estStopDelta != nil
     }
 
-    private func deltaLabels(_ comparison: OrderComparisonInfo) -> [String] {
-        var labels: [String] = []
+    private func deltaLabels(_ comparison: OrderComparisonInfo) -> [DeltaLabel] {
+        var labels: [DeltaLabel] = []
         if let qty = comparison.qtyDelta {
-            labels.append("ΔQty \(signed(qty, format: "%.0f"))")
+            labels.append(
+                DeltaLabel(
+                    text: "ΔQty \(signed(qty, format: "%.0f"))",
+                    sentiment: comparison.sentiment(for: .quantity) ?? .neutral
+                )
+            )
         }
         if let target = comparison.targetDelta {
-            labels.append("ΔTarget \(signed(target, format: "%.2f"))")
+            labels.append(
+                DeltaLabel(
+                    text: "ΔTarget \(signed(target, format: "%.2f"))",
+                    sentiment: comparison.sentiment(for: .target) ?? .neutral
+                )
+            )
         }
         if let trail = comparison.trailDelta {
-            labels.append("ΔTrail \(signed(trail, format: "%.2f"))%")
+            labels.append(
+                DeltaLabel(
+                    text: "ΔTrail \(signed(trail, format: "%.2f"))%",
+                    sentiment: comparison.sentiment(for: .trail) ?? .neutral
+                )
+            )
         }
         if let stop = comparison.estStopDelta {
-            labels.append("ΔStop \(signed(stop, format: "%.2f"))")
+            labels.append(
+                DeltaLabel(
+                    text: "ΔStop \(signed(stop, format: "%.2f"))",
+                    sentiment: comparison.sentiment(for: .estimatedStop) ?? .neutral
+                )
+            )
         }
         return labels
+    }
+
+    private func deltaTextColor(_ sentiment: OrderComparisonInfo.DeltaSentiment) -> Color {
+        switch sentiment {
+        case .better: return .green
+        case .worse: return .red
+        case .neutral: return .secondary
+        }
+    }
+
+    private func deltaBackgroundColor(_ sentiment: OrderComparisonInfo.DeltaSentiment) -> Color {
+        switch sentiment {
+        case .better: return Color.green.opacity(0.14)
+        case .worse: return Color.red.opacity(0.14)
+        case .neutral: return Color.secondary.opacity(0.08)
+        }
     }
 
     private func signed(_ value: Double, format: String) -> String {

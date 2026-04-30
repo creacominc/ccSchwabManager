@@ -240,6 +240,9 @@ struct RecommendedOrderDisplayInfo: Identifiable {
     let targetPrice: Double
     let trailPercent: Double
     let estimatedStopPrice: Double?
+    let breakEvenPrice: Double?
+    let gainPercent: Double?
+    let targetGainPercent: Double?
     /// Free-form label like `Top 100`, `Min ATR`, or `Buy`.
     let sourceLabel: String
     let description: String
@@ -266,6 +269,9 @@ extension RecommendedOrderDisplayInfo {
             targetPrice: sell.target,
             trailPercent: sell.trailingStop,
             estimatedStopPrice: estimated,
+            breakEvenPrice: sell.breakEven,
+            gainPercent: sell.gain,
+            targetGainPercent: sell.gain,
             sourceLabel: extractSourceLabel(from: sell.description, fallback: "Sell"),
             description: sell.description
         )
@@ -291,6 +297,9 @@ extension RecommendedOrderDisplayInfo {
             targetPrice: buy.targetBuyPrice,
             trailPercent: buy.trailingStop,
             estimatedStopPrice: estimated,
+            breakEvenPrice: nil,
+            gainPercent: nil,
+            targetGainPercent: buy.targetGainPercent,
             sourceLabel: extractSourceLabel(from: buy.description, fallback: "Buy"),
             description: buy.description
         )
@@ -312,12 +321,98 @@ extension RecommendedOrderDisplayInfo {
     }
 }
 
+extension RecommendedOrderDisplayInfo {
+    var atrMultipleHint: Double {
+        if let value = Self.extractATRMultiple(from: sourceLabel) {
+            return value
+        }
+        if let value = Self.extractATRMultiple(from: description) {
+            return value
+        }
+        if sourceLabel.localizedCaseInsensitiveContains("Min ATR")
+            || description.localizedCaseInsensitiveContains("Min ATR") {
+            return 1.0
+        }
+        return 0.0
+    }
+
+    var isWhenOverFiveATROrFifteenBuy: Bool {
+        description.localizedCaseInsensitiveContains("When over 5*ATR or 15%")
+    }
+
+    var isWhenProfitableBuy: Bool {
+        description.localizedCaseInsensitiveContains("When Profitable")
+    }
+
+    var isProfitBasedP10Buy: Bool {
+        description.localizedCaseInsensitiveContains("(P/10")
+    }
+
+    var isTrimBuy: Bool {
+        description.localizedCaseInsensitiveContains("trim")
+    }
+
+    var isFallbackTriggerBuy: Bool {
+        isTrimBuy || isWhenOverFiveATROrFifteenBuy || isWhenProfitableBuy
+    }
+
+    var fallbackTriggerPriority: Int {
+        if isTrimBuy { return 0 }
+        if isWhenOverFiveATROrFifteenBuy { return 1 }
+        if isWhenProfitableBuy { return 2 }
+        return 3
+    }
+
+    var isProfitableSell: Bool {
+        guard kind == .sell else { return true }
+        if let gainPercent {
+            return gainPercent > 0
+        }
+        if let breakEvenPrice {
+            return targetPrice > breakEvenPrice
+        }
+        return true
+    }
+
+    var keepsHighProfitBuyTrigger: Bool {
+        guard kind == .buy else { return false }
+        if isProfitBasedP10Buy || isFallbackTriggerBuy { return true }
+        return (targetGainPercent ?? 0) >= 15.0
+    }
+
+    private static func extractATRMultiple(from text: String) -> Double? {
+        let pattern = #"([0-9]+(?:\.[0-9]+)?)\s*\*ATR"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              let valueRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Double(text[valueRange])
+    }
+}
+
 // MARK: - Comparison
 
 /// Pairing of a current order with the closest matching recommendation
 /// (if any). All deltas are computed as `recommendation - current` so the
 /// UI can render `+`/`-` labels without further math.
 struct OrderComparisonInfo {
+    enum DeltaMetric {
+        case quantity
+        case target
+        case trail
+        case estimatedStop
+    }
+
+    enum DeltaSentiment {
+        case better
+        case worse
+        case neutral
+    }
+
     let current: CurrentOrderDisplayInfo
     let suggestion: RecommendedOrderDisplayInfo?
     let qtyDelta: Double?
@@ -354,40 +449,151 @@ struct OrderComparisonInfo {
             self.estStopDelta = nil
         }
     }
+
+    func delta(for metric: DeltaMetric) -> Double? {
+        switch metric {
+        case .quantity: return qtyDelta
+        case .target: return targetDelta
+        case .trail: return trailDelta
+        case .estimatedStop: return estStopDelta
+        }
+    }
+
+    func sentiment(for metric: DeltaMetric) -> DeltaSentiment? {
+        guard let value = delta(for: metric) else { return nil }
+        if abs(value) < 0.0001 { return .neutral }
+
+        switch metric {
+        case .quantity:
+            return value < 0 ? .better : .worse
+        case .target:
+            return value > 0 ? .better : .worse
+        case .trail:
+            return value > 0 ? .better : .worse
+        case .estimatedStop:
+            switch current.side {
+            case .sell:
+                return value < 0 ? .better : .worse
+            case .buy:
+                return value > 0 ? .better : .worse
+            case .unknown:
+                return .neutral
+            }
+        }
+    }
 }
 
 enum OrderComparisonMatcher {
-    /// Pick the recommendation closest to `current` based on side, then a
-    /// normalized blend of target-price difference and quantity difference.
+    /// Pick the best replacement recommendation for `current` based on side-specific
+    /// objectives (not simply nearest values).
     static func bestMatch(
         for current: CurrentOrderDisplayInfo,
         sells: [RecommendedOrderDisplayInfo],
         buys: [RecommendedOrderDisplayInfo]
     ) -> RecommendedOrderDisplayInfo? {
-        let candidates: [RecommendedOrderDisplayInfo]
         switch current.side {
-        case .sell: candidates = sells
-        case .buy: candidates = buys
+        case .sell:
+            return bestSellReplacement(from: sells)
+        case .buy:
+            return bestBuyReplacement(from: buys)
         case .unknown: return nil
         }
-        guard !candidates.isEmpty else { return nil }
+    }
 
-        let curTarget = current.limitPrice ?? current.stopPrice ?? current.estimatedStopPrice ?? 0
-        let curQty = current.quantity
+    private static func bestSellReplacement(from sells: [RecommendedOrderDisplayInfo]) -> RecommendedOrderDisplayInfo? {
+        let profitable = sells.filter { $0.isProfitableSell }
+        guard !profitable.isEmpty else { return nil }
 
-        var best: (RecommendedOrderDisplayInfo, Double)?
-        for candidate in candidates {
-            let priceWeight = max(curTarget, candidate.targetPrice, 1.0)
-            let qtyWeight = max(curQty, candidate.quantity, 1.0)
-            let priceDiff = curTarget > 0 ? abs(candidate.targetPrice - curTarget) / priceWeight : 0
-            let qtyDiff = abs(candidate.quantity - curQty) / qtyWeight
-            let score = priceDiff + qtyDiff
-            if let cur = best {
-                if score < cur.1 { best = (candidate, score) }
-            } else {
-                best = (candidate, score)
-            }
+        let fiveATRPlus = profitable.filter { $0.atrMultipleHint >= 5.0 }
+        if let preferred = prioritizeSellCandidates(fiveATRPlus, fewerSharesPreferred: true) {
+            return preferred
         }
-        return best?.0
+
+        let threeATRPlus = profitable.filter { $0.atrMultipleHint >= 3.0 }
+        if let preferred = prioritizeSellCandidates(threeATRPlus, fewerSharesPreferred: true) {
+            return preferred
+        }
+
+        return prioritizeSellCandidates(profitable, fewerSharesPreferred: false)
+    }
+
+    private static func prioritizeSellCandidates(
+        _ candidates: [RecommendedOrderDisplayInfo],
+        fewerSharesPreferred: Bool
+    ) -> RecommendedOrderDisplayInfo? {
+        guard !candidates.isEmpty else { return nil }
+        return candidates.sorted { lhs, rhs in
+            if lhs.quantity != rhs.quantity {
+                return fewerSharesPreferred ? (lhs.quantity < rhs.quantity) : (lhs.quantity > rhs.quantity)
+            }
+            if lhs.atrMultipleHint != rhs.atrMultipleHint {
+                return lhs.atrMultipleHint > rhs.atrMultipleHint
+            }
+            if lhs.trailPercent != rhs.trailPercent {
+                return lhs.trailPercent > rhs.trailPercent
+            }
+            if lhs.targetPrice != rhs.targetPrice {
+                return lhs.targetPrice > rhs.targetPrice
+            }
+            return lhs.description < rhs.description
+        }.first
+    }
+
+    private static func bestBuyReplacement(from buys: [RecommendedOrderDisplayInfo]) -> RecommendedOrderDisplayInfo? {
+        guard !buys.isEmpty else { return nil }
+
+        let profitableCandidates = buys.filter { $0.keepsHighProfitBuyTrigger }
+        let candidatePool = profitableCandidates.isEmpty ? buys : profitableCandidates
+
+        let p10Candidates = candidatePool.filter { $0.isProfitBasedP10Buy }
+        if let p10Best = prioritizeBuyBySizeThenPrice(p10Candidates) {
+            return p10Best
+        }
+
+        let fallbackCandidates = candidatePool.filter { $0.isFallbackTriggerBuy }
+        if let fallback = fallbackCandidates.sorted(by: { lhs, rhs in
+            if lhs.fallbackTriggerPriority != rhs.fallbackTriggerPriority {
+                return lhs.fallbackTriggerPriority < rhs.fallbackTriggerPriority
+            }
+            if lhs.quantity != rhs.quantity {
+                return lhs.quantity > rhs.quantity
+            }
+            if lhs.targetPrice != rhs.targetPrice {
+                return lhs.targetPrice < rhs.targetPrice
+            }
+            let lhsGain = lhs.targetGainPercent ?? lhs.gainPercent ?? 0
+            let rhsGain = rhs.targetGainPercent ?? rhs.gainPercent ?? 0
+            if lhsGain != rhsGain {
+                return lhsGain > rhsGain
+            }
+            return lhs.description < rhs.description
+        }).first {
+            return fallback
+        }
+
+        return prioritizeBuyBySizeThenPrice(candidatePool)
+    }
+
+    private static func prioritizeBuyBySizeThenPrice(
+        _ candidates: [RecommendedOrderDisplayInfo]
+    ) -> RecommendedOrderDisplayInfo? {
+        guard !candidates.isEmpty else { return nil }
+        return candidates.sorted { lhs, rhs in
+            if lhs.quantity != rhs.quantity {
+                return lhs.quantity > rhs.quantity
+            }
+            if lhs.targetPrice != rhs.targetPrice {
+                return lhs.targetPrice < rhs.targetPrice
+            }
+            let lhsGain = lhs.targetGainPercent ?? lhs.gainPercent ?? 0
+            let rhsGain = rhs.targetGainPercent ?? rhs.gainPercent ?? 0
+            if lhsGain != rhsGain {
+                return lhsGain > rhsGain
+            }
+            if lhs.trailPercent != rhs.trailPercent {
+                return lhs.trailPercent > rhs.trailPercent
+            }
+            return lhs.description < rhs.description
+        }.first
     }
 }
