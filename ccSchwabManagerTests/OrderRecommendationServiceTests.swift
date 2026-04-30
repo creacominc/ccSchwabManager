@@ -1069,8 +1069,8 @@ final class OrderRecommendationServiceTests: XCTestCase {
             // Exactly 1 share
             XCTAssertEqual(order.shares, 1.0, "Should recommend exactly 1 share")
             
-            // Cost under $1750 per constraints
-            XCTAssertLessThan(order.orderCost, 1750.0, "Order cost should be under $1750")
+            // Cost under $2500 per constraints
+            XCTAssertLessThan(order.orderCost, 2500.0, "Order cost should be under $2500")
         }
     }
 

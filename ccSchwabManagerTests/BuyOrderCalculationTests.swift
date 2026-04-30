@@ -341,8 +341,8 @@ class BuyOrderCalculationTests: XCTestCase {
     }
     
     func testOrderCostLimit() {
-        // Test that buy orders are limited to those costing less than $1750
-        let currentPrice = 50.0  // Lower price to keep order cost under $1750
+        // Test that buy orders are limited to those costing less than $2500
+        let currentPrice = 50.0  // Lower price to keep order cost under $2500
         let avgCostPerShare = 40.0
         let totalShares = 100.0
         let sharesToBuy = 25.0 // 25% of current shares
@@ -362,14 +362,14 @@ class BuyOrderCalculationTests: XCTestCase {
         // Calculate order cost
         let orderCost = sharesToBuy * constrainedTargetPrice
         
-        // Verify the order cost is less than $1750
-        XCTAssertLessThan(orderCost, 1750.0, "Order cost should be less than $1750")
+        // Verify the order cost is less than $2500
+        XCTAssertLessThan(orderCost, 2500.0, "Order cost should be less than $2500")
         
         // Test with a high-priced stock that would exceed the limit
         let highPriceStock = 200.0
         let highPriceShares = 15.0
         let highPriceOrderCost = highPriceShares * highPriceStock // $3000
         
-        XCTAssertGreaterThan(highPriceOrderCost, 1750.0, "High price order should exceed $1750 limit")
+        XCTAssertGreaterThan(highPriceOrderCost, 2500.0, "High price order should exceed $2500 limit")
     }
 } 
