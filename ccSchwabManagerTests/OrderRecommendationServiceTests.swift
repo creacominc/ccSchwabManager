@@ -577,6 +577,40 @@ final class OrderRecommendationServiceTests: XCTestCase {
         
         XCTAssertNil(additionalOrder, "Should not include additional buy order for securities above $350")
     }
+
+    func testCalculateRecommendedBuyOrders_IncludesExplicitThousandAndFifteenHundredBuyOptions() async {
+        // Given
+        let taxLots = createMockTaxLots()
+        let currentPrice = 25.0
+        let atrValue = 2.5
+        let (totalShares, totalCost, avgCostPerShare, currentProfitPercent) = calculatePositionValues(taxLots: taxLots, currentPrice: currentPrice)
+
+        // When
+        let result = service.calculateRecommendedBuyOrders(
+            symbol: "PENN",
+            atrValue: atrValue,
+            taxLotData: taxLots,
+            sharesAvailableForTrading: 150,
+            currentPrice: currentPrice,
+            totalShares: totalShares,
+            totalCost: totalCost,
+            avgCostPerShare: avgCostPerShare,
+            currentProfitPercent: currentProfitPercent
+        )
+
+        // Then
+        let thousandOrder = result.first { $0.description.contains("($1000)") }
+        let fifteenHundredOrder = result.first { $0.description.contains("($1500)") }
+        XCTAssertNotNil(thousandOrder, "Should include explicit $1000 buy option")
+        XCTAssertNotNil(fifteenHundredOrder, "Should include explicit $1500 buy option")
+
+        if let thousandOrder {
+            XCTAssertEqual(thousandOrder.shares, ceil(1000.0 / currentPrice), accuracy: 0.001)
+        }
+        if let fifteenHundredOrder {
+            XCTAssertEqual(fifteenHundredOrder.shares, ceil(1500.0 / currentPrice), accuracy: 0.001)
+        }
+    }
     
     func testCalculateRecommendedBuyOrders_OrdersSortedByIncreasingShares() async {
         // Given: A security trading under $350 to trigger additional order

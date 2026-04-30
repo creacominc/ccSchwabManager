@@ -319,12 +319,31 @@ class OrderRecommendationService: ObservableObject {
             }
         }
         
-        // Add $2500 buy order option (similar to $500 option)
-        if let twentyFiveHundredDollarOrder = createTwentyFiveHundredDollarBuyOrder(
+        // Add explicit fixed-dollar buy order options.
+        if let thousandDollarOrder = createFixedDollarBuyOrder(
             symbol: symbol,
             currentPrice: currentPrice,
             atrValue: atrValue,
-            targetGainPercent: targetGainPercent
+            targetGainPercent: targetGainPercent,
+            budgetDollars: 1000.0
+        ) {
+            recommended.append(thousandDollarOrder)
+        }
+        if let fifteenHundredDollarOrder = createFixedDollarBuyOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            atrValue: atrValue,
+            targetGainPercent: targetGainPercent,
+            budgetDollars: 1500.0
+        ) {
+            recommended.append(fifteenHundredDollarOrder)
+        }
+        if let twentyFiveHundredDollarOrder = createFixedDollarBuyOrder(
+            symbol: symbol,
+            currentPrice: currentPrice,
+            atrValue: atrValue,
+            targetGainPercent: targetGainPercent,
+            budgetDollars: 2500.0
         ) {
             recommended.append(twentyFiveHundredDollarOrder)
         }
@@ -2249,25 +2268,28 @@ class OrderRecommendationService: ObservableObject {
         return additionalBuyOrder
     }
     
-    /// Creates a $2500 buy order option (similar to $500 option)
+    /// Creates a fixed-dollar buy order option (similar to the existing $500 option).
     /// - Parameters:
     ///   - symbol: The trading symbol
     ///   - currentPrice: Current market price
     ///   - atrValue: Average True Range value
     ///   - targetGainPercent: Target gain percentage
+    ///   - budgetDollars: Dollar budget used to size the order.
     /// - Returns: Buy order record or nil if not applicable
-    private func createTwentyFiveHundredDollarBuyOrder(
+    private func createFixedDollarBuyOrder(
         symbol: String,
         currentPrice: Double,
         atrValue: Double,
-        targetGainPercent: Double
+        targetGainPercent: Double,
+        budgetDollars: Double
     ) -> BuyOrderRecord? {
-        
-        // Calculate number of shares that can be bought for $2500, rounded up
-        let sharesFor2500 = ceil(2500.0 / currentPrice)
+        guard budgetDollars > 0 else { return nil }
+
+        // Calculate number of shares that can be bought for the budget, rounded up.
+        let sharesForBudget = ceil(budgetDollars / currentPrice)
         
         // Ensure we have at least 1 share
-        guard sharesFor2500 >= 1.0 else { return nil }
+        guard sharesForBudget >= 1.0 else { return nil }
         
         // Calculate target price (maintains the same target gain percentage)
         let targetBuyPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
@@ -2283,38 +2305,39 @@ class OrderRecommendationService: ObservableObject {
         // Calculate entry price (1 ATR below target)
         let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
         
-        AppLogger.shared.debug("  $2500 buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
+        AppLogger.shared.debug("  $\(budgetDollars) buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
         
         // Calculate actual order cost
-        let orderCost = sharesFor2500 * finalTargetPrice
+        let orderCost = sharesForBudget * finalTargetPrice
         
         // Create description
         let formattedDescription = String(
-            format: "BUY %.0f %@ ($2500) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
-            sharesFor2500,
+            format: "BUY %.0f %@ ($%.0f) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
+            sharesForBudget,
             symbol,
+            budgetDollars,
             finalTargetPrice,
             trailingStopPercent,
             targetGainPercent,
             orderCost
         )
         
-        AppLogger.shared.debug("  Creating $2500 buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor2500), target=\(finalTargetPrice)")
+        AppLogger.shared.debug("  Creating $\(budgetDollars) buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesForBudget), target=\(finalTargetPrice)")
         
         // Final validation of trailing stop value
         guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
-            AppLogger.shared.error("⚠️ Invalid trailing stop value in $2500 buy order: \(trailingStopPercent)%")
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in $\(budgetDollars) buy order: \(trailingStopPercent)%")
             return nil
         }
         
-        let twentyFiveHundredDollarOrder = BuyOrderRecord(
-            shares: sharesFor2500,
+        let fixedDollarOrder = BuyOrderRecord(
+            shares: sharesForBudget,
             targetBuyPrice: finalTargetPrice,
             entryPrice: entryPrice,
             trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,
             currentGainPercent: 0.0, // No existing position gain for this additional order
-            sharesToBuy: sharesFor2500,
+            sharesToBuy: sharesForBudget,
             orderCost: orderCost,
             description: formattedDescription,
             orderType: "BUY",
@@ -2322,7 +2345,7 @@ class OrderRecommendationService: ObservableObject {
             isImmediate: false
         )
         
-        return twentyFiveHundredDollarOrder
+        return fixedDollarOrder
     }
     
     /// Creates a profit-based buy order when position is more than 20% profitable
