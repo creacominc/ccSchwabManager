@@ -144,9 +144,16 @@ final class OrderComparisonMatcherTests: XCTestCase {
         XCTAssertNil(best)
     }
 
-    func testBestBuyReplacement_PrefersWhenOverRecommendation() {
+    func testBestBuyReplacement_PrefersProfitBasedP10Recommendation() {
         let current = makeCurrentOrder(side: .buy, quantity: 1, limitPrice: 105, trailPercent: 4)
         let candidates = [
+            buyRecommendation(
+                shares: 3,
+                trailingStop: 13.5,
+                targetBuyPrice: 111,
+                targetGainPercent: 33.8,
+                description: "BUY 3 XYZ (P/10, P/L=27.6%) Target=111 TS=13.5% Gain=33.8% Cost=333"
+            ),
             buyRecommendation(
                 shares: 1,
                 trailingStop: 12,
@@ -166,40 +173,41 @@ final class OrderComparisonMatcherTests: XCTestCase {
         let best = OrderComparisonMatcher.bestMatch(for: current, sells: [], buys: candidates)
 
         XCTAssertNotNil(best)
-        XCTAssertTrue(best?.isWhenOverFiveATROrFifteenBuy == true)
+        XCTAssertTrue(best?.isProfitBasedP10Buy == true)
     }
 
-    func testBestBuyReplacement_UsesHighTrailThenLowestShares() {
+    func testBestBuyReplacement_FallbackUsesMostSharesThenLowestTarget() {
         let current = makeCurrentOrder(side: .buy, quantity: 5, limitPrice: 103, trailPercent: 3)
         let candidates = [
             buyRecommendation(
-                shares: 2,
+                shares: 5,
                 trailingStop: 9,
-                targetBuyPrice: 111,
+                targetBuyPrice: 111.5,
                 targetGainPercent: 15,
-                description: "BUY 2 XYZ (high gain A) Target=111 TS=9%"
+                description: "BUY 5 XYZ (When over 5*ATR or 15%) Trigger=12.0% CurrP/L=4.0% Target=111.5 TS=9%"
             ),
             buyRecommendation(
                 shares: 1,
-                trailingStop: 9,
-                targetBuyPrice: 110,
+                trailingStop: 20,
+                targetBuyPrice: 109.5,
                 targetGainPercent: 15,
-                description: "BUY 1 XYZ (high gain B) Target=110 TS=9%"
+                description: "BUY 1 XYZ (When Profitable) P/L=-2.0% Target=109.5 TS=20%"
             ),
             buyRecommendation(
-                shares: 1,
-                trailingStop: 7,
-                targetBuyPrice: 109,
+                shares: 5,
+                trailingStop: 8,
+                targetBuyPrice: 110.0,
                 targetGainPercent: 15,
-                description: "BUY 1 XYZ (lower trail) Target=109 TS=7%"
+                description: "BUY 5 XYZ (When over 5*ATR or 15%) Trigger=11.0% CurrP/L=6.0% Target=110.0 TS=8%"
             )
         ]
 
         let best = OrderComparisonMatcher.bestMatch(for: current, sells: [], buys: candidates)
 
         XCTAssertNotNil(best)
-        XCTAssertEqual(best?.trailPercent, 9, accuracy: 0.001)
-        XCTAssertEqual(best?.quantity, 1, accuracy: 0.001)
+        XCTAssertTrue(best?.isWhenOverFiveATROrFifteenBuy == true)
+        XCTAssertEqual(best?.quantity, 5, accuracy: 0.001)
+        XCTAssertEqual(best?.targetPrice, 110.0, accuracy: 0.001)
     }
 
     func testDeltaSentiment_ReflectsDirectionalImprovementBySide() {

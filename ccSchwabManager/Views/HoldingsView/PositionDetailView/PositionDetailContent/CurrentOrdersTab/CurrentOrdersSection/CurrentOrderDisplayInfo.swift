@@ -340,6 +340,29 @@ extension RecommendedOrderDisplayInfo {
         description.localizedCaseInsensitiveContains("When over 5*ATR or 15%")
     }
 
+    var isWhenProfitableBuy: Bool {
+        description.localizedCaseInsensitiveContains("When Profitable")
+    }
+
+    var isProfitBasedP10Buy: Bool {
+        description.localizedCaseInsensitiveContains("(P/10")
+    }
+
+    var isTrimBuy: Bool {
+        description.localizedCaseInsensitiveContains("trim")
+    }
+
+    var isFallbackTriggerBuy: Bool {
+        isTrimBuy || isWhenOverFiveATROrFifteenBuy || isWhenProfitableBuy
+    }
+
+    var fallbackTriggerPriority: Int {
+        if isTrimBuy { return 0 }
+        if isWhenOverFiveATROrFifteenBuy { return 1 }
+        if isWhenProfitableBuy { return 2 }
+        return 3
+    }
+
     var isProfitableSell: Bool {
         guard kind == .sell else { return true }
         if let gainPercent {
@@ -353,7 +376,7 @@ extension RecommendedOrderDisplayInfo {
 
     var keepsHighProfitBuyTrigger: Bool {
         guard kind == .buy else { return false }
-        if isWhenOverFiveATROrFifteenBuy { return true }
+        if isProfitBasedP10Buy || isFallbackTriggerBuy { return true }
         return (targetGainPercent ?? 0) >= 15.0
     }
 
@@ -518,27 +541,58 @@ enum OrderComparisonMatcher {
 
     private static func bestBuyReplacement(from buys: [RecommendedOrderDisplayInfo]) -> RecommendedOrderDisplayInfo? {
         guard !buys.isEmpty else { return nil }
-        let highProfitCandidates = buys.filter { $0.keepsHighProfitBuyTrigger }
-        let candidatePool = highProfitCandidates.isEmpty ? buys : highProfitCandidates
 
-        return candidatePool.sorted { lhs, rhs in
-            if lhs.isWhenOverFiveATROrFifteenBuy != rhs.isWhenOverFiveATROrFifteenBuy {
-                return lhs.isWhenOverFiveATROrFifteenBuy
-            }
-            if lhs.trailPercent != rhs.trailPercent {
-                return lhs.trailPercent > rhs.trailPercent
+        let profitableCandidates = buys.filter { $0.keepsHighProfitBuyTrigger }
+        let candidatePool = profitableCandidates.isEmpty ? buys : profitableCandidates
+
+        let p10Candidates = candidatePool.filter { $0.isProfitBasedP10Buy }
+        if let p10Best = prioritizeBuyBySizeThenPrice(p10Candidates) {
+            return p10Best
+        }
+
+        let fallbackCandidates = candidatePool.filter { $0.isFallbackTriggerBuy }
+        if let fallback = fallbackCandidates.sorted(by: { lhs, rhs in
+            if lhs.fallbackTriggerPriority != rhs.fallbackTriggerPriority {
+                return lhs.fallbackTriggerPriority < rhs.fallbackTriggerPriority
             }
             if lhs.quantity != rhs.quantity {
-                return lhs.quantity < rhs.quantity
+                return lhs.quantity > rhs.quantity
+            }
+            if lhs.targetPrice != rhs.targetPrice {
+                return lhs.targetPrice < rhs.targetPrice
             }
             let lhsGain = lhs.targetGainPercent ?? lhs.gainPercent ?? 0
             let rhsGain = rhs.targetGainPercent ?? rhs.gainPercent ?? 0
             if lhsGain != rhsGain {
                 return lhsGain > rhsGain
             }
-            if lhs.targetPrice != rhs.targetPrice {
-                return lhs.targetPrice > rhs.targetPrice
+            return lhs.description < rhs.description
+        }).first {
+            return fallback
         }
+
+        return prioritizeBuyBySizeThenPrice(candidatePool)
+    }
+
+    private static func prioritizeBuyBySizeThenPrice(
+        _ candidates: [RecommendedOrderDisplayInfo]
+    ) -> RecommendedOrderDisplayInfo? {
+        guard !candidates.isEmpty else { return nil }
+        return candidates.sorted { lhs, rhs in
+            if lhs.quantity != rhs.quantity {
+                return lhs.quantity > rhs.quantity
+            }
+            if lhs.targetPrice != rhs.targetPrice {
+                return lhs.targetPrice < rhs.targetPrice
+            }
+            let lhsGain = lhs.targetGainPercent ?? lhs.gainPercent ?? 0
+            let rhsGain = rhs.targetGainPercent ?? rhs.gainPercent ?? 0
+            if lhsGain != rhsGain {
+                return lhsGain > rhsGain
+            }
+            if lhs.trailPercent != rhs.trailPercent {
+                return lhs.trailPercent > rhs.trailPercent
+            }
             return lhs.description < rhs.description
         }.first
     }

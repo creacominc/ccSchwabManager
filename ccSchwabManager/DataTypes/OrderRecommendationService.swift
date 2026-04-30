@@ -266,7 +266,7 @@ class OrderRecommendationService: ObservableObject {
             let orderCost = sharesToBuy * finalTargetPrice
             
             // Skip orders that cost more than $2000
-            guard orderCost < 2000.0 else { continue }
+            guard orderCost < 1750.0 else { continue }
             
             // Create the buy order
             let formattedDescription = String(
@@ -319,14 +319,14 @@ class OrderRecommendationService: ObservableObject {
             }
         }
         
-        // Add $1000 buy order option (similar to $500 option)
-        if let thousandDollarOrder = createThousandDollarBuyOrder(
+        // Add $1750 buy order option (similar to $500 option)
+        if let seventeenFiftyDollarOrder = createSeventeenFiftyDollarBuyOrder(
             symbol: symbol,
             currentPrice: currentPrice,
             atrValue: atrValue,
             targetGainPercent: targetGainPercent
         ) {
-            recommended.append(thousandDollarOrder)
+            recommended.append(seventeenFiftyDollarOrder)
         }
         
         // Add profit-based buy order when position is more than 20% profitable
@@ -367,7 +367,7 @@ class OrderRecommendationService: ObservableObject {
                 let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
 
                 let orderCost = sharesToBuy * finalTargetPrice
-                if orderCost < 2000.0 {
+                if orderCost < 1750.0 {
                     let formattedDescription = String(
                         format: "BUY %.0f %@ (5%% DAY) Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
                         sharesToBuy,
@@ -2249,25 +2249,25 @@ class OrderRecommendationService: ObservableObject {
         return additionalBuyOrder
     }
     
-    /// Creates a $1000 buy order option (similar to $500 option)
+    /// Creates a $1750 buy order option (similar to $500 option)
     /// - Parameters:
     ///   - symbol: The trading symbol
     ///   - currentPrice: Current market price
     ///   - atrValue: Average True Range value
     ///   - targetGainPercent: Target gain percentage
     /// - Returns: Buy order record or nil if not applicable
-    private func createThousandDollarBuyOrder(
+    private func createSeventeenFiftyDollarBuyOrder(
         symbol: String,
         currentPrice: Double,
         atrValue: Double,
         targetGainPercent: Double
     ) -> BuyOrderRecord? {
         
-        // Calculate number of shares that can be bought for $1000, rounded up
-        let sharesFor1000 = ceil(1000.0 / currentPrice)
+        // Calculate number of shares that can be bought for $1750, rounded up
+        let sharesFor1750 = ceil(1750.0 / currentPrice)
         
         // Ensure we have at least 1 share
-        guard sharesFor1000 >= 1.0 else { return nil }
+        guard sharesFor1750 >= 1.0 else { return nil }
         
         // Calculate target price (maintains the same target gain percentage)
         let targetBuyPrice = currentPrice * (1.0 + targetGainPercent / 100.0)
@@ -2283,15 +2283,15 @@ class OrderRecommendationService: ObservableObject {
         // Calculate entry price (1 ATR below target)
         let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
         
-        AppLogger.shared.debug("  $1000 buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
+        AppLogger.shared.debug("  $1750 buy order: ATR=\(atrValue)%, trailingStopPercent=\(trailingStopPercent)%")
         
         // Calculate actual order cost
-        let orderCost = sharesFor1000 * finalTargetPrice
+        let orderCost = sharesFor1750 * finalTargetPrice
         
         // Create description
         let formattedDescription = String(
-            format: "BUY %.0f %@ ($1000) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
-            sharesFor1000,
+            format: "BUY %.0f %@ ($1750) Target=%.2f TS=%.1f%% Gain=%.1f%% Cost=%.2f",
+            sharesFor1750,
             symbol,
             finalTargetPrice,
             trailingStopPercent,
@@ -2299,22 +2299,22 @@ class OrderRecommendationService: ObservableObject {
             orderCost
         )
         
-        AppLogger.shared.debug("  Creating $1000 buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor1000), target=\(finalTargetPrice)")
+        AppLogger.shared.debug("  Creating $1750 buy order: trailingStop=\(trailingStopPercent)%, shares=\(sharesFor1750), target=\(finalTargetPrice)")
         
         // Final validation of trailing stop value
         guard trailingStopPercent >= 0.1 && trailingStopPercent <= 50.0 else {
-            AppLogger.shared.error("⚠️ Invalid trailing stop value in $1000 buy order: \(trailingStopPercent)%")
+            AppLogger.shared.error("⚠️ Invalid trailing stop value in $1750 buy order: \(trailingStopPercent)%")
             return nil
         }
         
-        let thousandDollarOrder = BuyOrderRecord(
-            shares: sharesFor1000,
+        let seventeenFiftyDollarOrder = BuyOrderRecord(
+            shares: sharesFor1750,
             targetBuyPrice: finalTargetPrice,
             entryPrice: entryPrice,
             trailingStop: trailingStopPercent,
             targetGainPercent: targetGainPercent,
             currentGainPercent: 0.0, // No existing position gain for this additional order
-            sharesToBuy: sharesFor1000,
+            sharesToBuy: sharesFor1750,
             orderCost: orderCost,
             description: formattedDescription,
             orderType: "BUY",
@@ -2322,7 +2322,7 @@ class OrderRecommendationService: ObservableObject {
             isImmediate: false
         )
         
-        return thousandDollarOrder
+        return seventeenFiftyDollarOrder
     }
     
     /// Creates a profit-based buy order when position is more than 20% profitable
@@ -2387,7 +2387,7 @@ class OrderRecommendationService: ObservableObject {
         let orderCost = sharesToBuy * finalTargetPrice
         
         // Skip orders that cost more than $2000
-        guard orderCost < 2000.0 else { return nil }
+        guard orderCost < 1750.0 else { return nil }
         
         // Create description
         let formattedDescription = String(
@@ -2450,7 +2450,7 @@ class OrderRecommendationService: ObservableObject {
         
         // Order cost threshold consistent with other small buys ($2000 cap)
         let orderCost = sharesToBuy * finalTargetPrice
-        guard orderCost < 2000.0 else { return nil }
+        guard orderCost < 1750.0 else { return nil }
         
         let formattedDescription = String(
             format: "BUY %.0f %@ (1 sh, 5%%+ATR) Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
@@ -2506,7 +2506,7 @@ class OrderRecommendationService: ObservableObject {
 
         let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
         let orderCost = sharesToBuy * finalTargetPrice
-        guard orderCost < 2000.0 else { return nil }
+        guard orderCost < 1750.0 else { return nil }
 
         let formattedDescription = String(
             format: "BUY %.0f %@ (1 sh, 2x max buy TS %.2f%%) Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
@@ -2556,7 +2556,7 @@ class OrderRecommendationService: ObservableObject {
         let finalTargetPrice = stopPrice * 1.02
         let entryPrice = finalTargetPrice * (1.0 - atrValue / 100.0)
         let orderCost = sharesToBuy * finalTargetPrice
-        guard orderCost < 2000.0 else { return nil }
+        guard orderCost < 1750.0 else { return nil }
 
         let formattedDescription = String(
             format: "BUY %.0f %@ (When over 5*ATR or 15%%) Trigger=%.2f%% CurrP/L=%.2f%% Target=%.2f TS=%.2f%% Cost=%.2f",
@@ -2629,7 +2629,7 @@ class OrderRecommendationService: ObservableObject {
         
         // Order cost threshold consistent with other small buys ($2000 cap)
         let orderCost = sharesToBuy * finalTargetPrice
-        guard orderCost < 2000.0 else { return nil }
+        guard orderCost < 1750.0 else { return nil }
         
         let formattedDescription = String(
             format: "BUY %.0f %@ (When Profitable) P/L=%.1f%% Target=%.2f TS=%.2f%% Gain=%.1f%% Cost=%.2f",
