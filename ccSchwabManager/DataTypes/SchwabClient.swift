@@ -457,15 +457,13 @@ class SchwabClient: @unchecked Sendable
         return false
     }
 
-    @discardableResult
-    private func fetchTransactionHistorySynchronously(months: Int) -> Bool {
-        guard months > 0 else { return false }
+    private func fetchTransactionHistorySynchronously(months: Int) {
+        guard months > 0 else { return }
 
-        let monthDeltaBefore = m_monthDeltaLock.withLock { m_monthDelta }
         let group = DispatchGroup()
         group.enter()
 
-        let task = Task {
+        Task {
             for _ in 0..<months {
                 await self.fetchTransactionHistory()
             }
@@ -475,12 +473,7 @@ class SchwabClient: @unchecked Sendable
         let timeout = (requestTimeout + 5.0) * Double(months)
         if group.wait(timeout: .now() + timeout) == .timedOut {
             AppLogger.shared.warning("fetchTransactionHistorySynchronously timed out for \(months)-month backfill batch")
-            task.cancel()
-            return false
         }
-
-        let monthDeltaAfter = m_monthDeltaLock.withLock { m_monthDelta }
-        return monthDeltaAfter > monthDeltaBefore
     }
 
     private func transactionsForSymbolFromSnapshot(_ symbol: String) -> [Transaction] {
@@ -498,10 +491,6 @@ class SchwabClient: @unchecked Sendable
         }
 
         var symbolTransactions = seedTransactions
-        let coverageStart = Date()
-        let maxCoverageDuration: TimeInterval = 30
-        let maxCoverageAttempts = max(1, maxMonthDelta / 3)
-        var coverageAttempts = 0
         var hasCompleteHistory = hasCompleteShareHistory(
             for: symbol,
             sourceTransactions: symbolTransactions,
@@ -509,26 +498,12 @@ class SchwabClient: @unchecked Sendable
         )
 
         while !hasCompleteHistory {
-            if Date().timeIntervalSince(coverageStart) >= maxCoverageDuration {
-                AppLogger.shared.warning("⚠️ \(symbol): stopping coverage backfill after \(Int(maxCoverageDuration))s to keep UI responsive")
-                break
-            }
-
             let currentMonthDelta = m_monthDeltaLock.withLock { m_monthDelta }
             guard currentMonthDelta < maxMonthDelta else { break }
-            guard coverageAttempts < maxCoverageAttempts else {
-                AppLogger.shared.warning("⚠️ \(symbol): coverage backfill reached max attempts")
-                break
-            }
 
             let monthsToFetch = min(3, maxMonthDelta - currentMonthDelta)
             AppLogger.shared.debug("📚 \(symbol): backfilling \(monthsToFetch) more month(s) before adjacent prefetch")
-            coverageAttempts += 1
-            let didAdvanceWindow = fetchTransactionHistorySynchronously(months: monthsToFetch)
-            if !didAdvanceWindow {
-                AppLogger.shared.warning("⚠️ \(symbol): coverage backfill made no month-range progress, aborting loop")
-                break
-            }
+            fetchTransactionHistorySynchronously(months: monthsToFetch)
 
             symbolTransactions = transactionsForSymbolFromSnapshot(symbol)
             hasCompleteHistory = hasCompleteShareHistory(
