@@ -1823,11 +1823,8 @@ class SchwabClient: @unchecked Sendable
         let sourceCount = m_transactionListLock.withLock { m_transactionList.count }
         let cachedResult: [Transaction]? = m_filteredTransactionsLock.withLock {
             if m_lastFilteredTransactionSymbol == symbol && m_lastFilteredTransaxtionsSourceCount == sourceCount {
-                let currentShareCount = getShareCount(symbol: symbol)
-                if isNearZero(currentShareCount) || hasCompleteShareHistory(for: symbol, sourceTransactions: m_lastFilteredTransactions, currentShareCount: currentShareCount) {
-                    AppLogger.shared.debug("  -- getTransactionsFor cached hit for \(symbol)")
-                    return m_lastFilteredTransactions
-                }
+                AppLogger.shared.debug("  -- getTransactionsFor cached hit for \(symbol)")
+                return m_lastFilteredTransactions
             }
             return nil
         }
