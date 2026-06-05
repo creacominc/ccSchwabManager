@@ -274,6 +274,21 @@ class SchwabClient: @unchecked Sendable
             AppLogger.shared.debug("📦 Cached \(transactions.count) transactions for \(symbol)")
         }
     }
+
+    private func invalidateTransactionDerivedCaches() {
+        m_transactionHistoryCacheLock.withLock {
+            m_transactionHistoryCache.removeAll(keepingCapacity: true)
+        }
+        m_taxLotCacheLock.withLock {
+            m_taxLotCache.removeAll(keepingCapacity: true)
+        }
+        m_filteredTransactionsLock.withLock {
+            m_lastFilteredTransactionSymbol = nil
+            m_lastFilteredTransaxtionsSourceCount = 0
+            m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+        }
+        m_lastFilteredTaxLotSymbol = nil
+    }
     
     // MARK: - Optimized Transaction Fetching
     private func getTransactionsForOptimized(symbol: String) -> [Transaction] {
@@ -300,6 +315,209 @@ class SchwabClient: @unchecked Sendable
         } else {
             return 9
         }
+    }
+
+    private struct TransferPairingKey: Hashable {
+        let tradeDate: String
+        let absShares: Int64
+        let absPrice: Int64
+    }
+
+    private struct TradeLogicCandidate {
+        let transaction: Transaction
+        let shares: Double
+        let key: TransferPairingKey
+        let accountNumber: String
+        let transferLike: Bool
+    }
+
+    private func roundedShareAmount(_ value: Double) -> Double {
+        ((value * 100000).rounded()) / 100000
+    }
+
+    private func roundedKeyComponent(_ value: Double, scale: Double = 100000) -> Int64 {
+        Int64((value * scale).rounded())
+    }
+
+    private func symbolShareAmount(for transaction: Transaction, symbol: String) -> Double {
+        transaction.transferItems.lazy.reduce(0.0) { sum, item in
+            guard item.instrument?.symbol == symbol else { return sum }
+            return sum + (item.amount ?? 0.0)
+        }
+    }
+
+    private func symbolPrice(for transaction: Transaction, symbol: String) -> Double {
+        transaction.transferItems.first(where: { $0.instrument?.symbol == symbol })?.price ?? 0.0
+    }
+
+    private func isTradeTypeForShareLogic(_ transaction: Transaction) -> Bool {
+        (transaction.type == .trade) || (transaction.type == .receiveAndDeliver)
+    }
+
+    private func isTransferLikeTransaction(_ transaction: Transaction) -> Bool {
+        if transaction.activityType == .TRANSFER || transaction.activityType == .UNKNOWN {
+            return true
+        }
+        if transaction.type == .receiveAndDeliver {
+            return true
+        }
+        if abs(transaction.netAmount ?? 0.0) < 0.0001 {
+            return true
+        }
+        return (transaction.description ?? "").lowercased().contains("transfer")
+    }
+
+    private func tradeRelevantTransactionsForLogic(symbol: String, sourceTransactions: [Transaction]) -> [Transaction] {
+        var candidates: [TradeLogicCandidate] = []
+        candidates.reserveCapacity(sourceTransactions.count)
+
+        for transaction in sourceTransactions where isTradeTypeForShareLogic(transaction) {
+            let shareAmount = roundedShareAmount(symbolShareAmount(for: transaction, symbol: symbol))
+            guard !isNearZero(shareAmount) else { continue }
+
+            let key = TransferPairingKey(
+                tradeDate: transaction.tradeDate ?? "",
+                absShares: roundedKeyComponent(abs(shareAmount)),
+                absPrice: roundedKeyComponent(abs(symbolPrice(for: transaction, symbol: symbol)), scale: 10000)
+            )
+
+            candidates.append(
+                TradeLogicCandidate(
+                    transaction: transaction,
+                    shares: shareAmount,
+                    key: key,
+                    accountNumber: transaction.accountNumber ?? "",
+                    transferLike: isTransferLikeTransaction(transaction)
+                )
+            )
+        }
+
+        guard !candidates.isEmpty else { return [] }
+
+        var transferBuckets: [TransferPairingKey: (positive: [TradeLogicCandidate], negative: [TradeLogicCandidate])] = [:]
+        for candidate in candidates where candidate.transferLike {
+            var bucket = transferBuckets[candidate.key] ?? (positive: [], negative: [])
+            if candidate.shares > 0 {
+                bucket.positive.append(candidate)
+            } else {
+                bucket.negative.append(candidate)
+            }
+            transferBuckets[candidate.key] = bucket
+        }
+
+        var pairedTransfers: Set<ObjectIdentifier> = []
+        for (_, bucket) in transferBuckets {
+            var positives = bucket.positive
+            var negatives = bucket.negative
+
+            while let positive = positives.popLast() {
+                guard let negativeIndex = negatives.firstIndex(where: { $0.accountNumber != positive.accountNumber }) else {
+                    continue
+                }
+                let negative = negatives.remove(at: negativeIndex)
+                pairedTransfers.insert(ObjectIdentifier(positive.transaction))
+                pairedTransfers.insert(ObjectIdentifier(negative.transaction))
+            }
+        }
+
+        if !pairedTransfers.isEmpty {
+            AppLogger.shared.debug("↔️ Excluding \(pairedTransfers.count) transfer-side transactions from trade logic for \(symbol)")
+        }
+
+        return candidates.compactMap { candidate in
+            pairedTransfers.contains(ObjectIdentifier(candidate.transaction)) ? nil : candidate.transaction
+        }
+    }
+
+    private func hasCompleteShareHistory(for symbol: String, sourceTransactions: [Transaction], currentShareCount: Double) -> Bool {
+        if isNearZero(currentShareCount) {
+            return true
+        }
+
+        let relevantTransactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: sourceTransactions)
+        guard !relevantTransactions.isEmpty else {
+            return false
+        }
+
+        var workingShareCount = currentShareCount
+        for transaction in relevantTransactions {
+            for transferItem in transaction.transferItems where transferItem.instrument?.symbol == symbol {
+                guard let shares = transferItem.amount, !isNearZero(shares) else { continue }
+                if shares > 0 {
+                    workingShareCount = roundedShareAmount(workingShareCount - shares)
+                } else {
+                    workingShareCount = roundedShareAmount(workingShareCount + abs(shares))
+                }
+                if isNearZero(workingShareCount) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    private func fetchTransactionHistorySynchronously(months: Int) {
+        guard months > 0 else { return }
+
+        let group = DispatchGroup()
+        group.enter()
+
+        Task {
+            for _ in 0..<months {
+                await self.fetchTransactionHistory()
+            }
+            group.leave()
+        }
+
+        let timeout = (requestTimeout + 5.0) * Double(months)
+        if group.wait(timeout: .now() + timeout) == .timedOut {
+            AppLogger.shared.warning("fetchTransactionHistorySynchronously timed out for \(months)-month backfill batch")
+        }
+    }
+
+    private func transactionsForSymbolFromSnapshot(_ symbol: String) -> [Transaction] {
+        m_transactionListLock.withLock {
+            m_transactionList.filter { transaction in
+                transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+            }
+        }
+    }
+
+    private func ensureTransactionCoverageForSymbol(_ symbol: String, seedTransactions: [Transaction]) -> [Transaction] {
+        let currentShareCount = getShareCount(symbol: symbol)
+        if isNearZero(currentShareCount) {
+            return seedTransactions
+        }
+
+        var symbolTransactions = seedTransactions
+        var hasCompleteHistory = hasCompleteShareHistory(
+            for: symbol,
+            sourceTransactions: symbolTransactions,
+            currentShareCount: currentShareCount
+        )
+
+        while !hasCompleteHistory {
+            let currentMonthDelta = m_monthDeltaLock.withLock { m_monthDelta }
+            guard currentMonthDelta < maxMonthDelta else { break }
+
+            let monthsToFetch = min(3, maxMonthDelta - currentMonthDelta)
+            AppLogger.shared.debug("📚 \(symbol): backfilling \(monthsToFetch) more month(s) before adjacent prefetch")
+            fetchTransactionHistorySynchronously(months: monthsToFetch)
+
+            symbolTransactions = transactionsForSymbolFromSnapshot(symbol)
+            hasCompleteHistory = hasCompleteShareHistory(
+                for: symbol,
+                sourceTransactions: symbolTransactions,
+                currentShareCount: currentShareCount
+            )
+        }
+
+        if !hasCompleteHistory {
+            AppLogger.shared.warning("⚠️ \(symbol): unable to fully resolve position history before max month window")
+        }
+
+        return symbolTransactions
     }
     
     private init()
@@ -1578,10 +1796,14 @@ class SchwabClient: @unchecked Sendable
 
         await fetchTransactionSliceForMonthDelta(newMonthDelta)
 
-        AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions")
+        let fetchedCount = m_transactionList.count - initialSize
+        AppLogger.shared.debug("Fetched \(fetchedCount) transactions")
 
         m_transactionListLock.withLock {
             sortTransactions()
+        }
+        if fetchedCount > 0 {
+            invalidateTransactionDerivedCaches()
         }
         self.setLatestTradeDates()
         await MainActor.run { }
@@ -1593,98 +1815,36 @@ class SchwabClient: @unchecked Sendable
      */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
-        let monthDeltaForLogging = m_monthDeltaLock.withLock {
-            return m_monthDelta
-        }
-//        AppLogger.shared.debug( "    ==== getTransactionsFor \(symbol ?? "nil")  months: \(monthDeltaForLogging) ====" )
-//        AppLogger.shared.debug("    ==== getTransactionsFor Current transaction list size: \(m_transactionList.count)")
-        
-        if( nil == symbol ) {
-            AppLogger.shared.debug( "getTransactionsFor \(symbol ?? "nil")  -  No symbol provided" )
-            m_transactionListLock.lock()
-            defer { m_transactionListLock.unlock() }
-            return m_transactionList
+        guard let symbol else {
+            AppLogger.shared.debug("getTransactionsFor nil - no symbol provided")
+            return m_transactionListLock.withLock { m_transactionList }
         }
 
-        m_filteredTransactionsLock.lock()
-        defer { m_filteredTransactionsLock.unlock() }
+        let sourceCount = m_transactionListLock.withLock { m_transactionList.count }
+        let cachedResult: [Transaction]? = m_filteredTransactionsLock.withLock {
+            if m_lastFilteredTransactionSymbol == symbol && m_lastFilteredTransaxtionsSourceCount == sourceCount {
+                AppLogger.shared.debug("  -- getTransactionsFor cached hit for \(symbol)")
+                return m_lastFilteredTransactions
+            }
+            return nil
+        }
+        if let cachedResult {
+            return cachedResult
+        }
 
-        m_transactionListLock.lock()
-        defer { m_transactionListLock.unlock() }
+        var symbolTransactions = transactionsForSymbolFromSnapshot(symbol)
+        symbolTransactions = ensureTransactionCoverageForSymbol(symbol, seedTransactions: symbolTransactions)
 
-        // to avoid filtering again or creating additional copies, save the lastFilteredSymbol and the lastFilteredTransactions
-        // also track the count of the source list.  if it changes, we need to update.
-        if ( (m_lastFilteredTransactionSymbol != symbol)
-             || ( m_lastFilteredTransaxtionsSourceCount != m_transactionList.count ) ) {
-            
+        let updatedSourceCount = m_transactionListLock.withLock { m_transactionList.count }
+        m_filteredTransactionsLock.withLock {
             m_lastFilteredTransactionSymbol = symbol
-            m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
-            m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+            m_lastFilteredTransaxtionsSourceCount = updatedSourceCount
+            m_lastFilteredTransactions = symbolTransactions
             m_lastFilteredTransactionSharesAvailableToTrade = 0.0
-            // AppLogger.shared.debug( "    ==== getTransactionsFor   !!!!! cleared filtered transactions" )
-            // get the filtered transactions for the security and fetch more until we have some or the retries are exhausted.
-            m_lastFilteredTransactions =  m_transactionList.filter { transaction in
-                // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                let matches = transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-                return matches // return from closure, not from the method
-            }
-            // AppLogger.shared.debug("    ==== getTransactionsFor Found \(m_lastFilteredTransactions.count) matching transactions.  Month: \(monthDeltaForLogging) of \(self.maxMonthDelta)")
+        }
 
-            // Fetch more records if needed, but with proper termination conditions
-            var fetchAttempts = 0
-            let maxFetchAttempts = 3  // Limit the number of fetch attempts
-            
-            while( (self.maxMonthDelta > monthDeltaForLogging) && 
-                   (self.m_lastFilteredTransactions.count == 0) && 
-                   (fetchAttempts < maxFetchAttempts) ) {
-                AppLogger.shared.debug( "     -- getTransactionsFor \(symbol ?? "nil")  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))" )
-                fetchAttempts += 1
-                
-                // Use DispatchGroup to wait for the async operation with timeout
-                let group = DispatchGroup()
-                group.enter()
-                
-                // Start the fetch operation
-                Task {
-                    await self.fetchTransactionHistory()
-                    group.leave()
-                }
-                
-                // Wait for completion or timeout
-                let result = group.wait(timeout: .now() + m_fetchTimeout)
-                if result == .timedOut {
-                    AppLogger.shared.debug("     -- getTransactionsFor \(symbol ?? "nil")  - fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds for  \(symbol ?? "nil")")
-                }
-                else {
-                    // Re-filter after potential new data
-                    m_lastFilteredTransactions =  m_transactionList.filter { transaction in
-                        // Check if the symbol is nil or if any transferItem in the transaction matches the symbol
-                        let matches = symbol == nil || transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-                        return matches
-                    }
-                    AppLogger.shared.debug("  -- getTransactionsFor \(symbol ?? "nil")  - Found \(m_lastFilteredTransactions.count) matching transactions after fetch")
-                }
-            }
-            
-            if fetchAttempts >= maxFetchAttempts && m_lastFilteredTransactions.count == 0 {
-                AppLogger.shared.debug("Reached maximum fetch attempts without finding transactions for symbol: \(symbol ?? "nil")")
-            }
-            
-            // Calculate shares available for trading
-            if let symbol = symbol {
-                // We'll compute shares available for trading separately to avoid circular dependency
-                // This will be done after tax lots are computed
-                AppLogger.shared.debug("=== Shares Available for Trading Calculation ===")
-                AppLogger.shared.debug("Symbol: \(symbol)")
-                AppLogger.shared.debug("Shares available for trading will be computed after tax lots")
-            }
-        }
-        else {
-            AppLogger.shared.debug( "  -- getTransactionsFor  same symbol \(symbol ?? "nil") and count as last time - returning cached" )
-        }
-        // return the transactionlist where the symbol matches what is provided
-        AppLogger.shared.debug( " --- getTransactionsFor \(symbol ?? "nil")  returning \(m_lastFilteredTransactions.count) transactions -- " )
-        return m_lastFilteredTransactions
+        AppLogger.shared.debug(" --- getTransactionsFor \(symbol) returning \(symbolTransactions.count) transactions -- ")
+        return symbolTransactions
     } // getTransactionsFor
     
 
@@ -1703,27 +1863,26 @@ class SchwabClient: @unchecked Sendable
         m_transactionListLock.lock()
         defer { m_transactionListLock.unlock() }
         
-        // create a map of symbols to the most recent trade date
-        for transaction in m_transactionList {
-            for transferItem in transaction.transferItems {
-                if let symbol = transferItem.instrument?.symbol {
-                    // convert tradeDate string to a Date
-                    var dateDte : Date = Date()
-                    do {
-                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01 00:00:00", strategy: .iso8601.year().month().day()
-                            .time(includingFractionalSeconds: false)
-                        )
-                        // AppLogger.shared.debug( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
-                    }
-                    catch {
-                        AppLogger.shared.error( "Error parsing date: \(error)" )
-                        continue
-                    }
-                    // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
+        let symbols = Set(
+            m_transactionList.flatMap { transaction in
+                transaction.transferItems.compactMap { $0.instrument?.symbol }
+            }
+        )
+
+        for symbol in symbols {
+            let relevantTransactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: m_transactionList)
+            for transaction in relevantTransactions {
+                guard let tradeDate = transaction.tradeDate else { continue }
+                do {
+                    let dateDte = try Date(
+                        tradeDate,
+                        strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)
+                    )
                     if m_latestDateForSymbol[symbol] == nil || dateDte > m_latestDateForSymbol[symbol]! {
                         m_latestDateForSymbol[symbol] = dateDte
-                        // AppLogger.shared.debug( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
                     }
+                } catch {
+                    AppLogger.shared.error("Error parsing date: \(error)")
                 }
             }
         }
@@ -2505,9 +2664,11 @@ class SchwabClient: @unchecked Sendable
             showIncompleteDataWarning = true
             // Process all trade transactions - only process again if the number of transactions changes
             AppLogger.shared.debug( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )
-            for transaction in self.getTransactionsFor(symbol: symbol)
-            where ( (transaction.type == .trade) || (transaction.type == .receiveAndDeliver))
-            {
+            let transactionsForTaxLots = tradeRelevantTransactionsForLogic(
+                symbol: symbol,
+                sourceTransactions: self.getTransactionsFor(symbol: symbol)
+            )
+            for transaction in transactionsForTaxLots {
                 totalTransactionsFound += 1
                 AppLogger.shared.debug("  --- Processing transaction \(totalTransactionsFound): \(transaction.tradeDate ?? "unknown"), type: \(transaction.type?.rawValue ?? "n/a"), activity: \(transaction.activityType ?? .UNKNOWN)")
                 
@@ -2604,21 +2765,8 @@ class SchwabClient: @unchecked Sendable
             else
             {
                 AppLogger.shared.debug( " -- \(symbol) -- Fetching more records (attempt \(fetchAttempts)) --" )
-                // Use DispatchGroup to wait for the async operation with timeout
-                let group = DispatchGroup()
-                group.enter()
-                
-                // Start the fetch operation
-                Task {
-                    await self.fetchTransactionHistory()
-                    group.leave()
-                }
-                
-                // Wait for completion or timeout
-                let result = group.wait(timeout: .now() + m_fetchTimeout)
-                if result == .timedOut {
-                    AppLogger.shared.debug("   !!! fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
-                }
+                let monthsToFetch = min(3, maxMonthDelta - monthDeltaForLogging)
+                fetchTransactionHistorySynchronously(months: monthsToFetch)
             }
             
         }
@@ -2829,6 +2977,7 @@ class SchwabClient: @unchecked Sendable
                     }
                 }
             }
+            invalidateTransactionDerivedCaches()
             m_transactionListLock.withLock {
                 sortTransactions()
             }
@@ -3463,16 +3612,18 @@ class SchwabClient: @unchecked Sendable
         }
         
         // Use optimized transaction fetching with caching
-        let transactions = getTransactionsForOptimized(symbol: symbol)
-        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - processing \(transactions.count) transactions ===")
+        let transactions = tradeRelevantTransactionsForLogic(
+            symbol: symbol,
+            sourceTransactions: getTransactionsForOptimized(symbol: symbol)
+        )
+        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - processing \(transactions.count) trade-relevant transactions ===")
         
         var totalTransactionsFound = 0
         var totalSharesFound = 0.0
         var workingShareCount = currentShareCount
         
         // Process all trade transactions in a single pass
-        for transaction in transactions
-        where (transaction.type == .trade) || (transaction.type == .receiveAndDeliver) {
+        for transaction in transactions {
             totalTransactionsFound += 1
             
             for transferItem in transaction.transferItems {
