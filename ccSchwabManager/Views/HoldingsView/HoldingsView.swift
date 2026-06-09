@@ -687,8 +687,8 @@ struct HoldingsView: View
                 print("✅ Initial transaction months loaded and trade dates refreshed")
             }
             
-            // Remaining months up to maxMonthDelta (initial reduced load already covered first 12)
-            let remainingMonths = max(SchwabClient.shared.maxMonthDelta - 12, 0)
+            // Remaining months up to the initial load cap (extended depth is fetched per-symbol on demand).
+            let remainingMonths = max(TransactionHistoryConfig.initialLoadMonths - 12, 0)
             if remainingMonths > 0 {
                 print("🚀 Fetching remaining \(remainingMonths) months in background")
                 

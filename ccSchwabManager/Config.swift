@@ -13,6 +13,16 @@ public struct TradingConfig {
     public static let atrMultiplier: Double = 5.0
 }
 
+// MARK: - Transaction History Configuration
+public struct TransactionHistoryConfig {
+    /// Months fetched during holdings refresh and general background loading (~5 years).
+    public static let initialLoadMonths = 60
+    /// Hard safety cap while backfilling a symbol whose share history has not reached zero (~50 years).
+    public static let maxBackfillMonths = 600
+    /// Stop backfilling after this many consecutive month slices return no new transactions.
+    public static let consecutiveEmptyMonthsToStop = 24
+}
+
 // MARK: - Deployment Target Configuration
 // This file explicitly declares our deployment targets to help the linter understand
 // that we're targeting the latest macOS and iOS versions.

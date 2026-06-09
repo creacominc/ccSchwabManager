@@ -116,13 +116,43 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient: @unchecked Sendable
 {
-    /// Rolling one-month slices from present; 60 months ≈ same horizon as the prior 20×3-month chunks.
-    public let maxMonthDelta: Int = 60
+    /// Absolute safety cap for per-symbol backfill (see `TransactionHistoryConfig`).
+    public var maxMonthDelta: Int { TransactionHistoryConfig.maxBackfillMonths }
+
+    /// Month fetch limit for bulk/startup loads and symbols with complete share history.
+    public var initialTransactionHistoryMonths: Int { TransactionHistoryConfig.initialLoadMonths }
+
+    /// Month fetch limit when a symbol's share history still does not reconcile to zero.
+    public var extendedTransactionHistoryMonths: Int { TransactionHistoryConfig.maxBackfillMonths }
+
+    public func transactionFetchLimit(for symbol: String?, sourceTransactions: [Transaction]? = nil) -> Int {
+        guard let symbol else { return initialTransactionHistoryMonths }
+        let transactions = sourceTransactions ?? getTransactionsFor(symbol: symbol)
+        if shareHistoryIsComplete(for: symbol, in: transactions) {
+            return initialTransactionHistoryMonths
+        }
+        return extendedTransactionHistoryMonths
+    }
+
+    public func consecutiveEmptyHistoryMonths() -> Int {
+        m_monthDeltaLock.withLock { m_consecutiveEmptyHistoryMonths }
+    }
+
+    public func transactionHistoryExhausted() -> Bool {
+        m_monthDeltaLock.withLock {
+            m_consecutiveEmptyHistoryMonths >= TransactionHistoryConfig.consecutiveEmptyMonthsToStop
+        }
+    }
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     @Published var showIncompleteDataWarning = false
     private var m_secrets : Secrets
     private var m_monthDelta: Int = 0
+    /// Month-slice indices (1-based) that have actually been fetched. The high-water
+    /// mark `m_monthDelta` alone can leave holes when the global initial load and the
+    /// per-symbol backfill advance the counter concurrently; tracking fetched slices
+    /// lets us always fill the smallest missing slice so no month is ever skipped.
+    private var m_fetchedMonthSlices: Set<Int> = []
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshAccessToken_running : Bool = false
@@ -146,6 +176,7 @@ class SchwabClient: @unchecked Sendable
     private var m_lastFilteredPriceHistory: CandleList?
     private var m_lastFilteredPriceHistorySymbol: String = ""
     private let m_monthDeltaLock: NSLock = NSLock()
+    private var m_consecutiveEmptyHistoryMonths: Int = 0
     private var m_lastFilteredATRSymbol : String = ""
     private var m_lastFilteredATR : Double = 0.0
     private var m_lastFilteredATRLock: NSLock = NSLock()  // mutex for ATR
@@ -232,16 +263,24 @@ class SchwabClient: @unchecked Sendable
     private func getCachedTaxLots(for symbol: String) -> [SalesCalcPositionsRecord]? {
         m_taxLotCacheLock.withLock {
             guard let cacheEntry = m_taxLotCache[symbol] else { return nil }
-            
-            // Check if cache is still valid
-            if Date().timeIntervalSince(cacheEntry.timestamp) < m_taxLotCacheTimeout {
-                AppLogger.shared.debug("📦 Using cached tax lots for \(symbol) (age: \(String(format: "%.1f", Date().timeIntervalSince(cacheEntry.timestamp)))s)")
-                return cacheEntry.data
-            } else {
-                // Cache expired, remove it
+
+            if Date().timeIntervalSince(cacheEntry.timestamp) >= m_taxLotCacheTimeout {
                 m_taxLotCache.removeValue(forKey: symbol)
                 return nil
             }
+
+            let cachedShareTotal = roundedShareAmount(cacheEntry.data.reduce(0.0) { $0 + $1.quantity })
+            let positionShareTotal = roundedShareAmount(getShareCount(symbol: symbol))
+            if abs(cachedShareTotal - positionShareTotal) > minLotQuantityThreshold {
+                AppLogger.shared.debug(
+                    "📦 Invalidating stale tax lot cache for \(symbol) (\(cachedShareTotal) cached vs \(positionShareTotal) position shares)"
+                )
+                m_taxLotCache.removeValue(forKey: symbol)
+                return nil
+            }
+
+            AppLogger.shared.debug("📦 Using cached tax lots for \(symbol) (age: \(String(format: "%.1f", Date().timeIntervalSince(cacheEntry.timestamp)))s)")
+            return cacheEntry.data
         }
     }
     
@@ -275,19 +314,95 @@ class SchwabClient: @unchecked Sendable
         }
     }
 
-    private func invalidateTransactionDerivedCaches() {
-        m_transactionHistoryCacheLock.withLock {
-            m_transactionHistoryCache.removeAll(keepingCapacity: true)
-        }
+    /// Clears per-symbol tax lot, transaction, and filtered caches so recomputation sees newly fetched history.
+    public func invalidateSymbolDerivedCaches(symbol: String) {
         m_taxLotCacheLock.withLock {
-            m_taxLotCache.removeAll(keepingCapacity: true)
+            m_taxLotCache.removeValue(forKey: symbol)
+        }
+        m_transactionHistoryCacheLock.withLock {
+            m_transactionHistoryCache.removeValue(forKey: symbol)
         }
         m_filteredTransactionsLock.withLock {
-            m_lastFilteredTransactionSymbol = nil
-            m_lastFilteredTransaxtionsSourceCount = 0
-            m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+            if m_lastFilteredTransactionSymbol == symbol {
+                m_lastFilteredTransactionSymbol = nil
+                m_lastFilteredTransaxtionsSourceCount = 0
+                m_lastFilteredTransactions.removeAll(keepingCapacity: true)
+                m_lastFilteredTransactionSharesAvailableToTrade = 0.0
+            }
         }
-        m_lastFilteredTaxLotSymbol = nil
+        if m_lastFilteredTaxLotSymbol == symbol {
+            m_lastFilteredTaxLotSymbol = nil
+        }
+    }
+
+    public func loadedTransactionHistoryMonths() -> Int {
+        m_monthDeltaLock.withLock { m_monthDelta }
+    }
+
+    public func canFetchMoreTransactionHistory(for symbol: String? = nil) -> Bool {
+        if transactionHistoryExhausted() {
+            return false
+        }
+        let limit = transactionFetchLimit(for: symbol)
+        return m_monthDeltaLock.withLock { m_monthDelta < limit }
+    }
+
+    /// Why incremental history backfill stopped (nil while backfill can continue).
+    public func historyBackfillStopReason(for symbol: String) -> String? {
+        if hasCompleteShareHistory(for: symbol) {
+            return "share history reached zero"
+        }
+        if transactionHistoryExhausted() {
+            return "no more transaction history (\(consecutiveEmptyHistoryMonths()) consecutive empty months)"
+        }
+        if !canFetchMoreTransactionHistory(for: symbol) {
+            let loaded = loadedTransactionHistoryMonths()
+            let limit = transactionFetchLimit(for: symbol)
+            return "month safety limit reached (\(loaded)/\(limit))"
+        }
+        return nil
+    }
+
+    @discardableResult
+    public func fetchNextTransactionHistoryMonth(for symbol: String? = nil) async -> Bool {
+        guard canFetchMoreTransactionHistory(for: symbol) else { return false }
+        // fetchTransactionHistory returns -1 only when no unfetched slice remains within
+        // the limit. Any value >= 0 means a slice was consumed (even an empty one), which
+        // is real backfill progress — including filling a hole below the high-water mark.
+        let added = await fetchTransactionHistory(allowExtendedFor: symbol)
+        return added >= 0
+    }
+
+    /// Returns true when walking trade history backward reaches zero shares for the current position.
+    public func hasCompleteShareHistory(for symbol: String) -> Bool {
+        shareHistoryIsComplete(for: symbol, in: getTransactionsFor(symbol: symbol))
+    }
+
+    private func shareHistoryIsComplete(for symbol: String, in sourceTransactions: [Transaction]) -> Bool {
+        let currentShareCount = getShareCount(symbol: symbol)
+        if isNearZero(currentShareCount) {
+            return true
+        }
+
+        let relevantTransactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: sourceTransactions)
+        guard !relevantTransactions.isEmpty else {
+            return false
+        }
+
+        var workingShareCount = currentShareCount
+
+        for transaction in relevantTransactions {
+            for transferItem in transaction.transferItems where transferItem.instrument?.symbol == symbol {
+                guard let shares = transferItem.amount, !isNearZero(shares) else { continue }
+                if shares > 0 {
+                    workingShareCount = roundedShareAmount(workingShareCount - shares)
+                } else {
+                    workingShareCount = roundedShareAmount(workingShareCount + abs(shares))
+                }
+            }
+        }
+
+        return isNearZero(workingShareCount)
     }
     
     // MARK: - Optimized Transaction Fetching
@@ -317,6 +432,8 @@ class SchwabClient: @unchecked Sendable
         }
     }
 
+    // MARK: - Transfer pairing (exclude internal ACAT/journal pairs from tax-lot logic)
+
     private struct TransferPairingKey: Hashable {
         let tradeDate: String
         let absShares: Int64
@@ -333,6 +450,13 @@ class SchwabClient: @unchecked Sendable
 
     private func roundedShareAmount(_ value: Double) -> Double {
         ((value * 100000).rounded()) / 100000
+    }
+
+    /// Smallest open-lot quantity retained after partial sell matching (Schwab keeps fractional lots).
+    private let minLotQuantityThreshold = 0.0001
+
+    private func isRetainedLotQuantity(_ quantity: Double) -> Bool {
+        quantity >= minLotQuantityThreshold
     }
 
     private func roundedKeyComponent(_ value: Double, scale: Double = 100000) -> Int64 {
@@ -364,7 +488,25 @@ class SchwabClient: @unchecked Sendable
         if abs(transaction.netAmount ?? 0.0) < 0.0001 {
             return true
         }
-        return (transaction.description ?? "").lowercased().contains("transfer")
+        let lowerDescription = (transaction.description ?? "").lowercased()
+        return lowerDescription.contains("transfer") || lowerDescription.contains("journal")
+    }
+
+    /// A pure share-movement journal/transfer (e.g. "Journaled Shares"): no cash changed
+    /// hands, or an explicit journal / receive-and-deliver / transfer record. Real trades
+    /// always move cash (netAmount != 0), so they are never matched by this.
+    private func isJournalShareTransfer(_ transaction: Transaction) -> Bool {
+        if transaction.type == .journal || transaction.type == .receiveAndDeliver {
+            return true
+        }
+        if transaction.activityType == .TRANSFER {
+            return true
+        }
+        let lower = (transaction.description ?? "").lowercased()
+        if lower.contains("journal") || lower.contains("transfer") {
+            return true
+        }
+        return abs(transaction.netAmount ?? 0.0) < 0.0001
     }
 
     private func tradeRelevantTransactionsForLogic(symbol: String, sourceTransactions: [Transaction]) -> [Transaction] {
@@ -424,127 +566,159 @@ class SchwabClient: @unchecked Sendable
             AppLogger.shared.debug("↔️ Excluding \(pairedTransfers.count) transfer-side transactions from trade logic for \(symbol)")
         }
 
+        // Same-day, same-quantity Journaled-Shares / transfer pairs: a share movement that
+        // matches an opposite-sign record on the same day for the same number of shares.
+        // These move shares without a real buy/sell, so both legs are removed entirely
+        // (ignores price and account — keyed only on trade date + |shares|).
+        var journalDayBuckets: [String: (positive: [TradeLogicCandidate], negative: [TradeLogicCandidate])] = [:]
+        for candidate in candidates where isJournalShareTransfer(candidate.transaction) {
+            let dayKey = "\(candidate.key.tradeDate)#\(candidate.key.absShares)"
+            var bucket = journalDayBuckets[dayKey] ?? (positive: [], negative: [])
+            if candidate.shares > 0 {
+                bucket.positive.append(candidate)
+            } else {
+                bucket.negative.append(candidate)
+            }
+            journalDayBuckets[dayKey] = bucket
+        }
+
+        var journalPairedExclusions: Set<ObjectIdentifier> = []
+        for (_, bucket) in journalDayBuckets {
+            var negatives = bucket.negative
+            for positive in bucket.positive {
+                guard !negatives.isEmpty else { break }
+                let negative = negatives.removeLast()
+                journalPairedExclusions.insert(ObjectIdentifier(positive.transaction))
+                journalPairedExclusions.insert(ObjectIdentifier(negative.transaction))
+            }
+        }
+
+        if !journalPairedExclusions.isEmpty {
+            AppLogger.shared.debug("↔️ Removing \(journalPairedExclusions.count) same-day same-quantity journal/transfer records for \(symbol)")
+        }
+
         return candidates.compactMap { candidate in
-            pairedTransfers.contains(ObjectIdentifier(candidate.transaction)) ? nil : candidate.transaction
+            // Pure same-day journal/transfer pairs are dropped entirely.
+            if journalPairedExclusions.contains(ObjectIdentifier(candidate.transaction)) {
+                return nil
+            }
+            if pairedTransfers.contains(ObjectIdentifier(candidate.transaction)) {
+                // Zero-cost cross-account transfer journals stay in FIFO; same-day
+                // sell-before-buy sort nets them out. Same-account consolidation
+                // journals are removed later by removeConsolidationJournalRecords.
+                if isNearZero(abs(symbolPrice(for: candidate.transaction, symbol: symbol))) {
+                    return candidate.transaction
+                }
+                return nil
+            }
+            return candidate.transaction
         }
     }
 
-    private func hasCompleteShareHistory(for symbol: String, sourceTransactions: [Transaction], currentShareCount: Double) -> Bool {
-        if isNearZero(currentShareCount) {
-            return true
+    /// Same-day $0 receive/deliver journals that sell the entire open buy queue and
+    /// immediately rebuy are lot-consolidation no-ops. Excluding both legs preserves
+    /// underlying cost lots (e.g. ASML 2026-05-14 ±10.157).
+    private func removeConsolidationJournalRecords(_ records: [SalesCalcPositionsRecord]) -> [SalesCalcPositionsRecord] {
+        guard records.count > 1 else { return records }
+
+        let sortedIndices = records.indices.sorted { lhs, rhs in
+            let a = records[lhs]
+            let b = records[rhs]
+            return (a.openDate < b.openDate)
+                || (a.openDate == b.openDate && a.costPerShare > b.costPerShare)
+                || (a.openDate == b.openDate && a.costPerShare == b.costPerShare && a.quantity < b.quantity)
         }
 
-        let relevantTransactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: sourceTransactions)
-        guard !relevantTransactions.isEmpty else {
-            return false
-        }
+        var skipIndices: Set<Int> = []
+        var buyQueue: [SalesCalcPositionsRecord] = []
 
-        var workingShareCount = currentShareCount
-        for transaction in relevantTransactions {
-            for transferItem in transaction.transferItems where transferItem.instrument?.symbol == symbol {
-                guard let shares = transferItem.amount, !isNearZero(shares) else { continue }
-                if shares > 0 {
-                    workingShareCount = roundedShareAmount(workingShareCount - shares)
+        for idx in sortedIndices {
+            if skipIndices.contains(idx) { continue }
+            let record = records[idx]
+
+            if record.quantity > 0 {
+                buyQueue.append(record)
+                continue
+            }
+
+            let buyQueueTotal = roundedShareAmount(buyQueue.reduce(0.0) { $0 + $1.quantity })
+            let sellQty = abs(record.quantity)
+
+            if isNearZero(record.costPerShare),
+               buyQueueTotal > 0.0001,
+               abs(sellQty - buyQueueTotal) < 0.0001,
+               let buyIdx = sortedIndices.first(where: { other in
+                   !skipIndices.contains(other)
+                       && other != idx
+                       && records[other].openDate == record.openDate
+                       && records[other].quantity > 0
+                       && isNearZero(records[other].costPerShare)
+                       && abs(records[other].quantity - sellQty) < 0.0001
+               }) {
+                skipIndices.insert(idx)
+                skipIndices.insert(buyIdx)
+                AppLogger.shared.debug("↔️ Excluding consolidation journal pair on \(record.openDate): ±\(sellQty) shares at $0")
+                buyQueue.removeAll()
+                continue
+            }
+
+            buyQueue.sort { (0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) }
+            var remaining = sellQty
+            while remaining > 0 && !buyQueue.isEmpty {
+                var buyRecord = buyQueue.removeFirst()
+                let buyQuantity = buyRecord.quantity
+                if buyQuantity <= remaining {
+                    remaining = roundedShareAmount(remaining - buyQuantity)
                 } else {
-                    workingShareCount = roundedShareAmount(workingShareCount + abs(shares))
+                    buyRecord.quantity = roundedShareAmount(buyQuantity - remaining)
+                    if isRetainedLotQuantity(buyRecord.quantity) {
+                        buyQueue.insert(buyRecord, at: 0)
+                    }
+                    remaining = 0
                 }
-                if isNearZero(workingShareCount) {
-                    return true
-                }
             }
         }
 
-        return false
+        return records.enumerated().compactMap { skipIndices.contains($0.offset) ? nil : $0.element }
     }
 
-    @discardableResult
-    private func fetchTransactionHistorySynchronously(months: Int) -> Bool {
-        guard months > 0 else { return false }
-
-        let monthDeltaBefore = m_monthDeltaLock.withLock { m_monthDelta }
-        let group = DispatchGroup()
-        group.enter()
-
-        let task = Task {
-            for _ in 0..<months {
-                await self.fetchTransactionHistory()
-            }
-            group.leave()
-        }
-
-        let timeout = (requestTimeout + 5.0) * Double(months)
-        if group.wait(timeout: .now() + timeout) == .timedOut {
-            AppLogger.shared.warning("fetchTransactionHistorySynchronously timed out for \(months)-month backfill batch")
-            task.cancel()
-            return false
-        }
-
-        let monthDeltaAfter = m_monthDeltaLock.withLock { m_monthDelta }
-        return monthDeltaAfter > monthDeltaBefore
+    private func journalDateKey(from openDate: String) -> String {
+        String(openDate.prefix(10))
     }
 
-    private func transactionsForSymbolFromSnapshot(_ symbol: String) -> [Transaction] {
-        m_transactionListLock.withLock {
-            m_transactionList.filter { transaction in
-                transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-            }
-        }
+    /// Stock splits produce ratios close to small whole numbers or their reciprocals.
+    /// Transfer-journal remnants (e.g. 0.157 shares) must not be treated as splits.
+    private func isPlausibleStockSplitRatio(_ ratio: Double) -> Bool {
+        guard ratio > 0 else { return false }
+        let commonRatios: [Double] = [
+            2, 3, 4, 5, 6, 7, 8, 9, 10, 20,
+            1.5, 2.5, 3.5,
+            0.5, 1.0 / 3.0, 0.25, 0.2, 0.1
+        ]
+        return commonRatios.contains { abs(ratio - $0) / $0 < 0.02 }
     }
 
-    private func ensureTransactionCoverageForSymbol(_ symbol: String, seedTransactions: [Transaction]) -> [Transaction] {
-        let currentShareCount = getShareCount(symbol: symbol)
-        if isNearZero(currentShareCount) {
-            return seedTransactions
+    /// When a $0 journal sell consumes real lots and a matching $0 buy follows the same day,
+    /// inherit the consumed cost basis so journal remnants are not left at $0.
+    private func inheritJournalBuyCostBasis(
+        _ record: SalesCalcPositionsRecord,
+        journalConsumedCostByDate: [String: (quantity: Double, basis: Double)]
+    ) -> SalesCalcPositionsRecord {
+        guard record.quantity > 0, isNearZero(record.costPerShare) else { return record }
+
+        let dateKey = journalDateKey(from: record.openDate)
+        guard let consumed = journalConsumedCostByDate[dateKey], consumed.quantity > 0.0001 else {
+            return record
         }
 
-        var symbolTransactions = seedTransactions
-        let coverageStart = Date()
-        let maxCoverageDuration: TimeInterval = 30
-        let maxCoverageAttempts = max(1, maxMonthDelta / 3)
-        var coverageAttempts = 0
-        var hasCompleteHistory = hasCompleteShareHistory(
-            for: symbol,
-            sourceTransactions: symbolTransactions,
-            currentShareCount: currentShareCount
-        )
-
-        while !hasCompleteHistory {
-            if Date().timeIntervalSince(coverageStart) >= maxCoverageDuration {
-                AppLogger.shared.warning("⚠️ \(symbol): stopping coverage backfill after \(Int(maxCoverageDuration))s to keep UI responsive")
-                break
-            }
-
-            let currentMonthDelta = m_monthDeltaLock.withLock { m_monthDelta }
-            guard currentMonthDelta < maxMonthDelta else { break }
-            guard coverageAttempts < maxCoverageAttempts else {
-                AppLogger.shared.warning("⚠️ \(symbol): coverage backfill reached max attempts")
-                break
-            }
-
-            let monthsToFetch = min(3, maxMonthDelta - currentMonthDelta)
-            AppLogger.shared.debug("📚 \(symbol): backfilling \(monthsToFetch) more month(s) before adjacent prefetch")
-            coverageAttempts += 1
-            let didAdvanceWindow = fetchTransactionHistorySynchronously(months: monthsToFetch)
-            if !didAdvanceWindow {
-                AppLogger.shared.warning("⚠️ \(symbol): coverage backfill made no month-range progress, aborting loop")
-                break
-            }
-
-            symbolTransactions = transactionsForSymbolFromSnapshot(symbol)
-            hasCompleteHistory = hasCompleteShareHistory(
-                for: symbol,
-                sourceTransactions: symbolTransactions,
-                currentShareCount: currentShareCount
-            )
-        }
-
-        if !hasCompleteHistory {
-            AppLogger.shared.warning("⚠️ \(symbol): unable to fully resolve position history before max month window")
-        }
-
-        return symbolTransactions
+        var updated = record
+        let inheritedCost = consumed.basis / consumed.quantity
+        updated.costPerShare = inheritedCost
+        updated.costBasis = updated.quantity * inheritedCost
+        AppLogger.shared.debug("↔️ Inherited journal cost basis on \(record.openDate): \(updated.quantity) shares at $\(inheritedCost)")
+        return updated
     }
-    
+
     private init()
     {
         self.m_secrets = Secrets()
@@ -1785,9 +1959,11 @@ class SchwabClient: @unchecked Sendable
         }
     }
 
-    public func fetchTransactionHistory() async {
+    @discardableResult
+    public func fetchTransactionHistory(allowExtendedFor symbol: String? = nil) async -> Int {
+        let fetchLimit = transactionFetchLimit(for: symbol)
         let monthDeltaForLogging = m_monthDeltaLock.withLock { return m_monthDelta }
-        AppLogger.shared.debug("=== fetchTransactionHistory -  monthDelta: \(monthDeltaForLogging) ===")
+        AppLogger.shared.debug("=== fetchTransactionHistory - monthDelta: \(monthDeltaForLogging)/\(fetchLimit)\(symbol.map { " for \($0)" } ?? "") ===")
         await MainActor.run {
             loadingDelegate?.setLoading(true)
         }
@@ -1797,82 +1973,140 @@ class SchwabClient: @unchecked Sendable
             }
         }
 
-        let currentMonthDelta = m_monthDeltaLock.withLock {
-            let current = m_monthDelta
-            if maxMonthDelta <= current {
-                return current
-            }
-            if current == 0 {
+        // Pick the smallest slice in 1...fetchLimit that has not been fetched yet.
+        // This fills any holes left by concurrent advancement of the high-water mark
+        // (initial load vs. per-symbol backfill) instead of skipping past them.
+        let sliceToFetch: Int? = m_monthDeltaLock.withLock {
+            if m_monthDelta == 0 {
                 m_transactionListLock.withLock {
                     m_transactionList.removeAll(keepingCapacity: true)
                 }
             }
-            m_monthDelta += 1
-            return m_monthDelta
+            var candidate = 1
+            while candidate <= fetchLimit {
+                if !m_fetchedMonthSlices.contains(candidate) {
+                    m_fetchedMonthSlices.insert(candidate)
+                    if candidate > m_monthDelta {
+                        m_monthDelta = candidate
+                    }
+                    return candidate
+                }
+                candidate += 1
+            }
+            return nil
         }
 
-        if maxMonthDelta <= currentMonthDelta {
-            AppLogger.shared.debug(" --- fetchTransactionHistory -  maxMonthDelta reached")
-            return
+        guard let newMonthDelta = sliceToFetch else {
+            AppLogger.shared.debug(" --- fetchTransactionHistory - fetch limit \(fetchLimit) reached")
+            return -1
         }
-
-        let newMonthDelta = currentMonthDelta
-        let initialSize: Int = m_transactionList.count
+        let initialSize: Int = m_transactionListLock.withLock { m_transactionList.count }
 
         await fetchTransactionSliceForMonthDelta(newMonthDelta)
 
-        let fetchedCount = m_transactionList.count - initialSize
-        AppLogger.shared.debug("Fetched \(fetchedCount) transactions")
+        let addedCount = m_transactionListLock.withLock {
+            let added = m_transactionList.count - initialSize
+            AppLogger.shared.debug("Fetched \(added) transactions")
+            return added
+        }
+
+        m_monthDeltaLock.withLock {
+            if addedCount == 0 {
+                m_consecutiveEmptyHistoryMonths += 1
+                AppLogger.shared.debug("  -- empty history month \(newMonthDelta) (\(m_consecutiveEmptyHistoryMonths) consecutive)")
+            } else {
+                m_consecutiveEmptyHistoryMonths = 0
+            }
+        }
 
         m_transactionListLock.withLock {
             sortTransactions()
         }
-        if fetchedCount > 0 {
-            invalidateTransactionDerivedCaches()
-        }
         self.setLatestTradeDates()
         await MainActor.run { }
+        return addedCount
     }
 
-
-    /**
-     * getTransactionsFor - return the m_transactionList.
-     */
     public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
     {
-        guard let symbol else {
+        if symbol == nil {
             AppLogger.shared.debug("getTransactionsFor nil - no symbol provided")
             return m_transactionListLock.withLock { m_transactionList }
         }
 
-        let sourceCount = m_transactionListLock.withLock { m_transactionList.count }
-        let cachedResult: [Transaction]? = m_filteredTransactionsLock.withLock {
-            if m_lastFilteredTransactionSymbol == symbol && m_lastFilteredTransaxtionsSourceCount == sourceCount {
-                let currentShareCount = getShareCount(symbol: symbol)
-                if isNearZero(currentShareCount) || hasCompleteShareHistory(for: symbol, sourceTransactions: m_lastFilteredTransactions, currentShareCount: currentShareCount) {
-                    AppLogger.shared.debug("  -- getTransactionsFor cached hit for \(symbol)")
-                    return m_lastFilteredTransactions
-                }
+        let symbol = symbol!
+        var monthDeltaForLogging = m_monthDeltaLock.withLock { m_monthDelta }
+        var filtered: [Transaction] = []
+
+        m_filteredTransactionsLock.lock()
+        m_transactionListLock.lock()
+
+        let sourceCount = m_transactionList.count
+        let cacheValid = m_lastFilteredTransactionSymbol == symbol
+            && m_lastFilteredTransaxtionsSourceCount == sourceCount
+
+        if cacheValid {
+            filtered = m_lastFilteredTransactions
+            m_transactionListLock.unlock()
+            m_filteredTransactionsLock.unlock()
+            AppLogger.shared.debug("  -- getTransactionsFor  same symbol \(symbol) and count as last time - returning cached")
+            AppLogger.shared.debug(" --- getTransactionsFor \(symbol)  returning \(filtered.count) transactions -- ")
+            return filtered
+        }
+
+        m_lastFilteredTransactionSymbol = symbol
+        m_lastFilteredTransaxtionsSourceCount = sourceCount
+        m_lastFilteredTransactionSharesAvailableToTrade = 0.0
+        filtered = m_transactionList.filter { transaction in
+            transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+        }
+        m_lastFilteredTransactions = filtered
+
+        m_transactionListLock.unlock()
+        m_filteredTransactionsLock.unlock()
+
+        var fetchAttempts = 0
+        let maxFetchAttempts = 3
+
+        while extendedTransactionHistoryMonths > monthDeltaForLogging
+            && filtered.isEmpty
+            && fetchAttempts < maxFetchAttempts {
+            AppLogger.shared.debug("     -- getTransactionsFor \(symbol)  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))")
+            fetchAttempts += 1
+
+            let group = DispatchGroup()
+            group.enter()
+            Task {
+                await self.fetchTransactionHistory(allowExtendedFor: symbol)
+                group.leave()
             }
-            return nil
-        }
-        if let cachedResult {
-            return cachedResult
+            let result = group.wait(timeout: .now() + m_fetchTimeout)
+            if result == .timedOut {
+                AppLogger.shared.debug("     -- getTransactionsFor \(symbol)  - fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
+            }
+
+            m_filteredTransactionsLock.lock()
+            m_transactionListLock.lock()
+            m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
+            filtered = m_transactionList.filter { transaction in
+                transaction.transferItems.contains { $0.instrument?.symbol == symbol }
+            }
+            m_lastFilteredTransactions = filtered
+            m_transactionListLock.unlock()
+            m_filteredTransactionsLock.unlock()
+
+            monthDeltaForLogging = m_monthDeltaLock.withLock { m_monthDelta }
+            if !filtered.isEmpty {
+                AppLogger.shared.debug("  -- getTransactionsFor \(symbol)  - Found \(filtered.count) matching transactions after fetch")
+            }
         }
 
-        var symbolTransactions = transactionsForSymbolFromSnapshot(symbol)
-        symbolTransactions = ensureTransactionCoverageForSymbol(symbol, seedTransactions: symbolTransactions)
-
-        let updatedSourceCount = m_transactionListLock.withLock { m_transactionList.count }
-        m_filteredTransactionsLock.withLock {
-            m_lastFilteredTransactionSymbol = symbol
-            m_lastFilteredTransaxtionsSourceCount = updatedSourceCount
-            m_lastFilteredTransactions = symbolTransactions
-            m_lastFilteredTransactionSharesAvailableToTrade = 0.0
+        if fetchAttempts >= maxFetchAttempts && filtered.isEmpty {
+            AppLogger.shared.debug("Reached maximum fetch attempts without finding transactions for symbol: \(symbol)")
         }
 
-        AppLogger.shared.debug(" --- getTransactionsFor \(symbol) returning \(symbolTransactions.count) transactions -- ")
-        return symbolTransactions
+        AppLogger.shared.debug(" --- getTransactionsFor \(symbol)  returning \(filtered.count) transactions -- ")
+        return filtered
     } // getTransactionsFor
     
 
@@ -1891,26 +2125,27 @@ class SchwabClient: @unchecked Sendable
         m_transactionListLock.lock()
         defer { m_transactionListLock.unlock() }
         
-        let symbols = Set(
-            m_transactionList.flatMap { transaction in
-                transaction.transferItems.compactMap { $0.instrument?.symbol }
-            }
-        )
-
-        for symbol in symbols {
-            let relevantTransactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: m_transactionList)
-            for transaction in relevantTransactions {
-                guard let tradeDate = transaction.tradeDate else { continue }
-                do {
-                    let dateDte = try Date(
-                        tradeDate,
-                        strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)
-                    )
+        // create a map of symbols to the most recent trade date
+        for transaction in m_transactionList {
+            for transferItem in transaction.transferItems {
+                if let symbol = transferItem.instrument?.symbol {
+                    // convert tradeDate string to a Date
+                    var dateDte : Date = Date()
+                    do {
+                        dateDte = try Date( transaction.tradeDate ?? "1970-01-01 00:00:00", strategy: .iso8601.year().month().day()
+                            .time(includingFractionalSeconds: false)
+                        )
+                        // AppLogger.shared.debug( "=== dateStr: \(dateStr), dateDte: \(dateDte) ==" )
+                    }
+                    catch {
+                        AppLogger.shared.error( "Error parsing date: \(error)" )
+                        continue
+                    }
+                    // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
                     if m_latestDateForSymbol[symbol] == nil || dateDte > m_latestDateForSymbol[symbol]! {
                         m_latestDateForSymbol[symbol] = dateDte
+                        // AppLogger.shared.debug( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
                     }
-                } catch {
-                    AppLogger.shared.error("Error parsing date: \(error)")
                 }
             }
         }
@@ -2588,6 +2823,13 @@ class SchwabClient: @unchecked Sendable
                     AppLogger.shared.debug("    Shares from split: \(sharesFromSplit)")
                     AppLogger.shared.debug("    Total shares after split: \(totalSharesAfterSplit)")
                     AppLogger.shared.debug("    Split ratio: \(splitRatio)")
+
+                    guard isPlausibleStockSplitRatio(splitRatio) else {
+                        AppLogger.shared.debug("  --- \(symbol) --- Split ratio \(splitRatio) is not plausible; skipping (likely transfer journal)")
+                        adjustedLots.append(currentLot)
+                        i += 1
+                        continue
+                    }
                     
                     // Adjust all prior holdings by the split ratio
                     for j in 0..<adjustedLots.count {
@@ -2696,7 +2938,8 @@ class SchwabClient: @unchecked Sendable
                 symbol: symbol,
                 sourceTransactions: self.getTransactionsFor(symbol: symbol)
             )
-            for transaction in transactionsForTaxLots {
+            for transaction in transactionsForTaxLots
+            {
                 totalTransactionsFound += 1
                 AppLogger.shared.debug("  --- Processing transaction \(totalTransactionsFound): \(transaction.tradeDate ?? "unknown"), type: \(transaction.type?.rawValue ?? "n/a"), activity: \(transaction.activityType ?? .UNKNOWN)")
                 
@@ -2755,30 +2998,21 @@ class SchwabClient: @unchecked Sendable
 
                 } // for transferItem
 
-                // break if we find zero
+                // Minimal-data walk: stop as soon as the running share count reaches zero.
                 if isNearZero( currentShareCount ) {
                     showIncompleteDataWarning = false
-                    AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- Found zero -- " )
-                    AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found at iteration \(fetchAttempts) -- " )
+                    AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- Found zero — stopping backward walk --" )
                     break
                 }
-                // Don't break on negative share count - continue processing to find all buy transactions
-                // The negative share count indicates we've encountered more sell transactions than buy transactions
-                // but we need to continue to find all the buy transactions that account for our current position
 
             } // for transaction
-            
+
             // Break if we've found zero shares or reached max months of history
             if ( isNearZero(currentShareCount) ) {
-                AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- found near zero --  currentShareCount = \(currentShareCount)" )
-                AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found after processing all transactions -- " )
+                AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found --" )
                 showIncompleteDataWarning = false
                 break
-            }
-            // Don't break on negative share count - continue processing to find all buy transactions
-            // The negative share count indicates we've encountered more sell transactions than buy transactions
-            // but we need to continue to find all the buy transactions that account for our current position
-            else if  ( self.maxMonthDelta <= monthDeltaForLogging )  {
+            } else if ( self.transactionFetchLimit(for: symbol, sourceTransactions: self.getTransactionsFor(symbol: symbol)) <= monthDeltaForLogging ) {
 //                showIncompleteDataWarning = true
                 AppLogger.shared.debug( " -- \(symbol) -- Reached max month delta --" )
                 AppLogger.shared.debug( " -- \(symbol) -- WARNING: Incomplete data - reached max month delta. Setting showIncompleteDataWarning = true --" )
@@ -2793,8 +3027,21 @@ class SchwabClient: @unchecked Sendable
             else
             {
                 AppLogger.shared.debug( " -- \(symbol) -- Fetching more records (attempt \(fetchAttempts)) --" )
-                let monthsToFetch = min(3, maxMonthDelta - monthDeltaForLogging)
-                fetchTransactionHistorySynchronously(months: monthsToFetch)
+                // Use DispatchGroup to wait for the async operation with timeout
+                let group = DispatchGroup()
+                group.enter()
+                
+                // Start the fetch operation
+                Task {
+                    await self.fetchTransactionHistory(allowExtendedFor: symbol)
+                    group.leave()
+                }
+                
+                // Wait for completion or timeout
+                let result = group.wait(timeout: .now() + m_fetchTimeout)
+                if result == .timedOut {
+                    AppLogger.shared.debug("   !!! fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
+                }
             }
             
         }
@@ -2803,20 +3050,27 @@ class SchwabClient: @unchecked Sendable
             AppLogger.shared.debug("Warning: computeTaxLots reached maximum fetch attempts for symbol: \(symbol)")
             // invalid or incomplete warning
         }
+
+        m_lastFilteredPositionRecords = removeConsolidationJournalRecords(m_lastFilteredPositionRecords)
         
         // Sort records by date (oldest first) and cost (highest first for same date)
-        m_lastFilteredPositionRecords.sort { ($0.openDate < $1.openDate) || ($0.openDate == $1.openDate && ( ($0.costPerShare > $1.costPerShare) || ($0.quantity > $1.quantity) ) ) }
+        // Same-day ties: higher cost first; then sells before buys (negative quantity first)
+        m_lastFilteredPositionRecords.sort {
+            ($0.openDate < $1.openDate)
+            || ($0.openDate == $1.openDate && $0.costPerShare > $1.costPerShare)
+            || ($0.openDate == $1.openDate && $0.costPerShare == $1.costPerShare && $0.quantity < $1.quantity)
+        }
         
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
+        var journalConsumedCostByDate: [String: (quantity: Double, basis: Double)] = [:]
 //        if debug {  AppLogger.shared.debug( "  -- computeTaxLots:  -- removing sold shares -- " ) }
         for record : SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
 //                if debug {  AppLogger.shared.debug( "  -- computeTaxLots:     ++++   adding buy to queue: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare)" ) }
-                // Add buy record to queue
-                buyQueue.append(record)
+                buyQueue.append(inheritJournalBuyCostBasis(record, journalConsumedCostByDate: journalConsumedCostByDate))
             } else {
 //                if debug {  AppLogger.shared.debug( "  -- computeTaxLots:     ----   processing sell.  buy queue size: \(buyQueue.count),  sell: \t\(record.openDate), \tquantity: \(record.quantity), \tcostPerShare: \(record.costPerShare),  marketValue: \(record.marketValue)" ) }
                 // If this is a .trade record, sort the buy queue by high price.  On trades, the cost-per-share will not be zero
@@ -2845,13 +3099,27 @@ class SchwabClient: @unchecked Sendable
 //                    if debug {  AppLogger.shared.debug( "  -- computeTaxLots:         !         buyRecord: \t\(buyRecord.openDate), \t\(buyRecord.quantity), \t\(buyRecord.costPerShare)") }
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
+                        if isNearZero(record.costPerShare) {
+                            let dateKey = journalDateKey(from: record.openDate)
+                            var consumed = journalConsumedCostByDate[dateKey, default: (0, 0)]
+                            consumed.quantity += buyQuantity
+                            consumed.basis += buyQuantity * buyRecord.costPerShare
+                            journalConsumedCostByDate[dateKey] = consumed
+                        }
                         remainingSellQuantity -= buyQuantity
                         //matchedBuys.append(buyRecord)
                     } else {
-                        // Buy record partially matches sell - put it at the head of the queue if it is at least $0.01
-                        if( 0.01 <= round( buyRecord.quantity * 100.0 ) / 100.0 )
+                        // Buy record partially matches sell - keep remainder if it is a meaningful lot
+                        if isRetainedLotQuantity(buyRecord.quantity)
                         {
                             let matchedQuantity = remainingSellQuantity
+                            if isNearZero(record.costPerShare) {
+                                let dateKey = journalDateKey(from: record.openDate)
+                                var consumed = journalConsumedCostByDate[dateKey, default: (0, 0)]
+                                consumed.quantity += matchedQuantity
+                                consumed.basis += matchedQuantity * buyRecord.costPerShare
+                                journalConsumedCostByDate[dateKey] = consumed
+                            }
                             buyRecord.quantity -= matchedQuantity
                             buyRecord.marketValue = buyRecord.quantity * buyRecord.price
                             buyRecord.costBasis = buyRecord.quantity * buyRecord.costPerShare
@@ -2880,6 +3148,13 @@ class SchwabClient: @unchecked Sendable
 
         // Handle merged/renamed securities where the earliest transaction has cost = 0
         remainingRecords = handleMergedRenamedSecurities(remainingRecords, symbol: symbol)
+
+        let lotShareTotal = roundedShareAmount(remainingRecords.reduce(0.0) { $0 + $1.quantity })
+        let positionShareTotal = getShareCount(symbol: symbol)
+        if abs(lotShareTotal - positionShareTotal) > 0.0001 {
+            AppLogger.shared.warning("⚠️ \(symbol): tax lots sum to \(lotShareTotal) shares but position is \(positionShareTotal)")
+            showIncompleteDataWarning = true
+        }
 
         AppLogger.shared.debug("=== computeTaxLots Summary for \(symbol) ===")
         AppLogger.shared.debug("Total transactions processed: \(totalTransactionsFound)")
@@ -2987,6 +3262,8 @@ class SchwabClient: @unchecked Sendable
 
         m_monthDeltaLock.withLock {
             m_monthDelta = 0
+            m_consecutiveEmptyHistoryMonths = 0
+            m_fetchedMonthSlices.removeAll(keepingCapacity: true)
             m_transactionListLock.withLock {
                 m_transactionList.removeAll(keepingCapacity: true)
             }
@@ -3005,7 +3282,6 @@ class SchwabClient: @unchecked Sendable
                     }
                 }
             }
-            invalidateTransactionDerivedCaches()
             m_transactionListLock.withLock {
                 sortTransactions()
             }
@@ -3019,6 +3295,7 @@ class SchwabClient: @unchecked Sendable
 
         m_monthDeltaLock.withLock {
             m_monthDelta = months
+            m_fetchedMonthSlices.formUnion(1...max(months, 1))
         }
 
         AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions in \(months) months")
@@ -3592,35 +3869,13 @@ class SchwabClient: @unchecked Sendable
             return cachedTaxLots
         }
         
-        // Get current share count and determine optimal time range
         let currentShareCount = getShareCount(symbol: symbol)
-        let optimalMonths = calculateOptimalHistoryMonths(for: symbol, currentShares: currentShareCount)
-        
-        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - using optimal range: \(optimalMonths) months ===")
-        
-        // Ensure we have enough transaction history for this calculation
-        let currentMonthDelta = m_monthDeltaLock.withLock { return m_monthDelta }
-        if currentMonthDelta < optimalMonths {
-            AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - expanding transaction history to \(optimalMonths) months ===")
-            
-            // Use DispatchGroup to wait for the async operation with timeout
-            let group = DispatchGroup()
-            group.enter()
-            
-            // Start the fetch operation
-            Task {
-                for _ in currentMonthDelta..<optimalMonths {
-                    await self.fetchTransactionHistory()
-                }
-                group.leave()
-            }
-            
-            // Wait for completion or timeout
-            let result = group.wait(timeout: .now() + m_fetchTimeout)
-            if result == .timedOut {
-                AppLogger.shared.warning("!!! computeTaxLotsOptimized \(symbol) timed out after \(m_fetchTimeout) seconds")
-            }
-        }
+        let loadedMonths = loadedTransactionHistoryMonths()
+        let sourceTransactions = getTransactionsForOptimized(symbol: symbol)
+        let transactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: sourceTransactions)
+        let historyComplete = shareHistoryIsComplete(for: symbol, in: sourceTransactions)
+        let fetchLimit = historyComplete ? initialTransactionHistoryMonths : extendedTransactionHistoryMonths
+        AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - loaded \(loadedMonths)/\(fetchLimit) month(s), complete history: \(historyComplete) ===")
         
         // Clear previous results
         m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
@@ -3640,17 +3895,13 @@ class SchwabClient: @unchecked Sendable
         }
         
         // Use optimized transaction fetching with caching
-        let transactions = tradeRelevantTransactionsForLogic(
-            symbol: symbol,
-            sourceTransactions: getTransactionsForOptimized(symbol: symbol)
-        )
         AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - processing \(transactions.count) trade-relevant transactions ===")
         
         var totalTransactionsFound = 0
         var totalSharesFound = 0.0
         var workingShareCount = currentShareCount
         
-        // Process all trade transactions in a single pass
+        // Process trade-relevant transactions in a single pass
         for transaction in transactions {
             totalTransactionsFound += 1
             
@@ -3699,41 +3950,48 @@ class SchwabClient: @unchecked Sendable
                         splitMultiple: 1.0
                     )
                 )
-                
-                // Break if we find zero shares
+
+                // Minimal-data walk: stop as soon as the running share count reaches zero.
+                // We only need history back to the point that accounts for the current position.
                 if isNearZero(workingShareCount) {
                     showIncompleteDataWarning = false
-                    AppLogger.shared.debug("-- computeTaxLotsOptimized: -- Found zero -- SUCCESS: Zero point found")
+                    AppLogger.shared.debug("-- computeTaxLotsOptimized: \(symbol) -- Found zero — stopping backward walk")
                     break
                 }
             }
-            
-            // Break if we found zero shares
+
             if isNearZero(workingShareCount) {
                 break
             }
         }
-        
-        // Set warning if we didn't find zero
+
+        // If we never reached zero, history is incomplete (background backfill will load more)
         if !isNearZero(workingShareCount) {
             showIncompleteDataWarning = true
-            AppLogger.shared.warning("Warning: computeTaxLotsOptimized could not find zero point for symbol: \(symbol)")
+            AppLogger.shared.warning("Warning: computeTaxLotsOptimized could not find zero point for \(symbol) (remainder \(workingShareCount))")
         }
+
+        m_lastFilteredPositionRecords = removeConsolidationJournalRecords(m_lastFilteredPositionRecords)
         
         // Sort records by date (oldest first) and cost (highest first for same date)
-        m_lastFilteredPositionRecords.sort { ($0.openDate < $1.openDate) || ($0.openDate == $1.openDate && ( ($0.costPerShare > $1.costPerShare) || ($0.quantity > $1.quantity) ) ) }
+        // Same-day ties: higher cost first; then sells before buys (negative quantity first)
+        m_lastFilteredPositionRecords.sort {
+            ($0.openDate < $1.openDate)
+            || ($0.openDate == $1.openDate && $0.costPerShare > $1.costPerShare)
+            || ($0.openDate == $1.openDate && $0.costPerShare == $1.costPerShare && $0.quantity < $1.quantity)
+        }
         
         // Match sells with buys using highest price up to that point
         var remainingRecords: [SalesCalcPositionsRecord] = []
         var buyQueue: [SalesCalcPositionsRecord] = []
+        var journalConsumedCostByDate: [String: (quantity: Double, basis: Double)] = [:]
         
         for record: SalesCalcPositionsRecord in m_lastFilteredPositionRecords {
             // collect buy records until you find a sell trade record.
             if record.quantity > 0 {
-                // Add buy record to queue
-                buyQueue.append(record)
+                buyQueue.append(inheritJournalBuyCostBasis(record, journalConsumedCostByDate: journalConsumedCostByDate))
             } else {
-                // If this is a .trade record, sort the buy queue by high price. On trades, the cost-per-share will not be zero
+                // On trades the cost-per-share is non-zero; match against highest-cost lots first.
                 buyQueue.sort { ( ( 0.0 == $0.costPerShare) || ($0.costPerShare > $1.costPerShare) )}
                 
                 // Process sell record
@@ -3746,11 +4004,25 @@ class SchwabClient: @unchecked Sendable
                     
                     if buyQuantity <= remainingSellQuantity {
                         // Buy record fully matches sell
+                        if isNearZero(record.costPerShare) {
+                            let dateKey = journalDateKey(from: record.openDate)
+                            var consumed = journalConsumedCostByDate[dateKey, default: (0, 0)]
+                            consumed.quantity += buyQuantity
+                            consumed.basis += buyQuantity * buyRecord.costPerShare
+                            journalConsumedCostByDate[dateKey] = consumed
+                        }
                         remainingSellQuantity -= buyQuantity
                     } else {
-                        // Buy record partially matches sell - put it at the head of the queue if it is at least $0.01
-                        if( 0.01 <= round( buyRecord.quantity * 100.0 ) / 100.0 ) {
+                        // Buy record partially matches sell - keep remainder if it is a meaningful lot
+                        if isRetainedLotQuantity(buyRecord.quantity) {
                             let matchedQuantity = remainingSellQuantity
+                            if isNearZero(record.costPerShare) {
+                                let dateKey = journalDateKey(from: record.openDate)
+                                var consumed = journalConsumedCostByDate[dateKey, default: (0, 0)]
+                                consumed.quantity += matchedQuantity
+                                consumed.basis += matchedQuantity * buyRecord.costPerShare
+                                journalConsumedCostByDate[dateKey] = consumed
+                            }
                             buyRecord.quantity -= matchedQuantity
                             buyRecord.marketValue = buyRecord.quantity * buyRecord.price
                             buyRecord.costBasis = buyRecord.quantity * buyRecord.costPerShare
@@ -3779,7 +4051,14 @@ class SchwabClient: @unchecked Sendable
         
         // Handle merged/renamed securities where the earliest transaction has cost = 0
         remainingRecords = handleMergedRenamedSecurities(remainingRecords, symbol: symbol)
-        
+
+        let lotShareTotal = roundedShareAmount(remainingRecords.reduce(0.0) { $0 + $1.quantity })
+        let positionShareTotal = getShareCount(symbol: symbol)
+        if abs(lotShareTotal - positionShareTotal) > 0.0001 {
+            AppLogger.shared.warning("⚠️ \(symbol): tax lots sum to \(lotShareTotal) shares but position is \(positionShareTotal)")
+            showIncompleteDataWarning = true
+        }
+
         AppLogger.shared.debug("=== computeTaxLotsOptimized Summary for \(symbol) ===")
         AppLogger.shared.debug("Total transactions processed: \(totalTransactionsFound)")
         AppLogger.shared.debug("Total shares found in transactions: \(totalSharesFound)")
@@ -3814,8 +4093,14 @@ class SchwabClient: @unchecked Sendable
             m_lastFilteredPositionRecords[i].price = finalPrice
         }
         
-        // Cache the results for future use
-        cacheTaxLots(m_lastFilteredPositionRecords, for: symbol)
+        // Cache only when lot totals match the live position
+        if abs(lotShareTotal - positionShareTotal) <= minLotQuantityThreshold {
+            cacheTaxLots(m_lastFilteredPositionRecords, for: symbol)
+        } else {
+            AppLogger.shared.warning(
+                "📦 Not caching tax lots for \(symbol) — lot total \(lotShareTotal) != position \(positionShareTotal)"
+            )
+        }
         
         // Log performance metrics
         logPerformance("computeTaxLotsOptimized_\(symbol)")
