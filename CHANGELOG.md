@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced blocking quote and price-history requests with native async networking.
 - Removed the unused dispatch-queue-backed symbol cache.
 - Migrated order-recommendation presentation state to the Observation framework.
+- Moved holdings filtering and sorting into its observable presentation model.
 
 ### Added
 - **NEW**: Fixed Buy Sequence Orders to properly extract options data from positions

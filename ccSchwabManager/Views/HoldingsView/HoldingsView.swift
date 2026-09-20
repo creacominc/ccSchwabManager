@@ -109,194 +109,39 @@ struct HoldingsView: View
     // Async sorting state
     @State private var sortedHoldings: [Position] = []
     @State private var isSorting = false
-    @State private var sortGeneration = 0
-    @State private var sortTask: Task<Void, Never>? = nil
 
 
     var filteredHoldings: [Position] {
-        holdings.filter { position in
-            // Trim trailing (and leading) spaces from the search query for matching
-            let trimmedQuery = searchText.trimmingCharacters(in: .whitespaces)
-            let matchesText = trimmedQuery.isEmpty ||
-                (position.instrument?.symbol?.localizedCaseInsensitiveContains(trimmedQuery) ?? false) ||
-                (position.instrument?.description?.localizedCaseInsensitiveContains(trimmedQuery) ?? false)
-            
-            let matchesAssetType = selectedAssetTypes.isEmpty || 
-                (position.instrument?.assetType).map { selectedAssetTypes.contains($0) } ?? false
-            
-            let accountInfo = accountPositions.first { $0.0 === position }
-            let matchesAccount = selectedAccountNumbers.isEmpty || 
-                (accountInfo?.1).map { selectedAccountNumbers.contains($0) } ?? false
-            
-            let orderStatus = orderStatusCache[position.instrument?.symbol ?? ""] ?? nil
-            let matchesOrderStatus: Bool
-            if selectedOrderStatuses.isEmpty && !includeNAStatus {
-                // No status filters selected - show all
-                matchesOrderStatus = true
-            } else {
-                // Check if position matches any selected filters
-                let matchesSpecificStatus = orderStatus != nil && selectedOrderStatuses.contains(orderStatus!)
-                let matchesNAStatus = orderStatus == nil && includeNAStatus
-                matchesOrderStatus = matchesSpecificStatus || matchesNAStatus
-            }
-            
-            return matchesText && matchesAssetType && matchesAccount && matchesOrderStatus
-        }
+        viewModel.filteredHoldings(
+            from: holdings,
+            searchText: searchText,
+            selectedAssetTypes: selectedAssetTypes,
+            accountPositions: accountPositions,
+            selectedAccountNumbers: selectedAccountNumbers,
+            selectedOrderStatuses: selectedOrderStatuses,
+            includeNAStatus: includeNAStatus,
+            orderStatusCache: orderStatusCache
+        )
     }
     
     var uniqueOrderStatuses: [ActiveOrderStatus] {
-        let statuses = orderStatusCache.values.compactMap { $0 }
-        return Array(Set(statuses)).sorted { $0.priority < $1.priority }
+        viewModel.uniqueOrderStatuses(in: orderStatusCache)
     }
     
-    /// Performs async sorting to prevent UI blocking
+    /// Sorts presentation data on the main actor. Position is a reference model and must not
+    /// cross into an unstructured detached task.
     private func performSort() {
-        // Cancel any existing sort task
-        sortTask?.cancel()
-        sortGeneration += 1
-        let generation = sortGeneration
-
-        // Set loading state
         isSorting = true
         SecurityDataCacheManager.shared.setHoldingsListSortInProgress(true)
-
-        // Get current values and capture them for the task
-        let holdingsToSort = filteredHoldings
-        let sortConfig = currentSort
-        let accountPositionsCopy = accountPositions
-        let tradeDateCacheCopy = tradeDateCache
-        let orderStatusCacheCopy = orderStatusCache
-        
-        sortTask = Task.detached(priority: .userInitiated) { [holdingsToSort, sortConfig, accountPositionsCopy, tradeDateCacheCopy, orderStatusCacheCopy] in
-            // Yield immediately to allow UI updates
-            await Task.yield()
-            
-            guard !Task.isCancelled else {
-                await MainActor.run {
-                    if generation == self.sortGeneration {
-                        self.isSorting = false
-                        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
-                    }
-                }
-                return
-            }
-            
-            // Perform the sort
-            let sorted: [Position]
-            if let sortConfig = sortConfig {
-                sorted = holdingsToSort.sorted(by: { first, second in
-                    let ascending = sortConfig.ascending
-                    let firstQuantity: Double = ((first.longQuantity ?? 0) + (first.shortQuantity ?? 0))
-                    let secondQuantity: Double = ((second.longQuantity ?? 0) + (second.shortQuantity ?? 0))
-                    switch sortConfig.column {
-                    case .symbol:
-                        return ascending ?
-                            (first.instrument?.symbol ?? "") < (second.instrument?.symbol ?? "") :
-                            (first.instrument?.symbol ?? "") > (second.instrument?.symbol ?? "")
-                    case .quantity:
-                        return ascending ?
-                            firstQuantity < secondQuantity :
-                            firstQuantity > secondQuantity
-                    case .avgPrice:
-                        return ascending ?
-                            (first.averagePrice ?? 0) < (second.averagePrice ?? 0) :
-                            (first.averagePrice ?? 0) > (second.averagePrice ?? 0)
-                    case .marketValue:
-                        return ascending ?
-                            (first.marketValue ?? 0) < (second.marketValue ?? 0) :
-                            (first.marketValue ?? 0) > (second.marketValue ?? 0)
-                    case .pl:
-                        return ascending ?
-                            (first.longOpenProfitLoss ?? 0) < (second.longOpenProfitLoss ?? 0) :
-                            (first.longOpenProfitLoss ?? 0) > (second.longOpenProfitLoss ?? 0)
-                    case .plPercent:
-                        let firstPL = first.longOpenProfitLoss ?? 0
-                        let secondPL = second.longOpenProfitLoss ?? 0
-                        let firstMV = first.marketValue ?? 0
-                        let secondMV = second.marketValue ?? 0
-                        let firstCostBasis = firstMV - firstPL
-                        let secondCostBasis = secondMV - secondPL
-                        let firstPLPercent = firstCostBasis != 0 ? firstPL / firstCostBasis : 0
-                        let secondPLPercent = secondCostBasis != 0 ? secondPL / secondCostBasis : 0
-                        return ascending ? firstPLPercent < secondPLPercent : firstPLPercent > secondPLPercent
-                    case .assetType:
-                        return ascending ?
-                            (first.instrument?.assetType?.rawValue ?? "") < (second.instrument?.assetType?.rawValue ?? "") :
-                            (first.instrument?.assetType?.rawValue ?? "") > (second.instrument?.assetType?.rawValue ?? "")
-                    case .account:
-                        let firstAccount = accountPositionsCopy.first { $0.0 === first }?.1 ?? ""
-                        let secondAccount = accountPositionsCopy.first { $0.0 === second }?.1 ?? ""
-                        return ascending ? firstAccount < secondAccount : firstAccount > secondAccount
-                    case .lastTradeDate:
-                        let firstSymbol = first.instrument?.symbol ?? ""
-                        let secondSymbol = second.instrument?.symbol ?? ""
-                        let firstDate = tradeDateCacheCopy[firstSymbol] ?? "0000"
-                        let secondDate = tradeDateCacheCopy[secondSymbol] ?? "0000"
-                        if firstDate != secondDate {
-                            return ascending ? firstDate < secondDate : firstDate > secondDate
-                        }
-                        // Stable order when dates missing or equal (e.g. before cache fills).
-                        return firstSymbol < secondSymbol
-                    case .orderStatus:
-                        let firstSymbol = first.instrument?.symbol ?? ""
-                        let secondSymbol = second.instrument?.symbol ?? ""
-                        let firstOrderStatus = orderStatusCacheCopy[firstSymbol] ?? nil
-                        let secondOrderStatus = orderStatusCacheCopy[secondSymbol] ?? nil
-                        
-                        // Custom sorting logic for order status
-                        if let firstStatus = firstOrderStatus, let secondStatus = secondOrderStatus {
-                            if firstStatus == .awaitingBuyStopCondition && secondStatus == .awaitingSellStopCondition {
-                                return ascending ? true : false
-                            } else if firstStatus == .awaitingSellStopCondition && secondStatus == .awaitingBuyStopCondition {
-                                return ascending ? false : true
-                            }
-                        }
-                        
-                        let firstPriority : Int = firstOrderStatus?.priority ?? 0
-                        let secondPriority : Int = secondOrderStatus?.priority ?? 0
-                        return ascending ? firstPriority < secondPriority : firstPriority > secondPriority
-                    case .dte:
-                        let firstDTE : Int? = (first.instrument?.assetType == .OPTION) ? 
-                            extractExpirationDate(from: first.instrument?.symbol ?? "", description: first.instrument?.description ?? "") :
-                            SchwabClient.shared.getMinimumDTEForSymbol(first.instrument?.symbol ?? "")
-                        let secondDTE : Int? = (second.instrument?.assetType == .OPTION) ? 
-                            extractExpirationDate(from: second.instrument?.symbol ?? "", description: second.instrument?.description ?? "") :
-                            SchwabClient.shared.getMinimumDTEForSymbol(second.instrument?.symbol ?? "")
-                        let firstContracts : Double = SchwabClient.shared.getContractCountForSymbol(first.instrument?.symbol ?? "")
-                        let secondContracts : Double = SchwabClient.shared.getContractCountForSymbol(second.instrument?.symbol ?? "")
-                        
-                        if firstDTE == nil && secondDTE == nil {
-                            return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
-                        } else if firstDTE == nil {
-                            return false
-                        } else if secondDTE == nil {
-                            return true
-                        } else if firstDTE! == secondDTE! {
-                            return ascending ? firstContracts < secondContracts : firstContracts > secondContracts
-                        } else {
-                            return ascending ? (firstDTE! < secondDTE!) : (firstDTE! > secondDTE!)
-                        }
-                    }
-                })
-            } else {
-                sorted = holdingsToSort
-            }
-            
-            // Update UI on main thread
-            await MainActor.run {
-                guard !Task.isCancelled else {
-                    if generation == self.sortGeneration {
-                        self.isSorting = false
-                        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
-                    }
-                    return
-                }
-                guard generation == self.sortGeneration else { return }
-                self.sortedHoldings = sorted
-                self.isSorting = false
-                SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
-            }
-        }
+        sortedHoldings = viewModel.sortedHoldings(
+            filteredHoldings,
+            using: currentSort,
+            accountPositions: accountPositions,
+            tradeDateCache: tradeDateCache,
+            orderStatusCache: orderStatusCache
+        )
+        isSorting = false
+        SecurityDataCacheManager.shared.setHoldingsListSortInProgress(false)
     }
 
     var body: some View {
