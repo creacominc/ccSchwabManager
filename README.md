@@ -178,9 +178,22 @@ The application includes several performance optimizations to ensure smooth user
 - **Order Calculation Caching**: Recommended orders are cached and only recalculated when underlying data changes (symbol, quote data, tax lot data), not when selecting items in the UI
 - **Efficient State Management**: Checkbox selections in the recommended orders list no longer trigger expensive recalculations
 - **Smart Data Updates**: Orders are only recalculated when the actual data that affects calculations changes, not on UI interactions
+- **Responsive History Loading**: Recent transactions can populate the interface promptly while older history is backfilled for complete tax-lot calculations
+- **Structured Concurrency**: Transaction history, derived position data, and performance metrics use actor isolation instead of locks or blocking waits
+- **Async Networking**: Quote and price-history requests use native async networking so slow cellular connections do not block worker threads
+- **Consistent Refreshes**: Holdings, order indicators, transaction-derived availability, and dependent calculations update after their required fetches complete
+- **Observation-Based Presentation**: Holdings and order-recommendation presentation models use Swift Observation for focused UI invalidation
 - **Responsive UI**: The interface remains responsive even when working with large datasets or complex calculations
 
 This ensures that selecting orders for submission is fast and responsive, while still maintaining accurate calculations when market data changes.
+
+### Architecture
+
+- SwiftUI views focus on presentation and user interaction.
+- Main-actor observable presentation models own view-facing filtering, sorting, and recommendation state.
+- Actors serialize mutable transaction, derived-data, and benchmarking state.
+- Network and calculation APIs use `async`/`await`; UI state is updated on the main actor.
+- Keychain operations are serialized on the main actor, and the codebase does not rely on unchecked sendability or explicit locks.
 
 ### CSV Export Functionality
 

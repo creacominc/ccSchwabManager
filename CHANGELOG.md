@@ -14,8 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moved price history, ATR, trade-date, and tax-lot caches into a derived-data actor.
 - Replaced blocking quote and price-history requests with native async networking.
 - Removed the unused dispatch-queue-backed symbol cache.
+- Isolated performance metrics and keychain access to prevent concurrent mutation.
+- Main-actor isolated loading callbacks and removed remaining unchecked sendability declarations.
 - Migrated order-recommendation presentation state to the Observation framework.
 - Moved holdings filtering and sorting into its observable presentation model.
+- Deferred dependent holdings calculations until account, order, and transaction fetches complete.
+- Preserved full transaction backfill for tax-lot accuracy while keeping recent-history loading responsive.
 
 ### Added
 - **NEW**: Fixed Buy Sequence Orders to properly extract options data from positions
