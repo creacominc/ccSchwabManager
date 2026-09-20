@@ -183,6 +183,7 @@ The application includes several performance optimizations to ensure smooth user
 - **Async Networking**: Quote and price-history requests use native async networking so slow cellular connections do not block worker threads
 - **Consistent Refreshes**: Holdings, order indicators, transaction-derived availability, and dependent calculations update after their required fetches complete
 - **Observation-Based Presentation**: Holdings and order-recommendation presentation models use Swift Observation for focused UI invalidation
+- **Cellular Diagnostics**: Performance sessions record sanitized request duration, response status, and payload size for quote, price-history, and transaction requests
 - **Responsive UI**: The interface remains responsive even when working with large datasets or complex calculations
 
 This ensures that selecting orders for submission is fast and responsive, while still maintaining accurate calculations when market data changes.

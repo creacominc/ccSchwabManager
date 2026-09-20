@@ -179,6 +179,28 @@ class SchwabClient
     /// networking code updates it by explicitly hopping to `MainActor`.
     @MainActor weak var loadingDelegate: LoadingStateDelegate?
 
+    private func recordNetworkRequest(
+        operation: String,
+        startedAt: Date,
+        data: Data,
+        response: URLResponse,
+        metadata: [String: String] = [:]
+    ) async {
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+        let duration = Date().timeIntervalSince(startedAt)
+        var details = metadata
+        details["bytes"] = String(data.count)
+        details["status"] = String(statusCode)
+        await PerformanceBenchmark.shared.recordNetworkRequest(
+            operation: operation,
+            duration: duration,
+            metadata: details
+        )
+        AppLogger.shared.debug(
+            "🌐 \(operation) status=\(statusCode) bytes=\(data.count) duration=\(String(format: "%.3f", duration))s"
+        )
+    }
+
     /**
      * dump the contents of this object for debugging.
      */
@@ -1260,7 +1282,15 @@ class SchwabClient
         request.timeoutInterval = self.requestTimeout
 
         do {
+            let requestStartedAt = Date()
             let (data, response) = try await URLSession.shared.data(for: request)
+            await recordNetworkRequest(
+                operation: "price_history",
+                startedAt: requestStartedAt,
+                data: data,
+                response: response,
+                metadata: ["symbol": symbol]
+            )
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
                 AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(statusCode)")
@@ -1315,7 +1345,15 @@ class SchwabClient
         request.timeoutInterval = self.requestTimeout
 
         do {
+            let requestStartedAt = Date()
             let (data, response) = try await URLSession.shared.data(for: request)
+            await recordNetworkRequest(
+                operation: "quote",
+                startedAt: requestStartedAt,
+                data: data,
+                response: response,
+                metadata: ["symbol": symbol]
+            )
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 AppLogger.shared.error("fetchQuote - Failed to fetch quote. code = \((response as? HTTPURLResponse)?.statusCode ?? -1)")
                 return nil
@@ -1566,7 +1604,18 @@ class SchwabClient
                         request.timeoutInterval = self.requestTimeout
 
                         do {
+                            let requestStartedAt = Date()
                             let (data, response) = try await URLSession.shared.data(for: request)
+                            await self.recordNetworkRequest(
+                                operation: "transactions",
+                                startedAt: requestStartedAt,
+                                data: data,
+                                response: response,
+                                metadata: [
+                                    "month": String(monthDelta),
+                                    "type": transactionType.rawValue
+                                ]
+                            )
 
                             guard let httpResponse = response as? HTTPURLResponse else {
                                 AppLogger.shared.debug("Invalid response type")
