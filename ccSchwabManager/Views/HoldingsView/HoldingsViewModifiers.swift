@@ -33,7 +33,6 @@ extension View {
         includeNAStatus: Binding<Bool>,
         isSorting: Binding<Bool>,
         filteredHoldings: [Position],
-        loadingState: LoadingState,
         currentFetchTask: Binding<Task<Void, Never>?>,
         onSortChange: @escaping () -> Void,
         onCacheInvalidation: @escaping () -> Void,
@@ -45,15 +44,13 @@ extension View {
             .applyToolbar(isSearchFieldFocused: isSearchFieldFocused)
             .applyTaskModifier(
                 isLoadingAccounts: isLoadingAccounts,
-                loadingState: loadingState,
+                currentFetchTask: currentFetchTask,
                 onFetchHoldings: onFetchHoldings,
                 onSetDefaultAssetTypes: onSetDefaultAssetTypes
             )
             .applyLifecycleModifiers(
                 sortedHoldings: sortedHoldings,
-                filteredHoldings: filteredHoldings,
-                loadingState: loadingState,
-                currentFetchTask: currentFetchTask
+                filteredHoldings: filteredHoldings
             )
             .applyChangeModifiers(
                 currentSort: currentSort,
@@ -93,35 +90,36 @@ extension View {
     
     func applyTaskModifier(
         isLoadingAccounts: Binding<Bool>,
-        loadingState: LoadingState,
+        currentFetchTask: Binding<Task<Void, Never>?>,
         onFetchHoldings: @escaping () async -> Void,
         onSetDefaultAssetTypes: @escaping () -> Void
     ) -> some View {
         self.task {
-            defer { isLoadingAccounts.wrappedValue = false }
-            isLoadingAccounts.wrappedValue = true
-            SchwabClient.shared.loadingDelegate = loadingState
-            await onFetchHoldings()
+            if currentFetchTask.wrappedValue == nil {
+                isLoadingAccounts.wrappedValue = true
+                currentFetchTask.wrappedValue = Task {
+                    await onFetchHoldings()
+                }
+            }
+
+            await currentFetchTask.wrappedValue?.value
+            guard !Task.isCancelled else { return }
+
             onSetDefaultAssetTypes()
+            isLoadingAccounts.wrappedValue = false
+            currentFetchTask.wrappedValue = nil
         }
     }
     
     func applyLifecycleModifiers(
         sortedHoldings: Binding<[Position]>,
-        filteredHoldings: [Position],
-        loadingState: LoadingState,
-        currentFetchTask: Binding<Task<Void, Never>?>
+        filteredHoldings: [Position]
     ) -> some View {
         self
             .onAppear {
                 if sortedHoldings.wrappedValue.isEmpty {
                     sortedHoldings.wrappedValue = filteredHoldings
                 }
-            }
-            .onDisappear {
-                SchwabClient.shared.loadingDelegate = nil
-                currentFetchTask.wrappedValue?.cancel()
-                currentFetchTask.wrappedValue = nil
             }
     }
     

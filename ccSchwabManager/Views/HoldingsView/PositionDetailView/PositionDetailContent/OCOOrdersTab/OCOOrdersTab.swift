@@ -228,16 +228,9 @@ private func createMockTabBar() -> some View
             isSelected: true,
             action: {}
         )
-        TabButton(
-            title: "Sequence",
-            icon: "arrow.up.circle",
-            isSelected: false,
-            action: {}
-        )
     }
     .background(Color.gray.opacity(0.1))
     .padding(.horizontal)
     .padding(.bottom, 2)
 }
-
 

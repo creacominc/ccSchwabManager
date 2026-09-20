@@ -89,7 +89,6 @@ struct HoldingsView: View
     @State private var sharesAvailableForTrading: Double = 0.0
     @State private var marketValue: Double = 0.0
     @State private var selectedTab: Int = 0
-    @StateObject private var loadingState = LoadingState()
     @State private var isNavigating = false
     
     // Search field focus state for iOS
@@ -171,7 +170,6 @@ struct HoldingsView: View
         .sheet(isPresented: $showPerformanceSummary) {
             PerformanceSummaryView()
         }
-        .withLoadingState(loadingState)
     }
     
     @ViewBuilder
@@ -225,7 +223,6 @@ struct HoldingsView: View
             includeNAStatus: $includeNAStatus,
             isSorting: $isSorting,
             filteredHoldings: filteredHoldings,
-            loadingState: loadingState,
             currentFetchTask: $currentFetchTask,
             onSortChange: performSort,
             onCacheInvalidation: invalidateCacheForChangedList,
@@ -264,13 +261,7 @@ struct HoldingsView: View
     }
     
     private func handlePositionSelected(newId: Position.ID, position: Position, accountNumber: String) {
-        loadingState.setLoading(true)
         selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            loadingState.setLoading(false)
-        }
     }
     
     /// Prefetches data for the first security in the sorted holdings list if it's not already cached

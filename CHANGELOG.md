@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 2026-09-20
+- Removed the Sequence tab and its buy-sequence generation and submission logic.
+- Consolidated initial holdings loading onto a single progress indicator.
+- Kept the in-flight holdings load alive across temporary view or app inactivity instead of restarting it.
 - Improved adaptive light/dark surfaces, Dynamic Type behavior, and VoiceOver labels and selection state.
 - Added request duration, status, and payload-size metrics for quotes, price history, and transaction history.
 - Added regression coverage for holdings presentation logic, task cancellation, and transaction backfill completion.

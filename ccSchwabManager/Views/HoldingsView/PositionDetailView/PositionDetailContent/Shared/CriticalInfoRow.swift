@@ -23,7 +23,7 @@ struct CriticalInfoRow: View
         self.atrValue = atrValue
     }
     
-    /// Initializer for compact display (e.g., SequenceOrdersTab)
+    /// Initializer for compact displays that omit quote details.
     init(
         position: Position,
         lastPrice: Double,
@@ -145,7 +145,6 @@ struct CriticalInfoRow: View
         }
     }
 }
-
 
 
 

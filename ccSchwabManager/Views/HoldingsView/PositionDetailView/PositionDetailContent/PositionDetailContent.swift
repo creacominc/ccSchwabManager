@@ -169,13 +169,6 @@ struct PositionDetailContent: View
                             action: { selectedTab = 5 }
                         )
 
-                        TabButton(
-                            title: "Sequence",
-                            icon: "arrow.up.circle",
-                            isSelected: selectedTab == 6,
-                            iconLoadIndicator: indicatorSnapshot.combinedGroupLoadIndicator(groups: [.taxLots, .orderRecommendations]),
-                            action: { selectedTab = 6 }
-                        )
                     }
                     .background(Color.secondary.opacity(0.1))
 
@@ -248,18 +241,6 @@ struct PositionDetailContent: View
                                 atrValue: atrValue,
                                 taxLotData: taxLotData,
                               isLoadingTaxLots: isLoadingTaxLots,
-                                sharesAvailableForTrading: $sharesAvailableForTrading,
-                                marketValue: $marketValue,
-                                quoteData: quoteData,
-                                accountNumber: accountNumber,
-                                position: position,
-                                lastPrice: getCurrentPrice()
-                            )
-                        case 6:
-                            SequenceOrdersTab(
-                                symbol: symbol,
-                                atrValue: atrValue,
-                                taxLotData: taxLotData,
                                 sharesAvailableForTrading: $sharesAvailableForTrading,
                                 marketValue: $marketValue,
                                 quoteData: quoteData,
