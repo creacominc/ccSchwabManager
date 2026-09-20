@@ -15,32 +15,72 @@ struct PositionDetailView: View
     let getSymbolAtIndex: (Int) -> String? // Closure to get symbol at a specific index in sorted list
     let getCurrentListSymbols: () -> Set<String> // Closure to get all symbols in current sorted/filtered list
     @Binding var selectedTab: Int
-    @State private var priceHistory: CandleList?
-    @State private var isLoadingPriceHistory = false
-    @State private var isLoadingTransactions = false
-    @State private var quoteData: QuoteData?
-    @State private var taxLotData: [SalesCalcPositionsRecord] = []
-    @State private var isLoadingTaxLots = false
-    @State private var computedATRValue: Double = 0.0
-    @State private var computedSharesAvailableForTrading: Double = 0.0
-    @State private var transactions: [Transaction] = []
+    @State private var viewModel = PositionDetailViewModel()
     @EnvironmentObject var secretsManager: SecretsManager
     @State private var viewSize: CGSize = .zero
     @StateObject private var loadingState = LoadingState()
-    @State private var isRefreshing = false
-    @State private var loadStates: [SecurityDataGroup: SecurityDataLoadState] = [:]
-    @State private var dataLoadTask: Task<Void, Never>? = nil
-    @State private var prefetchTasks: [String: Task<Void, Never>] = [:] // Track prefetch tasks for pause/resume
-    @State private var isPrefetchPaused = false // Pause prefetch while tab data is loading
-    @State private var tabLoadTasks: [SecurityDataGroup: Task<Void, Never>] = [:] // Track tab loading tasks
-    @State private var hasUserInteraction = false // Track user interactions to pause prefetch immediately
-    @State private var lastUserInteractionTime: Date = Date() // Track when user last interacted
-    @State private var prefetchQueue: [String] = [] // Queue of symbols to prefetch (processed sequentially)
-    @State private var prefetchProcessorTask: Task<Void, Never>? = nil // Single task that processes prefetch queue
-    @State private var historyBackfillTask: Task<Void, Never>? = nil // Incremental transaction history for current symbol
-    /// After tab switches / navigation, retry `resumePrefetch` once the user is idle (no tab-only `resumePrefetch`).
-    @State private var prefetchUserIdleResumeTask: Task<Void, Never>? = nil
     @State private var showPerformanceSummary = false
+
+    private var priceHistory: CandleList? { viewModel.priceHistory }
+    private var isLoadingPriceHistory: Bool { viewModel.isLoadingPriceHistory }
+    private var isLoadingTransactions: Bool { viewModel.isLoadingTransactions }
+    private var quoteData: QuoteData? { viewModel.quoteData }
+    private var taxLotData: [SalesCalcPositionsRecord] { viewModel.taxLotData }
+    private var isLoadingTaxLots: Bool { viewModel.isLoadingTaxLots }
+    private var computedATRValue: Double {
+        get { viewModel.computedATRValue }
+        nonmutating set { viewModel.computedATRValue = newValue }
+    }
+    private var computedSharesAvailableForTrading: Double {
+        get { viewModel.computedSharesAvailableForTrading }
+        nonmutating set { viewModel.computedSharesAvailableForTrading = newValue }
+    }
+    private var transactions: [Transaction] { viewModel.transactions }
+    private var loadStates: [SecurityDataGroup: SecurityDataLoadState] { viewModel.loadStates }
+    private var isRefreshing: Bool {
+        get { viewModel.isRefreshing }
+        nonmutating set { viewModel.isRefreshing = newValue }
+    }
+    private var dataLoadTask: Task<Void, Never>? {
+        get { viewModel.dataLoadTask }
+        nonmutating set { viewModel.dataLoadTask = newValue }
+    }
+    private var prefetchTasks: [String: Task<Void, Never>] {
+        get { viewModel.prefetchTasks }
+        nonmutating set { viewModel.prefetchTasks = newValue }
+    }
+    private var isPrefetchPaused: Bool {
+        get { viewModel.isPrefetchPaused }
+        nonmutating set { viewModel.isPrefetchPaused = newValue }
+    }
+    private var tabLoadTasks: [SecurityDataGroup: Task<Void, Never>] {
+        get { viewModel.tabLoadTasks }
+        nonmutating set { viewModel.tabLoadTasks = newValue }
+    }
+    private var hasUserInteraction: Bool {
+        get { viewModel.hasUserInteraction }
+        nonmutating set { viewModel.hasUserInteraction = newValue }
+    }
+    private var lastUserInteractionTime: Date {
+        get { viewModel.lastUserInteractionTime }
+        nonmutating set { viewModel.lastUserInteractionTime = newValue }
+    }
+    private var prefetchQueue: [String] {
+        get { viewModel.prefetchQueue }
+        nonmutating set { viewModel.prefetchQueue = newValue }
+    }
+    private var prefetchProcessorTask: Task<Void, Never>? {
+        get { viewModel.prefetchProcessorTask }
+        nonmutating set { viewModel.prefetchProcessorTask = newValue }
+    }
+    private var historyBackfillTask: Task<Void, Never>? {
+        get { viewModel.historyBackfillTask }
+        nonmutating set { viewModel.historyBackfillTask = newValue }
+    }
+    private var prefetchUserIdleResumeTask: Task<Void, Never>? {
+        get { viewModel.prefetchUserIdleResumeTask }
+        nonmutating set { viewModel.prefetchUserIdleResumeTask = newValue }
+    }
 
     private enum PrefetchQueueDecision {
         case deferredPause(symbol: String)
@@ -53,23 +93,7 @@ struct PositionDetailView: View
     /// Stops detached prefetch/tab work (e.g. when leaving the screen or app backgrounds).
     @MainActor
     private func cancelBackgroundTasks() {
-        dataLoadTask?.cancel()
-        dataLoadTask = nil
-        for (_, task) in tabLoadTasks {
-            task.cancel()
-        }
-        tabLoadTasks.removeAll()
-        prefetchProcessorTask?.cancel()
-        prefetchProcessorTask = nil
-        for (sym, task) in prefetchTasks {
-            AppLogger.shared.debug("🔮 Cancelling prefetch task for \(sym)")
-            task.cancel()
-        }
-        prefetchTasks.removeAll()
-        prefetchUserIdleResumeTask?.cancel()
-        prefetchUserIdleResumeTask = nil
-        historyBackfillTask?.cancel()
-        historyBackfillTask = nil
+        viewModel.cancelBackgroundTasks()
     }
 
     private func formatDate(_ timestamp: Int64?) -> String
@@ -83,76 +107,13 @@ struct PositionDetailView: View
 
     @MainActor
     private func clearAllData() {
-        // Clear all data-related state to prevent showing stale values when switching securities
-        priceHistory = nil
-        transactions = []
-        quoteData = nil
-        computedATRValue = 0.0
-        taxLotData = []
-        computedSharesAvailableForTrading = 0.0
-        loadStates = [:]
-        isLoadingPriceHistory = false
-        isLoadingTransactions = false
-        isLoadingTaxLots = false
+        viewModel.clearData()
     }
     
     @MainActor
     private func applySnapshot(_ snapshot: SecurityDataSnapshot)
     {
-        let priceHistoryBefore = priceHistory?.candles.count ?? 0
-        
-        if let history = snapshot.priceHistory {
-            self.priceHistory = history
-            AppLogger.shared.debug("📊 PositionDetailView: Applied price history - \(history.candles.count) candles for \(history.symbol ?? "unknown") (was: \(priceHistoryBefore) candles)")
-        } else {
-            // Snapshot has no price history data
-            AppLogger.shared.debug("📊 PositionDetailView: Snapshot has no price history data")
-        }
-
-        if let transactions = snapshot.transactions {
-            self.transactions = transactions
-            // Pre-process transactions immediately when loaded to avoid delay on tab switch
-            // This makes the Transactions tab appear instantly when clicked
-            if !transactions.isEmpty {
-                AppLogger.shared.debug("📊 Pre-processing \(transactions.count) transactions for \(snapshot.symbol) to improve tab switch performance")
-                // Trigger processing in background - TransactionHistorySection will use cached result
-                Task { @MainActor in
-                    // Small delay to let UI update first, then process
-                    try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
-                    // The TransactionHistorySection will pick this up via onChange
-                }
-            }
-        }
-
-        if let quote = snapshot.quoteData {
-            self.quoteData = quote
-        }
-
-        if let atrValue = snapshot.atrValue {
-            self.computedATRValue = atrValue
-        }
-
-        if let taxLots = snapshot.taxLotData {
-            self.taxLotData = taxLots
-        }
-
-        if let shares = snapshot.sharesAvailableForTrading {
-            self.computedSharesAvailableForTrading = shares
-        }
-
-        loadStates = snapshot.loadStates
-
-        let wasLoading = isLoadingPriceHistory
-        isLoadingPriceHistory = snapshot.isLoading(.priceHistory)
-        isLoadingTransactions = snapshot.isLoading(.transactions)
-        isLoadingTaxLots = snapshot.isLoading(.taxLots)
-        
-        if wasLoading != isLoadingPriceHistory {
-            AppLogger.shared.debug("📊 PositionDetailView: isLoadingPriceHistory changed from \(wasLoading) to \(isLoadingPriceHistory)")
-        }
-
-        let anyGroupLoading = snapshot.loadStates.values.contains { $0.isLoading }
-        loadingState.setLoading(anyGroupLoading)
+        viewModel.apply(snapshot, loadingState: loadingState)
     }
 
     private func fetchDataForSymbol(forceRefresh: Bool = false)
@@ -1517,7 +1478,10 @@ struct PositionDetailView: View
                 totalPositions: totalPositions,
                 symbol: symbol,
                 atrValue: computedATRValue > 0 ? computedATRValue : atrValue,
-                sharesAvailableForTrading: $computedSharesAvailableForTrading,
+                sharesAvailableForTrading: Binding(
+                    get: { viewModel.computedSharesAvailableForTrading },
+                    set: { viewModel.computedSharesAvailableForTrading = $0 }
+                ),
                 marketValue: $marketValue,
                 onNavigate: { newIndex in
                     guard newIndex >= 0 && newIndex < totalPositions else { return }

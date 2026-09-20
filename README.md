@@ -191,6 +191,7 @@ This ensures that selecting orders for submission is fast and responsive, while 
 
 - SwiftUI views focus on presentation and user interaction.
 - Main-actor observable presentation models own view-facing filtering, sorting, and recommendation state.
+- Position-detail presentation state and background-task lifecycles are coordinated outside the view hierarchy.
 - Actors serialize mutable transaction, derived-data, and benchmarking state.
 - Network and calculation APIs use `async`/`await`; UI state is updated on the main actor.
 - Keychain operations are serialized on the main actor, and the codebase does not rely on unchecked sendability or explicit locks.
