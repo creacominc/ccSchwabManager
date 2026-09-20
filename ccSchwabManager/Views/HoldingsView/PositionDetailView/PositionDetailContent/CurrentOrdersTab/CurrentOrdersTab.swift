@@ -59,7 +59,7 @@ struct CurrentOrdersTab: View
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
-                .background(Color.white.opacity(0.05))
+                .background(Color.secondary.opacity(0.08))
                 .cornerRadius(8)
                 
                 // Add bottom padding to ensure content is fully visible
@@ -68,7 +68,7 @@ struct CurrentOrdersTab: View
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
-        .background(Color.black.opacity(0.1))
+        .background(Color.secondary.opacity(0.08))
     }
 }
 

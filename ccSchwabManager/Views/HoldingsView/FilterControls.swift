@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct FilterControls: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selectedAssetTypes: Set<AssetType>
     @Binding var selectedAccountNumbers: Set<String>
     @Binding var selectedOrderStatuses: Set<ActiveOrderStatus>
@@ -8,10 +9,16 @@ struct FilterControls: View {
     let uniqueAssetTypes: [AssetType]
     let uniqueAccountNumbers: [String]
     let uniqueOrderStatuses: [ActiveOrderStatus]
+
+    private var adaptiveRowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout())
+    }
     
     var body: some View {
         VStack(spacing: 8) {
-            HStack {
+            adaptiveRowLayout {
                 Text("Asset Types:")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -29,17 +36,19 @@ struct FilterControls: View {
                                 Text(assetType.shortDisplayName)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
-                                    .background(selectedAssetTypes.contains(assetType) ? Color.blue : Color.gray.opacity(0.2))
+                                    .background(selectedAssetTypes.contains(assetType) ? Color.accentColor : Color.secondary.opacity(0.14))
                                     .foregroundColor(selectedAssetTypes.contains(assetType) ? .white : .primary)
                                     .cornerRadius(8)
                             }
+                            .accessibilityValue(selectedAssetTypes.contains(assetType) ? "Selected" : "Not selected")
+                            .accessibilityAddTraits(selectedAssetTypes.contains(assetType) ? .isSelected : [])
                         }
                     }
                     .padding(.horizontal)
                 }
             }
 
-            HStack {
+            adaptiveRowLayout {
                 Text("Accounts:")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -57,16 +66,21 @@ struct FilterControls: View {
                                 Text(account)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
-                                    .background(selectedAccountNumbers.contains(account) ? Color.blue : Color.gray.opacity(0.2))
+                                    .background(selectedAccountNumbers.contains(account) ? Color.accentColor : Color.secondary.opacity(0.14))
                                     .foregroundColor(selectedAccountNumbers.contains(account) ? .white : .primary)
                                     .cornerRadius(8)
                             }
+                            .accessibilityLabel("Account \(account)")
+                            .accessibilityValue(selectedAccountNumbers.contains(account) ? "Selected" : "Not selected")
+                            .accessibilityAddTraits(selectedAccountNumbers.contains(account) ? .isSelected : [])
                         }
                     }
                     .padding(.horizontal)
                 }
                 
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer()
+                }
                 
                 Text("Status:")
                     .font(.subheadline)
@@ -81,10 +95,13 @@ struct FilterControls: View {
                             Text("N/A")
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(includeNAStatus ? Color.blue : Color.gray.opacity(0.2))
+                                .background(includeNAStatus ? Color.accentColor : Color.secondary.opacity(0.14))
                                 .foregroundColor(includeNAStatus ? .white : .primary)
                                 .cornerRadius(8)
                         }
+                        .accessibilityLabel("No order status")
+                        .accessibilityValue(includeNAStatus ? "Selected" : "Not selected")
+                        .accessibilityAddTraits(includeNAStatus ? .isSelected : [])
                         
                         ForEach(uniqueOrderStatuses, id: \.self) { status in
                             Button(action: {
@@ -97,10 +114,12 @@ struct FilterControls: View {
                                 Text(status.shortDisplayName)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
-                                    .background(selectedOrderStatuses.contains(status) ? Color.blue : Color.gray.opacity(0.2))
+                                    .background(selectedOrderStatuses.contains(status) ? Color.accentColor : Color.secondary.opacity(0.14))
                                     .foregroundColor(selectedOrderStatuses.contains(status) ? .white : .primary)
                                     .cornerRadius(8)
                             }
+                            .accessibilityValue(selectedOrderStatuses.contains(status) ? "Selected" : "Not selected")
+                            .accessibilityAddTraits(selectedOrderStatuses.contains(status) ? .isSelected : [])
                         }
                     }
                     .padding(.horizontal)
@@ -122,4 +141,3 @@ struct FilterControls: View {
         uniqueOrderStatuses: [.working, .accepted, .awaitingSellStopCondition, .awaitingBuyStopCondition]
     )
 }
-

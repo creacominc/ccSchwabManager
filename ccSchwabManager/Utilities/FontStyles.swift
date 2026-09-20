@@ -33,18 +33,6 @@ struct FontStyles {
         Font.system(.headline)
     }
     
-    /// For cases where you need a fixed size (use sparingly)
-    /// These sizes will scale with Dynamic Type when accessed through `scaled()` modifier
-    enum FixedSize: CGFloat {
-        case small = 12
-        case medium = 14
-        case large = 16
-        
-        /// Returns a font that scales with Dynamic Type
-        func scaled(weight: Font.Weight = .regular) -> Font {
-            return Font.system(size: self.rawValue, weight: weight)
-        }
-    }
 }
 
 /// View modifier to apply consistent font styles
@@ -64,4 +52,3 @@ extension View {
         self.font(FontStyles.tableHeader)
     }
 }
-

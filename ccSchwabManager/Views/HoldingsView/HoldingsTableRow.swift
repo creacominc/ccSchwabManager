@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HoldingsTableRow: View {
+    @Environment(\.colorScheme) private var colorScheme
     let position: Position
     let accountNumber: String
     let onTap: () -> Void
@@ -58,6 +59,18 @@ struct HoldingsTableRow: View {
         return costBasis != 0 ? (pl / costBasis) * 100 : 0
     }
 
+    private var gainColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.35, green: 0.90, blue: 0.50)
+            : Color(red: 0.00, green: 0.42, blue: 0.12)
+    }
+
+    private var lossColor: Color {
+        colorScheme == .dark
+            ? Color(red: 1.00, green: 0.48, blue: 0.48)
+            : Color(red: 0.69, green: 0.00, blue: 0.13)
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let isWide = geometry.size.width >= 1024
@@ -77,6 +90,7 @@ struct HoldingsTableRow: View {
                         .foregroundColor(.blue)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Copy \(position.instrument?.symbol ?? "symbol")")
                 // quantity
                 Text("\(Int(position.longQuantity ?? 0))")
                     .tableCellFont()
@@ -98,13 +112,13 @@ struct HoldingsTableRow: View {
                 // P/L (shown in both layouts)
                 Text(showGainLossDollar())
                     .tableCellFont()
-                    .foregroundColor(plPercent >= 0 ? .green : .red)
+                    .foregroundColor(plPercent >= 0 ? gainColor : lossColor)
                     .frame(width: HoldingsTableRow.getColumnWidth(4, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)
                 // P/L%
                 Text(String(format: "%.2f%%", plPercent))
                     .tableCellFont()
-                    .foregroundColor(plPercent >= 0 ? .green : .red)
+                    .foregroundColor(plPercent >= 0 ? gainColor : lossColor)
                     .frame(width: HoldingsTableRow.getColumnWidth(5, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .trailing)
                 // type and account
@@ -143,8 +157,11 @@ struct HoldingsTableRow: View {
                                alignment: .trailing)
                 }
             } // HStack
-            .background(isEvenRow ? Color.clear : Color.gray.opacity(0.15))
+            .background(isEvenRow ? Color.clear : Color.secondary.opacity(0.1))
             .onTapGesture {
+                onTap()
+            }
+            .accessibilityAction(named: "Open position details") {
                 onTap()
             }
         } // GeometryReader

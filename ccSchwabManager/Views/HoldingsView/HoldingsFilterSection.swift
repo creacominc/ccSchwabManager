@@ -38,6 +38,7 @@ struct HoldingsFilterSection: View {
                             .foregroundColor(.primary)
                     }
                 }
+                .accessibilityValue(isFilterExpanded ? "Expanded" : "Collapsed")
                 
                 Button(action: {
                     showPerformanceSummary = true
@@ -72,7 +73,7 @@ struct HoldingsFilterSection: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
-            .background(Color.gray.opacity(0.1))
+            .background(Color.secondary.opacity(0.1))
             
             if isFilterExpanded {
                 FilterControls(

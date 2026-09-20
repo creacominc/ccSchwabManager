@@ -1467,7 +1467,7 @@ struct PositionDetailView: View
                 .padding(.horizontal)
                 .padding(.vertical, 4)
             }
-            .background(Color.gray.opacity(0.1))
+            .background(Color.secondary.opacity(0.1))
 
             PositionDetailContent(
                 position: position,
@@ -1589,6 +1589,7 @@ struct PositionDetailView: View
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Performance statistics")
                 .accessibilityLabel("Performance Benchmark")
             }
         }

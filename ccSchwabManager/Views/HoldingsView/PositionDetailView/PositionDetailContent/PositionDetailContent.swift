@@ -116,6 +116,7 @@ struct PositionDetailContent: View
                     .padding(.vertical, 8)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(6)
+                    .accessibilityLabel("Previous position")
 
                     // Tab buttons
                     HStack(spacing: 0)
@@ -176,7 +177,7 @@ struct PositionDetailContent: View
                             action: { selectedTab = 6 }
                         )
                     }
-                    .background(Color.gray.opacity(0.1))
+                    .background(Color.secondary.opacity(0.1))
 
                     // Next Position Button
                     Button(action: { onNavigate(currentIndex + 1) })
@@ -191,6 +192,7 @@ struct PositionDetailContent: View
                     .padding(.vertical, 8)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(6)
+                    .accessibilityLabel("Next position")
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 2)
@@ -352,5 +354,7 @@ struct TabButton: View {
             .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 } 

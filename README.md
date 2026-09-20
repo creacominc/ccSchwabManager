@@ -30,6 +30,8 @@ The application provides a clean, focused interface with two main tabs:
 - **Holdings**: View and manage your Schwab account positions with detailed analysis and order recommendations
 - **Credentials**: Manage your Schwab API credentials and authentication settings
 
+The primary holdings and position-detail controls use semantic colors for light and dark appearances, scalable text styles, and explicit VoiceOver labels and selection state.
+
 ### Orders Tab Layout
 The Orders tab features a redesigned, user-friendly interface with three distinct sections:
 
