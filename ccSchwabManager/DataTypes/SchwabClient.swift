@@ -316,10 +316,10 @@ class SchwabClient: @unchecked Sendable
 
     /// Clears per-symbol tax lot, transaction, and filtered caches so recomputation sees newly fetched history.
     public func invalidateSymbolDerivedCaches(symbol: String) {
-        m_taxLotCacheLock.withLock {
+        _ = m_taxLotCacheLock.withLock {
             m_taxLotCache.removeValue(forKey: symbol)
         }
-        m_transactionHistoryCacheLock.withLock {
+        _ = m_transactionHistoryCacheLock.withLock {
             m_transactionHistoryCache.removeValue(forKey: symbol)
         }
         m_filteredTransactionsLock.withLock {
@@ -1865,7 +1865,7 @@ class SchwabClient: @unchecked Sendable
         group.enter()
         
         Task {
-            await task.value
+            _ = await task.value
             group.leave()
         }
         
@@ -4111,5 +4111,4 @@ class SchwabClient: @unchecked Sendable
 
 
 } // SchwabClient
-
 

@@ -51,7 +51,7 @@ struct TransactionHistorySection: View {
             AppLogger.shared.debug("=== Processing \(transactionsToProcess.count) transactions for \(symbolToProcess) ===")
 
             // Warm tax-lot cache once so many zero-price rows do not each repeat full lot computation.
-            SchwabClient.shared.computeTaxLotsOptimized(symbol: symbolToProcess)
+            _ = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbolToProcess)
 
             let withPrices = transactionsToProcess.map { TransactionWithComputedPrice(transaction: $0, symbol: symbolToProcess) }
             
@@ -353,4 +353,3 @@ struct TransactionHistorySection: View {
     )
     .padding()
 }
-
