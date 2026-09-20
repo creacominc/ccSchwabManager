@@ -323,9 +323,7 @@ struct HoldingsView: View
         var fetchedQuote: QuoteData?
         if toFetch.contains(.details) {
             if Task.isCancelled { return }
-            let q = await Task.detached(priority: .low) {
-                await SchwabClient.shared.fetchQuote(symbol: symbol)
-            }.value
+            let q = await SchwabClient.shared.fetchQuote(symbol: symbol)
             if Task.isCancelled { return }
             await Task.yield()
             if let q {
@@ -346,15 +344,11 @@ struct HoldingsView: View
         var fetchedPriceHistory: CandleList?
         if toFetch.contains(.priceHistory) {
             if Task.isCancelled { return }
-            let h = await Task.detached(priority: .low) {
-                await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-            }.value
+            let h = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
             await Task.yield()
             if let h {
-                let fetchedATRValue = await Task.detached(priority: .low) {
-                    await SchwabClient.shared.computeATR(symbol: symbol)
-                }.value
+                let fetchedATRValue = await SchwabClient.shared.computeATR(symbol: symbol)
                 if Task.isCancelled { return }
                 fetchedPriceHistory = h
                 await MainActor.run {
@@ -374,9 +368,7 @@ struct HoldingsView: View
         if toFetch.contains(.transactions) {
             if Task.isCancelled { return }
             print("🔮 [First Security] Fetching transactions for: \(symbol)")
-            let fetchedTransactions = await Task.detached(priority: .low) {
-                await SchwabClient.shared.getTransactionsFor(symbol: symbol)
-            }.value
+            let fetchedTransactions = await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
             await Task.yield()
             await MainActor.run {
@@ -392,13 +384,12 @@ struct HoldingsView: View
             let currentPrice = fetchedQuote?.quote?.lastPrice
                 ?? fetchedQuote?.extended?.lastPrice
                 ?? fetchedPriceHistory?.candles.last?.close
-            let fetchedTaxLots = await Task.detached(priority: .low) {
-                await SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
-            }.value
+            let fetchedTaxLots = await SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
             if Task.isCancelled { return }
-            let fetchedSharesAvailable = await Task.detached(priority: .low) {
-                SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
-            }.value
+            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(
+                symbol: symbol,
+                taxLots: fetchedTaxLots
+            )
             await MainActor.run {
                 _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
                     snapshot.taxLotData = fetchedTaxLots

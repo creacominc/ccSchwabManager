@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 2026-09-20
+- Removed redundant detached-task wrappers around already-asynchronous security prefetch operations.
 - Moved transaction history, filtering, caching, and pagination into an actor.
 - Made transaction domain models immutable and `Sendable`.
 - Removed blocking transaction waits and four transaction-related locks.

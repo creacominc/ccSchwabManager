@@ -282,10 +282,7 @@ struct PositionDetailView: View
         let task = Task.detached(priority: .utility) {
             // Yield to allow UI updates
             await Task.yield()
-            // Fetch transactions in background to avoid blocking
-            let fetchedTransactions = await Task.detached(priority: .utility) {
-                return await SchwabClient.shared.getTransactionsFor(symbol: symbol)
-            }.value
+            let fetchedTransactions = await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
             
             let updatedSnapshot = await MainActor.run {
@@ -343,14 +340,12 @@ struct PositionDetailView: View
         let task = Task.detached(priority: .utility) {
             // Yield to allow UI updates
             await Task.yield()
-            // Compute tax lots in background to avoid blocking
-            let fetchedTaxLots = await Task.detached(priority: .utility) {
-                return await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
-            }.value
+            let fetchedTaxLots = await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
             if Task.isCancelled { return }
-            let fetchedSharesAvailable = await Task.detached(priority: .utility) {
-                return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
-            }.value
+            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(
+                symbol: symbol,
+                taxLots: fetchedTaxLots
+            )
             
             let updatedSnapshot = await MainActor.run {
                 SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
@@ -449,10 +444,7 @@ struct PositionDetailView: View
             AppLogger.shared.debug("--- \(symbol) --- 📊 [Phase 1] Loading details (quote)")
             // Yield to allow UI updates
             await Task.yield()
-            // Fetch quote in background task - use userInitiated since this is the current security being viewed
-            let fetchedQuote = await Task.detached(priority: .userInitiated) {
-                return await SchwabClient.shared.fetchQuote(symbol: symbol)
-            }.value
+            let fetchedQuote = await SchwabClient.shared.fetchQuote(symbol: symbol)
             if Task.isCancelled { return }
             localQuote = fetchedQuote
 
@@ -492,10 +484,7 @@ struct PositionDetailView: View
             AppLogger.shared.debug("--- \(symbol) --- 📊 Loading price history")
             // Yield to allow UI updates
             await Task.yield()
-            // Fetch price history in background to avoid blocking
-            let fetchedPriceHistory = await Task.detached(priority: .userInitiated) {
-                return await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-            }.value
+            let fetchedPriceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
             
             if let fetchedPriceHistory {
@@ -519,10 +508,7 @@ struct PositionDetailView: View
                 
                 // Yield to allow UI updates before computing ATR
                 await Task.yield()
-                // Compute ATR in background to avoid blocking
-                let fetchedATRValue = await Task.detached(priority: .userInitiated) {
-                    return await SchwabClient.shared.computeATR(symbol: symbol)
-                }.value
+                let fetchedATRValue = await SchwabClient.shared.computeATR(symbol: symbol)
                 if Task.isCancelled { return }
 
                 let updatedSnapshot = await MainActor.run {
@@ -570,10 +556,7 @@ struct PositionDetailView: View
                 AppLogger.shared.debug("--- \(symbol) --- 📊 Loading transactions")
             // Yield to allow UI updates
             await Task.yield()
-            // Fetch transactions in background to avoid blocking
-            let fetchedTransactions = await Task.detached(priority: .userInitiated) {
-                return await SchwabClient.shared.getTransactionsFor(symbol: symbol)
-            }.value
+            let fetchedTransactions = await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
 
             let updatedSnapshot = await MainActor.run {
@@ -651,14 +634,15 @@ struct PositionDetailView: View
                     AppLogger.shared.debug("📊 [Phase 3] Loading tax lots for \(symbol) with price \(price)")
                     // Yield to allow UI updates
                     await Task.yield()
-                    // Use optimized version with better caching - run in background to avoid blocking
-                    let fetchedTaxLots = await Task.detached(priority: .userInitiated) {
-                        return await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
-                    }.value
+                    let fetchedTaxLots = await SchwabClient.shared.computeTaxLotsOptimized(
+                        symbol: symbol,
+                        currentPrice: price
+                    )
                     if Task.isCancelled { return }
-                    let fetchedSharesAvailable = await Task.detached(priority: .userInitiated) {
-                        return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
-                    }.value
+                    let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(
+                        symbol: symbol,
+                        taxLots: fetchedTaxLots
+                    )
 
                     let updatedSnapshot = await MainActor.run {
                         SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
@@ -1386,9 +1370,7 @@ struct PositionDetailView: View
         var fetchedQuote: QuoteData?
         if toFetch.contains(.details) {
             if Task.isCancelled { return }
-            let q = await Task.detached(priority: .low) {
-                await SchwabClient.shared.fetchQuote(symbol: symbol)
-            }.value
+            let q = await SchwabClient.shared.fetchQuote(symbol: symbol)
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
@@ -1410,16 +1392,12 @@ struct PositionDetailView: View
         var fetchedPriceHistory: CandleList?
         if toFetch.contains(.priceHistory) {
             if Task.isCancelled { return }
-            let h = await Task.detached(priority: .low) {
-                await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
-            }.value
+            let h = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
             if let h {
-                let atr = await Task.detached(priority: .low) {
-                    await SchwabClient.shared.computeATR(symbol: symbol)
-                }.value
+                let atr = await SchwabClient.shared.computeATR(symbol: symbol)
                 if Task.isCancelled { return }
                 if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
                 fetchedPriceHistory = h
@@ -1440,9 +1418,7 @@ struct PositionDetailView: View
         if toFetch.contains(.transactions) {
             if Task.isCancelled { return }
             AppLogger.shared.debug("🔮 Fetching transactions for prefetch: \(symbol)")
-            let fetchedTransactions = await Task.detached(priority: .low) {
-                await SchwabClient.shared.getTransactionsFor(symbol: symbol)
-            }.value
+            let fetchedTransactions = await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
@@ -1459,14 +1435,16 @@ struct PositionDetailView: View
             let currentPrice = fetchedQuote?.quote?.lastPrice
                 ?? fetchedQuote?.extended?.lastPrice
                 ?? fetchedPriceHistory?.candles.last?.close
-            let fetchedTaxLots = await Task.detached(priority: .low) {
-                await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: currentPrice)
-            }.value
+            let fetchedTaxLots = await SchwabClient.shared.computeTaxLotsOptimized(
+                symbol: symbol,
+                currentPrice: currentPrice
+            )
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
-            let fetchedSharesAvailable = await Task.detached(priority: .low) {
-                SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
-            }.value
+            let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(
+                symbol: symbol,
+                taxLots: fetchedTaxLots
+            )
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await MainActor.run {
