@@ -19,15 +19,16 @@ import Foundation
  */
 
 
-class Candle: Codable, Identifiable
+struct Candle: Codable, Identifiable, Sendable
 {
-    public var close: Double?
-    public var datetime: Int64?
-    public var datetimeISO8601: String?
-    public var high: Double?
-    public var low: Double?
-    public var open: Double?
-    public var volume: Int64?
+    public var id: Int64 { datetime ?? 0 }
+    public let close: Double?
+    public let datetime: Int64?
+    public let datetimeISO8601: String?
+    public let high: Double?
+    public let low: Double?
+    public let open: Double?
+    public let volume: Int64?
     
     enum CodingKeys: String, CodingKey
     {
@@ -74,6 +75,5 @@ class Candle: Codable, Identifiable
     
     
 }
-
 
 

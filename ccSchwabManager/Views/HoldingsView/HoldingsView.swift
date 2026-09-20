@@ -479,7 +479,7 @@ struct HoldingsView: View
         if toFetch.contains(.details) {
             if Task.isCancelled { return }
             let q = await Task.detached(priority: .low) {
-                SchwabClient.shared.fetchQuote(symbol: symbol)
+                await SchwabClient.shared.fetchQuote(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             await Task.yield()
@@ -502,13 +502,13 @@ struct HoldingsView: View
         if toFetch.contains(.priceHistory) {
             if Task.isCancelled { return }
             let h = await Task.detached(priority: .low) {
-                SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+                await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             await Task.yield()
             if let h {
                 let fetchedATRValue = await Task.detached(priority: .low) {
-                    SchwabClient.shared.computeATR(symbol: symbol)
+                    await SchwabClient.shared.computeATR(symbol: symbol)
                 }.value
                 if Task.isCancelled { return }
                 fetchedPriceHistory = h
@@ -577,10 +577,10 @@ struct HoldingsView: View
 
     /// Re-read latest trade dates from SchwabClient, sync `accountPositions` display strings, and re-apply the current sort.
     @MainActor
-    private func refreshTradeDatesAfterTransactionFetch() {
+    private func refreshTradeDatesAfterTransactionFetch() async {
         for position in holdings {
             if let symbol = position.instrument?.symbol {
-                tradeDateCache[symbol] = SchwabClient.shared.getLatestTradeDate(for: symbol)
+                tradeDateCache[symbol] = await SchwabClient.shared.getLatestTradeDate(for: symbol)
             }
         }
         accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
@@ -672,7 +672,7 @@ struct HoldingsView: View
                 months: initialMonths,
                 parallelMonths: parallelMonths,
                 onBatchOnMainActor: {
-                refreshTradeDatesAfterTransactionFetch()
+                    await refreshTradeDatesAfterTransactionFetch()
                 }
             )
             
@@ -709,9 +709,7 @@ struct HoldingsView: View
                         await group.waitForAll()
                     }
                     
-                    await MainActor.run {
-                        refreshTradeDatesAfterTransactionFetch()
-                    }
+                    await refreshTradeDatesAfterTransactionFetch()
                     
                     if batchEnd < remainingMonths {
                         try? await Task.sleep(nanoseconds: 100_000_000) // 100ms

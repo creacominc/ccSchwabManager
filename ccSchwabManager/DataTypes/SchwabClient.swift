@@ -163,8 +163,7 @@ class SchwabClient
     private var m_tokenRefreshInFlight: (id: UUID, task: Task<Bool, Never>)?
     private var m_accessTokenExpiration: Date?
     private let accessTokenRefreshLeeway: TimeInterval = 120
-    private var m_latestDateForSymbol : [String:Date] = [:]
-    private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
+    private let derivedPositionDataStore = DerivedPositionDataStore()
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
     private var m_symbolsWithContracts : [String: SymbolContractSummary] = [:]
     private var m_lastFilteredTaxLotSymbol : String? = nil
@@ -172,23 +171,9 @@ class SchwabClient
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
     private var m_orderList : [Order] = []
-    private let m_lastFilteredPriceHistoryLock: NSLock = NSLock()
-    private var m_lastFilteredPriceHistory: CandleList?
-    private var m_lastFilteredPriceHistorySymbol: String = ""
-    private var m_lastFilteredATRSymbol : String = ""
-    private var m_lastFilteredATR : Double = 0.0
-    private var m_lastFilteredATRLock: NSLock = NSLock()  // mutex for ATR
-    private var m_lastShareCountSymbol: String = ""
-    private var m_lastShareCount: Double = 0.0
-    private var m_lastShareCountLock: NSLock = NSLock()
     
     // Create a logger for this class
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
-    
-    // MARK: - Performance Optimization Cache
-    private var m_taxLotCache: [String: (timestamp: Date, data: [SalesCalcPositionsRecord])] = [:]
-    private let m_taxLotCacheLock = NSLock()
-    private let m_taxLotCacheTimeout: TimeInterval = 300 // 5 minutes
     
     /// Presentation-only loading state. UI ownership is isolated to the main actor;
     /// networking code updates it by explicitly hopping to `MainActor`.
@@ -211,42 +196,26 @@ class SchwabClient
     }
     
     // MARK: - Optimized Caching Methods
-    private func getCachedTaxLots(for symbol: String) -> [SalesCalcPositionsRecord]? {
-        m_taxLotCacheLock.withLock {
-            guard let cacheEntry = m_taxLotCache[symbol] else { return nil }
-
-            if Date().timeIntervalSince(cacheEntry.timestamp) >= m_taxLotCacheTimeout {
-                m_taxLotCache.removeValue(forKey: symbol)
-                return nil
-            }
-
-            let cachedShareTotal = roundedShareAmount(cacheEntry.data.reduce(0.0) { $0 + $1.quantity })
-            let positionShareTotal = roundedShareAmount(getShareCount(symbol: symbol))
-            if abs(cachedShareTotal - positionShareTotal) > minLotQuantityThreshold {
-                AppLogger.shared.debug(
-                    "📦 Invalidating stale tax lot cache for \(symbol) (\(cachedShareTotal) cached vs \(positionShareTotal) position shares)"
-                )
-                m_taxLotCache.removeValue(forKey: symbol)
-                return nil
-            }
-
-            AppLogger.shared.debug("📦 Using cached tax lots for \(symbol) (age: \(String(format: "%.1f", Date().timeIntervalSince(cacheEntry.timestamp)))s)")
-            return cacheEntry.data
+    private func getCachedTaxLots(for symbol: String) async -> [SalesCalcPositionsRecord]? {
+        guard let cached = await derivedPositionDataStore.cachedTaxLots(for: symbol) else { return nil }
+        let cachedShareTotal = roundedShareAmount(cached.reduce(0.0) { $0 + $1.quantity })
+        let positionShareTotal = roundedShareAmount(getShareCount(symbol: symbol))
+        guard abs(cachedShareTotal - positionShareTotal) <= minLotQuantityThreshold else {
+            AppLogger.shared.debug("📦 Invalidating stale tax lot cache for \(symbol) (\(cachedShareTotal) cached vs \(positionShareTotal) position shares)")
+            await derivedPositionDataStore.invalidateTaxLots(for: symbol)
+            return nil
         }
+        return cached
     }
     
-    private func cacheTaxLots(_ taxLots: [SalesCalcPositionsRecord], for symbol: String) {
-        m_taxLotCacheLock.withLock {
-            m_taxLotCache[symbol] = (timestamp: Date(), data: taxLots)
-            AppLogger.shared.debug("📦 Cached \(taxLots.count) tax lots for \(symbol)")
-        }
+    private func cacheTaxLots(_ taxLots: [SalesCalcPositionsRecord], for symbol: String) async {
+        await derivedPositionDataStore.cacheTaxLots(taxLots, for: symbol)
+        AppLogger.shared.debug("📦 Cached \(taxLots.count) tax lots for \(symbol)")
     }
     
     /// Clears per-symbol tax lot, transaction, and filtered caches so recomputation sees newly fetched history.
     public func invalidateSymbolDerivedCaches(symbol: String) async {
-        _ = m_taxLotCacheLock.withLock {
-            m_taxLotCache.removeValue(forKey: symbol)
-        }
+        await derivedPositionDataStore.invalidateTaxLots(for: symbol)
         await transactionHistoryStore.invalidateCaches(for: symbol)
         m_lastFilteredTransactionSharesAvailableToTrade = 0.0
         if m_lastFilteredTaxLotSymbol == symbol {
@@ -686,16 +655,6 @@ class SchwabClient
 
     private func getShareCount(symbol: String) -> Double {
         AppLogger.shared.debug("=== getShareCount \(symbol) ===")
-
-        // lock last share count
-        m_lastShareCountLock.lock()
-        defer {
-            m_lastShareCountLock.unlock()
-        }
-        
-        if m_lastShareCountSymbol == symbol {
-            return m_lastShareCount
-        }
 
         var shareCount: Double = 0.0
         
@@ -1256,26 +1215,13 @@ class SchwabClient
     /**
      * fettchPriceHistory  get the history of prices for all securities
      */
-    func fetchPriceHistory( symbol : String )  -> CandleList?
+    func fetchPriceHistory(symbol: String) async -> CandleList?
     {
         AppLogger.shared.debug("=== fetchPriceHistory \(symbol) ===")
 
-        // Check cache first without holding lock
-        if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
-        {
+        if let cached = await derivedPositionDataStore.priceHistory(for: symbol) {
             AppLogger.shared.debug( "  fetchPriceHistory - returning cached." )
-            // Return a copy to prevent mutation issues (CandleList is a class/reference type)
-            if let cached = m_lastFilteredPriceHistory {
-                return CandleList(
-                    candles: cached.candles,
-                    empty: cached.empty,
-                    previousClose: cached.previousClose,
-                    previousCloseDate: cached.previousCloseDate,
-                    previousCloseDateISO8601: cached.previousCloseDateISO8601,
-                    symbol: cached.symbol
-                )
-            }
-            return m_lastFilteredPriceHistory
+            return cached
         }
 
         //AppLogger.shared.debug("🔍 fetchPriceHistory - Setting loading to TRUE")
@@ -1289,33 +1235,6 @@ class SchwabClient
             }
         }
         
-        // Hold lock for the entire operation to prevent race conditions
-        m_lastFilteredPriceHistoryLock.lock()
-        defer {
-            m_lastFilteredPriceHistoryLock.unlock()
-        }
-        
-        // Double-check cache after acquiring lock
-        if( (symbol == m_lastFilteredPriceHistorySymbol) && (!(m_lastFilteredPriceHistory?.empty ?? true)) )
-        {
-            AppLogger.shared.debug( "  fetchPriceHistory - returning cached (after lock)." )
-            // Return a copy to prevent mutation issues (CandleList is a class/reference type)
-            if let cached = m_lastFilteredPriceHistory {
-                return CandleList(
-                    candles: cached.candles,
-                    empty: cached.empty,
-                    previousClose: cached.previousClose,
-                    previousCloseDate: cached.previousCloseDate,
-                    previousCloseDateISO8601: cached.previousCloseDateISO8601,
-                    symbol: cached.symbol
-                )
-            }
-            return m_lastFilteredPriceHistory
-        }
-        
-        m_lastFilteredPriceHistorySymbol = symbol
-        m_lastFilteredPriceHistory?.candles.removeAll(keepingCapacity: true)
-
         let millisecondsSinceEpoch : Int64 = Int64(Date().timeIntervalSince1970 * 1000)
         // AppLogger.shared.debug date
         AppLogger.shared.debug( "      endDate = \(Date( timeIntervalSince1970: Double(millisecondsSinceEpoch)/1000.0 ) )")
@@ -1340,53 +1259,18 @@ class SchwabClient
         // set a 10 second timeout on this request
         request.timeoutInterval = self.requestTimeout
 
-        // Use a class wrapper to avoid captured var mutation warnings
-        class ResponseBox {
-            var data: Data?
-            var error: Error?
-            var httpResponse: HTTPURLResponse?
-        }
-        
-        let semaphore = DispatchSemaphore(value: 0)
-        let responseBox = ResponseBox()
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            responseBox.data = data
-            responseBox.error = error
-            responseBox.httpResponse = response as? HTTPURLResponse
-            semaphore.signal()
-        }.resume()
-        
-        semaphore.wait()
-        
-        if let error = responseBox.error {
-            AppLogger.shared.error("fetchPriceHistory - Error for \(symbol): \(error.localizedDescription)")
-            return nil
-        }
-        
-        guard let data = responseBox.data else {
-            AppLogger.shared.debug("fetchPriceHistory. No data received for \(symbol)")
-            return nil
-        }
-        
-        if responseBox.httpResponse?.statusCode != 200 {
-            AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(responseBox.httpResponse?.statusCode ?? -1)")
-            // Try to decode error response for debugging
-            if let errorString = String(data: data, encoding: .utf8) {
-                AppLogger.shared.error("fetchPriceHistory - Error response for \(symbol): \(errorString)")
-            }
-            return nil
-        }
-        
         do {
-            let decoder = JSONDecoder()
-            m_lastFilteredPriceHistory = try decoder.decode(CandleList.self, from: data)
-            
-            // Validate the returned data
-            guard let candleList = m_lastFilteredPriceHistory else {
-                AppLogger.shared.error("fetchPriceHistory - Failed to decode CandleList for \(symbol)")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+                AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(statusCode)")
+            // Try to decode error response for debugging
+                if let errorString = String(data: data, encoding: .utf8) {
+                    AppLogger.shared.error("fetchPriceHistory - Error response for \(symbol): \(errorString)")
+                }
                 return nil
             }
+            let candleList = try JSONDecoder().decode(CandleList.self, from: data)
             
             // Check if we have valid candles
             let validCandles = candleList.candles.filter { candle in
@@ -1402,16 +1286,8 @@ class SchwabClient
                 AppLogger.shared.warning("fetchPriceHistory - Warning: Insufficient valid candles for ATR calculation for \(symbol)")
             }
             
-            // Return a copy to prevent mutation issues when this is called again for a different symbol
-            // (CandleList is a class/reference type, so we need to avoid shared mutable state)
-            return CandleList(
-                candles: candleList.candles,
-                empty: candleList.empty,
-                previousClose: candleList.previousClose,
-                previousCloseDate: candleList.previousCloseDate,
-                previousCloseDateISO8601: candleList.previousCloseDateISO8601,
-                symbol: candleList.symbol
-            )
+            await derivedPositionDataStore.cachePriceHistory(candleList, for: symbol)
+            return candleList
         } catch {
             AppLogger.shared.error("fetchPriceHistory - Error decoding data for \(symbol): \(error.localizedDescription)")
             AppLogger.shared.error("   detail:  \(error)")
@@ -1422,7 +1298,7 @@ class SchwabClient
     /**
      * fetchQuote - get quote data including fundamental information for a symbol
      */
-    func fetchQuote(symbol: String) -> QuoteData? {
+    func fetchQuote(symbol: String) async -> QuoteData? {
         AppLogger.shared.debug("=== fetchQuote \(symbol) ===")
         
         let quoteUrl = "\(marketdataAPI)/\(symbol)/quotes"
@@ -1438,41 +1314,12 @@ class SchwabClient
         request.setValue("application/json", forHTTPHeaderField: "accept")
         request.timeoutInterval = self.requestTimeout
 
-        // Use a class wrapper to avoid captured var mutation warnings
-        class ResponseBox {
-            var data: Data?
-            var error: Error?
-            var httpResponse: HTTPURLResponse?
-        }
-        
-        let semaphore = DispatchSemaphore(value: 0)
-        let responseBox = ResponseBox()
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            responseBox.data = data
-            responseBox.error = error
-            responseBox.httpResponse = response as? HTTPURLResponse
-            semaphore.signal()
-        }.resume()
-        
-        semaphore.wait()
-        
-        if let error = responseBox.error {
-            AppLogger.shared.error("fetchQuote - Error: \(error.localizedDescription)")
-            return nil
-        }
-        
-        guard let data = responseBox.data else {
-            AppLogger.shared.debug("fetchQuote. No data received")
-            return nil
-        }
-        
-        if responseBox.httpResponse?.statusCode != 200 {
-            AppLogger.shared.error("fetchQuote - Failed to fetch quote. code = \(responseBox.httpResponse?.statusCode ?? -1)")
-            return nil
-        }
-        
         do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                AppLogger.shared.error("fetchQuote - Failed to fetch quote. code = \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+                return nil
+            }
             let decoder = JSONDecoder()
             let quoteResponse = try decoder.decode(QuoteResponse.self, from: data)
             
@@ -1512,31 +1359,16 @@ class SchwabClient
     /**
      * compute ATR for given symbol
      */
-    public func computeATR( symbol : String )  -> Double
+    public func computeATR(symbol: String) async -> Double
     {
         AppLogger.shared.debug("=== computeATR \(symbol) ===")
 
-        // Check cache first without holding lock
-        if( symbol == m_lastFilteredATRSymbol )
-        {
+        if let cachedATR = await derivedPositionDataStore.atr(for: symbol) {
             AppLogger.shared.debug( "  computeATR - returning cached." )
-            return m_lastFilteredATR
-        }
- 
-        // Hold lock for the entire operation to prevent race conditions
-        m_lastFilteredATRLock.lock()
-        defer {
-            m_lastFilteredATRLock.unlock()
-        }
-        
-        // Double-check cache after acquiring lock
-        if( symbol == m_lastFilteredATRSymbol )
-        {
-            AppLogger.shared.debug( "  computeATR - returning cached (after lock)." )
-            return m_lastFilteredATR
+            return cachedATR
         }
 
-        guard let priceHistory : CandleList =  self.fetchPriceHistory( symbol: symbol ) else {
+        guard let priceHistory = await fetchPriceHistory(symbol: symbol) else {
             AppLogger.shared.error("computeATR Failed to fetch price history for \(symbol).")
             // Don't set the symbol if we failed to get data - this allows retry on next call
             return 0.0
@@ -1624,52 +1456,43 @@ class SchwabClient
         }
         
         // Set the symbol and ATR only if we successfully calculated a valid value
-        m_lastFilteredATRSymbol = symbol
-        m_lastFilteredATR = (localATR * 1.08 / close * 100.0)
+        let atr = localATR * 1.08 / close * 100.0
+        await derivedPositionDataStore.cacheATR(atr, for: symbol)
         
-        AppLogger.shared.debug("computeATR: Successfully calculated ATR: \(m_lastFilteredATR)% for \(symbol)")
+        AppLogger.shared.debug("computeATR: Successfully calculated ATR: \(atr)% for \(symbol)")
         
         // return the ATR as a percent.
-        return m_lastFilteredATR
+        return atr
     }
     
     /**
      * clearATRCache - clear the ATR cache to force fresh calculation
      */
-    public func clearATRCache() {
-        m_lastFilteredATRLock.lock()
-        defer { m_lastFilteredATRLock.unlock() }
-        
-        m_lastFilteredATRSymbol = ""
-        m_lastFilteredATR = 0.0
+    public func clearATRCache() async {
+        await derivedPositionDataStore.clearATR()
         AppLogger.shared.debug("computeATR: Cleared ATR cache")
     }
     
     /**
      * clearPriceHistoryCache - clear the price history cache to force fresh data fetch
      */
-    public func clearPriceHistoryCache() {
-        m_lastFilteredPriceHistoryLock.lock()
-        defer { m_lastFilteredPriceHistoryLock.unlock() }
-        
-        m_lastFilteredPriceHistorySymbol = ""
-        m_lastFilteredPriceHistory = nil
+    public func clearPriceHistoryCache() async {
+        await derivedPositionDataStore.clearPriceHistory()
         AppLogger.shared.debug("fetchPriceHistory: Cleared price history cache")
     }
     
     /**
      * clearAllCaches - clear all caches for debugging purposes
      */
-    public func clearAllCaches() {
-        clearATRCache()
-        clearPriceHistoryCache()
+    public func clearAllCaches() async {
+        await derivedPositionDataStore.clearAll()
         AppLogger.shared.debug("SchwabClient: Cleared all caches")
     }
     
     /**
      * testATRCalculation - test ATR calculation with sample data
      */
-    public func testATRCalculation() {
+    public func testATRCalculation() async {
         AppLogger.shared.debug("=== testATRCalculation ===")
         
         // Create sample candle data
@@ -1686,18 +1509,14 @@ class SchwabClient
             previousClose: 99.0
         )
         
-        // Temporarily set the price history cache
-        m_lastFilteredPriceHistoryLock.lock()
-        m_lastFilteredPriceHistory = sampleCandleList
-        m_lastFilteredPriceHistorySymbol = "TEST"
-        m_lastFilteredPriceHistoryLock.unlock()
+        await derivedPositionDataStore.cachePriceHistory(sampleCandleList, for: "TEST")
         
         // Test ATR calculation
-        let atrValue = computeATR(symbol: "TEST")
+        let atrValue = await computeATR(symbol: "TEST")
         AppLogger.shared.debug("Test ATR value: \(atrValue)%")
         
         // Clear test data
-        clearAllCaches()
+        await clearAllCaches()
     }
     
     /**
@@ -1892,21 +1711,16 @@ class SchwabClient
                 }
             }
         }
-        m_latestDateForSymbolLock.withLock {
-            m_latestDateForSymbol = latestDates
-        }
+        await derivedPositionDataStore.replaceLatestTradeDates(with: latestDates)
         AppLogger.shared.debug( " ! setLatestTradeDates - set dates for \(latestDates.count) symbols !" )
     }
     
     /**
      * getLatestTradeDate( for: String )  get the latest trade date for a given symbol.
      */
-    public func getLatestTradeDate( for symbol: String ) -> String
+    public func getLatestTradeDate(for symbol: String) async -> String
     {
-        m_latestDateForSymbolLock.lock()
-        defer { m_latestDateForSymbolLock.unlock() }
-        
-        return m_latestDateForSymbol[symbol]?.dateOnly() ?? "0000"
+        await derivedPositionDataStore.latestTradeDate(for: symbol)?.dateOnly() ?? "0000"
     }
 
     /**
@@ -2663,17 +2477,18 @@ class SchwabClient
             AppLogger.shared.debug("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) monthDelta: \(monthDeltaForLogging) --")
 
             // get last price for this security - use real-time quote data if available, fallback to price history
+            let quoteData = currentPrice == nil ? await fetchQuote(symbol: symbol) : nil
             let lastPrice: Double
             if let currentPrice = currentPrice {
                 lastPrice = currentPrice
-            } else if let quote = fetchQuote(symbol: symbol)?.quote?.lastPrice {
+            } else if let quote = quoteData?.quote?.lastPrice {
                 lastPrice = quote
-            } else if let extended = fetchQuote(symbol: symbol)?.extended?.lastPrice {
+            } else if let extended = quoteData?.extended?.lastPrice {
                 lastPrice = extended
-            } else if let regular = fetchQuote(symbol: symbol)?.regular?.regularMarketLastPrice {
+            } else if let regular = quoteData?.regular?.regularMarketLastPrice {
                 lastPrice = regular
             } else {
-                lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+                lastPrice = await fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
             }
             showIncompleteDataWarning = true
             // Process all trade transactions - only process again if the number of transactions changes
@@ -2902,7 +2717,8 @@ class SchwabClient
         m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords, symbol: symbol)
         
         // Calculate gain/loss for each tax lot based on current price and remaining shares
-        let finalPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+        let fetchedPrice = await fetchPriceHistory(symbol: symbol)?.candles.last?.close
+        let finalPrice = currentPrice ?? fetchedPrice ?? 0.0
         
         for i in 0..<m_lastFilteredPositionRecords.count {
             let lot = m_lastFilteredPositionRecords[i]
@@ -2950,7 +2766,7 @@ class SchwabClient
     public func fetchTransactionHistoryReduced(
         months: Int = 12,
         parallelMonths: Int = 3,
-        onBatchOnMainActor: (@MainActor () -> Void)? = nil
+        onBatchOnMainActor: (@MainActor () async -> Void)? = nil
     ) async {
         AppLogger.shared.debug("=== fetchTransactionHistoryReduced - months: \(months) ===")
         await MainActor.run {
@@ -2992,9 +2808,7 @@ class SchwabClient
             }
             await transactionHistoryStore.finishInitialLoad(months: batchEnd)
             await setLatestTradeDates()
-            await MainActor.run {
-                onBatchOnMainActor?()
-            }
+            await onBatchOnMainActor?()
 
             batchStart = batchEnd
         }
@@ -3116,7 +2930,7 @@ class SchwabClient
         accountNumber: Int64,
         selectedOrders: [(String, Any)],
         releaseTime: String
-    ) -> Order? {
+    ) async -> Order? {
         AppLogger.shared.debug("=== createOrder ===")
         AppLogger.shared.debug("Symbol: \(symbol)")
         AppLogger.shared.debug("Selected Orders Count: \(selectedOrders.count)")
@@ -3124,13 +2938,14 @@ class SchwabClient
         
         // Get the actual current market price for the symbol
         let currentPrice: Double
-        if let quote = fetchQuote(symbol: symbol)?.quote?.lastPrice {
+        let quoteData = await fetchQuote(symbol: symbol)
+        if let quote = quoteData?.quote?.lastPrice {
             currentPrice = quote
             AppLogger.shared.debug("📊 Using real-time quote price: $\(currentPrice)")
-        } else if let extended = fetchQuote(symbol: symbol)?.extended?.lastPrice {
+        } else if let extended = quoteData?.extended?.lastPrice {
             currentPrice = extended
             AppLogger.shared.debug("📊 Using extended hours quote price: $\(currentPrice)")
-        } else if let regular = fetchQuote(symbol: symbol)?.regular?.regularMarketLastPrice {
+        } else if let regular = quoteData?.regular?.regularMarketLastPrice {
             currentPrice = regular
             AppLogger.shared.debug("📊 Using regular market quote price: $\(currentPrice)")
         } else {
@@ -3513,7 +3328,7 @@ class SchwabClient
         AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) ===")
         
         // Check cache first - this is the key performance improvement
-        if let cachedTaxLots = getCachedTaxLots(for: symbol) {
+        if let cachedTaxLots = await getCachedTaxLots(for: symbol) {
             AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - returning \(cachedTaxLots.count) cached ===")
             AppLogger.shared.info("⏱️ Performance: computeTaxLotsOptimized_\(symbol) completed in \(String(format: "%.2f", Date().timeIntervalSince(performanceStart)))s")
             return cachedTaxLots
@@ -3531,17 +3346,18 @@ class SchwabClient
         m_lastFilteredPositionRecords.removeAll(keepingCapacity: true)
         
         // Get last price for this security
+        let quoteData = currentPrice == nil ? await fetchQuote(symbol: symbol) : nil
         let lastPrice: Double
         if let currentPrice = currentPrice {
             lastPrice = currentPrice
-        } else if let quote = fetchQuote(symbol: symbol)?.quote?.lastPrice {
+        } else if let quote = quoteData?.quote?.lastPrice {
             lastPrice = quote
-        } else if let extended = fetchQuote(symbol: symbol)?.extended?.lastPrice {
+        } else if let extended = quoteData?.extended?.lastPrice {
             lastPrice = extended
-        } else if let regular = fetchQuote(symbol: symbol)?.regular?.regularMarketLastPrice {
+        } else if let regular = quoteData?.regular?.regularMarketLastPrice {
             lastPrice = regular
         } else {
-            lastPrice = fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+            lastPrice = await fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
         }
         
         // Use optimized transaction fetching with caching
@@ -3725,7 +3541,8 @@ class SchwabClient
         m_lastFilteredPositionRecords = adjustForStockSplits(m_lastFilteredPositionRecords, symbol: symbol)
         
         // Calculate gain/loss for each tax lot based on current price and remaining shares
-        let finalPrice = currentPrice ?? fetchPriceHistory(symbol: symbol)?.candles.last?.close ?? 0.0
+        let fetchedPrice = await fetchPriceHistory(symbol: symbol)?.candles.last?.close
+        let finalPrice = currentPrice ?? fetchedPrice ?? 0.0
         
         for i in 0..<m_lastFilteredPositionRecords.count {
             let lot = m_lastFilteredPositionRecords[i]
@@ -3745,7 +3562,7 @@ class SchwabClient
         
         // Cache only when lot totals match the live position
         if abs(lotShareTotal - positionShareTotal) <= minLotQuantityThreshold {
-            cacheTaxLots(m_lastFilteredPositionRecords, for: symbol)
+            await cacheTaxLots(m_lastFilteredPositionRecords, for: symbol)
         } else {
             AppLogger.shared.warning(
                 "📦 Not caching tax lots for \(symbol) — lot total \(lotShareTotal) != position \(positionShareTotal)"

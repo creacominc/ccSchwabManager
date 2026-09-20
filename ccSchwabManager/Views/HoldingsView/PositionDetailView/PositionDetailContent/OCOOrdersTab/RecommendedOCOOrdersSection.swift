@@ -93,7 +93,7 @@ struct RecommendedOCOOrdersSection: View {
                 // Submit Button Section
                 SubmitButtonSection(
                     hasSelectedOrders: hasSelectedOrders,
-                    onSubmit: submitOrders
+                    onSubmit: { Task { await submitOrders() } }
                 )
                 .frame(maxHeight: .infinity)
             }
@@ -347,7 +347,7 @@ struct RecommendedOCOOrdersSection: View {
 #endif
     }
     
-    private func submitOrders() {
+    private func submitOrders() async {
         // Allow single orders - at least one must be selected
         guard hasSelectedOrders else { 
             AppLogger.shared.error("❌ submitOrders: No orders selected")
@@ -370,7 +370,7 @@ struct RecommendedOCOOrdersSection: View {
         }
         
         // Create order using SchwabClient (single order or OCO)
-        guard let orderToSubmit = SchwabClient.shared.createOrder(
+        guard let orderToSubmit = await SchwabClient.shared.createOrder(
             symbol: symbol,
             accountNumber: accountNumberInt,
             selectedOrders: selectedOrders,
@@ -544,7 +544,7 @@ struct RecommendedOCOOrdersSection: View {
                     AppLogger.shared.error("  Order details: shares=\(sellOrder.shares), target=\(sellOrder.target), entry=\(sellOrder.entry)")
                     
                     // Clear ATR cache to force fresh calculation
-                    SchwabClient.shared.clearATRCache()
+                    Task { await SchwabClient.shared.clearATRCache() }
                     return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", sellOrder.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
                 }
             } else if let buyOrder = order as? BuyOrderRecord {
@@ -555,7 +555,7 @@ struct RecommendedOCOOrdersSection: View {
                     AppLogger.shared.error("  Order details: shares=\(buyOrder.shares), target=\(buyOrder.targetBuyPrice), entry=\(buyOrder.entryPrice)")
                     
                     // Clear ATR cache to force fresh calculation
-                    SchwabClient.shared.clearATRCache()
+                    Task { await SchwabClient.shared.clearATRCache() }
                     return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", buyOrder.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
                 }
             } else {

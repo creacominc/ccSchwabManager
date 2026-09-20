@@ -110,7 +110,7 @@ final class OrderComparisonMatcherTests: XCTestCase {
 
         XCTAssertNotNil(best)
         XCTAssertEqual(best?.sourceLabel, "5*ATR")
-        XCTAssertEqual(best?.quantity, 30, accuracy: 0.001)
+        XCTAssertEqual(best?.quantity ?? -1, 30, accuracy: 0.001)
     }
 
     func testBestSellReplacement_FallsBackToMaxSharesWhenNoThreeATR() {
@@ -123,7 +123,7 @@ final class OrderComparisonMatcherTests: XCTestCase {
         let best = OrderComparisonMatcher.bestMatch(for: current, sells: candidates, buys: [])
 
         XCTAssertNotNil(best)
-        XCTAssertEqual(best?.quantity, 45, accuracy: 0.001)
+        XCTAssertEqual(best?.quantity ?? -1, 45, accuracy: 0.001)
     }
 
     func testBestSellReplacement_RejectsUnprofitableCandidates() {
@@ -206,8 +206,8 @@ final class OrderComparisonMatcherTests: XCTestCase {
 
         XCTAssertNotNil(best)
         XCTAssertTrue(best?.isWhenOverFiveATROrFifteenBuy == true)
-        XCTAssertEqual(best?.quantity, 5, accuracy: 0.001)
-        XCTAssertEqual(best?.targetPrice, 110.0, accuracy: 0.001)
+        XCTAssertEqual(best?.quantity ?? -1, 5, accuracy: 0.001)
+        XCTAssertEqual(best?.targetPrice ?? -1, 110.0, accuracy: 0.001)
     }
 
     func testDeltaSentiment_ReflectsDirectionalImprovementBySide() {

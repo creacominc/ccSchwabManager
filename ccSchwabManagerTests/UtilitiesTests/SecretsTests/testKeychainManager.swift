@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import ccSchwabManager
 
+@MainActor
 struct testKeychainManager
 {
     

@@ -451,7 +451,7 @@ struct PositionDetailView: View
             await Task.yield()
             // Fetch quote in background task - use userInitiated since this is the current security being viewed
             let fetchedQuote = await Task.detached(priority: .userInitiated) {
-                return SchwabClient.shared.fetchQuote(symbol: symbol)
+                return await SchwabClient.shared.fetchQuote(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             localQuote = fetchedQuote
@@ -494,7 +494,7 @@ struct PositionDetailView: View
             await Task.yield()
             // Fetch price history in background to avoid blocking
             let fetchedPriceHistory = await Task.detached(priority: .userInitiated) {
-                return SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+                return await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             
@@ -521,7 +521,7 @@ struct PositionDetailView: View
                 await Task.yield()
                 // Compute ATR in background to avoid blocking
                 let fetchedATRValue = await Task.detached(priority: .userInitiated) {
-                    return SchwabClient.shared.computeATR(symbol: symbol)
+                    return await SchwabClient.shared.computeATR(symbol: symbol)
                 }.value
                 if Task.isCancelled { return }
 
@@ -1233,7 +1233,7 @@ struct PositionDetailView: View
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             AppLogger.shared.debug("--- \(symbol) --- Fetching quote data")
-            let fetchedQuote = SchwabClient.shared.fetchQuote(symbol: symbol)
+            let fetchedQuote = await SchwabClient.shared.fetchQuote(symbol: symbol)
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             localQuote = fetchedQuote
@@ -1260,7 +1260,7 @@ struct PositionDetailView: View
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             AppLogger.shared.debug("--- \(symbol) --- Fetching price history")
-            let fetchedPriceHistory = SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+            let fetchedPriceHistory = await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             localHistory = fetchedPriceHistory
@@ -1280,7 +1280,7 @@ struct PositionDetailView: View
                     return
                 }
                 AppLogger.shared.debug("--- \(symbol) --- Computing ATR")
-                let fetchedATRValue = SchwabClient.shared.computeATR(symbol: symbol)
+                let fetchedATRValue = await SchwabClient.shared.computeATR(symbol: symbol)
                 guard !Task.isCancelled else { return }
                 guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
                 
@@ -1387,7 +1387,7 @@ struct PositionDetailView: View
         if toFetch.contains(.details) {
             if Task.isCancelled { return }
             let q = await Task.detached(priority: .low) {
-                SchwabClient.shared.fetchQuote(symbol: symbol)
+                await SchwabClient.shared.fetchQuote(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
@@ -1411,14 +1411,14 @@ struct PositionDetailView: View
         if toFetch.contains(.priceHistory) {
             if Task.isCancelled { return }
             let h = await Task.detached(priority: .low) {
-                SchwabClient.shared.fetchPriceHistory(symbol: symbol)
+                await SchwabClient.shared.fetchPriceHistory(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
             await Task.yield()
             if let h {
                 let atr = await Task.detached(priority: .low) {
-                    SchwabClient.shared.computeATR(symbol: symbol)
+                    await SchwabClient.shared.computeATR(symbol: symbol)
                 }.value
                 if Task.isCancelled { return }
                 if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }

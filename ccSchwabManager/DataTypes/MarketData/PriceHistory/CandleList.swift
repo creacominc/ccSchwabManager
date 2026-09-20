@@ -17,14 +17,15 @@ import Foundation
  }
  */
 
-class CandleList: Codable, Identifiable
+struct CandleList: Codable, Identifiable, Sendable
 {
-    public var candles: [Candle]
-    public var empty: Bool?
-    public var previousClose: Double?
-    public var previousCloseDate: Int64?
-    public var previousCloseDateISO8601: String?
-    public var symbol: String?
+    public var id: String { symbol ?? "unknown" }
+    public let candles: [Candle]
+    public let empty: Bool?
+    public let previousClose: Double?
+    public let previousCloseDate: Int64?
+    public let previousCloseDateISO8601: String?
+    public let symbol: String?
     
     enum CodingKeys: String, CodingKey
     {
@@ -51,4 +52,3 @@ class CandleList: Codable, Identifiable
     }
 
 }
-

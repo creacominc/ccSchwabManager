@@ -221,7 +221,7 @@ class BuyOrderCalculationTests: XCTestCase {
         }
     }
     
-    func testSingleOrderCreation() {
+    func testSingleOrderCreation() async {
         // Test that single orders are created without OCO wrapper
         let symbol = "TEST"
         let accountNumber: Int64 = 487
@@ -245,7 +245,7 @@ class BuyOrderCalculationTests: XCTestCase {
         let selectedOrders: [(String, Any)] = [("BUY", buyOrder)]
         
         // Test the createOrder method
-        let order = SchwabClient.shared.createOrder(
+        let order = await SchwabClient.shared.createOrder(
             symbol: symbol,
             accountNumber: accountNumber,
             selectedOrders: selectedOrders,
@@ -286,7 +286,7 @@ class BuyOrderCalculationTests: XCTestCase {
         print("✅ FCX example calculation verified correctly")
     }
     
-    func testMultipleOrdersCreateOCO() {
+    func testMultipleOrdersCreateOCO() async {
         // Test that multiple orders create an OCO structure
         let symbol = "TEST"
         let accountNumber: Int64 = 487
@@ -324,7 +324,7 @@ class BuyOrderCalculationTests: XCTestCase {
         let selectedOrders: [(String, Any)] = [("BUY", buyOrder), ("SELL", sellOrder)]
         
         // Test the createOrder method
-        let order = SchwabClient.shared.createOrder(
+        let order = await SchwabClient.shared.createOrder(
             symbol: symbol,
             accountNumber: accountNumber,
             selectedOrders: selectedOrders,

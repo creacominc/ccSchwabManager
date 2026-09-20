@@ -718,7 +718,7 @@ struct BuySequenceOrdersSection: View {
                 AppLogger.shared.error("  Order details: shares=\(order.shares), target=\(order.targetPrice), entry=\(order.entryPrice)")
                 
                 // Clear ATR cache to force fresh calculation
-                SchwabClient.shared.clearATRCache()
+                Task { await SchwabClient.shared.clearATRCache() }
                 return "⚠️ Warning: Trailing stop is too low (\(String(format: "%.2f", order.trailingStop))%). This may indicate ATR calculation failed. ATR cache has been cleared - please refresh and try again."
             }
         }
@@ -762,4 +762,3 @@ struct BuySequenceOrdersSection: View {
 //        accountNumber: "123456789"
 //    )
 //}
-
