@@ -1,19 +1,20 @@
 import Foundation
-import SwiftUI
+import Observation
 
 /// ViewModel responsible for managing the state and coordination of order recommendations
 @MainActor
-class OrderRecommendationViewModel: ObservableObject {
+@Observable
+final class OrderRecommendationViewModel {
     
-    // MARK: - Published Properties
-    @Published var recommendedSellOrders: [SalesCalcResultsRecord] = []
-    @Published var recommendedBuyOrders: [BuyOrderRecord] = []
-    @Published var currentOrders: [(String, Any)] = []
-    @Published var isLoadingTaxLots = false
-    @Published var loadingProgress: Double = 0.0
-    @Published var loadingMessage = "Loading tax lot data..."
-    @Published var selectedSellOrderIndex: Int? = nil
-    @Published var selectedBuyOrderIndex: Int? = nil
+    // MARK: - Presentation State
+    var recommendedSellOrders: [SalesCalcResultsRecord] = []
+    var recommendedBuyOrders: [BuyOrderRecord] = []
+    var currentOrders: [(String, Any)] = []
+    var isLoadingTaxLots = false
+    var loadingProgress: Double = 0.0
+    var loadingMessage = "Loading tax lot data..."
+    var selectedSellOrderIndex: Int? = nil
+    var selectedBuyOrderIndex: Int? = nil
     
     // MARK: - Private Properties
     private let orderService = OrderRecommendationService()
@@ -184,10 +185,10 @@ class OrderRecommendationViewModel: ObservableObject {
         loadingMessage = "Tax lot calculation complete!"
         
         // Hide the loading message after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.loadingProgress = 0.0
-            self.loadingMessage = ""
-        }
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return taxLots }
+        loadingProgress = 0.0
+        loadingMessage = ""
         
         return taxLots
     }

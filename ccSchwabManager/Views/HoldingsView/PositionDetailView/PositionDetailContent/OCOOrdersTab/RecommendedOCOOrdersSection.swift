@@ -16,7 +16,7 @@ struct RecommendedOCOOrdersSection: View {
 
     
     // MARK: - State
-    @StateObject private var viewModel = OrderRecommendationViewModel()
+    @State private var viewModel = OrderRecommendationViewModel()
     @State private var copiedValue: String = "TBD"
     @State private var showingConfirmationDialog = false
     @State private var orderToSubmit: Order?
