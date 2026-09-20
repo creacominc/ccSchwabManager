@@ -125,9 +125,9 @@ import Foundation
 
  */
 
-class Instrument : Codable, Identifiable
+struct Instrument: Codable, Identifiable, Hashable, Sendable
 {
-    public enum Status: String, Codable, CaseIterable
+    public enum Status: String, Codable, CaseIterable, Sendable
     {
         case ACTIVE = "ACTIVE"
         case INACTIVE = "INACTIVE"
@@ -135,47 +135,48 @@ class Instrument : Codable, Identifiable
     }
 
     // Instrument
-    var assetType : AssetType?
-    var cusip: String?
-    var symbol: String?
-    var description: String?
-    var instrumentId: Int64?
+    var id: String { instrumentId.map { String($0) } ?? symbol ?? cusip ?? "unknown" }
+    let assetType : AssetType?
+    let cusip: String?
+    let symbol: String?
+    let description: String?
+    let instrumentId: Int64?
     // Equity
-    var status: Status?
-    var closingPrice: Double?
+    let status: Status?
+    let closingPrice: Double?
     // Mutual Fund
-    var netChange: Double?
-    var fundFamilyName: String?
-    var fundFamilySymbol: String?
-    var fundGroup: String?
-    var exchange: String?
-    var exchangeCutoffTime: String?
-    var purchaseCutoffTime: String?
-    var redemptionCutoffTime: String?
+    let netChange: Double?
+    let fundFamilyName: String?
+    let fundFamilySymbol: String?
+    let fundGroup: String?
+    let exchange: String?
+    let exchangeCutoffTime: String?
+    let purchaseCutoffTime: String?
+    let redemptionCutoffTime: String?
     // cash equiv
-    var type: InstrumentType?
+    let type: InstrumentType?
     // FixedIncome
-    var maturityDate: String?
-    var factor: Double?
-    var multiplier: Double?
-    var variableRate: Double?
+    let maturityDate: String?
+    let factor: Double?
+    let multiplier: Double?
+    let variableRate: Double?
     // Option
-    var optionDeliverables: [TransactionAPIOptionDeliverable]?
-    var optionPremiumMultiplier: Int64?
-    var putCall: PutCallType?
-    var optionMultiplier: Int32?
-    var underlyingSymbol: String?
-    var underlyingCusip: String?
-    var strikePrice: Double?
+    let optionDeliverables: [TransactionAPIOptionDeliverable]?
+    let optionPremiumMultiplier: Int64?
+    let putCall: PutCallType?
+    let optionMultiplier: Int32?
+    let underlyingSymbol: String?
+    let underlyingCusip: String?
+    let strikePrice: Double?
     // Forex
 //    var baseCurrency: Currency?
 //    var counterCurrency: Currency?
     // Future
     // Index
-    var activeContract: Bool?
-    var expirationDate: String?
-    var lastTradingDate: String?
-    var firstNoticeDate: String?
+    let activeContract: Bool?
+    let expirationDate: String?
+    let lastTradingDate: String?
+    let firstNoticeDate: String?
 
     public init(assetType: AssetType? = nil, cusip: String? = nil,
                 symbol: String? = nil, description: String? = nil,
@@ -291,4 +292,3 @@ class Instrument : Codable, Identifiable
         return retVal
     }    
 }
-

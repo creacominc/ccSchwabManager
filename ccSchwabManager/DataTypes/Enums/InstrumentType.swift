@@ -7,7 +7,7 @@ import Foundation
  
  */
 
-public enum InstrumentType: String, Codable, CaseIterable
+public enum InstrumentType: String, Codable, CaseIterable, Sendable
 {
     // Equity
     case COMMON_STOCK = "COMMON_STOCK"

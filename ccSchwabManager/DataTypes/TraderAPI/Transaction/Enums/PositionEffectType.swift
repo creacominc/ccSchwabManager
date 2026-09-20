@@ -8,11 +8,10 @@
 
 import Foundation
 
-public enum PositionEffectType: String, Codable, CaseIterable
+public enum PositionEffectType: String, Codable, CaseIterable, Sendable
 {
     case OPENING = "OPENING"
     case CLOSING = "CLOSING"
     case AUTOMATIC = "AUTOMATIC"
     case UNKNOWN = "UNKNOWN"
 }
-

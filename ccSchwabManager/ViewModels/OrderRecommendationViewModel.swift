@@ -175,12 +175,7 @@ class OrderRecommendationViewModel: ObservableObject {
         await updateLoadingProgress(0.1, "Fetching transaction history...")
         
         // Use the optimized tax lot calculation
-        let taxLots = await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: nil)
-                continuation.resume(returning: result)
-            }
-        }
+        let taxLots = await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: nil)
         
         await updateLoadingProgress(0.8, "Processing tax lot data...")
         

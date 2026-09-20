@@ -45,9 +45,16 @@ import Foundation
  */
 
 
-// Transaction needs to be hashable.
-class Transaction: Codable, Identifiable, Hashable
+// Immutable value so decoded transactions can safely cross concurrency domains.
+struct Transaction: Codable, Identifiable, Hashable, Sendable
 {
+    var id: String {
+        if let activityId { return String(activityId) }
+        return [accountNumber, time, orderId.map { String($0) }, description]
+            .compactMap { $0 }
+            .joined(separator: "|")
+    }
+
     static func == (lhs: Transaction, rhs: Transaction) -> Bool {
         return (lhs.activityId == rhs.activityId)
     }
@@ -57,25 +64,22 @@ class Transaction: Codable, Identifiable, Hashable
         hasher.combine(activityId ?? 0)
     }
 
-    public var activityId: Int64?
-    public var time: String?
-    public var user: UserDetails?
-    public var description: String?
-    public var accountNumber: String?
-    public var type: TransactionType?
-    public var status: TransactionStatus?
-    public var subAccount: TransactionSubAccount?
-    public var tradeDate: String?
-    public var settlementDate: String?
-    public var positionId: Int64?
-    public var orderId: Int64?
-    public var netAmount: Double?
+    public let activityId: Int64?
+    public let time: String?
+    public let user: UserDetails?
+    public let description: String?
+    public let accountNumber: String?
+    public let type: TransactionType?
+    public let status: TransactionStatus?
+    public let subAccount: TransactionSubAccount?
+    public let tradeDate: String?
+    public let settlementDate: String?
+    public let positionId: Int64?
+    public let orderId: Int64?
+    public let netAmount: Double?
     
-    public var activityType: TransactionActivityType?
-    public var transferItems: [TransferItem]
-    
-    // Computed price cache to avoid repeated API calls
-    private var computedPriceCache: [String: Double] = [:]
+    public let activityType: TransactionActivityType?
+    public let transferItems: [TransferItem]
     
     // coding keys
     enum CodingKeys : String, CodingKey
@@ -149,32 +153,6 @@ class Transaction: Codable, Identifiable, Hashable
         print( "=============================================" )
     }
     
-    /**
-     * getComputedPriceForSymbol - get the computed price for a specific symbol
-     * This method caches the result to avoid repeated API calls
-     */
-    public func getComputedPriceForSymbol(_ symbol: String) -> Double {
-        // Check cache first
-        if let cachedPrice = computedPriceCache[symbol] {
-            return cachedPrice
-        }
-        
-        // Get the computed price from SchwabClient
-        let computedPrice = SchwabClient.shared.getComputedPriceForTransaction(self, symbol: symbol)
-        
-        // Cache the result
-        computedPriceCache[symbol] = computedPrice
-        
-        return computedPrice
-    }
-    
-    /**
-     * clearComputedPriceCache - clear the computed price cache
-     * Useful when the transaction data changes
-     */
-    public func clearComputedPriceCache() {
-        computedPriceCache.removeAll()
-    }
 }
 
 /**
@@ -182,13 +160,13 @@ class Transaction: Codable, Identifiable, Hashable
  * This allows us to move the price computation logic higher up in the view hierarchy
  * and avoid repeated API calls when rendering transaction rows.
  */
-struct TransactionWithComputedPrice {
+struct TransactionWithComputedPrice: Sendable {
     let transaction: Transaction
     let symbol: String
     let computedPrice: Double
     let transferItem: TransferItem?
     
-    init(transaction: Transaction, symbol: String) {
+    init(transaction: Transaction, symbol: String, computedPrice: Double) {
         self.transaction = transaction
         self.symbol = symbol
         
@@ -196,7 +174,12 @@ struct TransactionWithComputedPrice {
         self.transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol })
         
         // Pre-compute the price to avoid repeated API calls
-        self.computedPrice = transaction.getComputedPriceForSymbol(symbol)
+        self.computedPrice = computedPrice
+    }
+
+    static func make(transaction: Transaction, symbol: String) async -> TransactionWithComputedPrice {
+        let price = await SchwabClient.shared.getComputedPriceForTransaction(transaction, symbol: symbol)
+        return TransactionWithComputedPrice(transaction: transaction, symbol: symbol, computedPrice: price)
     }
     
     var amount: Double {

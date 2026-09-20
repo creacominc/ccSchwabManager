@@ -13,7 +13,7 @@
 
 import Foundation
 
-public enum FeeType: String, Codable, CaseIterable
+public enum FeeType: String, Codable, CaseIterable, Sendable
 {
     case COMMISSION = "COMMISSION"
     case SEC_FEE = "SEC_FEE"

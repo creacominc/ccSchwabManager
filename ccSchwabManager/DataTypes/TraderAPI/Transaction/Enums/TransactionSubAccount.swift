@@ -3,7 +3,7 @@
 
 import Foundation
 
-public enum TransactionSubAccount: String, Codable, CaseIterable
+public enum TransactionSubAccount: String, Codable, CaseIterable, Sendable
 {
 
     case CASH = "CASH"

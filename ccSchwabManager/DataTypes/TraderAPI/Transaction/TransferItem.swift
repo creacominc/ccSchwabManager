@@ -30,8 +30,16 @@ import Foundation
  */
 
 
-class TransferItem: Codable, Identifiable, Hashable
+struct TransferItem: Codable, Identifiable, Hashable, Sendable
 {
+    var id: String {
+        let symbol = instrument?.symbol ?? ""
+        let amount = amount.map { String($0) } ?? ""
+        let cost = cost.map { String($0) } ?? ""
+        let price = price.map { String($0) } ?? ""
+        return "\(symbol)|\(amount)|\(cost)|\(price)"
+    }
+
     static func == (lhs: TransferItem, rhs: TransferItem) -> Bool {
         return (
         lhs.instrument?.symbol == rhs.instrument?.symbol
@@ -41,18 +49,12 @@ class TransferItem: Codable, Identifiable, Hashable
         )
     }
     
-    public var instrument: Instrument?
-    public var amount: Double?
-    public var cost: Double?
-    public var price: Double?
-    public var feeType: FeeType?
-    public var positionEffect: PositionEffectType?
-
-
-    public func hash(into hasher: inout Hasher)
-    {
-        hasher.combine(ObjectIdentifier(self))
-    }
+    public let instrument: Instrument?
+    public let amount: Double?
+    public let cost: Double?
+    public let price: Double?
+    public let feeType: FeeType? = nil
+    public let positionEffect: PositionEffectType?
 
     enum CodingKeys: String, CodingKey
     {

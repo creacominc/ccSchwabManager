@@ -8,7 +8,7 @@ import Foundation
  
  */
 
-public enum PutCallType: String, Codable, CaseIterable
+public enum PutCallType: String, Codable, CaseIterable, Sendable
 {
     case PUT = "PUT"
     case CALL = "CALL"

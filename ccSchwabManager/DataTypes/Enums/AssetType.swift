@@ -10,7 +10,7 @@ import Foundation
 
  */
 
-public enum AssetType: String, Codable, CaseIterable, Comparable
+public enum AssetType: String, Codable, CaseIterable, Comparable, Sendable
 {
     case EQUITY                 = "EQUITY"
     case OPTION                 = "OPTION"
@@ -57,4 +57,3 @@ public enum AssetType: String, Codable, CaseIterable, Comparable
         return lhs.shortDisplayName < rhs.shortDisplayName
     }
 }
-

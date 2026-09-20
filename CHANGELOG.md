@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2026-09-20
+- Moved transaction history, filtering, caching, and pagination into an actor.
+- Made transaction domain models immutable and `Sendable`.
+- Removed blocking transaction waits and four transaction-related locks.
+
 ### Added
 - **NEW**: Fixed Buy Sequence Orders to properly extract options data from positions
   - **Options Data Integration**: Orders now use actual options contracts found in positions instead of relying on cached contract data

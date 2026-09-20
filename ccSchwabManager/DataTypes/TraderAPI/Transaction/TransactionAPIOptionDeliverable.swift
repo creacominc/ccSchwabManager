@@ -15,14 +15,15 @@ import Foundation
  }
  */
 
-class TransactionAPIOptionDeliverable: Codable, Identifiable
+struct TransactionAPIOptionDeliverable: Codable, Identifiable, Hashable, Sendable
 {
-    var rootSymbol: String?
-    var strikePercent: Int64?
-    var deliverableNumber: Int64?
-    var deliverableUnits: Double?
+    var id: String { [rootSymbol, deliverableNumber.map { String($0) }].compactMap { $0 }.joined(separator: "|") }
+    let rootSymbol: String?
+    let strikePercent: Int64?
+    let deliverableNumber: Int64?
+    let deliverableUnits: Double?
     //var deliverable: Any
-    var assetType: AssetType?
+    let assetType: AssetType?
 
     // coding keys
     enum CodingKeys : String, CodingKey

@@ -125,34 +125,38 @@ class SchwabClient
     /// Month fetch limit when a symbol's share history still does not reconcile to zero.
     public var extendedTransactionHistoryMonths: Int { TransactionHistoryConfig.maxBackfillMonths }
 
-    public func transactionFetchLimit(for symbol: String?, sourceTransactions: [Transaction]? = nil) -> Int {
+    private func transactionFetchLimit(for symbol: String?, sourceTransactions: [Transaction]) -> Int {
         guard let symbol else { return initialTransactionHistoryMonths }
-        let transactions = sourceTransactions ?? getTransactionsFor(symbol: symbol)
-        if shareHistoryIsComplete(for: symbol, in: transactions) {
+        if shareHistoryIsComplete(for: symbol, in: sourceTransactions) {
             return initialTransactionHistoryMonths
         }
         return extendedTransactionHistoryMonths
     }
 
-    public func consecutiveEmptyHistoryMonths() -> Int {
-        m_monthDeltaLock.withLock { m_consecutiveEmptyHistoryMonths }
+    public func transactionFetchLimit(for symbol: String?) async -> Int {
+        let transactions: [Transaction]
+        if let symbol {
+            transactions = await transactionHistoryStore.transactions(for: symbol)
+        } else {
+            transactions = []
+        }
+        return transactionFetchLimit(for: symbol, sourceTransactions: transactions)
     }
 
-    public func transactionHistoryExhausted() -> Bool {
-        m_monthDeltaLock.withLock {
-            m_consecutiveEmptyHistoryMonths >= TransactionHistoryConfig.consecutiveEmptyMonthsToStop
-        }
+    public func consecutiveEmptyHistoryMonths() async -> Int {
+        await transactionHistoryStore.emptyMonthCount()
+    }
+
+    public func transactionHistoryExhausted() async -> Bool {
+        await transactionHistoryStore.historyIsExhausted(
+            emptyMonthLimit: TransactionHistoryConfig.consecutiveEmptyMonthsToStop
+        )
     }
     private let requestTimeout : TimeInterval = 30
     static let shared = SchwabClient()
     @Published var showIncompleteDataWarning = false
     private var m_secrets : Secrets
-    private var m_monthDelta: Int = 0
-    /// Month-slice indices (1-based) that have actually been fetched. The high-water
-    /// mark `m_monthDelta` alone can leave holes when the global initial load and the
-    /// per-symbol backfill advance the counter concurrently; tracking fetched slices
-    /// lets us always fill the smallest missing slice so no month is ever skipped.
-    private var m_fetchedMonthSlices: Set<Int> = []
+    private let transactionHistoryStore = TransactionHistoryStore()
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
     private var m_refreshTokenTask: Task<Void, Never>?
@@ -163,13 +167,7 @@ class SchwabClient
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
     private var m_symbolsWithContracts : [String: SymbolContractSummary] = [:]
-    private var m_lastFilteredTransactionSymbol : String? = nil
     private var m_lastFilteredTaxLotSymbol : String? = nil
-    private var m_transactionList : [Transaction] = []
-    private let m_transactionListLock = NSLock()  // Add mutex for m_transactionList
-    private var m_lastFilteredTransactions : [Transaction] = []
-    private var m_lastFilteredTransaxtionsSourceCount : Int = 0
-    private let m_filteredTransactionsLock: NSLock = NSLock()  // Add mutex for filtered transactions
     private var m_lastFilteredTransactionSharesAvailableToTrade : Double? = nil
     private var m_lastfilteredTransactionsYears : Int = 0
     private var m_lastFilteredPositionRecords : [SalesCalcPositionsRecord] = []
@@ -177,8 +175,6 @@ class SchwabClient
     private let m_lastFilteredPriceHistoryLock: NSLock = NSLock()
     private var m_lastFilteredPriceHistory: CandleList?
     private var m_lastFilteredPriceHistorySymbol: String = ""
-    private let m_monthDeltaLock: NSLock = NSLock()
-    private var m_consecutiveEmptyHistoryMonths: Int = 0
     private var m_lastFilteredATRSymbol : String = ""
     private var m_lastFilteredATR : Double = 0.0
     private var m_lastFilteredATRLock: NSLock = NSLock()  // mutex for ATR
@@ -189,17 +185,10 @@ class SchwabClient
     // Create a logger for this class
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
     
-    private let m_fetchTimeout: TimeInterval = 5.0  // 5 second timeout for each fetch attempt
-    
     // MARK: - Performance Optimization Cache
     private var m_taxLotCache: [String: (timestamp: Date, data: [SalesCalcPositionsRecord])] = [:]
     private let m_taxLotCacheLock = NSLock()
     private let m_taxLotCacheTimeout: TimeInterval = 300 // 5 minutes
-    
-    // Cache for transaction history to avoid repeated API calls
-    private var m_transactionHistoryCache: [String: (timestamp: Date, data: [Transaction])] = [:]
-    private let m_transactionHistoryCacheLock = NSLock()
-    private let m_transactionHistoryCacheTimeout: TimeInterval = 600 // 10 minutes
     
     /// Presentation-only loading state. UI ownership is isolated to the main actor;
     /// networking code updates it by explicitly hopping to `MainActor`.
@@ -253,73 +242,41 @@ class SchwabClient
         }
     }
     
-    private func getCachedTransactionHistory(for symbol: String) -> [Transaction]? {
-        m_transactionHistoryCacheLock.withLock {
-            guard let cacheEntry = m_transactionHistoryCache[symbol] else { return nil }
-            
-            // Check if cache is still valid
-            if Date().timeIntervalSince(cacheEntry.timestamp) < m_transactionHistoryCacheTimeout {
-                AppLogger.shared.debug("📦 Using cached transaction history for \(symbol) (age: \(String(format: "%.1f", Date().timeIntervalSince(cacheEntry.timestamp)))s)")
-                return cacheEntry.data
-            } else {
-                // Cache expired, remove it
-                m_transactionHistoryCache.removeValue(forKey: symbol)
-                return nil
-            }
-        }
-    }
-    
-    private func cacheTransactionHistory(_ transactions: [Transaction], for symbol: String) {
-        m_transactionHistoryCacheLock.withLock {
-            m_transactionHistoryCache[symbol] = (timestamp: Date(), data: transactions)
-            AppLogger.shared.debug("📦 Cached \(transactions.count) transactions for \(symbol)")
-        }
-    }
-
     /// Clears per-symbol tax lot, transaction, and filtered caches so recomputation sees newly fetched history.
-    public func invalidateSymbolDerivedCaches(symbol: String) {
+    public func invalidateSymbolDerivedCaches(symbol: String) async {
         _ = m_taxLotCacheLock.withLock {
             m_taxLotCache.removeValue(forKey: symbol)
         }
-        _ = m_transactionHistoryCacheLock.withLock {
-            m_transactionHistoryCache.removeValue(forKey: symbol)
-        }
-        m_filteredTransactionsLock.withLock {
-            if m_lastFilteredTransactionSymbol == symbol {
-                m_lastFilteredTransactionSymbol = nil
-                m_lastFilteredTransaxtionsSourceCount = 0
-                m_lastFilteredTransactions.removeAll(keepingCapacity: true)
-                m_lastFilteredTransactionSharesAvailableToTrade = 0.0
-            }
-        }
+        await transactionHistoryStore.invalidateCaches(for: symbol)
+        m_lastFilteredTransactionSharesAvailableToTrade = 0.0
         if m_lastFilteredTaxLotSymbol == symbol {
             m_lastFilteredTaxLotSymbol = nil
         }
     }
 
-    public func loadedTransactionHistoryMonths() -> Int {
-        m_monthDeltaLock.withLock { m_monthDelta }
+    public func loadedTransactionHistoryMonths() async -> Int {
+        await transactionHistoryStore.loadedMonths()
     }
 
-    public func canFetchMoreTransactionHistory(for symbol: String? = nil) -> Bool {
-        if transactionHistoryExhausted() {
+    public func canFetchMoreTransactionHistory(for symbol: String? = nil) async -> Bool {
+        if await transactionHistoryExhausted() {
             return false
         }
-        let limit = transactionFetchLimit(for: symbol)
-        return m_monthDeltaLock.withLock { m_monthDelta < limit }
+        let limit = await transactionFetchLimit(for: symbol)
+        return await transactionHistoryStore.loadedMonths() < limit
     }
 
     /// Why incremental history backfill stopped (nil while backfill can continue).
-    public func historyBackfillStopReason(for symbol: String) -> String? {
-        if hasCompleteShareHistory(for: symbol) {
+    public func historyBackfillStopReason(for symbol: String) async -> String? {
+        if await hasCompleteShareHistory(for: symbol) {
             return "share history reached zero"
         }
-        if transactionHistoryExhausted() {
-            return "no more transaction history (\(consecutiveEmptyHistoryMonths()) consecutive empty months)"
+        if await transactionHistoryExhausted() {
+            return "no more transaction history (\(await consecutiveEmptyHistoryMonths()) consecutive empty months)"
         }
-        if !canFetchMoreTransactionHistory(for: symbol) {
-            let loaded = loadedTransactionHistoryMonths()
-            let limit = transactionFetchLimit(for: symbol)
+        if !(await canFetchMoreTransactionHistory(for: symbol)) {
+            let loaded = await loadedTransactionHistoryMonths()
+            let limit = await transactionFetchLimit(for: symbol)
             return "month safety limit reached (\(loaded)/\(limit))"
         }
         return nil
@@ -327,7 +284,7 @@ class SchwabClient
 
     @discardableResult
     public func fetchNextTransactionHistoryMonth(for symbol: String? = nil) async -> Bool {
-        guard canFetchMoreTransactionHistory(for: symbol) else { return false }
+        guard await canFetchMoreTransactionHistory(for: symbol) else { return false }
         // fetchTransactionHistory returns -1 only when no unfetched slice remains within
         // the limit. Any value >= 0 means a slice was consumed (even an empty one), which
         // is real backfill progress — including filling a hole below the high-water mark.
@@ -336,8 +293,8 @@ class SchwabClient
     }
 
     /// Returns true when walking trade history backward reaches zero shares for the current position.
-    public func hasCompleteShareHistory(for symbol: String) -> Bool {
-        shareHistoryIsComplete(for: symbol, in: getTransactionsFor(symbol: symbol))
+    public func hasCompleteShareHistory(for symbol: String) async -> Bool {
+        shareHistoryIsComplete(for: symbol, in: await getTransactionsFor(symbol: symbol))
     }
 
     private func shareHistoryIsComplete(for symbol: String, in sourceTransactions: [Transaction]) -> Bool {
@@ -368,15 +325,15 @@ class SchwabClient
     }
     
     // MARK: - Optimized Transaction Fetching
-    private func getTransactionsForOptimized(symbol: String) -> [Transaction] {
+    private func getTransactionsForOptimized(symbol: String) async -> [Transaction] {
         // First check cache
-        if let cachedTransactions = getCachedTransactionHistory(for: symbol) {
+        if let cachedTransactions = await transactionHistoryStore.cachedTransactions(for: symbol) {
             return cachedTransactions
         }
         
         // If not cached, fetch and cache
-        let transactions = getTransactionsFor(symbol: symbol)
-        cacheTransactionHistory(transactions, for: symbol)
+        let transactions = await getTransactionsFor(symbol: symbol)
+        await transactionHistoryStore.cache(transactions, for: symbol)
         return transactions
     }
     
@@ -509,7 +466,7 @@ class SchwabClient
             transferBuckets[candidate.key] = bucket
         }
 
-        var pairedTransfers: Set<ObjectIdentifier> = []
+        var pairedTransfers: Set<String> = []
         for (_, bucket) in transferBuckets {
             var positives = bucket.positive
             var negatives = bucket.negative
@@ -519,8 +476,8 @@ class SchwabClient
                     continue
                 }
                 let negative = negatives.remove(at: negativeIndex)
-                pairedTransfers.insert(ObjectIdentifier(positive.transaction))
-                pairedTransfers.insert(ObjectIdentifier(negative.transaction))
+                pairedTransfers.insert(positive.transaction.id)
+                pairedTransfers.insert(negative.transaction.id)
             }
         }
 
@@ -544,14 +501,14 @@ class SchwabClient
             journalDayBuckets[dayKey] = bucket
         }
 
-        var journalPairedExclusions: Set<ObjectIdentifier> = []
+        var journalPairedExclusions: Set<String> = []
         for (_, bucket) in journalDayBuckets {
             var negatives = bucket.negative
             for positive in bucket.positive {
                 guard !negatives.isEmpty else { break }
                 let negative = negatives.removeLast()
-                journalPairedExclusions.insert(ObjectIdentifier(positive.transaction))
-                journalPairedExclusions.insert(ObjectIdentifier(negative.transaction))
+                journalPairedExclusions.insert(positive.transaction.id)
+                journalPairedExclusions.insert(negative.transaction.id)
             }
         }
 
@@ -561,10 +518,10 @@ class SchwabClient
 
         return candidates.compactMap { candidate in
             // Pure same-day journal/transfer pairs are dropped entirely.
-            if journalPairedExclusions.contains(ObjectIdentifier(candidate.transaction)) {
+            if journalPairedExclusions.contains(candidate.transaction.id) {
                 return nil
             }
-            if pairedTransfers.contains(ObjectIdentifier(candidate.transaction)) {
+            if pairedTransfers.contains(candidate.transaction.id) {
                 // Zero-cost cross-account transfer journals stay in FIFO; same-day
                 // sell-before-buy sort nets them out. Same-account consolidation
                 // journals are removed later by removeConsolidationJournalRecords.
@@ -787,7 +744,7 @@ class SchwabClient
      * This function returns the computed cost-per-share from the tax lots if available,
      * otherwise returns the original price from the transaction.
      */
-    public func getComputedPriceForTransaction(_ transaction: Transaction, symbol: String) -> Double {
+    public func getComputedPriceForTransaction(_ transaction: Transaction, symbol: String) async -> Double {
         guard let transferItem = transaction.transferItems.first(where: { $0.instrument?.symbol == symbol }) else {
             return 0.0
         }
@@ -798,7 +755,7 @@ class SchwabClient
         }
 
         // Use optimized path + per-symbol cache (computeTaxLots reloads global state and toggles loading UI per call).
-        let taxLots = computeTaxLotsOptimized(symbol: symbol)
+        let taxLots = await computeTaxLotsOptimized(symbol: symbol)
         guard !taxLots.isEmpty else {
             return originalPrice
         }
@@ -1744,36 +1701,6 @@ class SchwabClient
     }
     
     /**
-     * fetchTransactionHistorySync - synchronous fetch of transaction history
-     * Note: This method should be avoided in favor of async versions
-     */
-    public func fetchTransactionHistorySync() {
-        AppLogger.shared.debug("=== fetchTransactionHistorySync  ===")
-
-        // Create a task to run the async operation (single increment + fetch inside fetchTransactionHistory)
-        let task = Task {
-            await self.fetchTransactionHistory()
-        }
-        
-        // Wait for completion with timeout
-        let group = DispatchGroup()
-        group.enter()
-        
-        Task {
-            _ = await task.value
-            group.leave()
-        }
-        
-        let result = group.wait(timeout: .now() + 60.0) // 60 second timeout
-        if result == .timedOut {
-            AppLogger.shared.debug("fetchTransactionHistorySync timed out")
-            task.cancel()
-        }
-        
-        AppLogger.shared.debug(" --- fetchTransactionHistorySync done ---")
-    }
-
-    /**
      * fetchTransactionHistory - get the transactions for the last year for this holding.
      *
      * GET /accounts/{accountNumber}/transactions
@@ -1789,17 +1716,17 @@ class SchwabClient
      * symbol     string     It filters all the transaction activities based on the symbol specified. NOTE: If there is any special character in the symbol, please send th encoded value.
      * types *     string     Specifies that only transactions of this status should be returned.
      */
-    private func fetchTransactionSliceForMonthDelta(_ monthDelta: Int) async {
+    private func fetchTransactionSliceForMonthDelta(_ monthDelta: Int) async -> [Transaction] {
         guard !m_secrets.acountNumberHash.isEmpty else {
             AppLogger.shared.error("Cannot fetch transaction month \(monthDelta): account-number hashes are unavailable")
-            return
+            return []
         }
 
         let endDate = getDateNMonthsAgoStrForEndDate(monthDelta: monthDelta - 1)
         let startDate = getDateNMonthsAgoStr(monthDelta: monthDelta)
         AppLogger.shared.debug("  -- transaction slice month delta: \(monthDelta)")
 
-        await withTaskGroup(of: [Transaction]?.self) { group in
+        return await withTaskGroup(of: [Transaction]?.self) { group in
             for accountNumberHash in self.m_secrets.acountNumberHash {
                 for transactionType in [ TransactionType.receiveAndDeliver, TransactionType.trade ] {
                     group.addTask { @Sendable in
@@ -1853,16 +1780,14 @@ class SchwabClient
                     newTransactions.append(contentsOf: transactions)
                 }
             }
-            m_transactionListLock.withLock {
-                addTransactionsWithoutSorting(newTransactions)
-            }
+            return newTransactions
         }
     }
 
     @discardableResult
     public func fetchTransactionHistory(allowExtendedFor symbol: String? = nil) async -> Int {
-        let fetchLimit = transactionFetchLimit(for: symbol)
-        let monthDeltaForLogging = m_monthDeltaLock.withLock { return m_monthDelta }
+        let fetchLimit = await transactionFetchLimit(for: symbol)
+        let monthDeltaForLogging = await transactionHistoryStore.loadedMonths()
         AppLogger.shared.debug("=== fetchTransactionHistory - monthDelta: \(monthDeltaForLogging)/\(fetchLimit)\(symbol.map { " for \($0)" } ?? "") ===")
         await MainActor.run {
             loadingDelegate?.setLoading(true)
@@ -1884,94 +1809,30 @@ class SchwabClient
         // Pick the smallest slice in 1...fetchLimit that has not been fetched yet.
         // This fills any holes left by concurrent advancement of the high-water mark
         // (initial load vs. per-symbol backfill) instead of skipping past them.
-        let sliceToFetch: Int? = m_monthDeltaLock.withLock {
-            if m_monthDelta == 0 {
-                m_transactionListLock.withLock {
-                    m_transactionList.removeAll(keepingCapacity: true)
-                }
-            }
-            var candidate = 1
-            while candidate <= fetchLimit {
-                if !m_fetchedMonthSlices.contains(candidate) {
-                    m_fetchedMonthSlices.insert(candidate)
-                    if candidate > m_monthDelta {
-                        m_monthDelta = candidate
-                    }
-                    return candidate
-                }
-                candidate += 1
-            }
-            return nil
-        }
-
-        guard let newMonthDelta = sliceToFetch else {
+        guard let reservation = await transactionHistoryStore.reserveNextSlice(upTo: fetchLimit) else {
             AppLogger.shared.debug(" --- fetchTransactionHistory - fetch limit \(fetchLimit) reached")
             return -1
         }
-        let initialSize: Int = m_transactionListLock.withLock { m_transactionList.count }
-
-        await fetchTransactionSliceForMonthDelta(newMonthDelta)
-
-        let addedCount = m_transactionListLock.withLock {
-            let added = m_transactionList.count - initialSize
-            AppLogger.shared.debug("Fetched \(added) transactions")
-            return added
+        let fetchedTransactions = await fetchTransactionSliceForMonthDelta(reservation.month)
+        let addedCount = await transactionHistoryStore.finishSlice(reservation, merging: fetchedTransactions)
+        AppLogger.shared.debug("Fetched \(addedCount) transactions")
+        if addedCount == 0 {
+            AppLogger.shared.debug("  -- empty history month \(reservation.month) (\(await consecutiveEmptyHistoryMonths()) consecutive)")
         }
-
-        m_monthDeltaLock.withLock {
-            if addedCount == 0 {
-                m_consecutiveEmptyHistoryMonths += 1
-                AppLogger.shared.debug("  -- empty history month \(newMonthDelta) (\(m_consecutiveEmptyHistoryMonths) consecutive)")
-            } else {
-                m_consecutiveEmptyHistoryMonths = 0
-            }
-        }
-
-        m_transactionListLock.withLock {
-            sortTransactions()
-        }
-        self.setLatestTradeDates()
+        await setLatestTradeDates()
         await MainActor.run { }
         return addedCount
     }
 
-    public func getTransactionsFor( symbol: String? = nil ) -> [Transaction]
+    public func getTransactionsFor(symbol: String? = nil) async -> [Transaction]
     {
-        if symbol == nil {
+        guard let symbol else {
             AppLogger.shared.debug("getTransactionsFor nil - no symbol provided")
-            return m_transactionListLock.withLock { m_transactionList }
+            return await transactionHistoryStore.allTransactions()
         }
-
-        let symbol = symbol!
-        var monthDeltaForLogging = m_monthDeltaLock.withLock { m_monthDelta }
-        var filtered: [Transaction] = []
-
-        m_filteredTransactionsLock.lock()
-        m_transactionListLock.lock()
-
-        let sourceCount = m_transactionList.count
-        let cacheValid = m_lastFilteredTransactionSymbol == symbol
-            && m_lastFilteredTransaxtionsSourceCount == sourceCount
-
-        if cacheValid {
-            filtered = m_lastFilteredTransactions
-            m_transactionListLock.unlock()
-            m_filteredTransactionsLock.unlock()
-            AppLogger.shared.debug("  -- getTransactionsFor  same symbol \(symbol) and count as last time - returning cached")
-            AppLogger.shared.debug(" --- getTransactionsFor \(symbol)  returning \(filtered.count) transactions -- ")
-            return filtered
-        }
-
-        m_lastFilteredTransactionSymbol = symbol
-        m_lastFilteredTransaxtionsSourceCount = sourceCount
         m_lastFilteredTransactionSharesAvailableToTrade = 0.0
-        filtered = m_transactionList.filter { transaction in
-            transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-        }
-        m_lastFilteredTransactions = filtered
-
-        m_transactionListLock.unlock()
-        m_filteredTransactionsLock.unlock()
+        var filtered = await transactionHistoryStore.transactions(for: symbol)
+        var monthDeltaForLogging = await transactionHistoryStore.loadedMonths()
 
         var fetchAttempts = 0
         let maxFetchAttempts = 3
@@ -1982,28 +1843,9 @@ class SchwabClient
             AppLogger.shared.debug("     -- getTransactionsFor \(symbol)  - still no records, fetching again (attempt \(fetchAttempts + 1)/\(maxFetchAttempts))")
             fetchAttempts += 1
 
-            let group = DispatchGroup()
-            group.enter()
-            Task {
-                await self.fetchTransactionHistory(allowExtendedFor: symbol)
-                group.leave()
-            }
-            let result = group.wait(timeout: .now() + m_fetchTimeout)
-            if result == .timedOut {
-                AppLogger.shared.debug("     -- getTransactionsFor \(symbol)  - fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
-            }
-
-            m_filteredTransactionsLock.lock()
-            m_transactionListLock.lock()
-            m_lastFilteredTransaxtionsSourceCount = m_transactionList.count
-            filtered = m_transactionList.filter { transaction in
-                transaction.transferItems.contains { $0.instrument?.symbol == symbol }
-            }
-            m_lastFilteredTransactions = filtered
-            m_transactionListLock.unlock()
-            m_filteredTransactionsLock.unlock()
-
-            monthDeltaForLogging = m_monthDeltaLock.withLock { m_monthDelta }
+            _ = await fetchTransactionHistory(allowExtendedFor: symbol)
+            filtered = await transactionHistoryStore.transactions(for: symbol)
+            monthDeltaForLogging = await transactionHistoryStore.loadedMonths()
             if !filtered.isEmpty {
                 AppLogger.shared.debug("  -- getTransactionsFor \(symbol)  - Found \(filtered.count) matching transactions after fetch")
             }
@@ -2021,20 +1863,13 @@ class SchwabClient
     
 
 
-    private func setLatestTradeDates()
+    private func setLatestTradeDates() async
     {
         AppLogger.shared.debug( "--- setLatestTradeDates ---" )
-        m_latestDateForSymbolLock.lock()
-        defer { m_latestDateForSymbolLock.unlock() }
-        
-        m_latestDateForSymbol.removeAll(keepingCapacity: true)
-        
-        // Lock access to m_transactionList to prevent race conditions
-        m_transactionListLock.lock()
-        defer { m_transactionListLock.unlock() }
-        
+        var latestDates: [String: Date] = [:]
+
         // create a map of symbols to the most recent trade date
-        for transaction in m_transactionList {
+        for transaction in await transactionHistoryStore.allTransactions() {
             for transferItem in transaction.transferItems {
                 if let symbol = transferItem.instrument?.symbol {
                     // convert tradeDate string to a Date
@@ -2050,14 +1885,17 @@ class SchwabClient
                         continue
                     }
                     // if the symbol is not in the dictionary, add it with the date.  otherwise compare the date and update only if newer
-                    if m_latestDateForSymbol[symbol] == nil || dateDte > m_latestDateForSymbol[symbol]! {
-                        m_latestDateForSymbol[symbol] = dateDte
+                    if latestDates[symbol] == nil || dateDte > latestDates[symbol]! {
+                        latestDates[symbol] = dateDte
                         // AppLogger.shared.debug( "Added or updated \(symbol) at \(dateDte) - latest date \(latestDateForSymbol[symbol] ?? Date())" )
                     }
                 }
             }
         }
-        AppLogger.shared.debug( " ! setLatestTradeDates - set dates for \(m_latestDateForSymbol.count) symbols !" )
+        m_latestDateForSymbolLock.withLock {
+            m_latestDateForSymbol = latestDates
+        }
+        AppLogger.shared.debug( " ! setLatestTradeDates - set dates for \(latestDates.count) symbols !" )
     }
     
     /**
@@ -2781,7 +2619,7 @@ class SchwabClient
      *
      * We cannot get the tax lots from Schwab so we will need to compute it based on the transactions.
      */
-    public func computeTaxLots(symbol: String, currentPrice: Double? = nil) -> [SalesCalcPositionsRecord] {
+    public func computeTaxLots(symbol: String, currentPrice: Double? = nil) async -> [SalesCalcPositionsRecord] {
 //        let debug : Bool = true
         // display the busy indicator
 //        if debug { AppLogger.shared.debug("🔍 computeTaxLots - Setting loading to TRUE") }
@@ -2821,9 +2659,7 @@ class SchwabClient
 
             // Get current share count
             var currentShareCount : Double = getShareCount(symbol: symbol)
-            let monthDeltaForLogging = m_monthDeltaLock.withLock {
-                return m_monthDelta
-            }
+            let monthDeltaForLogging = await transactionHistoryStore.loadedMonths()
             AppLogger.shared.debug("  --- computeTaxLots -- \(symbol) -- computeTaxLots() currentShareCount: \(currentShareCount) monthDelta: \(monthDeltaForLogging) --")
 
             // get last price for this security - use real-time quote data if available, fallback to price history
@@ -2844,7 +2680,7 @@ class SchwabClient
             AppLogger.shared.debug( "  --- computeTaxLots  - calling getTransactionsFor(symbol: \(symbol))" )
             let transactionsForTaxLots = tradeRelevantTransactionsForLogic(
                 symbol: symbol,
-                sourceTransactions: self.getTransactionsFor(symbol: symbol)
+                sourceTransactions: await self.getTransactionsFor(symbol: symbol)
             )
             for transaction in transactionsForTaxLots
             {
@@ -2920,7 +2756,7 @@ class SchwabClient
                 AppLogger.shared.debug( "  -- \(symbol) -- computeTaxLots:  -- SUCCESS: Zero point found --" )
                 showIncompleteDataWarning = false
                 break
-            } else if ( self.transactionFetchLimit(for: symbol, sourceTransactions: self.getTransactionsFor(symbol: symbol)) <= monthDeltaForLogging ) {
+            } else if ( self.transactionFetchLimit(for: symbol, sourceTransactions: await self.getTransactionsFor(symbol: symbol)) <= monthDeltaForLogging ) {
 //                showIncompleteDataWarning = true
                 AppLogger.shared.debug( " -- \(symbol) -- Reached max month delta --" )
                 AppLogger.shared.debug( " -- \(symbol) -- WARNING: Incomplete data - reached max month delta. Setting showIncompleteDataWarning = true --" )
@@ -2935,21 +2771,7 @@ class SchwabClient
             else
             {
                 AppLogger.shared.debug( " -- \(symbol) -- Fetching more records (attempt \(fetchAttempts)) --" )
-                // Use DispatchGroup to wait for the async operation with timeout
-                let group = DispatchGroup()
-                group.enter()
-                
-                // Start the fetch operation
-                Task {
-                    await self.fetchTransactionHistory(allowExtendedFor: symbol)
-                    group.leave()
-                }
-                
-                // Wait for completion or timeout
-                let result = group.wait(timeout: .now() + m_fetchTimeout)
-                if result == .timedOut {
-                    AppLogger.shared.debug("   !!! fetch attempt \(fetchAttempts) timed out after \(m_fetchTimeout) seconds")
-                }
+                _ = await self.fetchTransactionHistory(allowExtendedFor: symbol)
             }
             
         }
@@ -3152,32 +2974,24 @@ class SchwabClient
             return
         }
 
-        m_monthDeltaLock.withLock {
-            m_monthDelta = 0
-            m_consecutiveEmptyHistoryMonths = 0
-            m_fetchedMonthSlices.removeAll(keepingCapacity: true)
-            m_transactionListLock.withLock {
-                m_transactionList.removeAll(keepingCapacity: true)
-            }
-        }
-
-        let initialSize: Int = m_transactionList.count
+        await transactionHistoryStore.reset()
         let parallelMonths = max(1, parallelMonths)
 
         var batchStart = 0
         while batchStart < months {
             let batchEnd = min(batchStart + parallelMonths, months)
-            await withTaskGroup(of: Void.self) { group in
+            await withTaskGroup(of: [Transaction].self) { group in
                 for monthIndex in (batchStart + 1)...batchEnd {
                     group.addTask {
                         await self.fetchTransactionSliceForMonthDelta(monthIndex)
                     }
                 }
+                for await transactions in group {
+                    await transactionHistoryStore.merge(transactions)
+                }
             }
-            m_transactionListLock.withLock {
-                sortTransactions()
-            }
-            self.setLatestTradeDates()
+            await transactionHistoryStore.finishInitialLoad(months: batchEnd)
+            await setLatestTradeDates()
             await MainActor.run {
                 onBatchOnMainActor?()
             }
@@ -3185,12 +2999,8 @@ class SchwabClient
             batchStart = batchEnd
         }
 
-        m_monthDeltaLock.withLock {
-            m_monthDelta = months
-            m_fetchedMonthSlices.formUnion(1...max(months, 1))
-        }
-
-        AppLogger.shared.debug("Fetched \(m_transactionList.count - initialSize) transactions in \(months) months")
+        await transactionHistoryStore.finishInitialLoad(months: months)
+        AppLogger.shared.debug("Fetched \((await transactionHistoryStore.allTransactions()).count) transactions in \(months) months")
     }
 
     /**
@@ -3237,59 +3047,6 @@ class SchwabClient
         return summary.minimumStrike
     }
 
-
-    /**
-     * Calculate total shares for a transaction
-     */
-    private func totalShares(for transaction: Transaction) -> Double {
-        return transaction.transferItems.lazy.reduce(0.0) { sum, item in
-            sum + (item.amount ?? 0.0)
-        }
-    }
-
-    /**
-     * Sort transactions by date (newest first) and then by total shares (least to greatest)
-     * This method should be called within a lock on m_transactionListLock
-     */
-    private func sortTransactions() {
-        // Early exit if no transactions to sort
-        guard !m_transactionList.isEmpty else { return }
-        
-        m_transactionList.sort { 
-            // First sort by newest date
-            let date1 = $0.tradeDate ?? "0000"
-            let date2 = $1.tradeDate ?? "0000"
-            
-            if date1 != date2 {
-                return date1 > date2
-            }
-            
-            // If dates are equal, sort by total shares from least to greatest
-            let totalShares1 = totalShares(for: $0)
-            let totalShares2 = totalShares(for: $1)
-            
-            return totalShares1 < totalShares2
-        }
-    }
-
-    /**
-     * Add new transactions to the list without sorting
-     * This method should be called within a lock on m_transactionListLock
-     * Use this for bulk additions where sorting will be done at the end
-     */
-    private func addTransactionsWithoutSorting(_ newTransactions: [Transaction]) {
-        guard !newTransactions.isEmpty else { return }
-        // Create a set of existing transaction activityIds to avoid duplicates
-        let existingActivityIds = Set(m_transactionList.compactMap { $0.activityId })
-        let uniqueNewTransactions = newTransactions.filter { transaction in
-            guard let activityId = transaction.activityId else { return true } // Include transactions without activityIds
-            return !existingActivityIds.contains(activityId)
-        }
-        if uniqueNewTransactions.count != newTransactions.count {
-            AppLogger.shared.debug("  -- Removed \(newTransactions.count - uniqueNewTransactions.count) duplicate transactions")
-        }
-        m_transactionList.append(contentsOf: uniqueNewTransactions)
-    }
 
     // MARK: - Public Debug Methods
     
@@ -3750,7 +3507,7 @@ class SchwabClient
     }
 
     // MARK: - Optimized Tax Lot Calculation
-    public func computeTaxLotsOptimized(symbol: String, currentPrice: Double? = nil) -> [SalesCalcPositionsRecord] {
+    public func computeTaxLotsOptimized(symbol: String, currentPrice: Double? = nil) async -> [SalesCalcPositionsRecord] {
         let performanceStart = Date()
         
         AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) ===")
@@ -3763,8 +3520,8 @@ class SchwabClient
         }
         
         let currentShareCount = getShareCount(symbol: symbol)
-        let loadedMonths = loadedTransactionHistoryMonths()
-        let sourceTransactions = getTransactionsForOptimized(symbol: symbol)
+        let loadedMonths = await loadedTransactionHistoryMonths()
+        let sourceTransactions = await getTransactionsForOptimized(symbol: symbol)
         let transactions = tradeRelevantTransactionsForLogic(symbol: symbol, sourceTransactions: sourceTransactions)
         let historyComplete = shareHistoryIsComplete(for: symbol, in: sourceTransactions)
         let fetchLimit = historyComplete ? initialTransactionHistoryMonths : extendedTransactionHistoryMonths

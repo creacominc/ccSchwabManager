@@ -284,7 +284,7 @@ struct PositionDetailView: View
             await Task.yield()
             // Fetch transactions in background to avoid blocking
             let fetchedTransactions = await Task.detached(priority: .utility) {
-                return SchwabClient.shared.getTransactionsFor(symbol: symbol)
+                return await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             
@@ -345,7 +345,7 @@ struct PositionDetailView: View
             await Task.yield()
             // Compute tax lots in background to avoid blocking
             let fetchedTaxLots = await Task.detached(priority: .utility) {
-                return SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+                return await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
             }.value
             if Task.isCancelled { return }
             let fetchedSharesAvailable = await Task.detached(priority: .utility) {
@@ -572,7 +572,7 @@ struct PositionDetailView: View
             await Task.yield()
             // Fetch transactions in background to avoid blocking
             let fetchedTransactions = await Task.detached(priority: .userInitiated) {
-                return SchwabClient.shared.getTransactionsFor(symbol: symbol)
+                return await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             }.value
             if Task.isCancelled { return }
 
@@ -653,7 +653,7 @@ struct PositionDetailView: View
                     await Task.yield()
                     // Use optimized version with better caching - run in background to avoid blocking
                     let fetchedTaxLots = await Task.detached(priority: .userInitiated) {
-                        return SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+                        return await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
                     }.value
                     if Task.isCancelled { return }
                     let fetchedSharesAvailable = await Task.detached(priority: .userInitiated) {
@@ -760,19 +760,19 @@ struct PositionDetailView: View
     }
 
     private func runBackgroundHistoryBackfill(for symbol: String) async {
-        guard !SchwabClient.shared.hasCompleteShareHistory(for: symbol) else {
+        guard !(await SchwabClient.shared.hasCompleteShareHistory(for: symbol)) else {
             AppLogger.shared.debug("📚 \(symbol): share history already complete — skipping backfill")
             return
         }
-        guard SchwabClient.shared.canFetchMoreTransactionHistory(for: symbol) else {
-            if let reason = SchwabClient.shared.historyBackfillStopReason(for: symbol) {
+        guard await SchwabClient.shared.canFetchMoreTransactionHistory(for: symbol) else {
+            if let reason = await SchwabClient.shared.historyBackfillStopReason(for: symbol) {
                 AppLogger.shared.debug("📚 \(symbol): cannot backfill — \(reason)")
             }
             return
         }
 
-        let fetchLimit = SchwabClient.shared.transactionFetchLimit(for: symbol)
-        AppLogger.shared.debug("📚 \(symbol): starting incremental history backfill (loaded \(SchwabClient.shared.loadedTransactionHistoryMonths())/\(fetchLimit) months, until zero shares or history exhausted)")
+        let fetchLimit = await SchwabClient.shared.transactionFetchLimit(for: symbol)
+        AppLogger.shared.debug("📚 \(symbol): starting incremental history backfill (loaded \(await SchwabClient.shared.loadedTransactionHistoryMonths())/\(fetchLimit) months, until zero shares or history exhausted)")
         await PerformanceBenchmark.shared.startTiming("historyBackfill_\(symbol)", metadata: ["symbol": symbol])
 
         var attempts = 0
@@ -785,13 +785,13 @@ struct PositionDetailView: View
                 break
             }
 
-            if SchwabClient.shared.hasCompleteShareHistory(for: symbol) {
+            if await SchwabClient.shared.hasCompleteShareHistory(for: symbol) {
                 AppLogger.shared.debug("📚 \(symbol): share history complete after \(attempts) extra month(s)")
                 break
             }
 
-            guard SchwabClient.shared.canFetchMoreTransactionHistory(for: symbol) else {
-                if let reason = SchwabClient.shared.historyBackfillStopReason(for: symbol) {
+            guard await SchwabClient.shared.canFetchMoreTransactionHistory(for: symbol) else {
+                if let reason = await SchwabClient.shared.historyBackfillStopReason(for: symbol) {
                     AppLogger.shared.warning("📚 \(symbol): stopping history backfill — \(reason)")
                 }
                 break
@@ -812,11 +812,11 @@ struct PositionDetailView: View
             let fetchStart = Date()
             let didFetch = await SchwabClient.shared.fetchNextTransactionHistoryMonth(for: symbol)
             let fetchDuration = Date().timeIntervalSince(fetchStart)
-            let loadedMonths = SchwabClient.shared.loadedTransactionHistoryMonths()
+            let loadedMonths = await SchwabClient.shared.loadedTransactionHistoryMonths()
             AppLogger.shared.info("📚 [\(String(format: "%.3f", fetchDuration))s] backfill fetched month \(loadedMonths) for \(symbol) (attempt \(attempts + 1))")
 
             if !didFetch {
-                if let reason = SchwabClient.shared.historyBackfillStopReason(for: symbol) {
+                if let reason = await SchwabClient.shared.historyBackfillStopReason(for: symbol) {
                     AppLogger.shared.warning("📚 \(symbol): history backfill stopped — \(reason)")
                 } else {
                     AppLogger.shared.warning("📚 \(symbol): history backfill made no month progress — stopping")
@@ -825,9 +825,9 @@ struct PositionDetailView: View
             }
             attempts += 1
 
-            SchwabClient.shared.invalidateSymbolDerivedCaches(symbol: symbol)
+            await SchwabClient.shared.invalidateSymbolDerivedCaches(symbol: symbol)
 
-            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            let fetchedTransactions = await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
                 snapshot.transactions = fetchedTransactions
             }
@@ -842,10 +842,10 @@ struct PositionDetailView: View
             }
 
             let recomputeStart = Date()
-            let fetchedTaxLots = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
+            let fetchedTaxLots = await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: price)
             let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
             let recomputeDuration = Date().timeIntervalSince(recomputeStart)
-            let historyComplete = SchwabClient.shared.hasCompleteShareHistory(for: symbol)
+            let historyComplete = await SchwabClient.shared.hasCompleteShareHistory(for: symbol)
             AppLogger.shared.info("📚 [\(String(format: "%.3f", recomputeDuration))s] refreshed tax lots for \(symbol) (\(fetchedTaxLots.count) lots, \(fetchedSharesAvailable) shares available, complete: \(historyComplete))")
 
             let finalSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
@@ -1296,7 +1296,7 @@ struct PositionDetailView: View
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             AppLogger.shared.debug("--- \(symbol) --- Fetching transactions")
-            let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            let fetchedTransactions = await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             
@@ -1326,7 +1326,7 @@ struct PositionDetailView: View
                 return nil
             }()
             AppLogger.shared.debug("--- \(symbol) --- Computing tax lots")
-            let fetchedTaxLots = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: effectivePrice)
+            let fetchedTaxLots = await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: effectivePrice)
             guard !Task.isCancelled else { return }
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
@@ -1441,7 +1441,7 @@ struct PositionDetailView: View
             if Task.isCancelled { return }
             AppLogger.shared.debug("🔮 Fetching transactions for prefetch: \(symbol)")
             let fetchedTransactions = await Task.detached(priority: .low) {
-                SchwabClient.shared.getTransactionsFor(symbol: symbol)
+                await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }
@@ -1460,7 +1460,7 @@ struct PositionDetailView: View
                 ?? fetchedQuote?.extended?.lastPrice
                 ?? fetchedPriceHistory?.candles.last?.close
             let fetchedTaxLots = await Task.detached(priority: .low) {
-                SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: currentPrice)
+                await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbol, currentPrice: currentPrice)
             }.value
             if Task.isCancelled { return }
             if await endPrefetchIfHoldingsSorting(symbol: symbol, groups: toFetch) { return }

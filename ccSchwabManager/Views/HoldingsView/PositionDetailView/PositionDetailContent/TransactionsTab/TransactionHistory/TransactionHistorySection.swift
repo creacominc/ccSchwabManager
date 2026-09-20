@@ -36,7 +36,10 @@ struct TransactionHistorySection: View {
         // This makes the tab feel instant - user sees data right away
         if sortedTransactions.isEmpty {
             // Quick initial display - use transactions as-is (will be sorted in background)
-            let quickProcessed = transactions.map { TransactionWithComputedPrice(transaction: $0, symbol: symbol) }
+            let quickProcessed = transactions.map { transaction in
+                let price = transaction.transferItems.first { $0.instrument?.symbol == symbol }?.price ?? 0
+                return TransactionWithComputedPrice(transaction: transaction, symbol: symbol, computedPrice: price)
+            }
             sortedTransactions = quickProcessed
         }
         isProcessing = true // Indicate we're refining the sort
@@ -51,9 +54,13 @@ struct TransactionHistorySection: View {
             AppLogger.shared.debug("=== Processing \(transactionsToProcess.count) transactions for \(symbolToProcess) ===")
 
             // Warm tax-lot cache once so many zero-price rows do not each repeat full lot computation.
-            _ = SchwabClient.shared.computeTaxLotsOptimized(symbol: symbolToProcess)
+            _ = await SchwabClient.shared.computeTaxLotsOptimized(symbol: symbolToProcess)
 
-            let withPrices = transactionsToProcess.map { TransactionWithComputedPrice(transaction: $0, symbol: symbolToProcess) }
+            var withPrices: [TransactionWithComputedPrice] = []
+            withPrices.reserveCapacity(transactionsToProcess.count)
+            for transaction in transactionsToProcess {
+                withPrices.append(await TransactionWithComputedPrice.make(transaction: transaction, symbol: symbolToProcess))
+            }
             
             // Sort transactions
             let sorted: [TransactionWithComputedPrice]

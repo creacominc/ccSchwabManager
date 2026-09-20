@@ -8,8 +8,9 @@
 import Foundation
 
 
-class UserDetails : Codable, Identifiable
+struct UserDetails: Codable, Identifiable, Hashable, Sendable
 {
+    var id: Int64 { userId ?? 0 }
     /**
      cdDomainId    string
      login    string
@@ -23,14 +24,14 @@ class UserDetails : Codable, Identifiable
      brokerRepCode    string
      */
 
-    var cdDomainId: String?
-    var login: String?
-    var type: UserType?
-    var userId: Int64?
-    var systemUserName: String?
-    var firstName: String?
-    var lastName: String?
-    var brokerRepCode: String?
+    let cdDomainId: String?
+    let login: String?
+    let type: UserType?
+    let userId: Int64?
+    let systemUserName: String?
+    let firstName: String?
+    let lastName: String?
+    let brokerRepCode: String?
 
     // coding keys
     enum CodingKeys : String, CodingKey
@@ -57,4 +58,3 @@ class UserDetails : Codable, Identifiable
         self.brokerRepCode = brokerRepCode
     }
 }
-

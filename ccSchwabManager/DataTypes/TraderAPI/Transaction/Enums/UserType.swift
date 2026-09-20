@@ -3,7 +3,7 @@
 
 import Foundation
 
-public enum UserType: String, Codable, CaseIterable
+public enum UserType: String, Codable, CaseIterable, Sendable
 {
 
     case ADVISOR_USER = "ADVISOR_USER"

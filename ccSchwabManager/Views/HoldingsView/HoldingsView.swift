@@ -530,7 +530,7 @@ struct HoldingsView: View
             if Task.isCancelled { return }
             print("🔮 [First Security] Fetching transactions for: \(symbol)")
             let fetchedTransactions = await Task.detached(priority: .low) {
-                SchwabClient.shared.getTransactionsFor(symbol: symbol)
+                await SchwabClient.shared.getTransactionsFor(symbol: symbol)
             }.value
             if Task.isCancelled { return }
             await Task.yield()
@@ -548,7 +548,7 @@ struct HoldingsView: View
                 ?? fetchedQuote?.extended?.lastPrice
                 ?? fetchedPriceHistory?.candles.last?.close
             let fetchedTaxLots = await Task.detached(priority: .low) {
-                SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
+                await SchwabClient.shared.computeTaxLots(symbol: symbol, currentPrice: currentPrice)
             }.value
             if Task.isCancelled { return }
             let fetchedSharesAvailable = await Task.detached(priority: .low) {
