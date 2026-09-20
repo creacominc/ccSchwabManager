@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed blocking transaction waits and four transaction-related locks.
 - Moved price history, ATR, trade-date, and tax-lot caches into a derived-data actor.
 - Replaced blocking quote and price-history requests with native async networking.
+- Removed the unused dispatch-queue-backed symbol cache.
 
 ### Added
 - **NEW**: Fixed Buy Sequence Orders to properly extract options data from positions
