@@ -22,7 +22,9 @@ struct HoldingsSearchBar: View {
                 }
                 if isSearchVisible {
                     // Focus when opening search
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        guard isSearchVisible else { return }
                         isSearchFieldFocused.wrappedValue = true
                     }
                 } else {

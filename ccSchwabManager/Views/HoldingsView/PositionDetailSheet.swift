@@ -56,14 +56,16 @@ struct PositionDetailSheet: View {
             print("HoldingsView: Navigating to position \(newIndex)")
             isNavigatingBinding.wrappedValue = true
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(100))
+                guard !Task.isCancelled else { return }
                 let newPosition = sortedHoldings[newIndex]
                 let accountNumber = accountPositions.first { $0.0 === newPosition }?.1 ?? ""
                 selectedPositionBinding.wrappedValue = SelectedPosition(id: newPosition.id, position: newPosition, accountNumber: accountNumber)
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    isNavigatingBinding.wrappedValue = false
-                }
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                isNavigatingBinding.wrappedValue = false
             }
         }
     }

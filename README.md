@@ -194,6 +194,7 @@ This ensures that selecting orders for submission is fast and responsive, while 
 - Position-detail presentation state and background-task lifecycles are coordinated outside the view hierarchy.
 - Actors serialize mutable transaction, derived-data, and benchmarking state.
 - Network and calculation APIs use `async`/`await`; UI state is updated on the main actor.
+- Delayed UI transitions and loading timeouts use cancellable clock-based tasks.
 - Keychain operations are serialized on the main actor, and the codebase does not rely on unchecked sendability or explicit locks.
 
 ### CSV Export Functionality

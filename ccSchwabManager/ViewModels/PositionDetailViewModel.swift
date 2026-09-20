@@ -26,6 +26,8 @@ final class PositionDetailViewModel {
     @ObservationIgnored var prefetchProcessorTask: Task<Void, Never>?
     @ObservationIgnored var historyBackfillTask: Task<Void, Never>?
     @ObservationIgnored var prefetchUserIdleResumeTask: Task<Void, Never>?
+    @ObservationIgnored private var loadingTimeoutTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshIndicatorTask: Task<Void, Never>?
 
     func clearData() {
         priceHistory = nil
@@ -80,5 +82,28 @@ final class PositionDetailViewModel {
         prefetchUserIdleResumeTask = nil
         historyBackfillTask?.cancel()
         historyBackfillTask = nil
+        loadingTimeoutTask?.cancel()
+        loadingTimeoutTask = nil
+        refreshIndicatorTask?.cancel()
+        refreshIndicatorTask = nil
+    }
+
+    func scheduleLoadingTimeout(for loadingState: LoadingState) {
+        loadingTimeoutTask?.cancel()
+        loadingTimeoutTask = Task { [weak loadingState] in
+            try? await Task.sleep(for: .seconds(15))
+            guard !Task.isCancelled, loadingState?.isLoading == true else { return }
+            AppLogger.shared.debug("PositionDetailView: Loading timeout - clearing stuck loading state")
+            loadingState?.forceClearLoading()
+        }
+    }
+
+    func scheduleRefreshIndicatorReset() {
+        refreshIndicatorTask?.cancel()
+        refreshIndicatorTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.isRefreshing = false
+        }
     }
 }

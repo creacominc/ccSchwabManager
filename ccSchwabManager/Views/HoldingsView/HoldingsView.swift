@@ -266,7 +266,9 @@ struct HoldingsView: View
     private func handlePositionSelected(newId: Position.ID, position: Position, accountNumber: String) {
         loadingState.setLoading(true)
         selectedPosition = SelectedPosition(id: newId, position: position, accountNumber: accountNumber)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
             loadingState.setLoading(false)
         }
     }

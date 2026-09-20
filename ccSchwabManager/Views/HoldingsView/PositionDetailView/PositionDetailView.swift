@@ -1447,9 +1447,7 @@ struct PositionDetailView: View
                 Button(action: {
                     isRefreshing = true
                     fetchDataForSymbol(forceRefresh: true)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        isRefreshing = false
-                    }
+                    viewModel.scheduleRefreshIndicatorReset()
                 }) {
                     HStack {
                         if isRefreshing {
@@ -1549,13 +1547,7 @@ struct PositionDetailView: View
             // Fetch data asynchronously
             fetchDataForSymbol()
             
-            // Add a safety timeout to clear loading state if it gets stuck
-            DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
-                if loadingState.isLoading {
-                    AppLogger.shared.debug("PositionDetailView: Loading timeout - clearing stuck loading state")
-                    loadingState.forceClearLoading()
-                }
-            }
+            viewModel.scheduleLoadingTimeout(for: loadingState)
         }
         .onChange(of: position.instrument?.symbol) { oldValue, newValue in
             // Refetch data when position changes (navigation)
@@ -1564,13 +1556,7 @@ struct PositionDetailView: View
                 marketValue = position.marketValue ?? 0.0
                 fetchDataForSymbol()
                 
-                // Add a safety timeout to clear loading state if it gets stuck
-                DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
-                    if loadingState.isLoading {
-                        AppLogger.shared.debug("PositionDetailView: Loading timeout - clearing stuck loading state")
-                        loadingState.forceClearLoading()
-                    }
-                }
+                viewModel.scheduleLoadingTimeout(for: loadingState)
             }
         }
         .onChange(of: scenePhase) { _, phase in
