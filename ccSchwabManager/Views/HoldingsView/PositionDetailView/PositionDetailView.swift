@@ -185,12 +185,12 @@ struct PositionDetailView: View
             // Record cache hits for loaded groups
             for group in SecurityDataGroup.allCases {
                 if cachedSnapshot.isLoaded(group) {
-                    PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_\(group)")
+                    Task { await PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_\(group)") }
                 }
             }
         } else {
             // Record cache miss
-            PerformanceBenchmark.shared.recordCacheMiss(for: "\(symbol)_all")
+            Task { await PerformanceBenchmark.shared.recordCacheMiss(for: "\(symbol)_all") }
         }
 
         // Always send the user back to the details tab when switching securities
@@ -444,7 +444,7 @@ struct PositionDetailView: View
         // CHUNK 1 - PHASE 1: Load details (quote) first - Tab 0 needs this immediately
         if chunk1Groups.contains(.details) {
             let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.details) ?? false
-            PerformanceBenchmark.shared.startTiming("load_details_\(symbol)", metadata: ["symbol": symbol, "group": "details"])
+            await PerformanceBenchmark.shared.startTiming("load_details_\(symbol)", metadata: ["symbol": symbol, "group": "details"])
             
             AppLogger.shared.debug("--- \(symbol) --- 📊 [Phase 1] Loading details (quote)")
             // Yield to allow UI updates
@@ -465,15 +465,15 @@ struct PositionDetailView: View
                     applySnapshot(updatedSnapshot)
                 }
                 
-                if let duration = PerformanceBenchmark.shared.endTiming("load_details_\(symbol)") {
-                    PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .details, duration: duration, fromCache: wasCached)
+                if let duration = await PerformanceBenchmark.shared.endTiming("load_details_\(symbol)") {
+                    await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .details, duration: duration, fromCache: wasCached)
                 }
             } else {
                 let failedSnapshot = SecurityDataCacheManager.shared.markFailed(symbol: symbol, group: .details, message: "Quote unavailable")
                 await MainActor.run {
                     applySnapshot(failedSnapshot)
                 }
-                _ = PerformanceBenchmark.shared.endTiming("load_details_\(symbol)")
+                _ = await PerformanceBenchmark.shared.endTiming("load_details_\(symbol)")
             }
         }
 
@@ -487,7 +487,7 @@ struct PositionDetailView: View
             let wasCached = await MainActor.run {
                 SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.priceHistory) ?? false
             }
-            PerformanceBenchmark.shared.startTiming("load_priceHistory_\(symbol)", metadata: ["symbol": symbol, "group": "priceHistory"])
+            await PerformanceBenchmark.shared.startTiming("load_priceHistory_\(symbol)", metadata: ["symbol": symbol, "group": "priceHistory"])
             
             AppLogger.shared.debug("--- \(symbol) --- 📊 Loading price history")
             // Yield to allow UI updates
@@ -536,8 +536,8 @@ struct PositionDetailView: View
                     applySnapshot(updatedSnapshot)
                 }
                 
-                if let duration = PerformanceBenchmark.shared.endTiming("load_priceHistory_\(symbol)") {
-                    PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .priceHistory, duration: duration, fromCache: wasCached)
+                if let duration = await PerformanceBenchmark.shared.endTiming("load_priceHistory_\(symbol)") {
+                    await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .priceHistory, duration: duration, fromCache: wasCached)
                 }
             } else {
                 AppLogger.shared.warning("📊 Failed to fetch price history for \(symbol)")
@@ -547,7 +547,7 @@ struct PositionDetailView: View
                 await MainActor.run {
                     applySnapshot(failedSnapshot)
                 }
-                _ = PerformanceBenchmark.shared.endTiming("load_priceHistory_\(symbol)")
+                _ = await PerformanceBenchmark.shared.endTiming("load_priceHistory_\(symbol)")
             }
         } : nil
         
@@ -565,7 +565,7 @@ struct PositionDetailView: View
             let wasCached = await MainActor.run {
                 SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.transactions) ?? false
             }
-            PerformanceBenchmark.shared.startTiming("load_transactions_\(symbol)", metadata: ["symbol": symbol, "group": "transactions"])
+            await PerformanceBenchmark.shared.startTiming("load_transactions_\(symbol)", metadata: ["symbol": symbol, "group": "transactions"])
             
                 AppLogger.shared.debug("--- \(symbol) --- 📊 Loading transactions")
             // Yield to allow UI updates
@@ -592,8 +592,8 @@ struct PositionDetailView: View
                 applySnapshot(updatedSnapshot)
             }
             
-            if let duration = PerformanceBenchmark.shared.endTiming("load_transactions_\(symbol)") {
-                PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .transactions, duration: duration, fromCache: wasCached)
+            if let duration = await PerformanceBenchmark.shared.endTiming("load_transactions_\(symbol)") {
+                await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .transactions, duration: duration, fromCache: wasCached)
             }
         } : nil
         
@@ -636,7 +636,7 @@ struct PositionDetailView: View
                    let cachedTaxLots = snapshot?.taxLotData,
                    let cachedShares = snapshot?.sharesAvailableForTrading {
                     AppLogger.shared.debug("📊 Tax lots already cached for \(symbol)")
-                    PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_taxLots")
+                    await PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_taxLots")
                     // Still update the snapshot to ensure UI is in sync
                     await MainActor.run {
                         let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
@@ -646,7 +646,7 @@ struct PositionDetailView: View
                         applySnapshot(updatedSnapshot)
                     }
                 } else {
-                    PerformanceBenchmark.shared.startTiming("load_taxLots_\(symbol)", metadata: ["symbol": symbol, "group": "taxLots"])
+                    await PerformanceBenchmark.shared.startTiming("load_taxLots_\(symbol)", metadata: ["symbol": symbol, "group": "taxLots"])
                     
                     AppLogger.shared.debug("📊 [Phase 3] Loading tax lots for \(symbol) with price \(price)")
                     // Yield to allow UI updates
@@ -674,8 +674,8 @@ struct PositionDetailView: View
                         applySnapshot(updatedSnapshot)
                     }
                     
-                    if let duration = PerformanceBenchmark.shared.endTiming("load_taxLots_\(symbol)") {
-                        PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: duration, fromCache: false)
+                    if let duration = await PerformanceBenchmark.shared.endTiming("load_taxLots_\(symbol)") {
+                        await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: duration, fromCache: false)
                     }
                 }
             } else {
@@ -711,14 +711,14 @@ struct PositionDetailView: View
                let cachedBuyOrders = snapshot?.recommendedBuyOrders,
                !cachedSellOrders.isEmpty || !cachedBuyOrders.isEmpty {
                 AppLogger.shared.debug("📊 Order recommendations already cached for \(symbol) - skipping computation")
-                PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
+                await PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
             } else {
-                PerformanceBenchmark.shared.startTiming("load_orderRecommendations_\(symbol)", metadata: ["symbol": symbol, "group": "orderRecommendations"])
+                await PerformanceBenchmark.shared.startTiming("load_orderRecommendations_\(symbol)", metadata: ["symbol": symbol, "group": "orderRecommendations"])
                 
                 await computeAndCacheOrderRecommendations(symbol: symbol, localQuote: localQuote, localHistory: localHistory)
                 
-                if let duration = PerformanceBenchmark.shared.endTiming("load_orderRecommendations_\(symbol)") {
-                    PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .orderRecommendations, duration: duration, fromCache: false)
+                if let duration = await PerformanceBenchmark.shared.endTiming("load_orderRecommendations_\(symbol)") {
+                    await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .orderRecommendations, duration: duration, fromCache: false)
                 }
             }
         }
@@ -773,7 +773,7 @@ struct PositionDetailView: View
 
         let fetchLimit = SchwabClient.shared.transactionFetchLimit(for: symbol)
         AppLogger.shared.debug("📚 \(symbol): starting incremental history backfill (loaded \(SchwabClient.shared.loadedTransactionHistoryMonths())/\(fetchLimit) months, until zero shares or history exhausted)")
-        PerformanceBenchmark.shared.startTiming("historyBackfill_\(symbol)", metadata: ["symbol": symbol])
+        await PerformanceBenchmark.shared.startTiming("historyBackfill_\(symbol)", metadata: ["symbol": symbol])
 
         var attempts = 0
         var didUpdateTaxLots = false
@@ -885,7 +885,7 @@ struct PositionDetailView: View
             }
         }
 
-        if let duration = PerformanceBenchmark.shared.endTiming("historyBackfill_\(symbol)") {
+        if let duration = await PerformanceBenchmark.shared.endTiming("historyBackfill_\(symbol)") {
             AppLogger.shared.info("📚 historyBackfill_\(symbol) total: \(String(format: "%.3f", duration))s, extra months: \(attempts)")
         }
     }
@@ -899,7 +899,7 @@ struct PositionDetailView: View
            let cachedBuyOrders = snapshot.recommendedBuyOrders,
            !cachedSellOrders.isEmpty || !cachedBuyOrders.isEmpty {
             AppLogger.shared.debug("PositionDetailView: Using cached order recommendations for \(symbol) - \(cachedSellOrders.count) sell, \(cachedBuyOrders.count) buy")
-            PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
+            await PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
             return
         }
         
@@ -1573,7 +1573,9 @@ struct PositionDetailView: View
             markUserInteraction()
             
             // Record tab switch for benchmarking
-            PerformanceBenchmark.shared.recordTabSwitch(to: newValue, symbol: position.instrument?.symbol)
+            Task {
+                await PerformanceBenchmark.shared.recordTabSwitch(to: newValue, symbol: position.instrument?.symbol)
+            }
             
             guard let symbol = position.instrument?.symbol else { return }
             let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)

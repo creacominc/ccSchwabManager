@@ -86,19 +86,20 @@ struct PerformanceSummaryView: View {
     }
     
     private func loadSummary() {
-        summaryText = PerformanceBenchmark.shared.getSessionSummary()
-        storageLocation = PerformanceBenchmark.shared.getStorageLocation()
+        Task {
+            summaryText = await PerformanceBenchmark.shared.getSessionSummary()
+            storageLocation = await PerformanceBenchmark.shared.getStorageLocation()
+        }
     }
     
     private func exportPerformanceData() {
-        guard let data = PerformanceBenchmark.shared.exportSessionData(),
-              let jsonData = try? JSONSerialization.data(withJSONObject: data, options: .prettyPrinted),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
-            return
-        }
-        
-        #if os(macOS)
-        Task { @MainActor in
+        Task {
+            guard let jsonData = await PerformanceBenchmark.shared.exportSessionData(),
+                  let jsonString = String(data: jsonData, encoding: .utf8) else {
+                return
+            }
+
+            #if os(macOS)
             let panel = NSSavePanel()
             panel.allowedContentTypes = [UTType.json]
             panel.nameFieldStringValue = "performance_benchmark_\(Date().timeIntervalSince1970).json"
@@ -114,10 +115,10 @@ struct PerformanceSummaryView: View {
                     }
                 }
             }
+            #else
+            // iOS implementation - use share sheet
+            CSVShareManager.shared.shareJSON(jsonString: jsonString, fileName: "performance_benchmark_\(Date().timeIntervalSince1970).json")
+            #endif
         }
-        #else
-        // iOS implementation - use share sheet
-        CSVShareManager.shared.shareJSON(jsonString: jsonString, fileName: "performance_benchmark_\(Date().timeIntervalSince1970).json")
-        #endif
     }
 }

@@ -1,14 +1,14 @@
 import Foundation
 
 /// Performance benchmarking utility to track and analyze app performance
-class PerformanceBenchmark {
+actor PerformanceBenchmark {
     static let shared = PerformanceBenchmark()
     
     private struct Metric {
         let operation: String
         let startTime: Date
         var endTime: Date?
-        let metadata: [String: Any]?
+        let metadata: [String: String]?
         
         var duration: TimeInterval? {
             guard let endTime = endTime else { return nil }
@@ -29,7 +29,6 @@ class PerformanceBenchmark {
     
     private var currentSession: SessionMetrics?
     private var activeMetrics: [String: Metric] = [:]
-    private let lock = NSLock()
     
     // Persistence: Store session history
     private var sessionHistory: [SessionMetrics] = []
@@ -82,15 +81,15 @@ class PerformanceBenchmark {
     }
     
     private init() {
-        loadSessionHistory()
-        startNewSession()
+        let sessionId = UUID().uuidString.prefix(8).lowercased()
+        currentSession = SessionMetrics(
+            sessionId: String(sessionId),
+            startTime: Date()
+        )
     }
     
     /// Start a new benchmarking session
     func startNewSession() {
-        lock.lock()
-        defer { lock.unlock() }
-        
         // Save previous session to history before starting new one
         if let previousSession = currentSession {
             logSessionSummary(previousSession)
@@ -115,10 +114,7 @@ class PerformanceBenchmark {
     }
     
     /// Start timing an operation
-    func startTiming(_ operation: String, metadata: [String: Any]? = nil) {
-        lock.lock()
-        defer { lock.unlock() }
-        
+    func startTiming(_ operation: String, metadata: [String: String]? = nil) {
         let metric = Metric(
             operation: operation,
             startTime: Date(),
@@ -130,9 +126,6 @@ class PerformanceBenchmark {
     
     /// End timing an operation and record it
     func endTiming(_ operation: String) -> TimeInterval? {
-        lock.lock()
-        defer { lock.unlock() }
-        
         guard var metric = activeMetrics[operation] else {
             AppLogger.shared.warning("📊 Performance Benchmark: No active timing for \(operation)")
             return nil
@@ -167,9 +160,6 @@ class PerformanceBenchmark {
     
     /// Record a tab switch
     func recordTabSwitch(to tab: Int, symbol: String? = nil) {
-        lock.lock()
-        defer { lock.unlock() }
-        
         guard var session = currentSession else { return }
         session.tabSwitches.append((tab: tab, timestamp: Date()))
         currentSession = session
@@ -180,9 +170,6 @@ class PerformanceBenchmark {
     
     /// Record a cache hit
     func recordCacheHit(for operation: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        
         guard var session = currentSession else { return }
         session.cacheHits += 1
         currentSession = session
@@ -192,9 +179,6 @@ class PerformanceBenchmark {
     
     /// Record a cache miss
     func recordCacheMiss(for operation: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        
         guard var session = currentSession else { return }
         session.cacheMisses += 1
         currentSession = session
@@ -202,24 +186,14 @@ class PerformanceBenchmark {
         AppLogger.shared.debug("📊 Cache MISS: \(operation)")
     }
     
-    private static func jsonSafeMetadata(_ metadata: [String: Any]) -> [String: Any] {
-        metadata.compactMapValues { value -> Any? in
-            if value is String || value is Int || value is Double || value is Bool {
-                return value
-            }
-            return nil
-        }
-    }
-
     private static func metricExportDictionary(_ metric: Metric) -> [String: Any] {
         var dict: [String: Any] = [
             "operation": metric.operation,
             "duration": metric.duration ?? 0
         ]
         if let metadata = metric.metadata {
-            let safe = jsonSafeMetadata(metadata)
-            if !safe.isEmpty {
-                dict["metadata"] = safe
+            if !metadata.isEmpty {
+                dict["metadata"] = metadata
             }
         }
         return dict
@@ -242,15 +216,12 @@ class PerformanceBenchmark {
 
     /// Record data load timing for a specific symbol and group
     func recordDataLoad(symbol: String, group: SecurityDataGroup, duration: TimeInterval, fromCache: Bool) {
-        lock.lock()
-        defer { lock.unlock() }
-        
         let key = "\(symbol)_\(group)"
         let metric = Metric(
             operation: key,
             startTime: Date().addingTimeInterval(-duration),
             endTime: Date(),
-            metadata: ["fromCache": fromCache, "group": "\(group)"]
+            metadata: ["fromCache": String(fromCache), "group": "\(group)"]
         )
         
         if var session = currentSession {
@@ -265,9 +236,7 @@ class PerformanceBenchmark {
     }
 
     /// Record a completed network request (duration in seconds). Prefer this over inferring from `endTiming` labels.
-    func recordNetworkRequest(operation: String, duration: TimeInterval, metadata: [String: Any]? = nil) {
-        lock.lock()
-        defer { lock.unlock() }
+    func recordNetworkRequest(operation: String, duration: TimeInterval, metadata: [String: String]? = nil) {
         let metric = Metric(
             operation: operation,
             startTime: Date().addingTimeInterval(-duration),
@@ -281,8 +250,6 @@ class PerformanceBenchmark {
 
     /// Unit tests: start a fresh in-memory session without persisting the previous one.
     internal func resetForUnitTests() {
-        lock.lock()
-        defer { lock.unlock() }
         activeMetrics.removeAll()
         let sessionId = UUID().uuidString.prefix(8).lowercased()
         currentSession = SessionMetrics(sessionId: String(sessionId), startTime: Date())
@@ -421,9 +388,6 @@ class PerformanceBenchmark {
     
     /// Get current session summary
     func getSessionSummary() -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        
         guard let session = currentSession else {
             return "No active session"
         }
@@ -431,17 +395,14 @@ class PerformanceBenchmark {
         return generateSummary(for: session)
     }
     
-    /// Log session summary (must be called with lock held)
+    /// Log a completed session summary.
     private func logSessionSummary(_ session: SessionMetrics) {
         let summary = generateSummary(for: session)
         AppLogger.shared.info(summary)
     }
     
     /// Export session data as JSON
-    func exportSessionData() -> [String: Any]? {
-        lock.lock()
-        defer { lock.unlock() }
-        
+    func exportSessionData() -> Data? {
         guard let session = currentSession else { return nil }
         
         var data: [String: Any] = [
@@ -461,7 +422,7 @@ class PerformanceBenchmark {
         
         data["networkRequests"] = session.networkRequests.map { Self.metricExportDictionary($0) }
         
-        return data
+        return try? JSONSerialization.data(withJSONObject: data, options: .prettyPrinted)
     }
     
     /// Helper to get tab name
@@ -509,33 +470,13 @@ class PerformanceBenchmark {
         }
     }
     
-    /// Load session history from disk
-    private func loadSessionHistory() {
-        guard let url = persistenceURL,
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            AppLogger.shared.debug("📊 No saved session history found")
-            return
-        }
-        
-        // Note: We load the data but don't restore full SessionMetrics objects
-        // This is mainly for future use - the current session is what matters
-        AppLogger.shared.debug("📊 Loaded \(json.count) historical sessions from disk")
-    }
-    
     /// Get all stored session IDs
     func getStoredSessionIds() -> [String] {
-        lock.lock()
-        defer { lock.unlock() }
         return sessionHistory.map { $0.sessionId }
     }
     
     /// Get summary for a specific session by ID
     func getSessionSummary(for sessionId: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        
         guard let session = sessionHistory.first(where: { $0.sessionId == sessionId }) else {
             return nil
         }

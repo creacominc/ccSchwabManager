@@ -1,8 +1,10 @@
-import SwiftUI
+import Observation
 
-class HoldingsViewModel: ObservableObject {
-    @Published var uniqueAssetTypes: [AssetType] = []
-    @Published var uniqueAccountNumbers: [String] = []
+@MainActor
+@Observable
+final class HoldingsViewModel {
+    var uniqueAssetTypes: [AssetType] = []
+    var uniqueAccountNumbers: [String] = []
  
     func updateUniqueValues(holdings: [Position], accountPositions: [(Position, String, String)]) {
         uniqueAssetTypes = Array(Set(holdings.compactMap { $0.instrument?.assetType })).sorted()

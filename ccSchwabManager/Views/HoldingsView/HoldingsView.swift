@@ -81,7 +81,7 @@ struct HoldingsView: View
     @State private var includeNAStatus: Bool = false
     @State private var selectedPosition: SelectedPosition? = nil
     @State private var viewSize: CGSize = .zero
-    @StateObject private var viewModel = HoldingsViewModel()
+    @State private var viewModel = HoldingsViewModel()
     @State private var isLoadingAccounts = false
     @State private var isFilterExpanded = false
     @State private var showPerformanceSummary = false

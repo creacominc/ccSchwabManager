@@ -189,9 +189,6 @@ class SchwabClient
     // Create a logger for this class
     private let logger = Logger(subsystem: "com.creacom.ccSchwabManager", category: "SchwabClient")
     
-    // Add a lock for loadingDelegate synchronization
-    private let loadingDelegateLock = NSLock()
-
     private let m_fetchTimeout: TimeInterval = 5.0  // 5 second timeout for each fetch attempt
     
     // MARK: - Performance Optimization Cache
@@ -204,24 +201,9 @@ class SchwabClient
     private let m_transactionHistoryCacheLock = NSLock()
     private let m_transactionHistoryCacheTimeout: TimeInterval = 600 // 10 minutes
     
-    // Performance monitoring
-    private var m_performanceMetrics: [String: (startTime: Date, endTime: Date?)] = [:]
-    private let m_performanceMetricsLock = NSLock()
-
-    // Add a computed property to track loading delegate changes
-    var loadingDelegate: LoadingStateDelegate? {
-        get { 
-            loadingDelegateLock.lock()
-            defer { loadingDelegateLock.unlock() }
-            return _loadingDelegate 
-        }
-        set { 
-            loadingDelegateLock.lock()
-            defer { loadingDelegateLock.unlock() }
-            _loadingDelegate = newValue
-        }
-    }
-    private weak var _loadingDelegate: LoadingStateDelegate?
+    /// Presentation-only loading state. UI ownership is isolated to the main actor;
+    /// networking code updates it by explicitly hopping to `MainActor`.
+    @MainActor weak var loadingDelegate: LoadingStateDelegate?
 
     /**
      * dump the contents of this object for debugging.
@@ -237,28 +219,6 @@ class SchwabClient
         }
         retVal += "\n\t   ^^^^^^^^^^^^^^^"
         return retVal
-    }
-    
-    // MARK: - Performance Optimization Methods
-    private func startPerformanceTimer(_ operation: String) {
-        m_performanceMetricsLock.withLock {
-            m_performanceMetrics[operation] = (startTime: Date(), endTime: nil)
-        }
-    }
-    
-    private func endPerformanceTimer(_ operation: String) -> TimeInterval? {
-        m_performanceMetricsLock.withLock {
-            guard let metrics = m_performanceMetrics[operation] else { return nil }
-            let endTime = Date()
-            m_performanceMetrics[operation] = (startTime: metrics.startTime, endTime: endTime)
-            return endTime.timeIntervalSince(metrics.startTime)
-        }
-    }
-    
-    private func logPerformance(_ operation: String) {
-        if let duration = endPerformanceTimer(operation) {
-            AppLogger.shared.info("⏱️ Performance: \(operation) completed in \(String(format: "%.2f", duration))s")
-        }
     }
     
     // MARK: - Optimized Caching Methods
@@ -893,27 +853,6 @@ class SchwabClient
         }
         completion( .success( url ) )
         return
-    }
-    
-    public func extractCodeFromURL( from url: String, completion: @escaping (Result<Void, ErrorCodes>) -> Void )
-    {
-        AppLogger.shared.debug( "=== extractCodeFromURL from \(url) ===" )
-        // extract the code and session from the URL
-        let urlComponents = URLComponents(string: url )!
-        let queryItems = urlComponents.queryItems
-        self.m_secrets.code = String( queryItems?.first(where: { $0.name == "code" })?.value ?? "" )
-        self.m_secrets.session = String( queryItems?.first(where: { $0.name == "session" })?.value ?? "" )
-        //AppLogger.shared.debug( "secrets with session: \(self.m_secrets.dump())" )
-        if( KeychainManager.saveSecrets(secrets: &self.m_secrets) )
-        {
-            AppLogger.shared.debug( "extractCodeFromURL upated secrets with code and session. " )
-            completion( .success( Void() ) )
-        }
-        else
-        {
-            AppLogger.shared.error( "Failed to save secrets." )
-            completion(.failure(ErrorCodes.failedToSaveSecrets))
-        }
     }
     
     /**
@@ -3178,38 +3117,6 @@ class SchwabClient
         return try JSONDecoder().decode(T.self, from: data)
     }
     
-    func fetchDataWithTask<T: Decodable>(from url: URL, completion: @escaping (Result<T, Error>) -> Void) {
-        let loadingDelegate = self.loadingDelegate
-        Task { @MainActor in
-            loadingDelegate?.setLoading(true)
-        }
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            defer {
-                Task { @MainActor in
-                    loadingDelegate?.setLoading(false)
-                }
-            }
-            
-            if let error = error {
-                completion(.failure(error))
-                return
-            }
-            
-            guard let data = data else {
-                completion(.failure(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])))
-                return
-            }
-            
-            do {
-                let decoded = try JSONDecoder().decode(T.self, from: data)
-                completion(.success(decoded))
-            } catch {
-                completion(.failure(error))
-            }
-        }.resume()
-    }
-
     private func isNearZero(_ value: Double) -> Bool {
         return abs(value) < 0.0001
     }
@@ -3844,14 +3751,14 @@ class SchwabClient
 
     // MARK: - Optimized Tax Lot Calculation
     public func computeTaxLotsOptimized(symbol: String, currentPrice: Double? = nil) -> [SalesCalcPositionsRecord] {
-        startPerformanceTimer("computeTaxLotsOptimized_\(symbol)")
+        let performanceStart = Date()
         
         AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) ===")
         
         // Check cache first - this is the key performance improvement
         if let cachedTaxLots = getCachedTaxLots(for: symbol) {
             AppLogger.shared.debug("=== computeTaxLotsOptimized \(symbol) - returning \(cachedTaxLots.count) cached ===")
-            logPerformance("computeTaxLotsOptimized_\(symbol)")
+            AppLogger.shared.info("⏱️ Performance: computeTaxLotsOptimized_\(symbol) completed in \(String(format: "%.2f", Date().timeIntervalSince(performanceStart)))s")
             return cachedTaxLots
         }
         
@@ -4089,7 +3996,7 @@ class SchwabClient
         }
         
         // Log performance metrics
-        logPerformance("computeTaxLotsOptimized_\(symbol)")
+        AppLogger.shared.info("⏱️ Performance: computeTaxLotsOptimized_\(symbol) completed in \(String(format: "%.2f", Date().timeIntervalSince(performanceStart)))s")
         
         return m_lastFilteredPositionRecords
     }

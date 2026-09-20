@@ -249,7 +249,7 @@ struct RecommendedOCOOrdersSection: View {
             viewModel.currentOrders = createAllOrders(sellOrders: cachedSellOrders, buyOrders: cachedBuyOrders)
             
             // Record cache hit for benchmarking
-            PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
+            Task { await PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations") }
             return
         }
         
@@ -270,7 +270,7 @@ struct RecommendedOCOOrdersSection: View {
                 print("✅ Using existing orders from ViewModel for \(symbol) - no recalculation needed")
                 print("  - Current sell orders: \(viewModel.recommendedSellOrders.count)")
                 print("  - Current buy orders: \(viewModel.recommendedBuyOrders.count)")
-                PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations")
+                Task { await PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_orderRecommendations") }
                 return
             } else {
                 print("⚠️ Orders exist but not for current symbol \(symbol), will recalculate")

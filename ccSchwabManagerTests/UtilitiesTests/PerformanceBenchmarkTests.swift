@@ -3,18 +3,19 @@ import XCTest
 
 final class PerformanceBenchmarkTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
-        PerformanceBenchmark.shared.resetForUnitTests()
+    override func setUp() async throws {
+        try await super.setUp()
+        await PerformanceBenchmark.shared.resetForUnitTests()
     }
 
-    func testRepeatedDataLoadsAreAllExported_notOverwritten() {
+    func testRepeatedDataLoadsAreAllExported_notOverwritten() async {
         let symbol = "NVDA"
-        PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: 1.0, fromCache: false)
-        PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: 2.0, fromCache: false)
-        PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: 3.0, fromCache: false)
+        await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: 1.0, fromCache: false)
+        await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: 2.0, fromCache: false)
+        await PerformanceBenchmark.shared.recordDataLoad(symbol: symbol, group: .taxLots, duration: 3.0, fromCache: false)
 
-        guard let export = PerformanceBenchmark.shared.exportSessionData() else {
+        guard let exportData = await PerformanceBenchmark.shared.exportSessionData(),
+              let export = try? JSONSerialization.jsonObject(with: exportData) as? [String: Any] else {
             XCTFail("exportSessionData returned nil")
             return
         }
@@ -33,13 +34,14 @@ final class PerformanceBenchmarkTests: XCTestCase {
         XCTAssertEqual(durations, [1.0, 2.0, 3.0])
     }
 
-    func testEndTimingForLoadOperationAppendsEvents() {
-        PerformanceBenchmark.shared.startTiming("load_taxLots_AAPL", metadata: ["symbol": "AAPL", "group": "taxLots"])
-        _ = PerformanceBenchmark.shared.endTiming("load_taxLots_AAPL")
-        PerformanceBenchmark.shared.startTiming("load_taxLots_AAPL", metadata: ["symbol": "AAPL", "group": "taxLots"])
-        _ = PerformanceBenchmark.shared.endTiming("load_taxLots_AAPL")
+    func testEndTimingForLoadOperationAppendsEvents() async {
+        await PerformanceBenchmark.shared.startTiming("load_taxLots_AAPL", metadata: ["symbol": "AAPL", "group": "taxLots"])
+        _ = await PerformanceBenchmark.shared.endTiming("load_taxLots_AAPL")
+        await PerformanceBenchmark.shared.startTiming("load_taxLots_AAPL", metadata: ["symbol": "AAPL", "group": "taxLots"])
+        _ = await PerformanceBenchmark.shared.endTiming("load_taxLots_AAPL")
 
-        guard let export = PerformanceBenchmark.shared.exportSessionData(),
+        guard let exportData = await PerformanceBenchmark.shared.exportSessionData(),
+              let export = try? JSONSerialization.jsonObject(with: exportData) as? [String: Any],
               let events = export["dataLoadEvents"] as? [[String: Any]] else {
             XCTFail("Missing dataLoadEvents")
             return
@@ -47,10 +49,11 @@ final class PerformanceBenchmarkTests: XCTestCase {
         XCTAssertEqual(events.count, 2)
     }
 
-    func testRecordNetworkRequestAppearsInExport() {
-        PerformanceBenchmark.shared.recordNetworkRequest(operation: "fetch_quotes_batch", duration: 0.42, metadata: ["count": 5])
+    func testRecordNetworkRequestAppearsInExport() async {
+        await PerformanceBenchmark.shared.recordNetworkRequest(operation: "fetch_quotes_batch", duration: 0.42, metadata: ["count": "5"])
 
-        guard let export = PerformanceBenchmark.shared.exportSessionData(),
+        guard let exportData = await PerformanceBenchmark.shared.exportSessionData(),
+              let export = try? JSONSerialization.jsonObject(with: exportData) as? [String: Any],
               let nets = export["networkRequests"] as? [[String: Any]] else {
             XCTFail("networkRequests missing")
             return
