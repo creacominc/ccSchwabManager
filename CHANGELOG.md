@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 2026-09-20
+- Added regression coverage for holdings presentation logic, task cancellation, and transaction backfill completion.
 - Replaced timer and main-queue UI delays with cancellable Swift concurrency tasks.
 - Moved position-detail presentation state and task cancellation into an observable view model.
 - Removed redundant detached-task wrappers around already-asynchronous security prefetch operations.

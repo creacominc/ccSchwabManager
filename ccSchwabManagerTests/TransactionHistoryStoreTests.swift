@@ -27,6 +27,34 @@ struct TransactionHistoryStoreTests {
         #expect(await store.reserveNextSlice(upTo: 3) == nil)
     }
 
+    @Test
+    func emptyBackfillSlicesStopAtConfiguredLimitAndResetWhenDataArrives() async {
+        let store = TransactionHistoryStore()
+        let first = await store.reserveNextSlice(upTo: 4)
+        let second = await store.reserveNextSlice(upTo: 4)
+        let third = await store.reserveNextSlice(upTo: 4)
+
+        _ = await store.finishSlice(first!, merging: [])
+        _ = await store.finishSlice(second!, merging: [])
+        #expect(await store.historyIsExhausted(emptyMonthLimit: 2))
+
+        _ = await store.finishSlice(third!, merging: [makeTransaction(activityId: 3, symbol: "AAPL")])
+        #expect(await store.emptyMonthCount() == 0)
+        #expect(!(await store.historyIsExhausted(emptyMonthLimit: 2)))
+    }
+
+    @Test
+    func resetAllowsInitialSlicesToBeReservedAgain() async {
+        let store = TransactionHistoryStore()
+        _ = await store.reserveNextSlice(upTo: 2)
+        _ = await store.reserveNextSlice(upTo: 2)
+
+        await store.reset()
+
+        #expect(await store.reserveNextSlice(upTo: 2)?.month == 1)
+        #expect(await store.loadedMonths() == 1)
+    }
+
     private func makeTransaction(activityId: Int64, symbol: String) -> Transaction {
         Transaction(
             activityId: activityId,

@@ -317,6 +317,8 @@ The application now provides enhanced order recommendations with improved UI and
 
 ## Running the Tests
 
+The test plan includes regression coverage for actor-isolated transaction pagination, presentation filtering and sorting, and cancellation of position-detail background work.
+
 1. Open the project in Xcode (if using Xcode):
     ```sh
     open ccSchwabManager.xcodeproj
