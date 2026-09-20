@@ -19,6 +19,12 @@ import UIKit
 class NetworkMonitor: ObservableObject {
     @Published var connectionType: ConnectionType = .unknown
     @Published var signalStrength: SignalStrength = .none
+    @Published private(set) var isExpensive = false
+    @Published private(set) var isConstrained = false
+
+    var prefersReducedNetworkWork: Bool {
+        isExpensive || isConstrained
+    }
     
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
@@ -65,6 +71,8 @@ class NetworkMonitor: ObservableObject {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self = self else { return }
+                self.isExpensive = path.isExpensive
+                self.isConstrained = path.isConstrained
                 
                 if path.status == .satisfied {
                     if path.usesInterfaceType(.wifi) {

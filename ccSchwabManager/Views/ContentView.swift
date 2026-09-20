@@ -40,7 +40,8 @@ struct ContentView: View
                secretsManager.secrets.redirectUrl.isEmpty {
                 // Show authentication setup
                 AuthSetupView(showingAuthDialog: $showingAuthDialog)
-            } else if secretsManager.secrets.code.isEmpty {
+            } else if secretsManager.secrets.code.isEmpty &&
+                        (secretsManager.secrets.accessToken.isEmpty || secretsManager.secrets.refreshToken.isEmpty) {
                 // Show authentication flow
                 AuthFlowView(authCode: $authCode)
             } else {

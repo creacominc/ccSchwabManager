@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Combine
 
 /**
  * CredentialsInputView
@@ -17,7 +16,7 @@ import Combine
  * Layout:
  * - VStack containing:
  *   - Title
- *   - Read-only JSON preview of current secrets
+ *   - Editable JSON representation of current secrets
  *   - Text fields for editable credentials:
  *     - App ID
  *     - App Secret
@@ -25,50 +24,71 @@ import Combine
  *   - Save and Cancel buttons
  * 
  * Functionality:
- * - Displays current secrets as formatted JSON (read-only)
+ * - Accepts pasted or edited JSON credentials
  * - Allows editing of App ID, App Secret, and Redirect URL
  * - Validates and saves the updated credentials
  * - Provides cancel option to dismiss without saving
  */
 
 struct CredentialsInputView: View {
+    private struct ImportedCredentials: Decodable {
+        let appId: String?
+        let appSecret: String?
+        let redirectUrl: String?
+        let code: String?
+        let session: String?
+        let accessToken: String?
+        let refreshToken: String?
+        let acountNumberHash: [AccountNumberHash]?
+    }
+
     @EnvironmentObject var secretsManager: SecretsManager
     @Binding var isPresented: Bool
     @State private var jsonText: String = ""
     @State private var appId: String = ""
     @State private var appSecret: String = ""
     @State private var redirectUrl: String = "https://127.0.0.1"
+    @State private var importedCode: String?
+    @State private var importedSession: String?
+    @State private var importedAccessToken: String?
+    @State private var importedRefreshToken: String?
+    @State private var importedAccountNumberHashes: [AccountNumberHash]?
+    @FocusState private var isJsonEditorFocused: Bool
     
     var body: some View {
         VStack(spacing: 20) {
             Text("API Credentials")
                 .font(.title)
             
-            // Read-only JSON preview
-            TextEditor(text: .constant(jsonText))
+            // Editable JSON input. Valid pasted JSON updates the credential fields.
+            TextEditor(text: $jsonText)
                 .font(.system(.body, design: .monospaced))
                 .frame(maxHeight: .infinity)
-//                .overlay(
-//                    RoundedRectangle(cornerRadius: 8)
-//                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-//                )
+                .focused($isJsonEditorFocused)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+                .onChange(of: jsonText) { _, newValue in
+                    applyCredentials(from: newValue)
+                }
             
             // Editable credentials
             VStack(alignment: .leading, spacing: 10) {
                 TextField("App ID", text: $appId)
                     .textFieldStyle(.roundedBorder)
-                    .onReceive(Just(appId)) { _ in
-                        updateJsonPreview()
+                    .onChange(of: appId) { _, _ in
+                        if !isJsonEditorFocused { updateJsonPreview() }
                     }
                 TextField("App Secret", text: $appSecret)
                     .textFieldStyle(.roundedBorder)
-                    .onReceive(Just(appSecret)) { _ in
-                        updateJsonPreview()
+                    .onChange(of: appSecret) { _, _ in
+                        if !isJsonEditorFocused { updateJsonPreview() }
                     }
                 TextField("Redirect URL", text: $redirectUrl)
                     .textFieldStyle(.roundedBorder)
-                    .onReceive(Just(redirectUrl)) { _ in
-                        updateJsonPreview()
+                    .onChange(of: redirectUrl) { _, _ in
+                        if !isJsonEditorFocused { updateJsonPreview() }
                     }
             }
             .frame(maxWidth: 500)
@@ -105,29 +125,54 @@ struct CredentialsInputView: View {
     }
     
     private func updateJsonPreview() {
-        // Create a dictionary of the secrets
-        let secretsDict: [String: String] = [
-            "appId": appId,
-            "appSecret": appSecret,
-            "redirectUrl": redirectUrl,
-            "code": secretsManager.secrets.code,
-            "accessToken": secretsManager.secrets.accessToken,
-            "refreshToken": secretsManager.secrets.refreshToken
-        ]
-        
-        // Convert to JSON with pretty printing
-        if let jsonData = try? JSONSerialization.data(withJSONObject: secretsDict, options: [.sortedKeys, .prettyPrinted]),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            jsonText = jsonString
+        let current = secretsManager.secrets
+        let preview = Secrets(
+            appId: appId,
+            appSecret: appSecret,
+            redirectUrl: redirectUrl,
+            code: importedCode ?? current.code,
+            session: importedSession ?? current.session,
+            accessToken: importedAccessToken ?? current.accessToken,
+            refreshToken: importedRefreshToken ?? current.refreshToken,
+            acountNumberHash: importedAccountNumberHashes ?? current.acountNumberHash
+        )
+        jsonText = preview.encodeToString() ?? jsonText
+    }
+
+    private func applyCredentials(from json: String) {
+        guard let data = json.data(using: .utf8),
+              let values = try? JSONDecoder().decode(ImportedCredentials.self, from: data) else {
+            return
         }
+
+        if let value = values.appId {
+            appId = value
+        }
+        if let value = values.appSecret {
+            appSecret = value
+        }
+        if let value = values.redirectUrl {
+            redirectUrl = value
+        }
+        importedCode = values.code
+        importedSession = values.session
+        importedAccessToken = values.accessToken
+        importedRefreshToken = values.refreshToken
+        importedAccountNumberHashes = values.acountNumberHash
     }
     
     private func saveCredentials() {
-        // Reset auth code to ensure we show the auth flow
-        secretsManager.secrets.code = ""
-        secretsManager.secrets.appId = appId
-        secretsManager.secrets.appSecret = appSecret
-        secretsManager.secrets.redirectUrl = redirectUrl
+        let current = secretsManager.secrets
+        secretsManager.secrets = Secrets(
+            appId: appId,
+            appSecret: appSecret,
+            redirectUrl: redirectUrl,
+            code: importedCode ?? current.code,
+            session: importedSession ?? current.session,
+            accessToken: importedAccessToken ?? current.accessToken,
+            refreshToken: importedRefreshToken ?? current.refreshToken,
+            acountNumberHash: importedAccountNumberHashes ?? current.acountNumberHash
+        )
         secretsManager.saveSecrets()
         isPresented = false
     }

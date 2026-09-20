@@ -1,6 +1,7 @@
 import XCTest
 @testable import ccSchwabManager
 
+@MainActor
 final class SecurityDataCacheManagerTests: XCTestCase {
 
     override func setUpWithError() throws {

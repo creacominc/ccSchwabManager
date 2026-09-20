@@ -127,21 +127,26 @@ struct AuthFlowView: View {
                 // Get access token if not already present
                 if secretsManager.secrets.accessToken.isEmpty {
                     print("Getting initial access token...")
-                    SchwabClient.shared.getAccessToken { result in
-                        switch result {
-                        case .success:
-                            print("Successfully got access token")
-                        case .failure(let error):
-                            print("Failed to get access token: \(error.localizedDescription)")
+                    switch await SchwabClient.shared.getAccessToken() {
+                    case .success:
+                        print("Successfully got access token")
+                        if let savedSecrets = KeychainManager.readSecrets(prefix: "AuthFlow/accessToken") {
+                            secretsManager.secrets = savedSecrets
                         }
+                    case .failure(let error):
+                        print("Failed to get access token: \(error.localizedDescription)")
+                        return
                     }
-                    secretsManager.saveSecrets()
                 }
 
                 await SchwabClient.shared.fetchAccountNumbers()
 
-                // Update secrets with account numbers
-                secretsManager.saveSecrets()
+                // SchwabClient persists the account hashes together with the current
+                // tokens. Reload that authoritative copy instead of overwriting it
+                // with the view model's older snapshot.
+                if let savedSecrets = KeychainManager.readSecrets(prefix: "AuthFlow/accountNumbers") {
+                    secretsManager.secrets = savedSecrets
+                }
 
                 // Fetch account holdings
                 await SchwabClient.shared.fetchAccounts( retry: true )

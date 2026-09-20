@@ -70,6 +70,7 @@ enum SortableColumn: String, CaseIterable, Identifiable {
 struct HoldingsView: View
 {
     @EnvironmentObject var secretsManager: SecretsManager
+    @EnvironmentObject private var networkMonitor: NetworkMonitor
     @State private var holdings: [Position] = []
     @State private var searchText = ""
     @State private var currentSort: SortConfig? = SortConfig(column: .lastTradeDate, ascending: SortableColumn.lastTradeDate.defaultAscending)
@@ -609,40 +610,30 @@ struct HoldingsView: View
         }
         
         // PRIORITY 1: Fetch accounts immediately (needed for holdings display)
-        Task {
-            print("🚀 PRIORITY 1: Fetching accounts for holdings display")
-            await SchwabClient.shared.fetchAccounts(retry: true)
-            
-            // Check for cancellation before updating UI
-            guard !Task.isCancelled else { return }
-            
-            // Update UI immediately with holdings data on main actor
-            await MainActor.run {
-                // Extract positions from accounts with their account numbers
-                accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
-                    let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
-                    let lastThreeDigits = String(accountNumber.suffix(3))
-                    return accountContent.securitiesAccount?.positions.map {
-                        ($0, lastThreeDigits, "") // Empty trade date for now
-                    } ?? []
-                }
-                holdings = accountPositions.map { $0.0 }
-                viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
-                
-                print("✅ Holdings displayed: \(holdings.count) positions")
+        print("🚀 PRIORITY 1: Fetching accounts for holdings display")
+        await SchwabClient.shared.fetchAccounts(retry: true)
+
+        guard !Task.isCancelled else { return }
+
+        // Establish the rows before order history attempts to populate their status cache.
+        await MainActor.run {
+            accountPositions = SchwabClient.shared.getAccounts().flatMap { accountContent in
+                let accountNumber = accountContent.securitiesAccount?.accountNumber ?? ""
+                let lastThreeDigits = String(accountNumber.suffix(3))
+                return accountContent.securitiesAccount?.positions.map {
+                    ($0, lastThreeDigits, "") // Empty trade date for now
+                } ?? []
             }
-            
-            // Trigger initial sort after holdings are loaded (on main actor)
-            await MainActor.run {
-                performSort()
-            }
-            
-            // Prefetch first security in the list if not already cached (runs in background)
-            //await prefetchFirstSecurityIfNeeded()
+            holdings = accountPositions.map { $0.0 }
+            viewModel.updateUniqueValues(holdings: holdings, accountPositions: accountPositions)
+            print("✅ Holdings displayed: \(holdings.count) positions")
+            performSort()
         }
+
+        await withTaskGroup(of: Void.self) { group in
         
         // PRIORITY 2: Fetch order history in parallel (needed for "Orders" column)
-        Task {
+        group.addTask { @MainActor in
             print("🚀 PRIORITY 2: Fetching order history in parallel")
             print("🔍 Before fetchOrderHistory: orderStatusCache has \(orderStatusCache.count) entries")
             await SchwabClient.shared.fetchOrderHistory()
@@ -672,13 +663,18 @@ struct HoldingsView: View
         }
         
         // PRIORITY 3: Fetch transaction history in background (for trade dates and tax lots)
-        Task {
+        group.addTask { @MainActor in
             print("🚀 PRIORITY 3: Fetching transaction history in background")
             
-            // Fetch first 12 months in waves of 3 parallel months; refresh UI on main after each wave
-            await SchwabClient.shared.fetchTransactionHistoryReduced(months: 12, onBatchOnMainActor: {
+            let initialMonths = networkMonitor.prefersReducedNetworkWork ? 3 : 12
+            let parallelMonths = networkMonitor.prefersReducedNetworkWork ? 1 : 3
+            await SchwabClient.shared.fetchTransactionHistoryReduced(
+                months: initialMonths,
+                parallelMonths: parallelMonths,
+                onBatchOnMainActor: {
                 refreshTradeDatesAfterTransactionFetch()
-            })
+                }
+            )
             
             // Check for cancellation before continuing background work
             guard !Task.isCancelled else { return }
@@ -688,11 +684,12 @@ struct HoldingsView: View
             }
             
             // Remaining months up to the initial load cap (extended depth is fetched per-symbol on demand).
-            let remainingMonths = max(TransactionHistoryConfig.initialLoadMonths - 12, 0)
+            let remainingMonths = networkMonitor.prefersReducedNetworkWork
+                ? 0
+                : max(TransactionHistoryConfig.initialLoadMonths - initialMonths, 0)
             if remainingMonths > 0 {
                 print("🚀 Fetching remaining \(remainingMonths) months in background")
                 
-                let parallelMonths = 3
                 for batchStart in stride(from: 0, to: remainingMonths, by: parallelMonths) {
                     guard !Task.isCancelled else {
                         print("=== fetchHoldingsAsync - Cancelled during background processing ===")
@@ -723,6 +720,8 @@ struct HoldingsView: View
                 
                 print("✅ All transaction history loaded")
             }
+        }
+        await group.waitForAll()
         }
     }
 

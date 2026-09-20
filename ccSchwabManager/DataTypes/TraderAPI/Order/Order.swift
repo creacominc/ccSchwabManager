@@ -52,7 +52,7 @@ import Foundation
  */
 
 
-class Order: Codable, Identifiable, @unchecked Sendable
+class Order: Codable, Identifiable
 {
     
     //    session    session[...]
@@ -268,4 +268,3 @@ class Order: Codable, Identifiable, @unchecked Sendable
     }
     
 }
-

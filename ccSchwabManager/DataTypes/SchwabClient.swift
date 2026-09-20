@@ -114,7 +114,7 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
         - getAuthorizationUrl : Executes the completion with the URL for logging into and authenticating the connection.
         - getAccessToken : given the URL returned by the authentication process, extract the code and get the access token.
  */
-class SchwabClient: @unchecked Sendable
+class SchwabClient
 {
     /// Absolute safety cap for per-symbol backfill (see `TransactionHistoryConfig`).
     public var maxMonthDelta: Int { TransactionHistoryConfig.maxBackfillMonths }
@@ -155,8 +155,10 @@ class SchwabClient: @unchecked Sendable
     private var m_fetchedMonthSlices: Set<Int> = []
     private var m_selectedAccountName : String = "All"
     private var m_accounts : [AccountContent] = []
-    private var m_refreshAccessToken_running : Bool = false
-    private var m_refreshTokenTask: Task<Void, Never>? = nil  // Add task reference for cancellation
+    private var m_refreshTokenTask: Task<Void, Never>?
+    private var m_tokenRefreshInFlight: (id: UUID, task: Task<Bool, Never>)?
+    private var m_accessTokenExpiration: Date?
+    private let accessTokenRefreshLeeway: TimeInterval = 120
     private var m_latestDateForSymbol : [String:Date] = [:]
     private let m_latestDateForSymbolLock = NSLock()  // Add mutex for m_latestDateForSymbol
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
@@ -725,11 +727,21 @@ class SchwabClient: @unchecked Sendable
     }
 
 
+    @MainActor
     func configure(with secrets: inout Secrets) {
-        AppLogger.shared.debug( "=== configure - starting refresh thread. ===" )
+        AppLogger.shared.debug("=== configure - scheduling token refresh ===")
+        let tokenChanged = secrets.accessToken != m_secrets.accessToken
+            || secrets.refreshToken != m_secrets.refreshToken
         self.m_secrets = secrets
-        self.refreshAccessToken()
-        self.startRefreshAccessTokenThread()
+        guard tokenChanged || (m_refreshTokenTask == nil && m_tokenRefreshInFlight == nil) else {
+            return
+        }
+        m_refreshTokenTask?.cancel()
+        m_refreshTokenTask = nil
+        guard !secrets.accessToken.isEmpty, !secrets.refreshToken.isEmpty else { return }
+        Task { [weak self] in
+            _ = await self?.refreshAccessToken()
+        }
     }
     
     public func hasAccounts() -> Bool
@@ -908,8 +920,8 @@ class SchwabClient: @unchecked Sendable
      * getAccessToken : given the URL returned by the authentication process, extract the code and get the access token.
      *
      */
-    func getAccessToken( completion: @escaping (Result<Void, ErrorCodes>) -> Void )
-    {
+    @MainActor
+    func getAccessToken() async -> Result<Void, ErrorCodes> {
         // Access Token Request
         AppLogger.shared.debug( "=== getAccessToken ===" )
         //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to TRUE")
@@ -938,60 +950,36 @@ class SchwabClient: @unchecked Sendable
         accessTokenRequest.httpBody = bodyString.data(using: .utf8)!
         AppLogger.shared.debug( "Posting access token request:  \(accessTokenRequest)" )
         
-        // Use a class wrapper to avoid captured var mutation warnings
-        class ResultBox: @unchecked Sendable {
-            var value: Result<Void, ErrorCodes> = .failure(.notAuthenticated)
-            let lock = NSLock()
+        defer {
+            Task { @MainActor in
+                loadingDelegate?.setLoading(false)
+            }
         }
-        
-        let semaphore: DispatchSemaphore = DispatchSemaphore(value: 0)
-        let resultBox = ResultBox()
-        
-        URLSession.shared.dataTask(with: accessTokenRequest)
-        { [weak self] data, response, error in
-            defer {
-                Task { @MainActor in
-                    //AppLogger.shared.debug("🔍 getAccessToken - Setting loading to FALSE")
-                    loadingDelegate?.setLoading(false)
-                }
-                semaphore.signal()
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: accessTokenRequest)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return .failure(.notAuthenticated)
             }
-            
-            guard let data = data, ( (error == nil) && ( response != nil ) )
-            else
-            {
-                AppLogger.shared.error( "Error: \( error?.localizedDescription ?? "Unknown error" )" )
-                resultBox.lock.withLock {
-                    resultBox.value = .failure(ErrorCodes.notAuthenticated)
-                }
-                return
-            }
-            
-            let httpResponse : HTTPURLResponse = response as! HTTPURLResponse
             if( httpResponse.statusCode == 200 )
             {
                 if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
                 {
-                    self?.m_secrets.accessToken = ( tokenDict["access_token"] as? String ?? "" )
-                    self?.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
-                    if( !KeychainManager.saveSecrets(secrets: &self!.m_secrets) )
+                    self.m_secrets.accessToken = ( tokenDict["access_token"] as? String ?? "" )
+                    self.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
+                    if( !KeychainManager.saveSecrets(secrets: &self.m_secrets) )
                     {
                         AppLogger.shared.error( "Failed to save secrets with access and refresh tokens." )
-                        resultBox.lock.withLock {
-                            resultBox.value = .failure(ErrorCodes.failedToSaveSecrets)
-                        }
-                        return
+                        return .failure(.failedToSaveSecrets)
                     }
-                    resultBox.lock.withLock {
-                        resultBox.value = .success( Void() )
-                    }
+                    let expiresIn = (tokenDict["expires_in"] as? NSNumber)?.doubleValue ?? 1_800
+                    scheduleAccessTokenRefresh(expiresIn: expiresIn)
+                    return .success(())
                 }
                 else
                 {
                     AppLogger.shared.error( "Failed to parse token response" )
-                    resultBox.lock.withLock {
-                        resultBox.value = .failure(ErrorCodes.notAuthenticated)
-                    }
+                    return .failure(.notAuthenticated)
                 }
             }
             else
@@ -1000,23 +988,12 @@ class SchwabClient: @unchecked Sendable
                     "error: \(httpResponse.statusCode). " +
                     "\(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
                 AppLogger.shared.error(errorMsg)
-                resultBox.lock.withLock {
-                    resultBox.value = .failure(ErrorCodes.notAuthenticated)
-                }
+                return .failure(.notAuthenticated)
             }
-        }.resume()
-        
-        // Wait for completion with timeout to prevent deadlock
-        let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
-        if timeoutResult == .timedOut {
-            AppLogger.shared.error("getAccessToken timed out")
-            resultBox.lock.withLock {
-                resultBox.value = .failure(ErrorCodes.notAuthenticated)
-            }
+        } catch {
+            AppLogger.shared.error("getAccessToken failed: \(error.localizedDescription)")
+            return .failure(.notAuthenticated)
         }
-        
-        // Call completion with the result
-        completion(resultBox.value)
     }
     
     
@@ -1049,24 +1026,41 @@ class SchwabClient: @unchecked Sendable
      *
      *
      */
-    private func refreshAccessToken() {
+    @MainActor
+    private func refreshAccessToken() async -> Bool {
+        if let inFlight = m_tokenRefreshInFlight {
+            return await inFlight.task.value
+        }
+
+        let refreshID = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            return await self.performAccessTokenRefresh()
+        }
+        m_tokenRefreshInFlight = (refreshID, task)
+        let succeeded = await task.value
+        if m_tokenRefreshInFlight?.id == refreshID {
+            m_tokenRefreshInFlight = nil
+        }
+        return succeeded
+    }
+
+    @MainActor
+    private func performAccessTokenRefresh() async -> Bool {
         AppLogger.shared.debug("=== refreshAccessToken: Refreshing access token...")
 
         // if the accessToken or refreshToken are empty, call getAccessToken instead
         if ( self.m_secrets.accessToken == "" ) || ( self.m_secrets.refreshToken == "" ) {
             AppLogger.shared.debug("Access token or refresh token is empty, getting initial access token...")
-            self.getAccessToken{ result in
-                switch result {
-                case .success:
-                    AppLogger.shared.debug(" refreshAccessToken - Successfully got access token")
-                case .failure(let error):
-                    AppLogger.shared.error(" refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
-                    // resetting code
-                    self.m_secrets.code = ""
-                }
+            switch await getAccessToken() {
+            case .success:
+                AppLogger.shared.debug("refreshAccessToken - Successfully got access token")
+                return true
+            case .failure(let error):
+                AppLogger.shared.error("refreshAccessToken - Failed to get access token: \(error.localizedDescription)")
+                self.m_secrets.code = ""
+                return false
             }
-            // Return early since getAccessToken is now synchronous and handles the token acquisition
-            return
         }
         
         //AppLogger.shared.debug("🔍 refreshAccessToken - Setting loading to TRUE")
@@ -1083,7 +1077,7 @@ class SchwabClient: @unchecked Sendable
         // Access Token Refresh Request
         guard let url = URL(string: "\(accessTokenWeb)") else {
             AppLogger.shared.error("Invalid URL for refreshing access token")
-            return
+            return false
         }
 
         var refreshTokenRequest = URLRequest(url: url)
@@ -1102,101 +1096,64 @@ class SchwabClient: @unchecked Sendable
             "&refresh_token=\(self.m_secrets.refreshToken)"
         refreshTokenRequest.httpBody = refreshBodyString.data(using: .utf8)!
         
-        let semaphore = DispatchSemaphore(value: 0)
-        
-        URLSession.shared.dataTask(with: refreshTokenRequest) { [weak self] data, response, error in
-            defer { 
-                semaphore.signal()
-            }
-            
-            guard let self = self else {
-                AppLogger.shared.error("SchwabClient deallocated during token refresh")
-                return
-            }
-            
-            do {
-                if let error = error {
-                    AppLogger.shared.error("Network error during token refresh: \(error.localizedDescription)")
-                    return
+        do {
+            let (data, response) = try await URLSession.shared.data(for: refreshTokenRequest)
+            guard let httpResponse = response as? HTTPURLResponse else { return false }
+            guard httpResponse.statusCode == 200 else {
+                AppLogger.shared.error("Token refresh failed with status code: \(httpResponse.statusCode)")
+                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
+                    serviceError.printErrors(prefix: "refreshAccessToken ")
                 }
-                
-                guard let data = data else {
-                    AppLogger.shared.error("No data received during token refresh")
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse {
-                    if httpResponse.statusCode == 200 {
-                        // Parse the response
-                        if let tokenDict = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] {
-                            self.m_secrets.accessToken = (tokenDict["access_token"] as? String ?? "")
-                            self.m_secrets.refreshToken = (tokenDict["refresh_token"] as? String ?? "")
-                            
-                            if KeychainManager.saveSecrets(secrets: &self.m_secrets) {
-                                AppLogger.shared.debug("Successfully refreshed and saved access token.")
-                            } else {
-                                AppLogger.shared.error("Failed to save refreshed tokens.")
-                            }
-                        } else {
-                            AppLogger.shared.error("Failed to parse token response.")
-                        }
-                    } else {
-                        AppLogger.shared.error("Token refresh failed with status code: \(httpResponse.statusCode)")
-                        if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                            serviceError.printErrors(prefix: "refreshAccessToken ")
-                        }
-                    }
-                }
+                return false
             }
-        }.resume()
-        
-        // Wait for completion with timeout to prevent deadlock
-        let timeoutResult = semaphore.wait(timeout: .now() + 30.0) // 30 second timeout
-        if timeoutResult == .timedOut {
-            AppLogger.shared.error("Token refresh timed out")
+            guard let tokenDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                AppLogger.shared.error("Failed to parse token response.")
+                return false
+            }
+            m_secrets.accessToken = tokenDict["access_token"] as? String ?? ""
+            if let refreshToken = tokenDict["refresh_token"] as? String, !refreshToken.isEmpty {
+                m_secrets.refreshToken = refreshToken
+            }
+            guard KeychainManager.saveSecrets(secrets: &m_secrets) else {
+                AppLogger.shared.error("Failed to save refreshed tokens.")
+                return false
+            }
+            let expiresIn = (tokenDict["expires_in"] as? NSNumber)?.doubleValue ?? 1_800
+            scheduleAccessTokenRefresh(expiresIn: expiresIn)
+            AppLogger.shared.debug("Successfully refreshed and saved access token.")
+            return true
+        } catch {
+            AppLogger.shared.error("Network error during token refresh: \(error.localizedDescription)")
+            return false
         }
     }
     
-    private func startRefreshAccessTokenThread() {
-        guard !m_refreshAccessToken_running else {
-            AppLogger.shared.debug("Refresh token thread already running")
-            return
-        }
-        
-        m_refreshAccessToken_running = true
-        
-        // Cancel any existing task
+    @MainActor
+    private func scheduleAccessTokenRefresh(expiresIn: TimeInterval) {
+        let validLifetime = max(expiresIn, 60)
+        let delay = max(validLifetime - accessTokenRefreshLeeway, 30)
+        m_accessTokenExpiration = Date().addingTimeInterval(validLifetime)
         m_refreshTokenTask?.cancel()
-        
-        // Create new task with proper cancellation support
-        m_refreshTokenTask = Task { [weak self] in
-            let interval: TimeInterval = 15 * 60  // 15 minute interval
-            
-            while !Task.isCancelled {
-                // Perform token refresh
-                self?.refreshAccessToken()
-                
-                // Wait for next interval or cancellation
-                do {
-                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                } catch {
-                    // Task was cancelled
-                    break
-                }
+        AppLogger.shared.debug("Scheduling access-token refresh in \(Int(delay)) seconds")
+        m_refreshTokenTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
             }
-            
-            // Clean up when task ends
-            await MainActor.run { [weak self] in
-                self?.m_refreshAccessToken_running = false
-            }
+            guard !Task.isCancelled else { return }
+            _ = await self?.refreshAccessToken()
         }
     }
     
     // Add cleanup method
+    @MainActor
     func cleanup() {
         m_refreshTokenTask?.cancel()
         m_refreshTokenTask = nil
-        m_refreshAccessToken_running = false
+        m_tokenRefreshInFlight?.task.cancel()
+        m_tokenRefreshInFlight = nil
+        m_accessTokenExpiration = nil
     }
     
 
@@ -1330,10 +1287,9 @@ class SchwabClient: @unchecked Sendable
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
                 if httpResponse.statusCode == 401 && retry {
                     AppLogger.shared.warning( "=== retrying fetchAccounts after refreshing access token ===" )
-                    refreshAccessToken()
-                    // Add a small delay to prevent rapid retries
-                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-                    await fetchAccounts(retry: false)
+                    if await refreshAccessToken() {
+                        await fetchAccounts(retry: false)
+                    }
                 } else {
                     // Log the error for debugging
                     AppLogger.shared.error("fetchAccounts failed with status code: \(httpResponse.statusCode)")
@@ -1489,7 +1445,7 @@ class SchwabClient: @unchecked Sendable
         request.timeoutInterval = self.requestTimeout
 
         // Use a class wrapper to avoid captured var mutation warnings
-        class ResponseBox: @unchecked Sendable {
+        class ResponseBox {
             var data: Data?
             var error: Error?
             var httpResponse: HTTPURLResponse?
@@ -1587,7 +1543,7 @@ class SchwabClient: @unchecked Sendable
         request.timeoutInterval = self.requestTimeout
 
         // Use a class wrapper to avoid captured var mutation warnings
-        class ResponseBox: @unchecked Sendable {
+        class ResponseBox {
             var data: Data?
             var error: Error?
             var httpResponse: HTTPURLResponse?
@@ -1895,6 +1851,11 @@ class SchwabClient: @unchecked Sendable
      * types *     string     Specifies that only transactions of this status should be returned.
      */
     private func fetchTransactionSliceForMonthDelta(_ monthDelta: Int) async {
+        guard !m_secrets.acountNumberHash.isEmpty else {
+            AppLogger.shared.error("Cannot fetch transaction month \(monthDelta): account-number hashes are unavailable")
+            return
+        }
+
         let endDate = getDateNMonthsAgoStrForEndDate(monthDelta: monthDelta - 1)
         let startDate = getDateNMonthsAgoStr(monthDelta: monthDelta)
         AppLogger.shared.debug("  -- transaction slice month delta: \(monthDelta)")
@@ -1971,6 +1932,14 @@ class SchwabClient: @unchecked Sendable
             Task { @MainActor in
                 loadingDelegate?.setLoading(false)
             }
+        }
+
+        if m_secrets.acountNumberHash.isEmpty {
+            await fetchAccountNumbers()
+        }
+        guard !m_secrets.acountNumberHash.isEmpty else {
+            AppLogger.shared.error("Transaction history not advanced: no account-number hashes are available")
+            return 0
         }
 
         // Pick the smallest slice in 1...fetchLimit that has not been fetched yet.
@@ -2292,7 +2261,7 @@ class SchwabClient: @unchecked Sendable
                         if httpResponse.statusCode != 200 {
                             if httpResponse.statusCode == 401 && retry {
                                 AppLogger.shared.warning("fetchOrderHistory === retrying fetchOrderHistory after refreshing access token ===")
-                                self.refreshAccessToken()
+                                _ = await self.refreshAccessToken()
                                 // Note: We can't recursively call async function from within task group
                                 // The retry will be handled by the caller
                                 return nil
@@ -3249,7 +3218,11 @@ class SchwabClient: @unchecked Sendable
      * fetchTransactionHistoryReduced - initial month slices for faster display (default 12 ≈ former 4×3-month chunks).
      * Loads up to three months in parallel per wave, then sorts, updates trade dates, and runs `onBatchOnMainActor` on the main actor (if provided) so the GUI can refresh.
      */
-    public func fetchTransactionHistoryReduced(months: Int = 12, onBatchOnMainActor: (@MainActor () -> Void)? = nil) async {
+    public func fetchTransactionHistoryReduced(
+        months: Int = 12,
+        parallelMonths: Int = 3,
+        onBatchOnMainActor: (@MainActor () -> Void)? = nil
+    ) async {
         AppLogger.shared.debug("=== fetchTransactionHistoryReduced - months: \(months) ===")
         await MainActor.run {
             loadingDelegate?.setLoading(true)
@@ -3258,6 +3231,18 @@ class SchwabClient: @unchecked Sendable
             Task { @MainActor in
                 loadingDelegate?.setLoading(false)
             }
+        }
+
+        // Transaction endpoints require encrypted account identifiers. A restored
+        // credential payload may contain valid tokens without cached identifiers,
+        // so obtain them before resetting or advancing the history cursor.
+        if m_secrets.acountNumberHash.isEmpty {
+            AppLogger.shared.debug("Transaction history requires account-number hashes; fetching them first")
+            await fetchAccountNumbers()
+        }
+        guard !m_secrets.acountNumberHash.isEmpty else {
+            AppLogger.shared.error("Transaction history not started: no account-number hashes are available")
+            return
         }
 
         m_monthDeltaLock.withLock {
@@ -3270,7 +3255,7 @@ class SchwabClient: @unchecked Sendable
         }
 
         let initialSize: Int = m_transactionList.count
-        let parallelMonths = 3
+        let parallelMonths = max(1, parallelMonths)
 
         var batchStart = 0
         while batchStart < months {
@@ -3401,8 +3386,9 @@ class SchwabClient: @unchecked Sendable
 
     // MARK: - Public Debug Methods
     
+    @MainActor
     var isRefreshTokenRunning: Bool {
-        return m_refreshAccessToken_running
+        m_refreshTokenTask != nil || m_tokenRefreshInFlight != nil
     }
     
     @MainActor var isLoading: Bool {
@@ -4111,4 +4097,3 @@ class SchwabClient: @unchecked Sendable
 
 
 } // SchwabClient
-

@@ -288,8 +288,20 @@ struct PositionDetailView: View
             }.value
             if Task.isCancelled { return }
             
-            let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-                snapshot.transactions = fetchedTransactions
+            let updatedSnapshot = await MainActor.run {
+                SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                    snapshot.transactions = fetchedTransactions
+
+                    // Tax lots and recommendations were derived from the previous
+                    // transaction set. Keep their last visible values while clearly
+                    // marking them stale until the dependent calculation completes.
+                    snapshot.taxLotData = nil
+                    snapshot.sharesAvailableForTrading = nil
+                    snapshot.loadStates[.taxLots] = .idle
+                    snapshot.recommendedSellOrders = nil
+                    snapshot.recommendedBuyOrders = nil
+                    snapshot.loadStates[.orderRecommendations] = .idle
+                }
             }
             
             await MainActor.run {
@@ -340,9 +352,11 @@ struct PositionDetailView: View
                 return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
             }.value
             
-            let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-                snapshot.taxLotData = fetchedTaxLots
-                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+            let updatedSnapshot = await MainActor.run {
+                SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                    snapshot.taxLotData = fetchedTaxLots
+                    snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                }
             }
             
             await MainActor.run {
@@ -470,7 +484,9 @@ struct PositionDetailView: View
         AppLogger.shared.debug("--- \(symbol) --- 📊 [Chunk 1] Loading Price History")
         
         let priceHistoryTask: Task<Void, Never>? = chunk1Groups.contains(.priceHistory) ? Task.detached(priority: .userInitiated) {
-            let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.priceHistory) ?? false
+            let wasCached = await MainActor.run {
+                SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.priceHistory) ?? false
+            }
             PerformanceBenchmark.shared.startTiming("load_priceHistory_\(symbol)", metadata: ["symbol": symbol, "group": "priceHistory"])
             
             AppLogger.shared.debug("--- \(symbol) --- 📊 Loading price history")
@@ -509,9 +525,11 @@ struct PositionDetailView: View
                 }.value
                 if Task.isCancelled { return }
 
-                let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
-                    snapshot.priceHistory = limitedPriceHistory
-                    snapshot.atrValue = fetchedATRValue
+                let updatedSnapshot = await MainActor.run {
+                    SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                        snapshot.priceHistory = limitedPriceHistory
+                        snapshot.atrValue = fetchedATRValue
+                    }
                 }
 
                 await MainActor.run {
@@ -523,7 +541,9 @@ struct PositionDetailView: View
                 }
             } else {
                 AppLogger.shared.warning("📊 Failed to fetch price history for \(symbol)")
-                let failedSnapshot = SecurityDataCacheManager.shared.markFailed(symbol: symbol, group: .priceHistory, message: "Price history unavailable")
+                let failedSnapshot = await MainActor.run {
+                    SecurityDataCacheManager.shared.markFailed(symbol: symbol, group: .priceHistory, message: "Price history unavailable")
+                }
                 await MainActor.run {
                     applySnapshot(failedSnapshot)
                 }
@@ -542,7 +562,9 @@ struct PositionDetailView: View
         
         // CHUNK 2: Load Transactions (can start immediately, doesn't depend on Chunk 1)
         let transactionsTask: Task<Void, Never>? = chunk2Groups.contains(.transactions) ? Task.detached(priority: .userInitiated) {
-            let wasCached = SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.transactions) ?? false
+            let wasCached = await MainActor.run {
+                SecurityDataCacheManager.shared.snapshot(for: symbol)?.isLoaded(.transactions) ?? false
+            }
             PerformanceBenchmark.shared.startTiming("load_transactions_\(symbol)", metadata: ["symbol": symbol, "group": "transactions"])
             
                 AppLogger.shared.debug("--- \(symbol) --- 📊 Loading transactions")
@@ -554,8 +576,16 @@ struct PositionDetailView: View
             }.value
             if Task.isCancelled { return }
 
-            let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-                snapshot.transactions = fetchedTransactions
+            let updatedSnapshot = await MainActor.run {
+                SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                    snapshot.transactions = fetchedTransactions
+                    if chunk2Groups.contains(.taxLots) {
+                        snapshot.loadStates[.taxLots] = .loading(Date())
+                    }
+                    snapshot.recommendedSellOrders = nil
+                    snapshot.recommendedBuyOrders = nil
+                    snapshot.loadStates[.orderRecommendations] = .idle
+                }
             }
 
             await MainActor.run {
@@ -570,6 +600,11 @@ struct PositionDetailView: View
         // CHUNK 2: Start Tax Lots loading (needs price from Chunk 1)
         // Tab 3 (Sales Calc) needs this, and it can start with price from Chunk 1
         let taxLotsTask: Task<Void, Never>? = chunk2Groups.contains(.taxLots) ? Task.detached(priority: .userInitiated) {
+            // Lots and available shares must be derived from the transaction set that
+            // was just published, never from a concurrently changing older set.
+            await transactionsTask?.value
+            if Task.isCancelled { return }
+
             // Wait for quote to be available (either from cache or Phase 1)
             var effectivePrice: Double?
             var attempts = 0
@@ -590,11 +625,16 @@ struct PositionDetailView: View
             
             if let price = effectivePrice {
                 // Check cache first before starting timer
-                let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
+                let snapshot = await MainActor.run {
+                    SecurityDataCacheManager.shared.snapshot(for: symbol)
+                }
                 let wasCached = snapshot?.isLoaded(.taxLots) ?? false
                 
                 // If already cached, skip computation
-                if wasCached, let cachedTaxLots = snapshot?.taxLotData, let cachedShares = snapshot?.sharesAvailableForTrading {
+                if !chunk2Groups.contains(.transactions),
+                   wasCached,
+                   let cachedTaxLots = snapshot?.taxLotData,
+                   let cachedShares = snapshot?.sharesAvailableForTrading {
                     AppLogger.shared.debug("📊 Tax lots already cached for \(symbol)")
                     PerformanceBenchmark.shared.recordCacheHit(for: "\(symbol)_taxLots")
                     // Still update the snapshot to ensure UI is in sync
@@ -620,9 +660,14 @@ struct PositionDetailView: View
                         return SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
                     }.value
 
-                    let updatedSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-                        snapshot.taxLotData = fetchedTaxLots
-                        snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                    let updatedSnapshot = await MainActor.run {
+                        SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                            snapshot.taxLotData = fetchedTaxLots
+                            snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                            snapshot.recommendedSellOrders = nil
+                            snapshot.recommendedBuyOrders = nil
+                            snapshot.loadStates[.orderRecommendations] = .idle
+                        }
                     }
 
                     await MainActor.run {
@@ -731,6 +776,7 @@ struct PositionDetailView: View
         PerformanceBenchmark.shared.startTiming("historyBackfill_\(symbol)", metadata: ["symbol": symbol])
 
         var attempts = 0
+        var didUpdateTaxLots = false
 
         while !Task.isCancelled {
             let stillViewing = await MainActor.run { self.symbol == symbol }
@@ -757,7 +803,10 @@ struct PositionDetailView: View
             }
 
             await MainActor.run {
-                _ = SecurityDataCacheManager.shared.markLoadingPrefetch(symbol: symbol, groups: [.transactions, .taxLots])
+                // Existing tax lots remain valid while older transactions are fetched.
+                // Marking them as loading here causes order tabs to repeatedly stop and
+                // restart throughout a potentially long cellular backfill.
+                _ = SecurityDataCacheManager.shared.markLoadingPrefetch(symbol: symbol, groups: [.transactions])
             }
 
             let fetchStart = Date()
@@ -779,6 +828,9 @@ struct PositionDetailView: View
             SchwabClient.shared.invalidateSymbolDerivedCaches(symbol: symbol)
 
             let fetchedTransactions = SchwabClient.shared.getTransactionsFor(symbol: symbol)
+            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                snapshot.transactions = fetchedTransactions
+            }
             let effectivePrice = await MainActor.run {
                 let snapshot = SecurityDataCacheManager.shared.snapshot(for: symbol)
                 return resolveCurrentPrice(quote: snapshot?.quoteData, history: snapshot?.priceHistory)
@@ -796,13 +848,11 @@ struct PositionDetailView: View
             let historyComplete = SchwabClient.shared.hasCompleteShareHistory(for: symbol)
             AppLogger.shared.info("📚 [\(String(format: "%.3f", recomputeDuration))s] refreshed tax lots for \(symbol) (\(fetchedTaxLots.count) lots, \(fetchedSharesAvailable) shares available, complete: \(historyComplete))")
 
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-                snapshot.transactions = fetchedTransactions
-            }
             let finalSnapshot = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
                 snapshot.taxLotData = fetchedTaxLots
                 snapshot.sharesAvailableForTrading = fetchedSharesAvailable
             }
+            didUpdateTaxLots = true
 
             await MainActor.run {
                 guard self.symbol == symbol else { return }
@@ -815,6 +865,24 @@ struct PositionDetailView: View
             }
 
             try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+
+        // Recommendations depend on the final remaining lots. Invalidate once after
+        // the backfill settles instead of restarting their calculation every month.
+        if didUpdateTaxLots && !Task.isCancelled {
+            await MainActor.run {
+                guard self.symbol == symbol else { return }
+                let finalSnapshot = SecurityDataCacheManager.shared.update(symbol: symbol) { snapshot in
+                    snapshot.recommendedSellOrders = nil
+                    snapshot.recommendedBuyOrders = nil
+                    snapshot.loadStates[.orderRecommendations] = .idle
+                }
+                applySnapshot(finalSnapshot)
+
+                if (4...6).contains(selectedTab) {
+                    ensureOrderRecommendationsLoaded()
+                }
+            }
         }
 
         if let duration = PerformanceBenchmark.shared.endTiming("historyBackfill_\(symbol)") {
@@ -1147,7 +1215,9 @@ struct PositionDetailView: View
             
             // Mark as loading in cache (including transactions per user request)
             let loadingGroups: [SecurityDataGroup] = [.details, .priceHistory, .transactions, .taxLots, .orderRecommendations]
-            _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoading(symbol: symbol, groups: loadingGroups)
+            }
             
             // Yield to allow UI updates before starting blocking operations
             await Task.yield()
@@ -1178,8 +1248,10 @@ struct PositionDetailView: View
             }
             
             if let fetchedQuote {
-                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
-                    snapshot.quoteData = fetchedQuote
+                await MainActor.run {
+                    _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .details) { snapshot in
+                        snapshot.quoteData = fetchedQuote
+                    }
                 }
             }
             
@@ -1212,9 +1284,11 @@ struct PositionDetailView: View
                 guard !Task.isCancelled else { return }
                 guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
                 
-                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
-                    snapshot.priceHistory = fetchedPriceHistory
-                    snapshot.atrValue = fetchedATRValue
+                await MainActor.run {
+                    _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .priceHistory) { snapshot in
+                        snapshot.priceHistory = fetchedPriceHistory
+                        snapshot.atrValue = fetchedATRValue
+                    }
                 }
             }
             
@@ -1235,8 +1309,10 @@ struct PositionDetailView: View
                 return
             }
             
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
-                snapshot.transactions = fetchedTransactions
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .transactions) { snapshot in
+                    snapshot.transactions = fetchedTransactions
+                }
             }
             
             // Fetch tax lots
@@ -1255,9 +1331,11 @@ struct PositionDetailView: View
             guard !(await MainActor.run { self.isPrefetchPaused || self.hasRecentUserInteraction() }) else { return }
             let fetchedSharesAvailable = SchwabClient.shared.computeSharesAvailableForTrading(symbol: symbol, taxLots: fetchedTaxLots)
             
-            _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
-                snapshot.taxLotData = fetchedTaxLots
-                snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+            await MainActor.run {
+                _ = SecurityDataCacheManager.shared.markLoaded(symbol: symbol, group: .taxLots) { snapshot in
+                    snapshot.taxLotData = fetchedTaxLots
+                    snapshot.sharesAvailableForTrading = fetchedSharesAvailable
+                }
             }
             
             //  Skip order recommendations prefetch - these can be computed quickly when user navigates to OCO tab

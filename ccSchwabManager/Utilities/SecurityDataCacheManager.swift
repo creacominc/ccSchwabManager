@@ -155,6 +155,7 @@ struct SecurityDataSnapshot {
 }
 
 /// LRU cache that keeps recently loaded security detail data in memory.
+@MainActor
 final class SecurityDataCacheManager {
     static let shared = SecurityDataCacheManager()
 
@@ -163,7 +164,6 @@ final class SecurityDataCacheManager {
     private let maxCacheSize = 5
     private var cache: [String: SecurityDataSnapshot] = [:]
     private var accessOrder: [String] = []
-    private let lock = NSLock()
 
     /// When true, background prefetch must not mutate this cache — holdings list order/symbol membership may be inconsistent until async sort finishes.
     private var suppressPrefetchCacheWrites = false
@@ -172,15 +172,11 @@ final class SecurityDataCacheManager {
 
     /// Called from `HoldingsView` around async `performSort` so prefetch does not compete with sorting.
     func setHoldingsListSortInProgress(_ inProgress: Bool) {
-        lock.lock()
-        defer { lock.unlock() }
         suppressPrefetchCacheWrites = inProgress
     }
 
     /// Prefetch consults this before `markLoading` / `markLoaded` / eviction side effects.
     var isPrefetchCacheSuppressed: Bool {
-        lock.lock()
-        defer { lock.unlock() }
         return suppressPrefetchCacheWrites
     }
 
@@ -201,9 +197,6 @@ final class SecurityDataCacheManager {
     }
 
     func snapshot(for symbol: String) -> SecurityDataSnapshot? {
-        lock.lock()
-        defer { lock.unlock() }
-
         guard var snapshot = cache[symbol] else {
             return nil
         }
@@ -216,9 +209,6 @@ final class SecurityDataCacheManager {
 
     @discardableResult
     func update(symbol: String, updateBlock: (inout SecurityDataSnapshot) -> Void) -> SecurityDataSnapshot {
-        lock.lock()
-        defer { lock.unlock() }
-
         var snapshot = cache[symbol] ?? SecurityDataSnapshot(symbol: symbol)
         updateBlock(&snapshot)
         snapshot.loadStates = normalizedStates(from: snapshot.loadStates)
@@ -266,17 +256,11 @@ final class SecurityDataCacheManager {
     }
 
     func remove(symbol: String) {
-        lock.lock()
-        defer { lock.unlock() }
-
         cache.removeValue(forKey: symbol)
         accessOrder.removeAll { $0 == symbol }
     }
 
     func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-
         cache.removeAll(keepingCapacity: false)
         accessOrder.removeAll(keepingCapacity: false)
         suppressPrefetchCacheWrites = false
@@ -285,9 +269,6 @@ final class SecurityDataCacheManager {
     /// Remove cache entries for symbols not in the provided list
     /// Used when filtering/sorting changes the visible list
     func invalidateSymbolsNotInList(_ validSymbols: Set<String>) {
-        lock.lock()
-        defer { lock.unlock() }
-        
         let symbolsToRemove = cache.keys.filter { !validSymbols.contains($0) }
         for symbol in symbolsToRemove {
             cache.removeValue(forKey: symbol)
@@ -301,8 +282,6 @@ final class SecurityDataCacheManager {
     
     /// Get all currently cached symbols
     func getAllCachedSymbols() -> Set<String> {
-        lock.lock()
-        defer { lock.unlock() }
         return Set(cache.keys)
     }
 
@@ -310,9 +289,6 @@ final class SecurityDataCacheManager {
     /// Excludes groups that are `.loaded` and groups already `.loading` (another task is fetching).
     /// Read-only: does not change LRU order or cache contents.
     func groupsNeedingBackgroundWork(symbol: String, among groups: [SecurityDataGroup]) -> [SecurityDataGroup] {
-        lock.lock()
-        defer { lock.unlock() }
-
         guard var snap = cache[symbol] else {
             return groups
         }

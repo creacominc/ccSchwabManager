@@ -114,6 +114,7 @@ struct ccSchwabManagerApp: App
     }
 }
 
+@MainActor
 class SecretsManager: ObservableObject {
     @Published var secrets: Secrets
     @Published var isLoading = false

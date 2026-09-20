@@ -31,7 +31,7 @@ struct DetailsTab: View {
                         HStack(spacing: 12) {
                             Text(labels[0][rowIndex])
                                 .font(.body)
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 120, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(getFieldValue(rowIndex, 0))
@@ -54,7 +54,7 @@ struct DetailsTab: View {
                         HStack(spacing: 12) {
                             Text(labels[1][rowIndex])
                                 .font(.body)
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 120, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(getFieldValue(rowIndex, 1))
@@ -73,7 +73,15 @@ struct DetailsTab: View {
 
             }
         }
-        .padding()
+        .padding(24)
+        .frame(maxWidth: 760)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.separator, lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        .padding(24)
     }
 
     private func getFieldValue(_ rowIndex: Int, _ colIndex: Int) -> String

@@ -272,6 +272,7 @@ struct PositionDetailContent: View
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(.fill.quaternary)
                     .onAppear {
                         fetchOrders()
                     }
