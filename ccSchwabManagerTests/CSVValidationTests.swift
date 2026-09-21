@@ -24,12 +24,11 @@ class CSVValidationTests: XCTestCase {
         // Test with sample sell order CSV data
         let csvData = """
         Scenario,Ticker,ATR,Last Trade Date,Total Quantity,Total Cost,Last Price,Average Price,Gain %,Shares to Sell,Entry Price,Target Price,Exit Price,Submit Date/Time,Description
-        Sell Top 100,AAOI,1.2,2025-07-01,868,$21408.32,$28.63,$24.66,16.1,100,$28.00,$29.50,$29.00,2025-07-23,"Sell 100 AAOI at $29.50"
         Sell Min Break Even,ACHR,1.2,2025-07-01,100,$2500.00,$25.00,$25.00,0.0,50,$24.50,$25.25,$25.00,2025-07-23,"Sell 50 ACHR at $25.25"
         """
         
         let records = CSVOrderValidator.parseSellOrderCSV(csvData)
-        XCTAssertEqual(records.count, 2, "Should parse 2 sell order records")
+        XCTAssertEqual(records.count, 1, "Should parse 1 sell order record")
         
         for record in records {
             let errors = CSVOrderValidator.validateSellOrderLogic(record)
@@ -84,17 +83,6 @@ class CSVValidationTests: XCTestCase {
             )
         ]
         
-        // Test Top 100 order logic
-        let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: taxLots)
-        XCTAssertNotNil(top100Order, "Top 100 order should be created")
-        
-        if let order = top100Order {
-            // Verify the order follows the expected logic
-            XCTAssertLessThanOrEqual(order.sharesToSell, 100.0, "Top 100 order should sell 100 or fewer shares")
-            XCTAssertGreaterThan(order.target, order.breakEven, "Target should be above break even")
-            XCTAssertLessThan(order.entry, currentPrice, "Entry should be below current price")
-        }
-        
         // Test Min Break Even order logic
         let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: taxLots)
         XCTAssertNotNil(minBreakEvenOrder, "Min Break Even order should be created")
@@ -133,58 +121,12 @@ class CSVValidationTests: XCTestCase {
             )
         ]
         
-        // Test Top 100 order with partial lots
-        let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: taxLots)
-        XCTAssertNotNil(top100Order, "Top 100 order should work with partial lots")
-        
         // Test Min Break Even order with partial lots
         let minBreakEvenOrder = calculateMinBreakEvenOrder(currentPrice: currentPrice, sortedTaxLots: taxLots)
         XCTAssertNotNil(minBreakEvenOrder, "Min Break Even order should work with partial lots")
     }
     
     // MARK: - Helper Methods (copied from current implementation for testing)
-    
-    private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        var sharesToConsider: Double = 0
-        var totalCost: Double = 0
-        
-        for lot in sortedTaxLots {
-            let needed = min(lot.quantity, 100.0 - sharesToConsider)
-            sharesToConsider += needed
-            totalCost += needed * lot.costPerShare
-            if sharesToConsider >= 100.0 { break }
-        }
-        guard sharesToConsider >= 100.0 else { return nil }
-        let costPerShare = totalCost / sharesToConsider
-        
-        // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
-        let adjustedATR = 1.5 * 0.25
-        
-        // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
-        let target = costPerShare * 1.0325
-        
-        // Entry: Target + (1.5 * ATR) above target
-        let entry = target * (1.0 + (adjustedATR / 100.0))
-        
-        // Exit: 0.9% below target
-        let exit = target * 0.991
-        
-        let gain = ((target - costPerShare) / costPerShare) * 100.0
-        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToConsider, "TEST", entry, target, exit, costPerShare)
-        return SalesCalcResultsRecord(
-            shares: sharesToConsider,
-            rollingGainLoss: (target - costPerShare) * sharesToConsider,
-            breakEven: costPerShare,
-            gain: gain,
-            sharesToSell: sharesToConsider,
-            trailingStop: adjustedATR,
-            entry: entry,
-            target: target,
-            cancel: exit,
-            description: formattedDescription,
-            openDate: "Top100"
-        )
-    }
     
     private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         // According to sample.log: AATR is ATR/5

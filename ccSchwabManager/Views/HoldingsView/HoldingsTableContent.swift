@@ -18,12 +18,6 @@ struct HoldingsTableContent: View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 ForEach(Array(sortedHoldings.enumerated()), id: \.element.id) { index, position in
-                    let isOption = position.instrument?.assetType == .OPTION
-                    let dte: Int? = isOption ? 
-                        extractExpirationDate(from: position.instrument?.symbol ?? "", description: position.instrument?.description ?? "") : 
-                        SchwabClient.shared.getMinimumDTEForSymbol(position.instrument?.symbol ?? "")
-                    let count: Double = SchwabClient.shared.getContractCountForSymbol(position.instrument?.symbol ?? "")
-                    let dteString = (dte == nil) ? "" : String(format: "%d / %.0f", dte ?? 0, count)
                     let tradeDate = tradeDateCache[position.instrument?.symbol ?? ""] ?? "0000"
                     let orderStatus = orderStatusCache[position.instrument?.symbol ?? ""] ?? nil
                     let isEvenRow = index % 2 == 0
@@ -35,7 +29,6 @@ struct HoldingsTableContent: View {
                         onTap: { selectedPositionId = position.id },
                         tradeDate: tradeDate,
                         orderStatus: orderStatus,
-                        dte: dteString,
                         isEvenRow: isEvenRow,
                         isSelected: isSelected,
                         copyToClipboard: copyToClipboard,

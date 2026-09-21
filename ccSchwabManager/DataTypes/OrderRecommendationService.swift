@@ -55,16 +55,6 @@ class OrderRecommendationService: ObservableObject {
         let orders = await withTaskGroup(of: SalesCalcResultsRecord?.self) { group in
             var results: [SalesCalcResultsRecord?] = []
             
-            // Top 100 Order
-            group.addTask {
-                return await self.calculateTop100Order(
-                    symbol: symbol,
-                    currentPrice: currentPrice,
-                    sortedTaxLots: sortedTaxLots,
-                    sharesAvailableForTrading: sharesAvailableForTrading,
-                    atrValue: atrValue
-                )
-            }
             
             // Min Shares Order
             group.addTask {
@@ -476,96 +466,6 @@ class OrderRecommendationService: ObservableObject {
         return taxLots.sorted { $0.costPerShare > $1.costPerShare }
     }
     
-    private func calculateTop100Order(
-        symbol: String,
-        currentPrice: Double,
-        sortedTaxLots: [SalesCalcPositionsRecord],
-        sharesAvailableForTrading: Double,
-        atrValue: Double
-    ) async -> SalesCalcResultsRecord? {
-        
-        AppLogger.shared.debug("  Top 100 order: ATR=\(atrValue)%")
-        
-        // Early exit conditions
-        guard !sortedTaxLots.isEmpty else { return nil }
-        
-        // Check if position has more than 100 shares total
-        let totalShares = sortedTaxLots.reduce(0.0) { $0 + $1.quantity }
-        guard totalShares >= 100.0 else { return nil }
-        
-        let finalSharesToConsider = 100.0
-        
-        // Calculate the cost per share for the 100 most expensive shares
-        var sharesRemaining = finalSharesToConsider
-        var totalCostOfTop100 = 0.0
-        
-        for lot in sortedTaxLots {
-            if sharesRemaining <= 0 { break }
-            
-            let sharesFromThisLot = min(lot.quantity, sharesRemaining)
-            totalCostOfTop100 += sharesFromThisLot * lot.costPerShare
-            sharesRemaining -= sharesFromThisLot
-        }
-        
-        let actualCostPerShare = totalCostOfTop100 / finalSharesToConsider
-        AppLogger.shared.debug("  Top 100 cost calculation: totalCost=\(totalCostOfTop100), shares=\(finalSharesToConsider), costPerShare=\(actualCostPerShare)")
-        
-        // Check if the top 100 shares are profitable at current price
-        let currentProfitPercent = ((currentPrice - actualCostPerShare) / actualCostPerShare) * 100.0
-        let isTop100Profitable = currentProfitPercent > 0
-        AppLogger.shared.debug("  Profit check: currentProfit=\(currentProfitPercent)%, isProfitable=\(isTop100Profitable)")
-        
-        let entry: Double
-        let target: Double
-        let trailingStop: Double
-        
-        if isTop100Profitable {
-            // If top 100 shares are profitable, use profit-based logic
-            target = (currentPrice + actualCostPerShare) / 2.0
-            entry = (currentPrice - actualCostPerShare) / 4.0 + target
-            trailingStop = ((entry - target) / target) * 100.0
-            AppLogger.shared.debug("  Top 100 profitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
-        } else {
-            // If top 100 shares are not profitable, use ATR-based logic
-            entry = currentPrice * (1.0 - atrValue / 100.0)
-            target = entry * (1.0 - 2.0 * atrValue / 100.0)
-            trailingStop = atrValue
-            AppLogger.shared.debug("  Top 100 unprofitable: entry=\(entry), target=\(target), trailingStop=\(trailingStop)%")
-        }
-        
-        // Calculate exit price
-        let exit = max(target * (1.0 - 2.0 * atrValue / 100.0), actualCostPerShare)
-        
-        let totalGain = finalSharesToConsider * (target - actualCostPerShare)
-        let gain = actualCostPerShare > 0 ? ((target - actualCostPerShare) / actualCostPerShare) * 100.0 : 0.0
-        
-        // Create description
-        let profitIndicator = isTop100Profitable ? "(Top 100)" : "(Top 100 - UNPROFITABLE)"
-        let formattedDescription = String(format: "%@ SELL -%d %@ Target %.2f TS %.2f%% Cost/Share %.2f", 
-                                          profitIndicator, Int(finalSharesToConsider), symbol, target, trailingStop, actualCostPerShare)
-        
-        // Final validation of trailing stop value
-        guard trailingStop >= 0.1 && trailingStop <= 50.0 else {
-            AppLogger.shared.error("⚠️ Invalid trailing stop value in Top 100 order: \(trailingStop)%")
-            return nil
-        }
-        
-        AppLogger.shared.debug("  Creating Top 100 order: trailingStop=\(trailingStop)%, shares=\(finalSharesToConsider), target=\(target)")
-        
-        return SalesCalcResultsRecord(
-            shares: finalSharesToConsider,
-            rollingGainLoss: totalGain,
-            breakEven: actualCostPerShare,
-            gain: gain,
-            sharesToSell: finalSharesToConsider,
-            trailingStop: trailingStop,
-            entry: entry,
-            target: target,
-            cancel: exit,
-            description: formattedDescription,
-            openDate: "Top100"
-        )
-    }
     
     private func calculateTop200Order(
         symbol: String,
@@ -606,7 +506,7 @@ class OrderRecommendationService: ObservableObject {
         let isTop200Profitable = currentProfitPercent > 0
         AppLogger.shared.debug("  Profit check (Top 200): currentProfit=\(currentProfitPercent)%, isProfitable=\(isTop200Profitable)")
         
-        // Use same structure as Top 100 for targets and stops
+        // Calculate targets and stops for this fixed-size order
         let entry: Double
         let target: Double
         let trailingStop: Double

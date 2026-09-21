@@ -101,13 +101,6 @@ struct HoldingsTableHeader: View {
                             .frame(width: HoldingsTableRow.getColumnWidth(9, viewWidth: geometry.size.width, isWide: isWide),
                                    alignment: .leading)
                         
-                        // DTE/# column (only shown in wide layout)
-                        if isWide
-                        {
-                            columnHeader(title: "DTE/#", column: .dte, alignment: .trailing)
-                                .frame(width: HoldingsTableRow.getColumnWidth(10, viewWidth: geometry.size.width, isWide: isWide),
-                                       alignment: .trailing)
-                        }
                     }
                     .frame(maxWidth: .infinity)
                     .background(Color.gray.opacity(0.1))

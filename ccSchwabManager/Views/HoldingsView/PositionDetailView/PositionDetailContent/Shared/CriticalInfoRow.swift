@@ -110,17 +110,6 @@ struct CriticalInfoRow: View
                     .foregroundColor(.primary)
             }
             
-            // DTE/# (empty for equity, could be populated for options)
-            HStack(spacing: 4) {
-                Text("DTE/#: ")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("") // Empty for equity, could be populated for options
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primary)
-            }
-            
             Text(" ")
         }
     }
@@ -145,7 +134,6 @@ struct CriticalInfoRow: View
         }
     }
 }
-
 
 
 

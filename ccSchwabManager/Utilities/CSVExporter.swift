@@ -79,7 +79,7 @@ class CSVExporter {
     }
     
     static func generateHoldingsCSV(_ positions: [Position], accountPositions: [(Position, String, String)], tradeDates: [String: String] = [:], orderStatuses: [String: ActiveOrderStatus?] = [:]) -> String {
-        var csv = "Symbol,Description,Quantity,Average Price,Market Value,P/L,P/L %,Asset Type,Account,Last Trade Date,Order Status,DTE/Contracts\n"
+        var csv = "Symbol,Description,Quantity,Average Price,Market Value,P/L,P/L %,Asset Type,Account,Last Trade Date,Order Status\n"
         
         for position in positions {
             let symbol = position.instrument?.symbol ?? ""
@@ -115,10 +115,7 @@ class CSVExporter {
                 orderStatus = ""
             }
             
-            // For DTE/Contracts, we'll use a placeholder since we can't call SchwabClient from static context
-            let dteContracts = "" // Placeholder - would need to be calculated and passed in
-            
-            csv += "\(symbol),\(description),\(quantity),\(avgPrice),\(marketValue),\(pl),\(plPercentStr),\(assetType),\(accountNumber),\(lastTradeDate),\(orderStatus),\(dteContracts)\n"
+            csv += "\(symbol),\(description),\(quantity),\(avgPrice),\(marketValue),\(pl),\(plPercentStr),\(assetType),\(accountNumber),\(lastTradeDate),\(orderStatus)\n"
         }
         
         return csv

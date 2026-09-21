@@ -10,33 +10,6 @@ import os.log
 @_exported import class Foundation.NSError
 @_exported import var Foundation.NSLocalizedDescriptionKey
 
-// MARK: - Extract Strike Price from Symbol or Description
-func extractStrike(from symbol: String?) -> Double? {
-    // Primary method: Extract strike price from option symbol
-    if let symbol: String = symbol {
-        // Look for 8 consecutive digits after the 'C' or 'P'
-        // Example: "B     250808C00025000" -> extract "00025000"
-        let pattern: String = #"[CP](\d{8})"#
-        if let regex: NSRegularExpression = try? NSRegularExpression(pattern: pattern),
-           let match: NSTextCheckingResult = regex.firstMatch(
-               in: symbol, 
-               range: NSRange(symbol.startIndex..., in: symbol)
-           ) {
-            let strikeString: String = String(symbol[Range(match.range(at: 1), in: symbol)!])
-            if var strike: Double = Double(strikeString) {
-                strike = strike / 1000.00
-                // AppLogger.shared.debug("🔍 extractStrike: \(strike)  for symbol: \(symbol)")
-                return strike
-            }
-            else {
-                AppLogger.shared.error("🔍 extractStrike: failed to convert \(strikeString)  for symbol: \(symbol)")
-            }
-        }
-    }
-    return nil
-}
-
-
 // MARK: - DateFormatter Extension for Schwab API
 
 extension DateFormatter {
@@ -46,46 +19,6 @@ extension DateFormatter {
         formatter.timeZone = TimeZone(abbreviation: "UTC")
         return formatter
     }()
-}
-
-// MARK: - Symbol Contract Summary Structure
-
-struct SymbolContractSummary {
-    let minimumDTE: Int?
-    let minimumStrike: Double?
-    let contractCount: Int
-    let totalQuantity: Double
-    
-    init(contracts: [Position]) {
-        var minDTE: Int?
-        var minStrike: Double?
-        var totalQty: Double = 0.0
-        
-        for position: Position in contracts {
-            // Calculate DTE for this contract
-            if let dte: Int = extractExpirationDate(from: position.instrument?.symbol,
-                                                    description: position.instrument?.description)
-                ?? extractExpirationDate(from: position.instrument?.description, description: nil) {
-                if minDTE == nil || dte < minDTE! {
-                    minDTE = dte
-                }
-            }
-            // Calculate Strike for this contract
-            if let strike: Double = extractStrike(from: position.instrument?.symbol) {
-                if minStrike == nil || strike < minStrike! {
-                    minStrike = strike
-                }
-            }
-            // Sum up quantities
-            totalQty += (position.longQuantity ?? 0.0) + (position.shortQuantity ?? 0.0)
-        }
-        
-        self.minimumDTE = minDTE
-        self.minimumStrike = minStrike
-        self.contractCount = contracts.count
-        self.totalQuantity = totalQty
-    }
-
 }
 
 // connection
@@ -165,7 +98,6 @@ class SchwabClient
     private let accessTokenRefreshLeeway: TimeInterval = 120
     private let derivedPositionDataStore = DerivedPositionDataStore()
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
-    private var m_symbolsWithContracts : [String: SymbolContractSummary] = [:]
     private var m_lastFilteredTaxLotSymbol : String? = nil
     private var m_lastFilteredTransactionSharesAvailableToTrade : Double? = nil
     private var m_lastfilteredTransactionsYears : Int = 0
@@ -1181,48 +1113,6 @@ class SchwabClient
             AppLogger.shared.debug( "=== decoding accounts ===" )
             m_accounts  = try decoder.decode([AccountContent].self, from: data)
             AppLogger.shared.debug( "  decoded \(m_accounts.count) accounts" )
-            // search the positions in the accounts to build a map of symbolsWithContracts
-            // Build map of symbols with option contracts
-            m_symbolsWithContracts.removeAll()
-            
-            // First, collect all option positions by underlying symbol
-            var positionsByUnderlying: [String: [Position]] = [:]
-            
-            for account in m_accounts {
-                if let positions = account.securitiesAccount?.positions {
-                    for position in positions {
-                        // for every position, look for an option assetType
-                        if let instrument = position.instrument,
-                           let assetType = instrument.assetType,
-                           assetType == .OPTION,
-                           let underlyingSymbol = instrument.underlyingSymbol {
-                                // Add to the collection for this underlying symbol
-                                if positionsByUnderlying[underlyingSymbol] == nil {
-                                    positionsByUnderlying[underlyingSymbol] = []
-                                }
-                                // Check if this position is already in the list by comparing symbols
-                                if let symbol = instrument.symbol {
-                                    let positionExists = positionsByUnderlying[underlyingSymbol]!.contains { existingPosition in
-                                        existingPosition.instrument?.symbol == symbol
-                                    }
-                                    if !positionExists {
-                                        positionsByUnderlying[underlyingSymbol]!.append(position)
-                                        // AppLogger.shared.debug("  Added option contract: \(symbol) - \(instrument.description ?? "No description")")
-                                    }
-                                }
-                        }
-                    }
-                }
-            }
-            
-            // Now create SymbolContractSummary for each underlying symbol
-            for (underlyingSymbol, positions) in positionsByUnderlying {
-                let summary: SymbolContractSummary = SymbolContractSummary(contracts: positions)
-                m_symbolsWithContracts[underlyingSymbol] = summary
-                // AppLogger.shared.debug("Created summary for \(underlyingSymbol): \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1)")
-            }
-            
-            AppLogger.shared.debug("Built contracts map with \(m_symbolsWithContracts.count) underlying symbols")
             return
         }
         catch
@@ -1789,9 +1679,8 @@ class SchwabClient
         AppLogger.shared.debug("  Using provided tax lots for accurate share calculation")
         AppLogger.shared.debug("  Found \(taxLots.count) tax lots for \(symbol)")
         
-        // Calculate shares held for over 30 days and under 30 days from tax lots
+        // Calculate shares held for over 30 days from tax lots
         var sharesOver30Days: Double = 0.0
-        var sharesUnder30Days: Double = 0.0
         let currentDate = Date()
         
         AppLogger.shared.debug("  === Processing Tax Lots ===")
@@ -1814,29 +1703,15 @@ class SchwabClient
                 sharesOver30Days += taxLot.quantity
                 AppLogger.shared.debug("  --- \(symbol) ---  Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (ELIGIBLE)")
             } else {
-                sharesUnder30Days += taxLot.quantity
                 AppLogger.shared.debug("  --- \(symbol) ---  Tax lot \(index): \(taxLot.quantity) shares from \(taxLot.openDate) held for \(daysSinceTaxLot) days (NOT ELIGIBLE)")
             }
         }
         
         AppLogger.shared.debug("  Total shares held for over 30 days: \(sharesOver30Days)")
-        AppLogger.shared.debug("  Total shares held for under or equal to 30 days: \(sharesUnder30Days)")
-        
-        // Get total shares under contract and offset them by <30 day shares first
-        let totalContractShares = getContractCountForSymbol(symbol) * 100.0
-        let contractsAbsorbedByUnder30 = min(sharesUnder30Days, totalContractShares)
-        let sharesUnderContractAffectingOver30 = totalContractShares - contractsAbsorbedByUnder30
-        AppLogger.shared.debug("  Contract shares (raw): \(totalContractShares) (contracts: \(getContractCountForSymbol(symbol)))")
-        AppLogger.shared.debug("  Contract shares absorbed by <30d holdings: \(contractsAbsorbedByUnder30)")
-        AppLogger.shared.debug("  Contract shares affecting >30d holdings: \(sharesUnderContractAffectingOver30)")
-        
-        // Calculate available shares: >30 day shares reduced only by contracts not covered by <30 day shares
-        let availableShares = sharesOver30Days - sharesUnderContractAffectingOver30
-        let finalAvailableShares = max(0.0, availableShares)
+        let finalAvailableShares = max(0.0, sharesOver30Days)
         
         AppLogger.shared.debug("  === Final Calculation ===")
         AppLogger.shared.debug("    Shares over 30 days: \(sharesOver30Days)")
-        AppLogger.shared.debug("    Shares under contract affecting >30d: \(sharesUnderContractAffectingOver30)")
         AppLogger.shared.debug("    Available shares: \(finalAvailableShares)")
         AppLogger.shared.debug("    Total shares owned: \(taxLots.reduce(0.0) { $0 + $1.quantity })")
         
@@ -2864,50 +2739,6 @@ class SchwabClient
 
         await transactionHistoryStore.finishInitialLoad(months: months)
         AppLogger.shared.debug("Fetched \((await transactionHistoryStore.allTransactions()).count) transactions in \(months) months")
-    }
-
-    /**
-     * getContractsForSymbol - return the option contracts for a given underlying symbol
-     * Note: This method now returns nil since we no longer store individual positions
-     */
-    public func getContractsForSymbol(_ symbol: String) -> [Position]? {
-        let summary: SymbolContractSummary? = m_symbolsWithContracts[symbol]
-        AppLogger.shared.debug("🔍 getContractsForSymbol: Symbol '\(symbol)' has \(summary?.contractCount ?? 0) contracts")
-        if let summary: SymbolContractSummary = summary {
-            AppLogger.shared.debug("  📋 Summary: \(summary.contractCount) contracts, min DTE: \(summary.minimumDTE ?? -1), total quantity: \(summary.totalQuantity)")
-        }
-        // Since we no longer store individual positions, return nil
-        return nil
-    }
-
-    /**
-     * get the number of contracts for the given symbol
-     */
-    public func getContractCountForSymbol(_ symbol: String) -> Double {
-        guard let summary: SymbolContractSummary = m_symbolsWithContracts[symbol] else {
-            return 0.0
-        }
-        return summary.totalQuantity
-    }
-
-    /**
-     * getMinimumDTEForSymbol - return the minimum DTE for a given underlying symbol
-     */
-    public func getMinimumDTEForSymbol(_ symbol: String) -> Int? {
-        guard let summary: SymbolContractSummary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
-            return nil
-        }
-        return summary.minimumDTE
-    }
-
-    /**
-     * getMinimumStrikeForSymbol - return the minimum Strike Price for a given underlying symbol
-     */
-    public func getMinimumStrikeForSymbol(_ symbol: String) -> Double? {
-        guard let summary: SymbolContractSummary = m_symbolsWithContracts[symbol], summary.contractCount > 0 else {
-            return nil
-        }
-        return summary.minimumStrike
     }
 
 

@@ -243,7 +243,7 @@ struct RecommendedOrderDisplayInfo: Identifiable {
     let breakEvenPrice: Double?
     let gainPercent: Double?
     let targetGainPercent: Double?
-    /// Free-form label like `Top 100`, `Min ATR`, or `Buy`.
+    /// Free-form label like `Min ATR`, `Min BE`, or `Buy`.
     let sourceLabel: String
     let description: String
 }
@@ -305,7 +305,7 @@ extension RecommendedOrderDisplayInfo {
         )
     }
 
-    /// Recommendation descriptions look like "(Top 100) SELL ..." or
+    /// Recommendation descriptions look like "(Min ATR) SELL ..." or
     /// "BUY 100 AAPL (10%) ...". Extract the first parenthesized chunk
     /// for use as a compact source label.
     private static func extractSourceLabel(from description: String, fallback: String) -> String {

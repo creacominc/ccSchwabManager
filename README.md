@@ -68,7 +68,7 @@ The application now includes sophisticated sell order logic with multiple order 
 
 - **Intelligent Share Allocation**: The system continues through tax lots until all four recommendations are met or until it runs out of tax lots
 
-- **Share Validation**: All sell orders ensure they have at least 1 share and don't exceed available shares (except Top-100 orders which require 100+ shares)
+- **Share Validation**: All sell orders ensure they have at least 1 share and don't exceed available shares
 
 #### Sell Order Example
 For a position with multiple tax lots:
@@ -411,18 +411,16 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
 - time in force (usually GTC or Good Til Cancelled)
 - stop type (ask for sells, bid for buys)
 - submit at (usually the next trading day at 09:40)
-- cancel at (optional - used when the trade is related to a contract and matches the contract maturity)
+- cancel at (optional)
 - submit condition (market condition to be met for submition - could be ask below, bid above, or a study)
 - cancel condition (same as submit condition but cancels the order)
 
 
 #### Sell Order Workflow
 
-  For all orders other than the top 100, the entry must be below the last price, the target must be below the entry, and the exit must be below the target.  
+  For all sell orders, the entry must be below the last price, the target must be below the entry, and the exit must be below the target.
 
-  Except for the Top-100 sell order, all sell orders are limited to the number of shares available to trade.  This is defined as the shares held for over 30 days less the number of shares in contracts.  For example, if we have two tax lots, one with 5 shares bought 29 days ago and one with 7 shares bought 32 days ago, only the 7 are available for trading (selling).  
-
-  For the Top-100 sales, this rule should be used only to dictate how the sell order appears.  Top-100 sell orders should appear for any position for which we have 100 or more shares but should clearly indicate if this sell is not possible due to insufficient shares available.  The reason for this is that we can use this sell order as a guide for selling covered calls for which we need to know the cost-per-share of the top 100 shares.  
+  All sell orders are limited to the number of shares available to trade. This is defined as the shares held for over 30 days. For example, if we have two tax lots, one with 5 shares bought 29 days ago and one with 7 shares bought 32 days ago, only the 7 are available for trading (selling).
 
 
   Sell orders are entered for one or more of three reasons:
@@ -453,22 +451,7 @@ A trailing stop limit order is computed to cause a sale at a certain target pric
     The target price is below the entry price by 2 AATR%.  Target = Entry - 2 AATR%
     The exit price should be below the target price by 2 AATR%.  Cancel = Target - 2 AATR%
 
-    - Top 100 sells are meant to provide the target price needed to profit from the sale of the top 100 shares.  This information may be used to set the minimum price for the sale of a call option.  The price may be above the last price. This sell order should show if there are at least 100 shares available.  If the target price is higher than the 95% of the last price, the sell should be shown in red.  Rather than computing the minimum shares, this sell order should be for the top 100.
-    To achive this, we first need to compute the cost-per-share for the top 100 shares.  
-    The target price is 3.25% above the breakeven (cost-per-share) to account for wash sale cost adjustments.  target = cost-per-share * 1.0325
-    The Adjusted ATR is computed as 1.5 * 0.25 or 0.375.
-    The entry price is one AATR above the target price.   target * (1 + (AATR/100))
-    The exit price should be  0.9% below the target.   target * 0.991
-
 #### Sell Order Pricing Examples
-
-**Top 100 Sell Order Example:**
-- Current price: $29.42
-- Cost per share for top 100 shares: $41.96
-- Target price: $41.96 × 1.0325 = $43.32 (3.25% above breakeven, accounting for wash sale adjustments)
-- Adjusted ATR: 1.5 × 0.25% = 0.375%
-- Entry price: $43.32 × (1 + 0.375/100) = $43.48 (Target + ATR above target)
-- Exit price: $43.32 × 0.991 = $42.93 (0.9% below target)
 
 **Min ATR Sell Order Example:**
 - Current price: $29.42

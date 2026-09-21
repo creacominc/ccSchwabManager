@@ -99,34 +99,8 @@ final class HoldingsViewModel {
                 let firstStatus = orderStatusCache[first.instrument?.symbol ?? ""] ?? nil
                 let secondStatus = orderStatusCache[second.instrument?.symbol ?? ""] ?? nil
                 return compare(firstStatus?.priority ?? 0, secondStatus?.priority ?? 0, ascending: ascending)
-            case .dte:
-                let firstDTE = daysToExpiration(for: first)
-                let secondDTE = daysToExpiration(for: second)
-                let firstContracts = SchwabClient.shared.getContractCountForSymbol(first.instrument?.symbol ?? "")
-                let secondContracts = SchwabClient.shared.getContractCountForSymbol(second.instrument?.symbol ?? "")
-
-                switch (firstDTE, secondDTE) {
-                case (nil, nil):
-                    return compare(firstContracts, secondContracts, ascending: ascending)
-                case (nil, _):
-                    return false
-                case (_, nil):
-                    return true
-                case let (firstDTE?, secondDTE?) where firstDTE == secondDTE:
-                    return compare(firstContracts, secondContracts, ascending: ascending)
-                case let (firstDTE?, secondDTE?):
-                    return compare(firstDTE, secondDTE, ascending: ascending)
-                }
             }
         }
-    }
-
-    private func daysToExpiration(for position: Position) -> Int? {
-        let symbol = position.instrument?.symbol ?? ""
-        if position.instrument?.assetType == .OPTION {
-            return extractExpirationDate(from: symbol, description: position.instrument?.description ?? "")
-        }
-        return SchwabClient.shared.getMinimumDTEForSymbol(symbol)
     }
 
     private func profitLossPercent(for position: Position) -> Double {

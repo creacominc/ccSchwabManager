@@ -24,13 +24,12 @@ enum SortableColumn: String, CaseIterable, Identifiable {
     case account = "Account"
     case lastTradeDate = "Last Trade Date"
     case orderStatus = "Order Status"
-    case dte = "DTE"
 
     var id: String { self.rawValue }
 
     var defaultAscending: Bool {
         switch self {
-        case .symbol, .assetType, .account, .orderStatus, .dte:
+        case .symbol, .assetType, .account, .orderStatus:
             return true
         case .quantity, .avgPrice, .marketValue, .pl, .plPercent, .lastTradeDate:
             return false

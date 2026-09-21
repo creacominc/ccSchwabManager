@@ -11,7 +11,7 @@ struct DetailsTab: View {
 
     // labels
     let labels = [
-        ["P/L%", "ATR", "Market Value", "Asset Type", "Div Yield", "DTE/#"],
+        ["P/L%", "ATR", "Market Value", "Asset Type", "Div Yield"],
         ["P/L", "Quantity", "Average Price", "Last", "Account", "Available"]
     ]
 
@@ -27,7 +27,7 @@ struct DetailsTab: View {
 
                 // Left column
                 VStack(spacing: 0) {
-                    ForEach(0..<6) { rowIndex in
+                    ForEach(labels[0].indices, id: \.self) { rowIndex in
                         HStack(spacing: 12) {
                             Text(labels[0][rowIndex])
                                 .font(.body)
@@ -104,7 +104,6 @@ struct DetailsTab: View {
                             return String(format: "%.2f%%", divYield)
                         }
                         return "N/A"
-                    case 5: return "" // DTE/# - no value for equity
                     default: return ""
                 }
             

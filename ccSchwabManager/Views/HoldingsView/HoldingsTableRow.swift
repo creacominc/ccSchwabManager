@@ -7,17 +7,16 @@ struct HoldingsTableRow: View {
     let onTap: () -> Void
     let tradeDate: String
     let orderStatus: ActiveOrderStatus?
-    let dte: String
     let isEvenRow: Bool
     let isSelected: Bool
     let copyToClipboard: (String) -> Void
     let copyToClipboardValue: (Double, String) -> Void
     
-    public static let columnWidths: [CGFloat] = [0.12, 0.07, 0.07,
-                                                 0.10, 0.08,
-                                                 0.08,
+    public static let columnWidths: [CGFloat] = [0.14, 0.08, 0.08,
+                                                 0.11, 0.09,
+                                                 0.09,
                                                  0.08, 0.06,
-                                                 0.12, 0.09, 0.09]
+                                                 0.12, 0.11]
 
     // Helper function to get column width with adjustment for narrow layout
     public static func getColumnWidth(_ index: Int, viewWidth: CGFloat, isWide: Bool) -> CGFloat
@@ -27,8 +26,8 @@ struct HoldingsTableRow: View {
         // For narrow layouts, some columns are hidden, so we need to redistribute the width
         if !isWide
         {
-            // Columns 6, 7, 10 are hidden in narrow layout (market value column 3 is shown on phone)
-            let hiddenColumns = [6, 7, 10]
+            // Columns 6 and 7 are hidden in narrow layout (market value column 3 is shown on phone)
+            let hiddenColumns = [6, 7]
             if hiddenColumns.contains(index) {
                 return 0 // Hidden columns get 0 width
             }
@@ -147,15 +146,6 @@ struct HoldingsTableRow: View {
                     .foregroundColor(.primary)
                     .frame(width: HoldingsTableRow.getColumnWidth(9, viewWidth: geometry.size.width, isWide: isWide),
                            alignment: .leading)
-                // dte (only shown in wide layout)
-                if isWide
-                {
-                    Text(dte)
-                        .tableCellFont()
-                        .foregroundColor(.primary)
-                        .frame(width: HoldingsTableRow.getColumnWidth(10, viewWidth: geometry.size.width, isWide: isWide),
-                               alignment: .trailing)
-                }
             } // HStack
             .background(isEvenRow ? Color.clear : Color.secondary.opacity(0.1))
             .onTapGesture {
@@ -212,7 +202,6 @@ struct HoldingsTableRow: View {
     return VStack(alignment: .center, spacing: 8) {
         ForEach(Array(samplePositions.enumerated()), id: \.element.id) { index, position in
             let orderStatus: ActiveOrderStatus = index == 0 ? .working : (index == 1 ? .accepted : .awaitingManualReview)
-            let dte = index == 1 ? "45 / 100" : "N/A"
             let isEvenRow = index % 2 == 0
             let isSelected = index == 1
 
@@ -222,7 +211,6 @@ struct HoldingsTableRow: View {
                 onTap: { print("Row \(index) tapped") },
                 tradeDate: "2024/01/\(15 + index)",
                 orderStatus: orderStatus,
-                dte: dte,
                 isEvenRow: isEvenRow,
                 isSelected: isSelected,
                 copyToClipboard: { text in print("Copied: \(text)") },

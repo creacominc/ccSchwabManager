@@ -122,27 +122,6 @@ class OrderLogicTests: XCTestCase {
     
     // MARK: - Sell Order Logic Tests
     
-    func testSellOrderTop100Calculation() {
-        // Test Top 100 order logic
-        let currentPrice = 30.0
-        let taxLots = createTestTaxLots()
-        
-        let top100Order = calculateTop100Order(currentPrice: currentPrice, sortedTaxLots: taxLots)
-        
-        XCTAssertNotNil(top100Order, "Top 100 order should be created")
-        
-        if let order = top100Order {
-            // Verify shares to sell is 100 or less
-            XCTAssertLessThanOrEqual(order.sharesToSell, 100.0)
-            
-            // Verify target price is above cost per share
-            XCTAssertGreaterThan(order.target, order.breakEven)
-            
-            // Verify entry price is below current price
-            XCTAssertLessThan(order.entry, currentPrice)
-        }
-    }
-    
     func testSellOrderMinBreakEvenCalculation() {
         // Test Min Break Even order logic
         let currentPrice = 30.0
@@ -600,48 +579,6 @@ class OrderLogicTests: XCTestCase {
     }
     
     // MARK: - Sell Order Calculation Methods (copied from current implementation for testing)
-    
-    private func calculateTop100Order(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
-        var sharesToConsider: Double = 0
-        var totalCost: Double = 0
-        
-        for lot in sortedTaxLots {
-            let needed = min(lot.quantity, 100.0 - sharesToConsider)
-            sharesToConsider += needed
-            totalCost += needed * lot.costPerShare
-            if sharesToConsider >= 100.0 { break }
-        }
-        guard sharesToConsider >= 100.0 else { return nil }
-        let costPerShare = totalCost / sharesToConsider
-        
-        // ATR for this order is fixed: 1.5 * 0.25 = 0.375%
-        let adjustedATR = 1.5 * 0.25
-        
-        // Target: 3.25% above breakeven (cost per share) - accounting for wash sale adjustments
-        let target = costPerShare * 1.0325
-        
-        // Entry: Target + (1.5 * ATR) above target
-        let entry = target * (1.0 + (adjustedATR / 100.0))
-        
-        // Exit: 0.9% below target
-        let exit = target * 0.991
-        
-        let gain = ((target - costPerShare) / costPerShare) * 100.0
-        let formattedDescription = String(format: "(Top 100) SELL -%.0f %@ Entry %.2f Target %.2f Exit %.2f Cost/Share %.2f GTC", sharesToConsider, "TEST", entry, target, exit, costPerShare)
-        return SalesCalcResultsRecord(
-            shares: sharesToConsider,
-            rollingGainLoss: (target - costPerShare) * sharesToConsider,
-            breakEven: costPerShare,
-            gain: gain,
-            sharesToSell: sharesToConsider,
-            trailingStop: adjustedATR,
-            entry: entry,
-            target: target,
-            cancel: exit,
-            description: formattedDescription,
-            openDate: "Top100"
-        )
-    }
     
     private func calculateMinBreakEvenOrder(currentPrice: Double, sortedTaxLots: [SalesCalcPositionsRecord]) -> SalesCalcResultsRecord? {
         // According to sample.log: AATR is ATR/5
