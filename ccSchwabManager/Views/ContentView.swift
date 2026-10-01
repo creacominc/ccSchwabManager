@@ -21,6 +21,17 @@ struct ContentView: View
     @State private var selectedTab = 0
     @State private var showingAuthDialog = false
     @State private var isLoading = false
+    @State private var holdingsReloadID = UUID()
+    @State private var connectionReady = false
+
+    private var shouldAttemptConnection: Bool {
+        !connectionReady &&
+            !secretsManager.secrets.appId.isEmpty &&
+            !secretsManager.secrets.appSecret.isEmpty &&
+            !secretsManager.secrets.redirectUrl.isEmpty &&
+            !secretsManager.secrets.accessToken.isEmpty &&
+            !secretsManager.secrets.refreshToken.isEmpty
+    }
     
     var didBecomeActiveNotification: Notification.Name {
 #if os(visionOS)
@@ -47,7 +58,14 @@ struct ContentView: View
             } else {
                 // Show main app content
                 TabView(selection: $selectedTab) {
-                    HoldingsView()
+                    Group {
+                        if connectionReady {
+                            HoldingsView()
+                                .id(holdingsReloadID)
+                        } else {
+                            ProgressView("Connecting to Schwab…")
+                        }
+                    }
                         .tabItem {
                             Label("Holdings", systemImage: "list.bullet")
                         }
@@ -67,6 +85,19 @@ struct ContentView: View
                     // Force view update to check conditions again
                     secretsManager.objectWillChange.send()
                 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SchwabClient.authorizationRequiredNotification)) { _ in
+            connectionReady = false
+            selectedTab = 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SchwabClient.connectionRestoredNotification)) { _ in
+            connectionReady = true
+            holdingsReloadID = UUID()
+            selectedTab = 0
+        }
+        .task(id: shouldAttemptConnection) {
+            guard shouldAttemptConnection else { return }
+            await SchwabClient.shared.reconnectAfterCredentialsUpdate()
         }
         .overlay(CSVShareView())
     }

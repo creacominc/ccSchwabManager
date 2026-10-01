@@ -53,74 +53,99 @@ struct CredentialsInputView: View {
     @State private var importedAccessToken: String?
     @State private var importedRefreshToken: String?
     @State private var importedAccountNumberHashes: [AccountNumberHash]?
+    @State private var authCode = ""
+    @State private var showingReauthentication = false
     @FocusState private var isJsonEditorFocused: Bool
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 12) {
             Text("API Credentials")
                 .font(.title)
-            
-            // Editable JSON input. Valid pasted JSON updates the credential fields.
-            TextEditor(text: $jsonText)
-                .font(.system(.body, design: .monospaced))
-                .frame(maxHeight: .infinity)
-                .focused($isJsonEditorFocused)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
-                .onChange(of: jsonText) { _, newValue in
-                    applyCredentials(from: newValue)
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    // A bounded editor keeps the remaining controls reachable on compact devices.
+                    TextEditor(text: $jsonText)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 140, idealHeight: 200, maxHeight: 260)
+                        .focused($isJsonEditorFocused)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        )
+                        .onChange(of: jsonText) { _, newValue in
+                            applyCredentials(from: newValue)
+                        }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("App ID", text: $appId)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: appId) { _, _ in
+                                if !isJsonEditorFocused { updateJsonPreview() }
+                            }
+                        SecureField("App Secret", text: $appSecret)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: appSecret) { _, _ in
+                                if !isJsonEditorFocused { updateJsonPreview() }
+                            }
+                        TextField("Redirect URL", text: $redirectUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: redirectUrl) { _, _ in
+                                if !isJsonEditorFocused { updateJsonPreview() }
+                            }
+                    }
+
+                    VStack(spacing: 8) {
+                        Button("Renew Schwab Login", systemImage: "arrow.clockwise") {
+                            authCode = ""
+                            showingReauthentication = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(appId.isEmpty || appSecret.isEmpty || redirectUrl.isEmpty)
+
+                        Text("Use this when your Schwab authorization has expired. Your API credentials will be preserved.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    credentialActions
                 }
-            
-            // Editable credentials
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("App ID", text: $appId)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: appId) { _, _ in
-                        if !isJsonEditorFocused { updateJsonPreview() }
-                    }
-                TextField("App Secret", text: $appSecret)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: appSecret) { _, _ in
-                        if !isJsonEditorFocused { updateJsonPreview() }
-                    }
-                TextField("Redirect URL", text: $redirectUrl)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: redirectUrl) { _, _ in
-                        if !isJsonEditorFocused { updateJsonPreview() }
-                    }
+                .frame(maxWidth: 600)
+                .padding(.horizontal, 4)
             }
-            .frame(maxWidth: 500)
-            
-            HStack {
-                Button("Reset") {
-                    resetCredentials()
-                }
-                .foregroundColor(.red)
-                
-                Button("Cancel") {
-                    isPresented = false
-                }
-                .keyboardShortcut(.cancelAction)
-                .opacity(isPresented ? 1 : 0) // Only show when presented as sheet
-                
-                Button("Save") {
-                    saveCredentials()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(appId.isEmpty || appSecret.isEmpty || redirectUrl.isEmpty)
-            }
+            .scrollDismissesKeyboard(.interactively)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showingReauthentication, onDismiss: loadCredentials) {
+            AuthFlowView(authCode: $authCode)
+        }
         .onAppear {
-            // Load current values
-            appId = secretsManager.secrets.appId
-            appSecret = secretsManager.secrets.appSecret
-            redirectUrl = secretsManager.secrets.redirectUrl.isEmpty ? "https://127.0.0.1" : secretsManager.secrets.redirectUrl
-            
-            updateJsonPreview()
+            loadCredentials()
+        }
+    }
+
+    private var credentialActions: some View {
+        HStack {
+            Button("Reset") {
+                resetCredentials()
+            }
+            .foregroundStyle(.red)
+
+            Spacer()
+
+            Button("Cancel") {
+                isPresented = false
+            }
+            .keyboardShortcut(.cancelAction)
+            .opacity(isPresented ? 1 : 0)
+
+            Button("Save") {
+                saveCredentials()
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(appId.isEmpty || appSecret.isEmpty || redirectUrl.isEmpty)
         }
     }
     
@@ -137,6 +162,18 @@ struct CredentialsInputView: View {
             acountNumberHash: importedAccountNumberHashes ?? current.acountNumberHash
         )
         jsonText = preview.encodeToString() ?? jsonText
+    }
+
+    private func loadCredentials() {
+        appId = secretsManager.secrets.appId
+        appSecret = secretsManager.secrets.appSecret
+        redirectUrl = secretsManager.secrets.redirectUrl.isEmpty ? "https://127.0.0.1" : secretsManager.secrets.redirectUrl
+        importedCode = nil
+        importedSession = nil
+        importedAccessToken = nil
+        importedRefreshToken = nil
+        importedAccountNumberHashes = nil
+        updateJsonPreview()
     }
 
     private func applyCredentials(from json: String) {
@@ -173,8 +210,11 @@ struct CredentialsInputView: View {
             refreshToken: importedRefreshToken ?? current.refreshToken,
             acountNumberHash: importedAccountNumberHashes ?? current.acountNumberHash
         )
-        secretsManager.saveSecrets()
+        secretsManager.saveSecrets(attemptAutomaticRefresh: false)
         isPresented = false
+        Task {
+            await SchwabClient.shared.reconnectAfterCredentialsUpdate()
+        }
     }
     
     private func resetCredentials() {

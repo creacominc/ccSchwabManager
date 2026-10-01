@@ -152,7 +152,7 @@ struct HoldingsView: View
                     viewSize = newValue
                 }
         }
-        .sheet(item: $selectedPosition) { selected in
+        .fullScreenCover(item: $selectedPosition) { selected in
             PositionDetailSheet(
                 selected: selected,
                 isNavigating: $isNavigating,
@@ -160,7 +160,6 @@ struct HoldingsView: View
                 atrValue: $atrValue,
                 sharesAvailableForTrading: $sharesAvailableForTrading,
                 marketValue: $marketValue,
-                viewSize: $viewSize,
                 selectedPosition: $selectedPosition,
                 sortedHoldings: sortedHoldings,
                 accountPositions: accountPositions
@@ -168,6 +167,10 @@ struct HoldingsView: View
         }
         .sheet(isPresented: $showPerformanceSummary) {
             PerformanceSummaryView()
+        }
+        .onDisappear {
+            currentFetchTask?.cancel()
+            currentFetchTask = nil
         }
     }
     

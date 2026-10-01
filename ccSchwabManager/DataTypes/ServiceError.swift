@@ -124,6 +124,20 @@ class ServiceError: Codable, Identifiable
     var id: String {
         return UUID().uuidString
     }
+
+    var requiresReauthentication: Bool {
+        if error?.localizedCaseInsensitiveContains("invalid_grant") == true ||
+            errorDescription?.localizedCaseInsensitiveContains("refresh token") == true {
+            return true
+        }
+
+        return errors?.contains { errorDetail in
+            errorDetail.details.values.contains { value in
+                guard case .string(let text) = value else { return false }
+                return text.localizedCaseInsensitiveContains("client not authorized")
+            }
+        } == true
+    }
     
     enum CodingKeys: String, CodingKey {
         case errors
@@ -135,25 +149,17 @@ class ServiceError: Codable, Identifiable
     {
         AppLogger.shared.error( "\(prefix) --- ServiceError:" )
         if let errors: [ServiceError.ErrorDetail] = errors {
-            AppLogger.shared.error( "\t\terrors:" )
-            // swiftlint:disable:next type_name
             for (index, error) in errors.enumerated() {
-                AppLogger.shared.error( "\t\t[\(index)]:" )
-                for (key, value) in error.details {
-                    switch value {
-                    case .string(let str):
-                        AppLogger.shared.error( "\t\t\t\(key): \(str)" )
-                    case .integer(let num):
-                        AppLogger.shared.error( "\t\t\t\(key): \(num)" )
-                    }
-                }
+                let status = error.details["status"]
+                let title = error.details["title"]
+                AppLogger.shared.error("\t\terror[\(index)] status=\(String(describing: status)) title=\(String(describing: title))")
             }
         }
         if let error: String = error {
             AppLogger.shared.error( "\t\terror: \(error)" )
         }
-        if let errorDescription: String = errorDescription {
-            AppLogger.shared.error( "\t\terrorDescription: \(errorDescription)" )
+        if errorDescription != nil {
+            AppLogger.shared.error("\t\terrorDescription: [REDACTED]")
         }
     }
     

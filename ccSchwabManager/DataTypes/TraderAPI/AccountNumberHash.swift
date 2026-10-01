@@ -19,7 +19,7 @@ public class AccountNumberHash: Codable, Identifiable
         hashValue: String
     )
     {
-        print( "SapiAccountNumberHash init - accountNumber: \(accountNumber ?? "N/A"), hasValue: \(hashValue)")
+        print("SapiAccountNumberHash initialized")
         self.accountNumber = accountNumber
         self.hashValue = hashValue
     }

@@ -49,6 +49,9 @@ private let priceHistoryWeb     : String = "\(marketdataAPI)/pricehistory"
  */
 class SchwabClient
 {
+    static let authorizationRequiredNotification = Notification.Name("SchwabClientAuthorizationRequired")
+    static let connectionRestoredNotification = Notification.Name("SchwabClientConnectionRestored")
+
     /// Absolute safety cap for per-symbol backfill (see `TransactionHistoryConfig`).
     public var maxMonthDelta: Int { TransactionHistoryConfig.maxBackfillMonths }
 
@@ -95,6 +98,8 @@ class SchwabClient
     private var m_refreshTokenTask: Task<Void, Never>?
     private var m_tokenRefreshInFlight: (id: UUID, task: Task<Bool, Never>)?
     private var m_accessTokenExpiration: Date?
+    private var m_requiresReauthentication = false
+    private var m_reconnectInFlight = false
     private let accessTokenRefreshLeeway: TimeInterval = 120
     private let derivedPositionDataStore = DerivedPositionDataStore()
     private var m_symbolsWithOrders: [String: [ActiveOrderStatus]] = [:]
@@ -138,15 +143,7 @@ class SchwabClient
      */
     func dump() -> String
     {
-        var retVal : String = "\n\t   vvvvvvvvvvvvvvv"
-        retVal += "\n\t  secrets: \(self.m_secrets.dump())"
-        retVal += "\n\t  selectedAccountName: \(self.m_selectedAccountName)"
-        for account in self.m_secrets.getAccountNumbers()
-        {
-            retVal += "\n\t     account: \(account)"
-        }
-        retVal += "\n\t   ^^^^^^^^^^^^^^^"
-        return retVal
+        return "SchwabClient(accountsLoaded: \(m_accounts.count), credentials: \(m_secrets.dump()))"
     }
     
     // MARK: - Optimized Caching Methods
@@ -568,17 +565,24 @@ class SchwabClient
 
 
     @MainActor
-    func configure(with secrets: inout Secrets) {
-        AppLogger.shared.debug("=== configure - scheduling token refresh ===")
+    func configure(with secrets: inout Secrets, attemptAutomaticRefresh: Bool = true) {
         let tokenChanged = secrets.accessToken != m_secrets.accessToken
             || secrets.refreshToken != m_secrets.refreshToken
         self.m_secrets = secrets
+        if tokenChanged && !secrets.accessToken.isEmpty && !secrets.refreshToken.isEmpty {
+            m_requiresReauthentication = false
+        }
+        guard attemptAutomaticRefresh else {
+            cleanup()
+            return
+        }
         guard tokenChanged || (m_refreshTokenTask == nil && m_tokenRefreshInFlight == nil) else {
             return
         }
         m_refreshTokenTask?.cancel()
         m_refreshTokenTask = nil
         guard !secrets.accessToken.isEmpty, !secrets.refreshToken.isEmpty else { return }
+        AppLogger.shared.debug("=== configure - scheduling token refresh ===")
         Task { [weak self] in
             _ = await self?.refreshAccessToken()
         }
@@ -691,7 +695,6 @@ class SchwabClient
     
     public func setSecrets( secrets: inout Secrets )
     {
-        //AppLogger.shared.debug( "client setting secrets to: \(secrets.dump())")
         m_secrets = secrets
     }
     
@@ -753,11 +756,14 @@ class SchwabClient
         accessTokenRequest.setValue( "Basic \(authStringEncoded)", forHTTPHeaderField: "Authorization" )
         accessTokenRequest.setValue( "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type" )
         // body
-        let bodyString = "grant_type=authorization_code" +
-            "&code=\( self.m_secrets.code )" +
-            "&redirect_uri=\( self.m_secrets.redirectUrl )"
-        accessTokenRequest.httpBody = bodyString.data(using: .utf8)!
-        AppLogger.shared.debug( "Posting access token request:  \(accessTokenRequest)" )
+        var bodyComponents = URLComponents()
+        bodyComponents.queryItems = [
+            URLQueryItem(name: "grant_type", value: "authorization_code"),
+            URLQueryItem(name: "code", value: self.m_secrets.code),
+            URLQueryItem(name: "redirect_uri", value: self.m_secrets.redirectUrl)
+        ]
+        accessTokenRequest.httpBody = bodyComponents.percentEncodedQuery?.data(using: .utf8)
+        AppLogger.shared.debug("Posting access token request")
         
         defer {
             Task { @MainActor in
@@ -776,6 +782,11 @@ class SchwabClient
                 {
                     self.m_secrets.accessToken = ( tokenDict["access_token"] as? String ?? "" )
                     self.m_secrets.refreshToken = ( tokenDict["refresh_token"] as? String ?? "" )
+                    guard !self.m_secrets.accessToken.isEmpty,
+                          !self.m_secrets.refreshToken.isEmpty else {
+                        AppLogger.shared.error("Token response did not contain the required tokens")
+                        return .failure(.notAuthenticated)
+                    }
                     if( !KeychainManager.saveSecrets(secrets: &self.m_secrets) )
                     {
                         AppLogger.shared.error( "Failed to save secrets with access and refresh tokens." )
@@ -837,6 +848,7 @@ class SchwabClient
      */
     @MainActor
     private func refreshAccessToken() async -> Bool {
+        guard !m_requiresReauthentication else { return false }
         if let inFlight = m_tokenRefreshInFlight {
             return await inFlight.task.value
         }
@@ -912,6 +924,12 @@ class SchwabClient
                 AppLogger.shared.error("Token refresh failed with status code: \(httpResponse.statusCode)")
                 if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                     serviceError.printErrors(prefix: "refreshAccessToken ")
+                    if serviceError.requiresReauthentication {
+                        requireReauthentication()
+                    }
+                }
+                if [400, 401, 403].contains(httpResponse.statusCode) {
+                    requireReauthentication()
                 }
                 return false
             }
@@ -939,6 +957,7 @@ class SchwabClient
     
     @MainActor
     private func scheduleAccessTokenRefresh(expiresIn: TimeInterval) {
+        guard !m_requiresReauthentication else { return }
         let validLifetime = max(expiresIn, 60)
         let delay = max(validLifetime - accessTokenRefreshLeeway, 30)
         m_accessTokenExpiration = Date().addingTimeInterval(validLifetime)
@@ -964,6 +983,52 @@ class SchwabClient
         m_tokenRefreshInFlight = nil
         m_accessTokenExpiration = nil
     }
+
+    @MainActor
+    private func requireReauthentication() {
+        guard !m_requiresReauthentication else { return }
+        m_requiresReauthentication = true
+        cleanup()
+        loadingDelegate?.setLoading(false)
+        NotificationCenter.default.post(name: Self.authorizationRequiredNotification, object: nil)
+    }
+
+    @MainActor
+    func reconnectAfterCredentialsUpdate() async {
+        guard !m_reconnectInFlight else { return }
+        m_reconnectInFlight = true
+        defer { m_reconnectInFlight = false }
+
+        cleanup()
+        m_requiresReauthentication = false
+        m_accounts.removeAll(keepingCapacity: true)
+
+        let maximumAttempts = 3
+        for attempt in 1...maximumAttempts {
+            guard !m_requiresReauthentication else { return }
+
+            if await refreshAccessToken() {
+                await fetchAccountNumbers()
+                await fetchAccounts(retry: false)
+
+                if !m_accounts.isEmpty && !m_requiresReauthentication {
+                    NotificationCenter.default.post(name: Self.connectionRestoredNotification, object: nil)
+                    return
+                }
+            }
+
+            guard attempt < maximumAttempts, !m_requiresReauthentication else { return }
+            let retryDelay = TimeInterval(attempt)
+            AppLogger.shared.warning(
+                "Reconnect attempt \(attempt) failed; retrying in \(Int(retryDelay)) second(s)"
+            )
+            do {
+                try await Task.sleep(for: .seconds(retryDelay))
+            } catch {
+                return
+            }
+        }
+    }
     
 
     /**
@@ -980,6 +1045,7 @@ class SchwabClient
      */
     func fetchAccountNumbers() async
     {
+        guard await !MainActor.run(body: { m_requiresReauthentication }) else { return }
         AppLogger.shared.debug(" === fetchAccountNumbers ===  \(accountNumbersWeb)")
         //AppLogger.shared.debug("🔍 fetchAccountNumbers - Setting loading to TRUE")
         await MainActor.run {
@@ -1011,11 +1077,12 @@ class SchwabClient
             if( httpResponse.statusCode != 200 )
             {
                 AppLogger.shared.error( "Failed to fetch account numbers.  Status: \(httpResponse.statusCode).  Error: \(httpResponse.description)" )
+                if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data),
+                   serviceError.requiresReauthentication {
+                    await requireReauthentication()
+                }
                 return
             }
-            // AppLogger.shared.debug( "response: \(response)" )
-            //            AppLogger.shared.debug( "data:  \(String(data: data, encoding: .utf8) ?? "Missing data" )" )
-            
             let decoder = JSONDecoder()
             let accountNumberHashes = try decoder.decode([AccountNumberHash].self, from: data)
             AppLogger.shared.debug("accountNumberHashes: \(accountNumberHashes.count)")
@@ -1048,6 +1115,7 @@ class SchwabClient
      */
     func fetchAccounts( retry : Bool = false ) async
     {
+        guard await !MainActor.run(body: { m_requiresReauthentication }) else { return }
         AppLogger.shared.debug("=== fetchAccounts: selected: \(self.m_selectedAccountName) ===")
         //AppLogger.shared.debug("🔍 fetchAccounts - Setting loading to TRUE")
         await MainActor.run {
@@ -1093,6 +1161,10 @@ class SchwabClient
                 AppLogger.shared.warning( "fetchAccounts: decoding json as ServiceError" )
                 let serviceError = try JSONDecoder().decode(ServiceError.self, from: data)
                 serviceError.printErrors(prefix: "fetchAccounts ")
+                if serviceError.requiresReauthentication {
+                    await requireReauthentication()
+                    return
+                }
                 // if the status is 401 and retry is true, call fetchAccounts again after refreshing the access token
                 if httpResponse.statusCode == 401 && retry {
                     AppLogger.shared.warning( "=== retrying fetchAccounts after refreshing access token ===" )
@@ -1102,9 +1174,6 @@ class SchwabClient
                 } else {
                     // Log the error for debugging
                     AppLogger.shared.error("fetchAccounts failed with status code: \(httpResponse.statusCode)")
-                    if let errorData = String(data: data, encoding: .utf8) {
-                        AppLogger.shared.error("Error response: \(errorData)")
-                    }
                 }
                 return
             }
@@ -1185,9 +1254,6 @@ class SchwabClient
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
                 AppLogger.shared.error("fetchPriceHistory - Failed to fetch price history for \(symbol). code = \(statusCode)")
             // Try to decode error response for debugging
-                if let errorString = String(data: data, encoding: .utf8) {
-                    AppLogger.shared.error("fetchPriceHistory - Error response for \(symbol): \(errorString)")
-                }
                 return nil
             }
             let candleList = try JSONDecoder().decode(CandleList.self, from: data)
@@ -1513,7 +1579,7 @@ class SchwabClient
                             }
 
                             if httpResponse.statusCode != 200 {
-                                AppLogger.shared.debug("response code: \(httpResponse.statusCode)  data: \(String(data: data, encoding: .utf8) ?? "N/A")")
+                                AppLogger.shared.debug("fetchTransactionHistory response code: \(httpResponse.statusCode)")
                                 if let serviceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
                                     serviceError.printErrors(prefix: "  fetchTransactionHistory ")
                                 }
@@ -1784,8 +1850,6 @@ class SchwabClient
 
                             AppLogger.shared.error("fetchOrderHistory ❌ HTTP \(httpResponse.statusCode) for status \(status.rawValue)")
                             if let serviceError: ServiceError = try? JSONDecoder().decode(ServiceError.self, from: data) {
-                                // print data as string
-                                AppLogger.shared.error("fetchOrderHistory ---- data: \(String(data: data, encoding: .utf8) ?? "N/A")")
                                 serviceError.printErrors(prefix: "fetchOrderHistory ")
                             }
                             return nil
@@ -1800,8 +1864,7 @@ class SchwabClient
                         } catch {
                             AppLogger.shared.error("fetchOrderHistory ❌ Decoding error for status \(status.rawValue): \(error.localizedDescription)")
                             AppLogger.shared.error("fetchOrderHistory   detail:  \(error)")
-                            AppLogger.shared.error("fetchOrderHistory ❌ Raw JSON data received:")
-                            AppLogger.shared.error("fetchOrderHistory \(String(data: data, encoding: .utf8) ?? "Could not decode as UTF-8")")
+                            AppLogger.shared.error("fetchOrderHistory received an invalid response payload")
                             return nil
                         }
                     } catch {
@@ -1970,38 +2033,27 @@ class SchwabClient
                     
                     // Log the request details for verification
                     AppLogger.shared.debug("🔍 DELETE REQUEST VERIFICATION:")
-                    AppLogger.shared.debug("  📍 URL: \(cancelOrderUrl)")
-                    AppLogger.shared.debug("  🆔 Order ID: \(orderId)")
-                    AppLogger.shared.debug("  🔑 Account Hash: \(hashValue)")
                     AppLogger.shared.debug("  🏷️  HTTP Method: \(request.httpMethod ?? "nil")")
-                    AppLogger.shared.debug("  📋 Headers:")
-                    AppLogger.shared.debug("    Authorization: Bearer \(String(self.m_secrets.accessToken.prefix(20)))...")
-                    AppLogger.shared.debug("    Accept: \(request.value(forHTTPHeaderField: "Accept") ?? "nil")")
                     AppLogger.shared.debug("  ⏱️  Timeout: \(request.timeoutInterval) seconds")
-                    AppLogger.shared.debug("  📊 Request would delete order \(orderId) from account \(orderAccountNumber) (hash: \(hashValue))")
+                    AppLogger.shared.debug("  📊 Request would delete an order from the selected account")
                     AppLogger.shared.debug("  ✅ Request verification complete - ready to execute DELETE")
                     
                     
                     do {
-                        let (data, response) = try await URLSession.shared.data(for: request)
+                        let (_, response) = try await URLSession.shared.data(for: request)
                         
                         guard let httpResponse = response as? HTTPURLResponse else {
                             return (orderId: orderId, success: false, errorMessage: "Invalid response type")
                         }
                         
                         if httpResponse.statusCode == 200 || httpResponse.statusCode == 204 {
-                            AppLogger.shared.warning("✅ Successfully cancelled order \(orderId)")
+                            AppLogger.shared.warning("✅ Successfully cancelled order")
                             return (orderId: orderId, success: true, errorMessage: nil)
                         } else {
                             // Try to decode error response
-                            let errorMessage: String
-                            if let responseString = String(data: data, encoding: .utf8) {
-                                errorMessage = "HTTP \(httpResponse.statusCode): \(responseString)"
-                            } else {
-                                errorMessage = "HTTP \(httpResponse.statusCode): Unknown error"
-                            }
+                            let errorMessage = "HTTP \(httpResponse.statusCode)"
                             
-                            AppLogger.shared.error("❌ Failed to cancel order \(orderId): \(errorMessage)")
+                            AppLogger.shared.error("❌ Failed to cancel order: \(errorMessage)")
                             return (orderId: orderId, success: false, errorMessage: errorMessage)
                         }
                     } catch {
@@ -2068,8 +2120,8 @@ class SchwabClient
         guard let accountNumberHash = m_secrets.acountNumberHash.first(where: { 
             $0.accountNumber == String(orderAccountNumber) 
         }) else {
-            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ Account hash not found for account number \(orderAccountNumber)")
-            return (false, "Account hash not found for account number \(orderAccountNumber)")
+            AppLogger.shared.warning("📤 [PLACE-ORDER] ❌ Account hash not found")
+            return (false, "Account hash not found")
         }
         
         guard let hashValue = accountNumberHash.hashValue else {
@@ -2090,14 +2142,7 @@ class SchwabClient
         
         do {
             let jsonData = try encoder.encode(order)
-            let jsonString = String(data: jsonData, encoding: .utf8) ?? "{}"
-            
-            AppLogger.shared.debug("📤 [PLACE-ORDER] 📤 POST REQUEST VERIFICATION:")
-            AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 JSON Body:")
-            
-            // Sanitize the JSON before logging to hide sensitive account information
-            let sanitizedJson = JSONSanitizer.sanitizeAccountNumbers(in: jsonString)
-            AppLogger.shared.debug("📤 [PLACE-ORDER] \(sanitizedJson)")
+            AppLogger.shared.debug("📤 [PLACE-ORDER] Request encoded successfully")
             
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -2112,10 +2157,6 @@ class SchwabClient
                 let (data, response) = try await URLSession.shared.data(for: request)
                 
                 if let httpResponse = response as? HTTPURLResponse {
-                    if let responseString = String(data: data, encoding: .utf8) {
-                        AppLogger.shared.debug("📤 [PLACE-ORDER]   📄 Response Body: \(responseString)")
-                    }
-                    
                     if httpResponse.statusCode == 200 || httpResponse.statusCode == 201 {
                         AppLogger.shared.debug("📤 [PLACE-ORDER] ✅ Order placed successfully")
                         // Refresh orders list
@@ -2124,10 +2165,6 @@ class SchwabClient
                     } else {
                         AppLogger.shared.debug("📤 [PLACE-ORDER] 📥 RESPONSE:")
                         AppLogger.shared.debug("📤 [PLACE-ORDER]   📊 Status Code: \(httpResponse.statusCode)")
-                        AppLogger.shared.debug("📤 [PLACE-ORDER]   📋 Headers: \(httpResponse.allHeaderFields)")
-                        AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.description)")
-                        AppLogger.shared.debug(" [PLACE-ORDER]  \(httpResponse.debugDescription)")
-
                         // Try to extract error message from response body
                         var errorMessage = "Order placement failed with status code: \(httpResponse.statusCode)"
                         
@@ -2137,9 +2174,6 @@ class SchwabClient
                                let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                                let apiMessage = json["message"] as? String {
                                 errorMessage = "API Error: \(apiMessage)"
-                            } else {
-                                // If not JSON, use the raw response
-                                errorMessage = "API Error: \(responseString)"
                             }
                         }
                         
@@ -2446,7 +2480,7 @@ class SchwabClient
                     // Parse trade date
                     guard let tradeDate : String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                                   strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
-                        AppLogger.shared.error( "  -- \(symbol) -- Failed to parse date in trade.  transferItem: \(transferItem.dump())")
+                        AppLogger.shared.error("Failed to parse a trade date for \(symbol)")
                         continue
                     }
                     
@@ -3120,7 +3154,7 @@ class SchwabClient
                 // Parse trade date
                 guard let tradeDate: String = try? Date(transaction.tradeDate ?? "1970-01-01T00:00:00+0000",
                                               strategy: .iso8601.year().month().day().time(includingFractionalSeconds: false)).dateString() else {
-                    AppLogger.shared.error("-- Failed to parse date in trade. transferItem: \(transferItem.dump())")
+                    AppLogger.shared.error("Failed to parse a trade date")
                     continue
                 }
                 

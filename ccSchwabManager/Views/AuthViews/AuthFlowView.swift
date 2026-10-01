@@ -32,6 +32,11 @@ import SwiftUI
  */
 
 struct AuthFlowView: View {
+    private struct AuthorizationCallback {
+        let code: String
+        let session: String?
+    }
+
     @EnvironmentObject var secretsManager: SecretsManager
     @Binding var authCode: String
     @State private var authUrl: URL?
@@ -55,13 +60,7 @@ struct AuthFlowView: View {
                 .padding()
 
             Button("Submit") {
-                print( "--- submit button pressed ---" )
-                // if this button is pressed, reset the tokens
-                secretsManager.secrets.accessToken = ""
-                secretsManager.secrets.refreshToken = ""
-                // get the code from the pasted URL
                 handleAuthCode()
-                dismiss()
             }
             .buttonStyle(.borderedProminent)
             .disabled(authCode.isEmpty)
@@ -115,28 +114,21 @@ struct AuthFlowView: View {
     }
     
     private func handleAuthCode() {
-        // Extract the code from the URL
-        print( "=== handleAuthCode ===" )
-        if let code = extractCodeFromURL(authCode) {
-            secretsManager.secrets.code = code
-            secretsManager.saveSecrets()
+        if let callback = extractAuthorizationCallback(from: authCode) {
+            secretsManager.secrets.code = callback.code
+            secretsManager.secrets.session = callback.session ?? ""
+            secretsManager.secrets.accessToken = ""
+            secretsManager.secrets.refreshToken = ""
+            secretsManager.saveSecrets(attemptAutomaticRefresh: false)
+
             // Fetch account numbers and holdings
             Task {
-                print("task started - fetching account numbers...")
-                
-                // Get access token if not already present
-                if secretsManager.secrets.accessToken.isEmpty {
-                    print("Getting initial access token...")
-                    switch await SchwabClient.shared.getAccessToken() {
-                    case .success:
-                        print("Successfully got access token")
-                        if let savedSecrets = KeychainManager.readSecrets(prefix: "AuthFlow/accessToken") {
-                            secretsManager.secrets = savedSecrets
-                        }
-                    case .failure(let error):
-                        print("Failed to get access token: \(error.localizedDescription)")
-                        return
-                    }
+                switch await SchwabClient.shared.getAccessToken() {
+                case .success:
+                    break
+                case .failure(let error):
+                    secretsManager.error = error.localizedDescription
+                    return
                 }
 
                 await SchwabClient.shared.fetchAccountNumbers()
@@ -144,31 +136,39 @@ struct AuthFlowView: View {
                 // SchwabClient persists the account hashes together with the current
                 // tokens. Reload that authoritative copy instead of overwriting it
                 // with the view model's older snapshot.
-                if let savedSecrets = KeychainManager.readSecrets(prefix: "AuthFlow/accountNumbers") {
-                    secretsManager.secrets = savedSecrets
-                }
-
                 // Fetch account holdings
                 await SchwabClient.shared.fetchAccounts( retry: true )
+
+                guard SchwabClient.shared.hasAccounts(),
+                      let savedSecrets = KeychainManager.readSecrets(prefix: "AuthFlow/complete") else {
+                    secretsManager.error = "Schwab authorization succeeded, but account data could not be loaded."
+                    return
+                }
                 
                 // Force view update on main thread
                 await MainActor.run {
-                    secretsManager.objectWillChange.send()
+                    secretsManager.secrets = savedSecrets
+                    NotificationCenter.default.post(
+                        name: SchwabClient.connectionRestoredNotification,
+                        object: nil
+                    )
                     dismiss()
                 }
             }
         } else {
-            // Handle invalid URL format
-            print("Invalid authorization URL format")
+            secretsManager.error = "The pasted Schwab callback URL does not contain an authorization code."
         }
     }
     
-    private func extractCodeFromURL(_ urlString: String) -> String? {
+    private func extractAuthorizationCallback(from urlString: String) -> AuthorizationCallback? {
         guard let url = URL(string: urlString),
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
+              let queryItems = components.queryItems,
+              let code = queryItems.first(where: { $0.name == "code" })?.value,
+              !code.isEmpty else {
             return nil
         }
-        return code
+        let session = queryItems.first(where: { $0.name == "session" })?.value
+        return AuthorizationCallback(code: code, session: session)
     }
-} 
+}

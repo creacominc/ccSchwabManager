@@ -17,38 +17,28 @@ struct KeychainManager
 
     static func saveSecrets( secrets: inout Secrets ) -> Bool
     {
-        // print( "Saving secrets: \(secrets!.dump())" )
-        let password : String = secrets.encodeToString() ?? "Error encoding Secrete"
-
-        let secretsData = password.data(using: .utf8)
-        if( nil == secretsData )
-        {
+        guard let password = secrets.encodeToString(),
+              let secretsData = password.data(using: .utf8) else {
             print( "Error converting secrets to data." )
             return false
-        }
-        else
-        {
-            #if DEBUG
-            print( "Secrets data length: \(secretsData!.count)" )
-            #endif
         }
         let keychainItem = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: userName,
             kSecAttrService as String: userName,
             kSecAttrSynchronizable as String:  kCFBooleanTrue!,
-            kSecValueData as String: secretsData!
+            kSecValueData as String: secretsData
         ] as CFDictionary
         var status = SecItemAdd(keychainItem, nil)
-        let errorString : String = SecCopyErrorMessageString( status, nil )! as String
-        print( "Initial status: \(status),  \(errorString)" )
         // update if it exists
         if( errSecDuplicateItem == status )
         {
-            let attributes: [String: Any] = [ kSecValueData as String: secretsData! ]
+            let attributes: [String: Any] = [ kSecValueData as String: secretsData ]
             status = SecItemUpdate( keychainItem as CFDictionary, attributes as CFDictionary)
-            let errorString : String = SecCopyErrorMessageString( status, nil )! as String
-            print( "update status: \(status),  \(errorString)" )
+        }
+        if status != errSecSuccess {
+            let message = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown Keychain error"
+            print("Unable to save credentials (Keychain status \(status)): \(message)")
         }
         return status == errSecSuccess
     }
@@ -87,20 +77,13 @@ struct KeychainManager
                     print("readSecrets - \(prefix) - Error parsing JSON: \(error)")
                     return nil
                 }
-                // String(data:  secretsData!, encoding: .utf8)
-                //print( "\(prefix) - secrets: \(secrets?.dump() ?? "Not found")" )
-//
-//                let keyValue = NSString(data: secretsData!,
-//                                        encoding: String.Encoding.utf8.rawValue) as? String
-                //print( "\(prefix)  -  keyValue: \(keyValue ?? "Not found")" )
 
                 return secrets
             }
         }
-        else
-        {
-            let errorString : String = SecCopyErrorMessageString( status, nil )! as String
-            print( "\(prefix) - readSecrets status: \(status),  \(errorString)" )
+        else if status != errSecItemNotFound {
+            let message = SecCopyErrorMessageString(status, nil) as String? ?? "Unknown Keychain error"
+            print("\(prefix) - Unable to read credentials (Keychain status \(status)): \(message)")
         }
 
         return nil
@@ -109,4 +92,3 @@ struct KeychainManager
     
     
 }
-

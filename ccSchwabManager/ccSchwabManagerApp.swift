@@ -146,10 +146,12 @@ class SecretsManager: ObservableObject {
         print( "=== SecretsManager init getting secrets ===" )
         self.secrets = KeychainManager.readSecrets(prefix: "SecretsManager/init") ?? Secrets()
         // Configure SchwabClient with initial secrets
-        SchwabClient.shared.configure(with: &self.secrets)
+        // ContentView owns the initial connection attempt so data loading cannot
+        // race token validation during app startup.
+        SchwabClient.shared.configure(with: &self.secrets, attemptAutomaticRefresh: false)
     }
     
-    func saveSecrets() {
+    func saveSecrets(attemptAutomaticRefresh: Bool = true) {
         if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
             print("⏭ Skipping SecretsManager.saveSecrets() because this is a preview")
             print("⏭ Stack trace for SecretsManager.saveSecrets() in preview:")
@@ -160,7 +162,10 @@ class SecretsManager: ObservableObject {
         var secretsToSave = secrets
         _ = KeychainManager.saveSecrets(secrets: &secretsToSave)
         // Update SchwabClient with new secrets
-        SchwabClient.shared.configure(with: &secretsToSave)
+        SchwabClient.shared.configure(
+            with: &secretsToSave,
+            attemptAutomaticRefresh: attemptAutomaticRefresh
+        )
     }
     
     func resetSecrets(partial: Bool = false) {

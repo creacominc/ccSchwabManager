@@ -14,7 +14,6 @@ struct PositionDetailSheet: View {
     @Binding var atrValue: Double
     @Binding var sharesAvailableForTrading: Double
     @Binding var marketValue: Double
-    @Binding var viewSize: CGSize
     @Binding var selectedPosition: SelectedPosition?
     
     let sortedHoldings: [Position]
@@ -43,7 +42,7 @@ struct PositionDetailSheet: View {
         .onChange(of: selected.position.instrument?.symbol) { _, _ in
             // Note: Data fetching moved to PositionDetailView
         }
-        .frame(width: viewSize.width * 0.97, height: viewSize.height * 0.98)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func createNavigationHandler(currentIndex: Int) -> (Int) -> Void {
