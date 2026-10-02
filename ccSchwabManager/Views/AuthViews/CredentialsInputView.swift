@@ -114,7 +114,9 @@ struct CredentialsInputView: View {
                 .frame(maxWidth: 600)
                 .padding(.horizontal, 4)
             }
+#if os(iOS)
             .scrollDismissesKeyboard(.interactively)
+#endif
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)

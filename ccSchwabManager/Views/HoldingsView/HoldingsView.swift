@@ -6,11 +6,65 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 // Define SortConfig and SortableColumn at the top level
 struct SortConfig: Equatable {
     var column: SortableColumn
     var ascending: Bool
+}
+
+private struct PositionDetailPresentationModifier: ViewModifier {
+    @Binding var selectedPosition: SelectedPosition?
+    @Binding var isNavigating: Bool
+    @Binding var selectedTab: Int
+    @Binding var atrValue: Double
+    @Binding var sharesAvailableForTrading: Double
+    @Binding var marketValue: Double
+    @Binding var viewSize: CGSize
+
+    let sortedHoldings: [Position]
+    let accountPositions: [(Position, String, String)]
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+#if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            content.fullScreenCover(item: $selectedPosition) { selected in
+                positionDetail(for: selected, fillsPresentation: true)
+            }
+        } else {
+            content.sheet(item: $selectedPosition) { selected in
+                positionDetail(for: selected, fillsPresentation: false)
+            }
+        }
+#else
+        content.sheet(item: $selectedPosition) { selected in
+            positionDetail(for: selected, fillsPresentation: false)
+        }
+#endif
+    }
+
+    private func positionDetail(
+        for selected: SelectedPosition,
+        fillsPresentation: Bool
+    ) -> some View {
+        PositionDetailSheet(
+            selected: selected,
+            isNavigating: $isNavigating,
+            selectedTab: $selectedTab,
+            atrValue: $atrValue,
+            sharesAvailableForTrading: $sharesAvailableForTrading,
+            marketValue: $marketValue,
+            viewSize: $viewSize,
+            fillsPresentation: fillsPresentation,
+            selectedPosition: $selectedPosition,
+            sortedHoldings: sortedHoldings,
+            accountPositions: accountPositions
+        )
+    }
 }
 
 enum SortableColumn: String, CaseIterable, Identifiable {
@@ -152,19 +206,19 @@ struct HoldingsView: View
                     viewSize = newValue
                 }
         }
-        .fullScreenCover(item: $selectedPosition) { selected in
-            PositionDetailSheet(
-                selected: selected,
+        .modifier(
+            PositionDetailPresentationModifier(
+                selectedPosition: $selectedPosition,
                 isNavigating: $isNavigating,
                 selectedTab: $selectedTab,
                 atrValue: $atrValue,
                 sharesAvailableForTrading: $sharesAvailableForTrading,
                 marketValue: $marketValue,
-                selectedPosition: $selectedPosition,
+                viewSize: $viewSize,
                 sortedHoldings: sortedHoldings,
                 accountPositions: accountPositions
             )
-        }
+        )
         .sheet(isPresented: $showPerformanceSummary) {
             PerformanceSummaryView()
         }
